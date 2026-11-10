@@ -25,6 +25,8 @@
 
 ## Phase 3 — Display and sequencing
 
+- [x] Extract prop, channel, and group mappings from an existing S6 sequence.
+- [ ] Preserve and reuse the complete original preview XML when generating a new sequence.
 - [ ] Import or map the user's display preview.
 - [ ] Model props, groups, element types, and colors.
 - [ ] Define musical roles for props and prop groups.
