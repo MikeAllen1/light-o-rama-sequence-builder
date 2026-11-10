@@ -47,6 +47,18 @@ local.settings.json
 *.wma
 *.aif
 *.aiff
+*.LOREDIT
+*.LMS
+*.LAS
+*.WAV
+*.MP3
+*.FLAC
+*.M4A
+*.AAC
+*.OGG
+*.WMA
+*.AIF
+*.AIFF
 
 # Generated local analysis/output
 audio-analysis.json
