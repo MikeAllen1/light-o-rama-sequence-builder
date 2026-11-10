@@ -15,7 +15,7 @@ The target output is the native **`.LOREDIT`** sequence format used by S5 and S6
 
 ## Current status
 
-**Foundation stage.** The repository starts with a versioned intermediate sequence model, model validation, and a diagnostic tool for inspecting S6 XML files.
+**Foundation and first audio-analysis milestone.** The repository includes a versioned intermediate sequence model, model validation, a diagnostic S6 XML inspector, and an initial audio analyzer for tempo, beat candidates, onsets, and relative energy.
 
 The native `.LOREDIT` writer is not marked complete yet. Light-O-Rama documents the format as standard XML, but its exact sequence schema and required metadata must be implemented and tested against real S6-created files. A file is not considered S6-compatible until it opens in S6 and preserves the expected sequence content.
 
@@ -40,13 +40,14 @@ The native `.LOREDIT` writer is not marked complete yet. Light-O-Rama documents 
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[dev,audio]"
 ```
 
 Run the command-line tools:
 
 ```powershell
 lor-sequence-builder --help
+lor-sequence-builder analyze-audio path\to\song.mp3 --output build\audio-analysis.json
 lor-sequence-builder inspect path\to\sample.loredit
 pytest
 ```
