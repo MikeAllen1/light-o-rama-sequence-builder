@@ -8,7 +8,6 @@ version = "0.1.0"
 description = "Music-aware sequence generation tools for Light-O-Rama S6"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "Proprietary - All rights reserved" }
 classifiers = [
   "Development Status :: 2 - Pre-Alpha",
   "Operating System :: Microsoft :: Windows",
