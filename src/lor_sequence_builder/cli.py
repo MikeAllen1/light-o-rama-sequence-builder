@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import sys
 
+from .audio import AudioAnalysisError, analyze_audio
 from .loredit import LoreditError, inspect_loredit
 from .model import SequenceProject
 
@@ -23,6 +24,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Inspect the XML structure of an S6 .LOREDIT file.",
     )
     inspect_parser.add_argument("sequence_file", type=Path)
+
+    audio_parser = subparsers.add_parser(
+        "analyze-audio",
+        help="Detect tempo, beat candidates, onsets, and energy from audio.",
+    )
+    audio_parser.add_argument("audio_file", type=Path)
+    audio_parser.add_argument(
+        "--output",
+        type=Path,
+        help="Write the full analysis JSON to this file.",
+    )
 
     validate_parser = subparsers.add_parser(
         "validate-project",
@@ -43,6 +55,28 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(result, indent=2))
             return 0
 
+        if args.command == "analyze-audio":
+            result = analyze_audio(args.audio_file)
+            if args.output:
+                args.output.parent.mkdir(parents=True, exist_ok=True)
+                args.output.write_text(
+                    json.dumps(result, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+                print(f"Analysis written to: {args.output}")
+            print(
+                f"Duration: {result['duration_ms'] / 1000:.2f}s | "
+                f"Tempo candidate: {result['tempo_bpm']:.2f} BPM | "
+                f"Beat candidates: {result['beat_count']} | "
+                f"Onsets: {result['onset_count']}"
+            )
+            print(
+                "Beat interval regularity: "
+                f"{result['interval_regularity']:.3f} "
+                "(diagnostic only; not a correctness score)"
+            )
+            return 0
+
         if args.command == "validate-project":
             data = json.loads(args.project_file.read_text(encoding="utf-8"))
             project = SequenceProject.from_dict(data)
@@ -54,7 +88,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Valid project: {project.title}")
             return 0
 
-    except (OSError, json.JSONDecodeError, LoreditError, TypeError, ValueError) as exc:
+    except (
+        OSError,
+        json.JSONDecodeError,
+        LoreditError,
+        AudioAnalysisError,
+        TypeError,
+        ValueError,
+    ) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 
