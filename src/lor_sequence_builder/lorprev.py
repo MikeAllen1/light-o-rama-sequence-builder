@@ -167,11 +167,11 @@ def read_lorprev(path: str | Path) -> PropModel:
     unsupported: list[UnsupportedConstruct] = []
     for prop in prop_nodes:
         for attribute, kind, supported_values in (
-            ("DeviceType", "device type", {"LOR"}),
+            ("DeviceType", "device type", {"LOR", "AC", "DC"}),
             (
                 "TraditionalType",
                 "traditional prop type",
-                {"Channel_per_color", "Multicolor_string_1_ch"},
+                {"Single Color", "Channel_per_color", "Multicolor_string_1_ch"},
             ),
         ):
             value = prop.attributes.get(attribute)
