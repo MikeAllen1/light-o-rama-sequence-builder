@@ -18,3 +18,6 @@ source = { editable = "." }
 dependencies = [
     { name = "defusedxml" },
 ]
+
+[package.metadata]
+requires-dist = [{ name = "defusedxml", specifier = ">=0.7.1,<0.8" }]
