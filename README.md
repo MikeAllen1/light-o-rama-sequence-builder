@@ -144,7 +144,7 @@ The format research and the conditions for implementing the writer are documente
 
 This repository is public. Do not commit passwords, access tokens, API keys, private keys, personal information, copyrighted audio, original show files, or unredacted display previews. Local media and sequence extensions are ignored by Git, but `.gitignore` is not a security boundary—review `git status` and staged changes before every commit.
 
-See [SECURITY.md](SECURITY.md) for vulnerability reporting and the repository's security practices. GitHub-hosted security settings such as Dependabot alerts, secret scanning, push protection, and branch rules must also be enabled in the repository settings; workflow files alone cannot turn those account-level/repository-level switches on.
+See [SECURITY.md](SECURITY.md) for vulnerability reporting and the repository's security practices. See [docs/SECURITY_SETUP.md](docs/SECURITY_SETUP.md) for the GitHub settings checklist. GitHub-hosted controls such as Dependabot alerts, secret scanning, push protection, private vulnerability reporting, and branch rules must be enabled in repository settings; workflow files alone cannot turn those switches on.
 
 ## Project status
 
