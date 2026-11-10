@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import gzip
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -110,8 +111,8 @@ def test_s6_exported_revision_one_golden_fixture_preserves_all_source_data(
     # The committed fixture is a gzip transport wrapper around the sanitized S6 XML export.
     fixture = FIXTURES / "s6_revision_1_export.lorprev.gz"
     source = tmp_path / "s6_revision_1_export.lorprev"
-    with gzip.open(fixture, "rb") as compressed, source.open("wb") as extracted:
-        extracted.write(compressed.read())
+    compressed = base64.b64decode(fixture.read_bytes(), validate=True)
+    source.write_bytes(gzip.decompress(compressed))
 
     model = read_lorprev(source)
     assert model.revision.value == "1"
