@@ -1,8 +1,8 @@
 # Implementation Plan
 
-**Status:** Phase 1 — native LOREDIT format  
-**Current phase:** 1  
-**Next phase:** 2 — preview parser
+**Status:** Phase 2 — standalone LORPREV parser in progress  
+**Current phase:** 2  
+**Next phase:** 3 — walking skeleton (blocked until Phase 2 is merged and owner approves)
 
 ## Product objective and fixed requirements
 
@@ -143,11 +143,15 @@ At the start of each fresh phase session: read this plan and active issue; confi
 
 ## Phase 2 — Standalone LORPREV parser
 
-- Status: Parser implementation in progress; no PR or merge yet.
+- Status: Implementation in progress; PR #6 remains draft/open and is not merged.
 - Issue: https://github.com/MikeAllen1/light-o-rama-sequence-builder/issues/5
+- PR: https://github.com/MikeAllen1/light-o-rama-sequence-builder/pull/6
 - Branch: `phase-2/lorprev-parser`
-- Source evidence: a private owner-uploaded, anonymized test preview with root `PreviewClass`, `Revision="1"`, 51 `PropClass` entries, one `Scene`, and populated `PropViews`. The private source is used only for local development and is not committed.
-- Fixtures: `synthetic_display.lorprev` covers Revision 0. Revision 1 golden structure is generated at test time using fictional identities, names, and channel addresses while exercising the 51-prop collection shape, geometry, ChannelGrid syntax, and MasterPropId relationships observed in the private development source. The private source is never committed.
-- Parser: verified Revision 0 and Revision 1 support; secure defusedxml parsing; raw attributes and XML descendants retained; per-attribute file/element locator provenance; unknown top-level nodes preserved; explicit missing/malformed/unsafe/unsupported/zero-prop errors.
-- Validation limitation: the private Revision 1 source is used for local parsing only; public CI exercises a runtime-generated synthetic 51-prop Revision 1 fixture. The synthetic fixture has not been independently imported into S6. Do not claim S6 compatibility or full channel/controller semantics until independently validated. No private display file is committed.
+- Owner-provided source: `Imported from roundtrip.loredit on 11_10_2026 (3).lorprev`, a fictional standalone S6 Revision 1 export (118,026 bytes). The owner confirmed it was exported by S6.
+- Golden fixture: `tests/fixtures/s6_revision_1_export.lorprev.gz` is a base64-encoded gzip transport copy of the sanitized S6 XML. The test decodes/decompresses it before parsing. Sanitization changes only preview/scene/prop IDs and preview/scene names; structural source values and geometry are retained.
+- Observed golden data: Revision 1; 51 PropClass entries; one Scene; one empty PropViews; 1,900 geometry points; 46 Square and 5 Hexagon props; six shape names; eight Channel_per_color props. The source contains no controller or group elements. ChannelGrid and MasterPropId remain raw source attributes, not inferred controller/channel models.
+- Parser: secure defusedxml parsing; Revision 0 and 1 support; raw attributes and XML descendants retained; per-attribute file/element locator provenance; unknown top-level nodes preserved; explicit missing/malformed/unsafe/unsupported/zero-prop errors.
+- Tests: existing Revision 0 fixture and runtime-generated synthetic Revision 1 coverage, plus golden parse test for the S6-exported Revision 1 fixture and provenance assertions.
+- Last verified CI before golden-fixture changes: commit `c30cfe47ab7e0987e47b9f79ccc180f110cce9cb`; pytest (27 passed), Ruff, strict mypy, pip-audit, and CodeQL all passed. New golden-fixture commits require fresh CI; do not carry forward the prior green status.
+- Remaining acceptance work: verify the committed golden fixture and test in fresh CI; inspect/fix any parser coverage gaps; update issue/PR acceptance status. No claim that a human independently re-imported the fixture into S6 is made here.
 - Scope remains Phase 2 only. Audio analysis, classification, props.yaml, Timeline, rules, and choreography have not been started.
