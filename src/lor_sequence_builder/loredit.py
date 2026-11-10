@@ -6,9 +6,9 @@ local media paths, or preview background paths. It does not modify sequence file
 
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
 from collections import Counter
 from pathlib import Path
-import xml.etree.ElementTree as ET
 from typing import Any
 
 
