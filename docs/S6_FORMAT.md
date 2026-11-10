@@ -136,9 +136,9 @@ Create small test sequences in the installed S6 application and save them normal
 
 Keep each original S6 file unchanged. Place sanitized copies under a local `tests/fixtures/` directory for analysis. Do not commit copyrighted music, personal media, or private preview details.
 
-## Format implementation gate
+## Broader format support gate
 
-The native writer is ready to be implemented only when:
+The native writer's initial v15 round-trip is implemented and has passed the owner S6 gate. Broader format support is not established until:
 
 - The required XML structure is understood from reference files.
 - A generated minimal sequence opens in S6 without a repair or conversion prompt.
@@ -146,4 +146,22 @@ The native writer is ready to be implemented only when:
 - RGB and motion effects pass their corresponding fixture tests.
 - The exporter does not silently discard unsupported information.
 
-The current `inspect` command is diagnostic only. It does not modify sequence files.
+The `inspect` command is diagnostic only. The `roundtrip` command writes a new copy; it does not edit the source sequence.
+
+
+## Phase 1 reader/writer implementation status
+
+The approved V13 source fixture was sanitized into a neutral 51-prop grid and opened by the owner in Light-O-Rama S6. The owner confirmed that the layout displayed without the house background. The writer-generated round-trip output was also opened in S6 and the owner confirmed it was fine. The audio reference uses the relative placeholder `synthetic_source.wav`; S6 prompts the owner to locate the WAV, which then plays.
+
+The compact automated fixture committed at `tests/fixtures/basic_show.loredit.gz` is a reduced derivative of the approved source. It retains 48 sequence props, 51 preview prop identities, 81 channels, 8 timing grids, and representative INTENSITY, TWINKLE, and SHIMMER effects. Preview shape geometry is omitted from the compact fixture because Phase 1 tests sequence read/write preservation, not preview rendering. The full owner-tested neutral-grid sequence and audio are not committed.
+
+The reader/writer implementation:
+
+- Accepts only `saveFileVersion="15"`; other versions fail clearly.
+- Parses XML with `defusedxml`, explicitly forbidding DTDs, entities, and external references.
+- Preserves the XML tree opaquely, including sections and attributes it does not interpret.
+- Validates sequence-prop IDs against embedded preview prop IDs on both read and write.
+- Writes through a temporary file and atomically creates the destination using a same-directory hard link; it refuses to replace existing files.
+- Exposes `inspect` and `roundtrip` commands.
+
+The current automated suite has 17 passing tests locally. GitHub Tests passed locked sync, pytest, Ruff, strict mypy, and pip-audit on the PR head; CodeQL also passed. The owner separately opened the writer-generated output in S6 and approved it.

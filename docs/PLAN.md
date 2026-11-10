@@ -1,8 +1,8 @@
 # Implementation Plan
 
-**Status:** Phase 0 — scaffold audit / completion  
-**Current phase:** 0  
-**Next phase:** 1 — LOR format
+**Status:** Phase 1 — native LOREDIT format  
+**Current phase:** 1  
+**Next phase:** 2 — preview parser
 
 ## Product objective and fixed requirements
 
@@ -108,27 +108,33 @@ Build reports, docs, packaging, example profiles, and installation workflow.
 
 Not-yet-applicable tests are marked pending, never falsely reported as passing.
 
+## GitHub workflow
+
+See [GITHUB_WORKFLOW.md](GITHUB_WORKFLOW.md) for branch, PR, review, merge, and repository-protection standards.
+
 ## Current progress log
 
 ### Phase 0 — Scaffold
-- Status: Implementation complete; PR open as draft, awaiting owner review and merge. Phase 0 is not yet complete until merged.
+- Status: Complete and merged.
 - Issue: https://github.com/MikeAllen1/light-o-rama-sequence-builder/issues/4
 - PR: https://github.com/MikeAllen1/light-o-rama-sequence-builder/pull/4
-- Branch: `phase-0/scaffold`
-- Commits: `594f6c4001aa9aca9a28ca873917f6cc14c1ac9d` (scaffold reset); `f70f27a9d61e426edd960457a40232e3f35bb527` (CLI help test fix).
-- Changes: Python 3.12 baseline; uv and committed lockfile; minimal help-only CLI; CLI smoke tests; README and architecture/progress updates; strict mypy in CI; SHA-pinned checkout/setup-python/CodeQL actions; least-privilege workflow permissions; dependency audit skips the unpublished editable project and audits installed tools/dependencies.
-- Removed from this scaffold branch: premature audio analysis, generic sequence model, LOREDIT inspection/extraction, and their tests. No LOR format, preview, audio-analysis, or choreography implementation was added.
-- Baseline CI: Tests run https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42896801786 — 11 pytest tests passed; Ruff passed; pip-audit failed on setuptools 79.0.1 (PYSEC-2026-3447 / GHSA-xmj3-9gf7-h52w) and could not audit the local unpublished package.
-- Local verification: `uv lock --check --offline` passed; `python -m pytest -q` — 2 passed; `python -m compileall -q src tests` passed; CLI `--help` invocation succeeded. Local Python runtime was 3.13.5; the authoritative Python 3.12 checks are in GitHub Actions.
-- GitHub Tests: push run https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42897598961 — success; PR run https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42897644781 — all test, Ruff, strict mypy, and dependency-audit steps succeeded.
-- GitHub CodeQL PR run: https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42897781829 — success on the then-current scaffold commit.
-- Human gate: None for Phase 0. No LOR application test was claimed or performed.
-- Next: final documentation-only handoff update and CI recheck; then request owner review/approval to merge. After merge, stop and wait for explicit approval before Phase 1.
+- Merge commit: `4dba0bdb92f0e836210dffb82d6a1c293ace012a`
+- Verification: Python 3.12 CI passed pytest, Ruff, strict mypy, dependency audit, and CodeQL. See the merged PR and its linked runs.
 
-### Phase 1 — LOR format
-- Status: Not started.
-- References: one real user .lorprev and one real user .loredit example; originals must not be committed, sanitized fixtures require review.
-- Human gate: owner opens rewritten sequence in target LOR S6.
+### Phase 1 — Native S6 LOREDIT format
+- Status: Implementation complete; PR #1 ready for owner review. Latest GitHub Tests and CodeQL runs are green.
+- PR: https://github.com/MikeAllen1/light-o-rama-sequence-builder/pull/1
+- Issue: https://github.com/MikeAllen1/light-o-rama-sequence-builder/issues/1
+- Branch: `phase-1/loredit-format`
+- Format evidence: owner-tested Light-O-Rama S6 `6.6.0.12`, `saveFileVersion="15"`; source sequence was sanitized into a neutral 51-prop test display with no house background or original house arrangement.
+- Implementation: secure `defusedxml` parsing with DTDs/entities/external references forbidden; v15-only support boundary; opaque XML-tree preservation; `inspect` and `roundtrip` CLI; atomic create-if-absent writer; sequence-prop/preview referential-integrity validation on read and write.
+- Test fixture: compressed, reduced derivative of the approved source. It retains 48 sequence props, 51 preview prop identities, 81 channels, 8 timing grids, and representative INTENSITY/TWINKLE/SHIMMER effects. Preview shape geometry is omitted from the compact automated fixture; the full neutral-grid fixture remains the human-tested baseline and is not committed.
+- Local tests: `PYTHONPATH=src python -m pytest -q` — 17 passed.
+- Local CLI: `inspect` reports S6 v15, 20,925 centiseconds, 48 sequence props, and 8 timing grids; `roundtrip` output is semantically equal to the source fixture.
+- Human gate: complete. Owner opened the writer-generated round-trip output in S6 and explicitly confirmed it was fine.
+- Local quality-tool limitation: Ruff and mypy executables are unavailable in this runtime. `uv lock --check --offline` passes. `uv sync --locked --offline` cannot install registry packages without network access. GitHub Tests run https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42917498988 passed locked sync, 17 pytest tests, Ruff, strict mypy (with pinned `types-defusedxml` stubs), and pip-audit. CodeQL run https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42917499008 passed.
+- Scope boundary: no preview parser, audio analysis, Timeline, or choreography work has been started.
+- Remaining: resolve any CI findings, complete PR review, obtain owner approval to merge, then stop. Do not begin Phase 2 before merge and explicit approval.
 
 ## Handoff protocol
 

@@ -2,7 +2,7 @@
 
 A display-independent command-line tool for building native Light-O-Rama S6 sequences from music and a required `.lorprev` display preview.
 
-**Project status:** Phase 0 — scaffold only. The CLI currently displays help; sequence generation is not implemented.
+**Project status:** Phase 1 implements a fixture-driven reader and loss-preserving writer for the observed S6 LOREDIT save-file version 15 format. The tool does not yet analyze audio, parse `.lorprev` files, or generate choreography.
 
 ## Product workflow
 
@@ -12,9 +12,9 @@ The planned workflow is:
 2. Review and correct the prop map.
 3. `generate` — create a new native S6 `.loredit`, a Timeline JSON file, and a report.
 
-The implementation is deliberately staged. The first engineering milestone after the scaffold is proving that the tool can read and write a native S6 sequence that opens in Light-O-Rama S6. Audio analysis and intelligent choreography come later.
+The implementation is deliberately staged. The first engineering milestone was proving that the tool can read and write a native S6 sequence that opens in Light-O-Rama S6. Audio analysis and intelligent choreography come later.
 
-See [docs/PLAN.md](docs/PLAN.md) for the phase order, acceptance criteria, and handoff log. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the intended system boundaries and data contracts. [CLAUDE.md](CLAUDE.md) contains persistent instructions for coding agents.
+See [docs/PLAN.md](docs/PLAN.md) for the phase order, acceptance criteria, and handoff log. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the intended system boundaries and data contracts.
 
 ## Requirements
 
@@ -29,35 +29,43 @@ Install uv using the official instructions: https://docs.astral.sh/uv/getting-st
 git clone https://github.com/MikeAllen1/light-o-rama-sequence-builder.git
 cd light-o-rama-sequence-builder
 uv sync --locked
-```
-
-Show CLI help:
-
-```powershell
 uv run lor-sequence-builder --help
 ```
 
-The Phase 0 CLI is intentionally minimal. It does not yet inspect files or generate sequences.
+## Phase 1 commands
+
+Inspect a sequence:
+
+```powershell
+uv run lor-sequence-builder inspect .\path\to\show.loredit
+```
+
+Write a new round-trip copy (the destination must not already exist):
+
+```powershell
+uv run lor-sequence-builder roundtrip .\path\to\show.loredit .\output\roundtrip.loredit
+```
+
+The reader currently accepts only `saveFileVersion="15"`, the version represented by the reviewed fixture. XML is parsed with `defusedxml`, with DTDs, entities, and external references forbidden. The writer preserves the parsed XML tree opaquely and atomically creates a new output without overwriting the input or an existing destination.
 
 ## Development checks
 
 The CI workflow pins the development tools and runs:
 
 ```powershell
-uv run --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 pytest
-uv run --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 ruff check .
-uv run --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 mypy --strict src tests
-uv run --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with setuptools==84.1.0 pip-audit --skip-editable
+uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 python -m pytest
+uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 ruff check .
+uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 mypy --strict src tests
+uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 --with setuptools==84.1.0 pip-audit --skip-editable
 ```
 
 ## Repository structure
 
 ```text
-src/lor_sequence_builder/  Minimal Python package and CLI
-tests/                     Scaffold tests
-docs/                      Architecture and phased delivery plan
+src/lor_sequence_builder/  Python package and CLI
+tests/                     Unit tests and sanitized fixtures
+docs/                      Architecture, format evidence, and phased plan
 .github/workflows/         CI and CodeQL workflows
-CLAUDE.md                  Persistent coding-agent instructions
 SECURITY.md                Security policy
 ```
 
