@@ -14,6 +14,22 @@ Read `docs/ARCHITECTURE.md` and `docs/PLAN.md` before making changes.
 - Before coding, inspect the current repository state and active issue. Do not assume prior work satisfies the current acceptance criteria.
 - Be precise about what was actually executed and verified. Never claim the owner opened or played a file in LOR.
 
+## GitHub pull request and merge standards
+
+- Never commit directly to `master`; all changes go through a pull request from a phase-specific branch.
+- Use one focused branch and PR per phase or independent maintenance change. Branch names use `phase-N/short-description` for phase work and `dependabot/*` for automated updates.
+- Open implementation PRs as drafts while work is incomplete; mark ready only when the PR description, tests, and review checklist are complete.
+- Link the governing issue in the PR body with `Closes #N` only when that PR fully completes the issue.
+- Keep PRs small and single-purpose. Split unrelated changes. Explain rationale, scope, risks, and any intentional limitations.
+- Require CI on the PR head: pytest, Ruff, strict mypy, dependency audit, and CodeQL. Never merge a failing, pending, or skipped required check without understanding why.
+- Review the complete diff, not just the summary. Check for secrets, personal paths/metadata, copyrighted media, generated noise, dependency changes, unsafe XML parsing, and scope creep.
+- Resolve every review conversation or explicitly document why it is not actionable. Re-run checks after changes.
+- Merge only after checks pass, review comments are resolved, and the project owner explicitly approves the phase gate. Automated CI or an AI review is not owner approval.
+- Use squash merge for this repository's phase-sized PRs to keep `master` linear and the phase represented by one commit. Use a descriptive squash commit message. Delete the merged feature branch.
+- Do not force-push shared branches. Do not bypass protections or use admin override to merge around failed checks.
+- Dependabot PRs receive the same CI and diff review; verify the exact pinned action SHA and changelog before merging.
+- Never merge automatically merely because CI is green. Human gates in `docs/PLAN.md` remain mandatory.
+
 ## Risk-first implementation order
 
 Follow the exact phase sequence in `docs/PLAN.md`. Prove native LOR sequence read/write/semantic round-trip first. Then prove a fixed-tempo pulse walking skeleton through the writer and have the owner open/play it in LOR before implementing intelligent audio analysis or choreography.

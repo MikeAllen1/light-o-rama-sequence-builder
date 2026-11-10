@@ -1,0 +1,63 @@
+# GitHub contribution and merge policy
+
+This repository uses one phase-sized issue, branch, and pull request at a time. The project is intentionally small, so the controls should be meaningful without adding enterprise process overhead.
+
+## Branches and pull requests
+
+- `master` is the protected integration branch and should remain releasable.
+- Never push implementation commits directly to `master`.
+- Phase branches use `phase-N/short-description`; maintenance branches use a descriptive topic name; Dependabot branches are managed by Dependabot.
+- Open work-in-progress PRs as drafts. Mark ready for review only when the acceptance criteria, implementation, tests, and PR description are complete.
+- Keep each PR focused on one issue and one logical change. Avoid unrelated refactors and future-phase work.
+- Include a concise summary, linked issue, scope/non-goals, implementation notes, test evidence, risk/compatibility notes, and human-verification status.
+- Use GitHub's `Closes #N` syntax only when the PR actually completes that issue.
+
+## Review and merge requirements
+
+Before merge, verify all of the following:
+
+1. The PR targets `master` and is based on the current branch head.
+2. The full diff has been reviewed for correctness, scope, secrets, private paths/metadata, copyrighted media, and generated noise.
+3. The acceptance criteria are met; tests cover normal behavior and failure cases.
+4. Required CI is green on the latest PR commit: pytest, Ruff, strict mypy, dependency audit, and CodeQL.
+5. All review conversations are resolved or explicitly dispositioned.
+6. Documentation and `docs/PLAN.md` reflect the actual result.
+7. The project owner explicitly approves the phase gate. CI passing or automated review does not count as owner approval.
+8. The PR is merged with **Squash and merge**. Use a descriptive commit subject. Delete the topic branch after merge.
+
+Never merge with failing/pending checks, never use admin bypass to work around a failed gate, and never merge automatically just because checks pass. Do not force-push shared branches.
+
+## Recommended repository rules for `master`
+
+Configure these in GitHub Settings → Rules → Rulesets (or Branches → Branch protection rules):
+
+- Target branch: `master`.
+- Require a pull request before merging.
+- Require the Tests workflow check (the job name is currently `Tests, lint, types, and dependency audit`).
+- Require CodeQL analysis to complete successfully.
+- Require branches to be up to date before merging.
+- Require all review conversations to be resolved.
+- Require linear history.
+- Block force pushes and branch deletion.
+- Do not allow bypassing the rules for routine work.
+
+For a solo-maintainer repository, a required independent approval can be counterproductive because GitHub does not allow authors to approve their own PRs. Keep the explicit owner approval gate in this document and the phase plan. If another trusted maintainer is added later, require at least one approval and dismiss stale approvals after new commits.
+
+A merge queue is unnecessary for this low-volume, single-contributor project. Signed commits are a reasonable optional hardening measure if signing is configured reliably.
+
+## Dependency updates
+
+Dependabot PRs are not exempt from review. Check the upstream release notes, exact version/SHA, compatibility, and CI. Keep the existing weekly update cadence and small PR limit.
+
+## Current repository audit (2026-11-10)
+
+- Tests workflow runs on pushes and pull requests; it executes pytest, Ruff, strict mypy, and pip-audit.
+- CodeQL runs on pushes/PRs to `master` and weekly.
+- Third-party GitHub Actions are pinned to full commit SHAs; checkout credentials are not persisted.
+- Dependabot is enabled for Python dependencies and GitHub Actions.
+- The repository rulesets API currently returns an empty list. The connected GitHub integration cannot read branch-protection settings (403), so actual branch protection on `master` is **not verified**. The recommended settings above are therefore guidance, not a claim that GitHub is enforcing them.
+- An unrelated Dependabot PR (#3, setup-python update) is currently open and should be reviewed separately; it is not part of Phase 1.
+
+## Phase gate rule
+
+A phase is not complete until implementation, CI, owner verification (where required), merge, and explicit owner approval are all recorded. Stop after each phase and wait for approval before starting the next one.
