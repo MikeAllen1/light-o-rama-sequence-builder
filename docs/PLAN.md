@@ -121,9 +121,9 @@ Not-yet-applicable tests are marked pending, never falsely reported as passing.
 - Baseline CI: Tests run https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42896801786 — 11 pytest tests passed; Ruff passed; pip-audit failed on setuptools 79.0.1 (PYSEC-2026-3447 / GHSA-xmj3-9gf7-h52w) and could not audit the local unpublished package.
 - Local verification: `uv lock --check --offline` passed; `python -m pytest -q` — 2 passed; `python -m compileall -q src tests` passed; CLI `--help` invocation succeeded. Local Python runtime was 3.13.5; the authoritative Python 3.12 checks are in GitHub Actions.
 - GitHub Tests: push run https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42897598961 — success; PR run https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42897644781 — all test, Ruff, strict mypy, and dependency-audit steps succeeded.
-- GitHub CodeQL PR run: https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42897644876 — analysis was still running at the time of this update.
+- GitHub CodeQL PR run: https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42897781829 — success on the then-current scaffold commit.
 - Human gate: None for Phase 0. No LOR application test was claimed or performed.
-- Next: wait for CodeQL result, update this log with final CI status, and ask owner to review/approve merge. After merge, stop and wait for explicit approval before Phase 1.
+- Next: final documentation-only handoff update and CI recheck; then request owner review/approval to merge. After merge, stop and wait for explicit approval before Phase 1.
 
 ### Phase 1 — LOR format
 - Status: Not started.
