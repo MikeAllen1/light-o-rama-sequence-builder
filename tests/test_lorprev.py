@@ -104,7 +104,7 @@ def test_synthetic_revision_one_preview_preserves_full_prop_model(tmp_path: Path
     assert model.unsupported_constructs == ()
     assert all(entry.source.locator.endswith("/@ChannelGrid") for entry in model.channel_grid_entries)
     assert model.channel_grid_entries[0].entry_index == 0
-    assert model.channel_grid_entries[16].entry_index == 15
+    assert model.channel_grid_entries[31].entry_index == 15
     assert all(point.x.file == str(source) and point.y.file == str(source) for point in model.geometry_points)
     assert sum(p.attributes["BulbShape"].value == "Square" for p in model.props) == 46
     assert sum(p.attributes["BulbShape"].value == "Hexagon" for p in model.props) == 5
