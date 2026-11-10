@@ -108,7 +108,7 @@ class SequenceProject:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "SequenceProject":
+    def from_dict(cls, data: dict[str, Any]) -> SequenceProject:
         """Build a project from its JSON-compatible representation."""
         return cls(
             title=str(data.get("title", "")),
