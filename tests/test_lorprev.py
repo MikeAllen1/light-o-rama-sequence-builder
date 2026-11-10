@@ -27,6 +27,7 @@ def test_synthetic_revision_zero_preview_preserves_geometry_and_provenance() -> 
     assert model.props[0].attributes["Name"].locator.endswith("/@Name")
     assert len(model.channel_grid_entries) == 2
     assert model.channel_grid_entries[0].raw_fields == ("1",)
+    assert model.channel_grid_entries[0].entry_index == 0
     assert len(model.geometry_points) == 4
     assert model.unsupported_constructs == ()
     assert model.geometry_points[0].x.value == "0"
@@ -102,6 +103,8 @@ def test_synthetic_revision_one_preview_preserves_full_prop_model(tmp_path: Path
     assert len(model.geometry_points) == 46
     assert model.unsupported_constructs == ()
     assert all(entry.source.locator.endswith("/@ChannelGrid") for entry in model.channel_grid_entries)
+    assert model.channel_grid_entries[0].entry_index == 0
+    assert model.channel_grid_entries[16].entry_index == 15
     assert all(point.x.file == str(source) and point.y.file == str(source) for point in model.geometry_points)
     assert sum(p.attributes["BulbShape"].value == "Square" for p in model.props) == 46
     assert sum(p.attributes["BulbShape"].value == "Hexagon" for p in model.props) == 5
