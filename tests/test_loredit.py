@@ -97,6 +97,22 @@ def test_invalid_or_unsafe_xml_fails(content: bytes, tmp_path: Path) -> None:
         read_loredit(source)
 
 
+@pytest.mark.parametrize(
+    "content",
+    [
+        b'<sequence saveFileVersion="15" totalCentiseconds="1"><TimingGrids/></sequence>',
+        b'<sequence saveFileVersion="15" totalCentiseconds="1"><SequenceProps/></sequence>',
+        b'<sequence saveFileVersion="15" totalCentiseconds="1">'
+        b'<SequenceProps/><TimingGrids/></sequence>',
+    ],
+)
+def test_missing_required_sections_fail(content: bytes, tmp_path: Path) -> None:
+    source = tmp_path / "missing-section.loredit"
+    source.write_bytes(content)
+    with pytest.raises(LoreditError):
+        read_loredit(source)
+
+
 def test_sequence_prop_missing_from_preview_is_rejected(
     tmp_path: Path, fixture_path: Path
 ) -> None:
