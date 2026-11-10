@@ -125,3 +125,134 @@ def inspect_loredit(path: str | Path) -> dict[str, Any]:
         "timing_grids": timing_grids,
         "props": prop_summaries,
     }
+
+
+
+def _parse_int(value: str | None) -> int | None:
+    """Parse an optional integer attribute without guessing a default."""
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def extract_display(path: str | Path) -> dict[str, Any]:
+    """Extract reusable prop and group mapping data from an S6 sequence.
+
+    Scene background paths, song metadata, and other machine-specific metadata
+    are deliberately excluded. The original PreviewClass XML is not rewritten.
+    """
+    source = Path(path)
+    if not source.is_file():
+        raise FileNotFoundError(f"Sequence file not found: {source}")
+
+    try:
+        root = ET.parse(source).getroot()
+    except ET.ParseError as exc:
+        raise LoreditError(f"Invalid XML in {source}: {exc}") from exc
+    except OSError as exc:
+        raise LoreditError(f"Unable to read {source}: {exc}") from exc
+
+    preview = _child(root, "PreviewClass")
+    sequence_section = _child(root, "SequenceProps")
+
+    sequence_by_id: dict[str, ET.Element] = {}
+    sequence_props = [] if sequence_section is None else [
+        item for item in sequence_section
+        if _local_name(item.tag) == "SeqProp"
+    ]
+    for sequence_prop in sequence_props:
+        prop_id = sequence_prop.get("id")
+        if prop_id:
+            sequence_by_id[prop_id] = sequence_prop
+
+    props: list[dict[str, Any]] = []
+    if preview is not None:
+        for preview_prop in preview:
+            if _local_name(preview_prop.tag) != "PropClass":
+                continue
+
+            prop_id = preview_prop.get("id")
+            sequence_prop = sequence_by_id.get(prop_id or "")
+            channels = [] if sequence_prop is None else [
+                {
+                    "row": channel.get("row"),
+                    "col": channel.get("col"),
+                    "color": channel.get("color"),
+                }
+                for channel in sequence_prop
+                if _local_name(channel.tag) == "channel"
+            ]
+            colors = [
+                color.strip()
+                for color in (preview_prop.get("TraditionalColors") or "").split(",")
+                if color.strip()
+            ]
+            props.append({
+                "id": prop_id,
+                "name": preview_prop.get("Name"),
+                "device_type": preview_prop.get("DeviceType"),
+                "channel_grid": preview_prop.get("ChannelGrid"),
+                "traditional_type": preview_prop.get("TraditionalType"),
+                "traditional_colors": colors,
+                "rgb_order": preview_prop.get("RgbOrder"),
+                "string_type": preview_prop.get("StringType"),
+                "individual_channels": (
+                    (preview_prop.get("IndividualChannels") or "").lower() == "true"
+                ),
+                "max_channels": _parse_int(preview_prop.get("MaxChannels")),
+                "master_prop_id": preview_prop.get("MasterPropId") or None,
+                "shape_count": sum(
+                    1 for child in preview_prop
+                    if _local_name(child.tag) == "shape"
+                ),
+                "sequence_channel_count": len(channels),
+                "sequence_channels": channels,
+                "has_sequence_data": sequence_prop is not None,
+            })
+
+    groups: list[dict[str, Any]] = []
+    if preview is not None:
+        for group in preview:
+            if _local_name(group.tag) != "PropGroup":
+                continue
+            groups.append({
+                "id": group.get("id"),
+                "name": group.get("Name"),
+                "arrangement": group.get("Arrangement"),
+                "members": [
+                    member.get("id")
+                    for member in group
+                    if _local_name(member.tag) == "member" and member.get("id")
+                ],
+            })
+
+    preview_ids = {prop["id"] for prop in props if prop["id"]}
+    unmapped_sequence_props = [
+        {
+            "id": prop.get("id"),
+            "name": prop.get("name"),
+            "channel_count": sum(
+                1 for child in prop
+                if _local_name(child.tag) == "channel"
+            ),
+        }
+        for prop in sequence_props
+        if prop.get("id") not in preview_ids
+    ]
+
+    return {
+        "preview_prop_count": len(props),
+        "sequence_prop_count": len(sequence_props),
+        "group_count": len(groups),
+        "props": props,
+        "groups": groups,
+        "unmapped_sequence_props": unmapped_sequence_props,
+        "notes": [
+            "This is a mapping summary, not a lossless preview export.",
+            "The original PreviewClass XML must be preserved for future native S6 writing.",
+            "Scene background paths and machine-specific metadata are intentionally omitted.",
+        ],
+    }
