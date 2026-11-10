@@ -6,8 +6,11 @@
 - [x] Define a format-independent sequence model.
 - [x] Add structural and timing validation.
 - [x] Add a read-only XML inspection command.
-- [ ] Analyze S6-created LOREDIT fixtures.
-- [ ] Document the supported XML structures and version requirements.
+- [x] Inspect a real S6 6.6.0.12 LOREDIT file.
+- [x] Document the observed XML sections, props, channels, effects, and timing grids.
+- [x] Add semantic inspection tests and automated test workflow.
+- [ ] Collect additional S6 fixtures for RGB, multi-channel, and motion-effect sequences.
+- [ ] Document the supported XML structures and version requirements across fixtures.
 - [ ] Implement a minimal native LOREDIT writer.
 - [ ] Verify generated files in S6.
 
