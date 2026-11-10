@@ -59,7 +59,7 @@ def analyze_audio(path: str | Path, sample_rate: int = 22050) -> dict[str, Any]:
     except ImportError as exc:
         raise AudioAnalysisError(
             "Audio analysis requires librosa. Install it with: "
-            "python -m pip install -e ".[audio]""
+            "python -m pip install -e '.[audio]'"
         ) from exc
 
     try:
