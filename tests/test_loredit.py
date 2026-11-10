@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import gzip
 import shutil
+import xml.etree.ElementTree as ET
 
 import pytest
 
@@ -75,6 +76,20 @@ def test_writer_never_overwrites_existing_destination(
     assert output.read_text(encoding="utf-8") == "keep me"
 
 
+def test_writer_revalidates_document_before_creating_output(
+    tmp_path: Path, fixture_path: Path
+) -> None:
+    document = read_loredit(fixture_path)
+    sequence_props = document.root.find("SequenceProps")
+    assert sequence_props is not None
+    ET.SubElement(sequence_props, "SeqProp", {"id": "late-orphan"})
+    output = tmp_path / "must-not-exist.loredit"
+    with pytest.raises(LoreditError, match="missing from PreviewClass"):
+        write_loredit(document, output)
+    assert not output.exists()
+    assert not list(tmp_path.glob("*.tmp"))
+
+
 def test_unsupported_version_fails_clearly(tmp_path: Path) -> None:
     source = tmp_path / "future.loredit"
     source.write_text(
@@ -88,7 +103,14 @@ def test_unsupported_version_fails_clearly(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "content",
-    [b"", b"not xml", b"<other />", b'<!DOCTYPE x [<!ENTITY e "boom">]><sequence />'],
+    [
+        b"",
+        b"not xml",
+        b"<other />",
+        b'<!DOCTYPE x [<!ENTITY e "boom">]><sequence />',
+        b'<!DOCTYPE sequence><sequence saveFileVersion="15" totalCentiseconds="1">'
+        b"<PreviewClass/><SequenceProps/><TimingGrids/></sequence>",
+    ],
 )
 def test_invalid_or_unsafe_xml_fails(content: bytes, tmp_path: Path) -> None:
     source = tmp_path / "invalid.loredit"
@@ -116,8 +138,6 @@ def test_missing_required_sections_fail(content: bytes, tmp_path: Path) -> None:
 def test_sequence_prop_missing_from_preview_is_rejected(
     tmp_path: Path, fixture_path: Path
 ) -> None:
-    import xml.etree.ElementTree as ET
-
     source = tmp_path / "orphan.loredit"
     tree = ET.parse(fixture_path)
     sequence_props = tree.getroot().find("SequenceProps")

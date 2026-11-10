@@ -7,7 +7,9 @@ unknown elements and attributes are retained rather than interpreted or rebuilt.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
+import tempfile
 import xml.etree.ElementTree as ET
 
 from defusedxml import ElementTree as SafeET
@@ -34,7 +36,7 @@ class LoreditDocument:
 
     @property
     def save_file_version(self) -> str:
-        return self.root.attrib["saveFileVersion"]
+        return self.root.attrib.get("saveFileVersion", "")
 
     @property
     def total_centiseconds(self) -> int:
@@ -62,7 +64,9 @@ def read_loredit(path: str | Path) -> LoreditDocument:
         )
 
     try:
-        root = SafeET.parse(source).getroot()
+        root = SafeET.parse(
+            source, forbid_dtd=True, forbid_entities=True, forbid_external=True
+        ).getroot()
     except (OSError, ET.ParseError, DefusedXmlException) as exc:
         raise LoreditError(f"Invalid or unsafe LOREDIT XML: {source}") from exc
 
@@ -115,7 +119,7 @@ def _validate_sequence_prop_references(root: ET.Element) -> None:
 
 
 def write_loredit(document: LoreditDocument, output_path: str | Path) -> Path:
-    """Write a new LOREDIT file; refuse to overwrite any existing path."""
+    """Atomically write a new LOREDIT file without replacing an existing path."""
     output = Path(output_path)
     if document.root.tag != "sequence":
         raise LoreditError("Cannot write a document whose root is not <sequence>")
@@ -123,6 +127,12 @@ def write_loredit(document: LoreditDocument, output_path: str | Path) -> Path:
         raise UnsupportedLoreditVersionError(
             f"Cannot write unverified saveFileVersion {document.save_file_version!r}"
         )
+    _ = document.total_centiseconds
+    if document.root.find("SequenceProps") is None:
+        raise LoreditError("LOREDIT is missing the SequenceProps section")
+    if document.root.find("TimingGrids") is None:
+        raise LoreditError("LOREDIT is missing the TimingGrids section")
+    _validate_sequence_prop_references(document.root)
     if document.source_path is not None:
         try:
             if output.resolve() == document.source_path.resolve():
@@ -130,19 +140,37 @@ def write_loredit(document: LoreditDocument, output_path: str | Path) -> Path:
         except OSError as exc:
             raise LoreditError(f"Cannot resolve output path: {output}") from exc
 
-    output.parent.mkdir(parents=True, exist_ok=True)
-    tree = ET.ElementTree(document.root)
+    temporary: Path | None = None
     try:
-        with output.open("xb") as stream:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        tree = ET.ElementTree(document.root)
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=output.parent,
+            prefix=f".{output.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as stream:
+            temporary = Path(stream.name)
             tree.write(stream, encoding="utf-8", xml_declaration=True)
+            stream.flush()
+            os.fsync(stream.fileno())
+        # A hard link is an atomic create-if-absent operation on the same volume.
+        # Unlike replace/rename, it cannot overwrite an existing destination.
+        os.link(temporary, output)
     except FileExistsError as exc:
         raise LoreditError(f"Output already exists; refusing to overwrite: {output}") from exc
     except OSError as exc:
-        raise LoreditError(f"Cannot write LOREDIT output: {output}") from exc
+        raise LoreditError(f"Cannot write LOREDIT output atomically: {output}") from exc
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
     return output
 
 
 def semantic_xml(path: str | Path) -> str:
     """Return a stable XML representation for semantic round-trip assertions."""
-    root = SafeET.parse(path).getroot()
+    root = SafeET.parse(
+        path, forbid_dtd=True, forbid_entities=True, forbid_external=True
+    ).getroot()
     return ET.tostring(root, encoding="unicode", short_empty_elements=True)

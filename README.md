@@ -25,15 +25,15 @@ Write a new round-trip copy (the destination must not already exist):
 uv run lor-sequence-builder roundtrip .\path\to\show.loredit .\output\roundtrip.loredit
 ```
 
-The reader currently accepts only `saveFileVersion="15"`, the version represented by the reviewed fixture. XML is parsed with `defusedxml`. The writer preserves the parsed XML tree opaquely and refuses to overwrite the input or an existing destination.
+The reader currently accepts only `saveFileVersion="15"`, the version represented by the reviewed fixture. XML is parsed with `defusedxml`, with DTDs, entities, and external references forbidden. The writer preserves the parsed XML tree opaquely and atomically creates a new output without overwriting the input or an existing destination.
 
 ## Development checks
 
 ```powershell
-uv run pytest
-uv run ruff check .
-uv run mypy --strict src tests
-uv run pip-audit --skip-editable
+uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 python -m pytest
+uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 ruff check .
+uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 mypy --strict src tests
+uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with setuptools==84.1.0 pip-audit --skip-editable
 ```
 
 See [docs/PLAN.md](docs/PLAN.md) for the staged roadmap and [docs/S6_FORMAT.md](docs/S6_FORMAT.md) for the exact format evidence and limitations. The compressed test fixture is a reduced derivative of the owner-approved neutral-grid sequence; it contains no original audio, machine-specific media path, or house background.
