@@ -122,7 +122,7 @@ See [GITHUB_WORKFLOW.md](GITHUB_WORKFLOW.md) for branch, PR, review, merge, and 
 - Verification: Python 3.12 CI passed pytest, Ruff, strict mypy, dependency audit, and CodeQL. See the merged PR and its linked runs.
 
 ### Phase 1 — Native S6 LOREDIT format
-- Status: Implementation submitted in draft PR #1; automated CI pending.
+- Status: Implementation complete; PR #1 ready for owner review. Latest GitHub Tests and CodeQL runs are green.
 - PR: https://github.com/MikeAllen1/light-o-rama-sequence-builder/pull/1
 - Issue: https://github.com/MikeAllen1/light-o-rama-sequence-builder/issues/1
 - Branch: `phase-1/loredit-format`
@@ -132,7 +132,7 @@ See [GITHUB_WORKFLOW.md](GITHUB_WORKFLOW.md) for branch, PR, review, merge, and 
 - Local tests: `PYTHONPATH=src python -m pytest -q` — 17 passed.
 - Local CLI: `inspect` reports S6 v15, 20,925 centiseconds, 48 sequence props, and 8 timing grids; `roundtrip` output is semantically equal to the source fixture.
 - Human gate: complete. Owner opened the writer-generated round-trip output in S6 and explicitly confirmed it was fine.
-- Local quality-tool limitation: Ruff and mypy executables are unavailable locally. `uv lock --check --offline` passes. `uv sync --locked --offline` cannot install the registry package because the runtime has no network and the package is not in uv's cache. CI is the authoritative check for locked sync, Ruff, strict mypy, pytest, and pip-audit.
+- Local quality-tool limitation: Ruff and mypy executables are unavailable in this runtime. `uv lock --check --offline` passes. `uv sync --locked --offline` cannot install registry packages without network access. GitHub Tests run https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42917498988 passed locked sync, 17 pytest tests, Ruff, strict mypy (with pinned `types-defusedxml` stubs), and pip-audit. CodeQL run https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42917499008 passed.
 - Scope boundary: no preview parser, audio analysis, Timeline, or choreography work has been started.
 - Remaining: resolve any CI findings, complete PR review, obtain owner approval to merge, then stop. Do not begin Phase 2 before merge and explicit approval.
 
