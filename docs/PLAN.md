@@ -122,16 +122,18 @@ See [GITHUB_WORKFLOW.md](GITHUB_WORKFLOW.md) for branch, PR, review, merge, and 
 - Verification: Python 3.12 CI passed pytest, Ruff, strict mypy, dependency audit, and CodeQL. See the merged PR and its linked runs.
 
 ### Phase 1 — Native S6 LOREDIT format
-- Status: In progress; no implementation committed yet.
+- Status: Implementation submitted in a draft PR; automated CI pending.
 - Issue: https://github.com/MikeAllen1/light-o-rama-sequence-builder/issues/1
 - Branch: `phase-1/loredit-format`
-- Source evidence: user-provided `02. Merry Christmas - Ed Sheeran_Elton John(2).loredit`, S6 `6.6.0.12`, `saveFileVersion="15"`, 20,925 centiseconds, 51 PreviewClass PropClass elements, 49 SeqProp elements, 81 channels, 33,839 effects (INTENSITY/TWINKLE/SHIMMER), and 8 timing grids.
-- Exploratory parser check: `defusedxml` parser with DTD/entities/external access forbidden parsed the original file; ElementTree serialization produced an XML canonical form identical to the source. This is an exploratory local check, not yet a project test and not LOR application verification.
-- Fixture candidate: sanitized copy prepared locally at `/mnt/data/phase1_sources/fixture_candidate.loredit`. It removes author/song/local-path metadata, anonymizes prop/group/view names, and removes yard-specific shape coordinates while retaining the sequence props, channels, effects, timing grids, and XML section structure. **Not approved or committed.** Await owner review before adding it to `tests/fixtures/`.
-- Current unknowns: whether S6 accepts the sanitized fixture with empty shape geometry; whether further small S6-generated reference files are needed; exact minimum required sections for all supported saveFileVersion 15 files.
-- Human gate: pending. After implementation, owner must open the generated round-trip output in S6 and confirm it loads without repair/conversion prompts and retains props, timings, and effects.
-- Tests/CI: not yet run for Phase 1.
-- Next: obtain approval for the sanitized fixture candidate, then implement the smallest loss-preserving reader/writer and fixture-backed semantic round-trip/negative tests. Do not begin preview parsing, audio analysis, or choreography.
+- Format evidence: owner-tested Light-O-Rama S6 `6.6.0.12`, `saveFileVersion="15"`; source sequence was sanitized into a neutral 51-prop test display with no house background or original house arrangement.
+- Implementation: secure `defusedxml` parsing; v15-only support boundary; opaque XML-tree preservation; `inspect` and `roundtrip` CLI; new-file-only writer; sequence-prop/preview referential-integrity validation.
+- Test fixture: compressed, reduced derivative of the approved source. It retains 48 sequence props, 51 preview prop identities, 81 channels, 8 timing grids, and representative INTENSITY/TWINKLE/SHIMMER effects. Preview shape geometry is omitted from the compact automated fixture; the full neutral-grid fixture remains the human-tested baseline and is not committed.
+- Local tests: `PYTHONPATH=src python -m pytest -q` — 10 passed.
+- Local CLI: `inspect` reports S6 v15, 20,925 centiseconds, 48 sequence props, and 8 timing grids; `roundtrip` output is semantically equal to the source fixture.
+- Human gate: complete. Owner opened the writer-generated round-trip output in S6 and explicitly confirmed it was fine.
+- Local quality-tool limitation: Ruff and mypy executables are unavailable. `uv lock --check --offline` could not resolve the locked `defusedxml` package because the runtime has no network and the package is not in uv's cache. CI is the authoritative next check for locked sync, Ruff, strict mypy, pytest, and pip-audit.
+- Scope boundary: no preview parser, audio analysis, Timeline, or choreography work has been started.
+- Remaining: resolve any CI findings, complete PR review, obtain owner approval to merge, then stop. Do not begin Phase 2 before merge and explicit approval.
 
 ## Handoff protocol
 
