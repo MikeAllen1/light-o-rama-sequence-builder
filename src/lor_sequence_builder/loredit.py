@@ -6,11 +6,11 @@ unknown elements and attributes are retained rather than interpreted or rebuilt.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os
-from pathlib import Path
 import tempfile
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass
+from pathlib import Path
 
 from defusedxml import ElementTree as SafeET
 from defusedxml.common import DefusedXmlException
