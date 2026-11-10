@@ -1,12 +1,18 @@
-# Python
+# Python bytecode and test/tool caches
 __pycache__/
 *.py[cod]
 *.pyd
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.pyright/
 .coverage
+.coverage.*
 htmlcov/
+.tox/
+.nox/
+
+# Build and packaging output
 build/
 dist/
 *.egg-info/
@@ -16,16 +22,37 @@ dist/
 venv/
 env/
 
-# Local configuration and generated artifacts
+# Local secrets and machine-specific configuration
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+credentials/
+local.settings.json
+
+# Light-O-Rama show files and user media (keep original files local)
 *.loredit
 *.lms
 *.las
 *.wav
 *.mp3
 *.flac
+*.m4a
+*.aac
+*.ogg
+*.wma
+*.aif
+*.aiff
+
+# Generated local analysis/output
+audio-analysis.json
+display.json
+output/
+exports/
 
 # IDEs and operating systems
 .vscode/
