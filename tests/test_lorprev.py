@@ -99,7 +99,7 @@ def test_synthetic_revision_one_preview_preserves_full_prop_model(tmp_path: Path
     assert model.revision.value == "1"
     assert len(model.props) == 51
     assert len(model.channel_grid_entries) == 69
-    assert len(model.geometry_points) == 1900
+    assert len(model.geometry_points) == 46
     assert model.unsupported_constructs == ()
     assert all(entry.source.locator.endswith("/@ChannelGrid") for entry in model.channel_grid_entries)
     assert all(point.x.file == str(source) and point.y.file == str(source) for point in model.geometry_points)
@@ -128,6 +128,8 @@ def test_s6_exported_revision_one_golden_fixture_preserves_all_source_data(
     model = read_lorprev(source)
     assert model.revision.value == "1"
     assert len(model.props) == 51
+    assert len(model.geometry_points) == 1900
+    assert all(point.x.file == str(source) and point.y.file == str(source) for point in model.geometry_points)
     assert len(model.scenes) == 1
     assert len(model.prop_views) == 1
     assert model.prop_views[0].tag == "PropViews"
