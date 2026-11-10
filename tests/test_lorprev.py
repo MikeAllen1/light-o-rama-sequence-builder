@@ -65,7 +65,7 @@ def test_synthetic_revision_one_preview_preserves_full_prop_model(tmp_path: Path
                 ),
                 "IndividualChannels": "True" if channel_per_color else "False",
                 "MaxChannels": "512" if is_hexagon else "16",
-                "MasterPropId": "synthetic-prop-09" if index in {9, 10} else "",
+                "MasterPropId": "synthetic-prop-09" if index in {10, 11} else "",
             },
         )
         shape_name = (
@@ -94,7 +94,8 @@ def test_synthetic_revision_one_preview_preserves_full_prop_model(tmp_path: Path
     assert sum(p.attributes["BulbShape"].value == "Hexagon" for p in model.props) == 5
     assert model.props[0].attributes["ChannelGrid"].value == "Regular,99,01,01,0,Multi"
     assert model.props[16].attributes["ChannelGrid"].value.count(";") == 15
-    assert model.props[8].attributes["MasterPropId"].value == "synthetic-prop-09"
+    assert model.props[9].attributes["MasterPropId"].value == "synthetic-prop-09"
+    assert model.props[10].attributes["MasterPropId"].value == "synthetic-prop-09"
     assert model.props[8].children[0].tag == "shape"
     assert model.scenes[0].attributes["Name"].value == "Synthetic Scene"
     assert model.prop_views[0].tag == "PropViews"
