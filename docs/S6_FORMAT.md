@@ -136,9 +136,9 @@ Create small test sequences in the installed S6 application and save them normal
 
 Keep each original S6 file unchanged. Place sanitized copies under a local `tests/fixtures/` directory for analysis. Do not commit copyrighted music, personal media, or private preview details.
 
-## Format implementation gate
+## Broader format support gate
 
-The native writer is ready to be implemented only when:
+The native writer's initial v15 round-trip is implemented and has passed the owner S6 gate. Broader format support is not established until:
 
 - The required XML structure is understood from reference files.
 - A generated minimal sequence opens in S6 without a repair or conversion prompt.
@@ -146,7 +146,7 @@ The native writer is ready to be implemented only when:
 - RGB and motion effects pass their corresponding fixture tests.
 - The exporter does not silently discard unsupported information.
 
-The current `inspect` command is diagnostic only. It does not modify sequence files.
+The `inspect` command is diagnostic only. The `roundtrip` command writes a new copy; it does not edit the source sequence.
 
 
 ## Phase 1 reader/writer implementation status
@@ -164,4 +164,4 @@ The reader/writer implementation:
 - Writes through a temporary file and atomically creates the destination using a same-directory hard link; it refuses to replace existing files.
 - Exposes `inspect` and `roundtrip` commands.
 
-The current automated suite has 15 passing tests locally. GitHub CI (pytest, Ruff, strict mypy, dependency audit, and CodeQL) remains the authoritative project check and is pending on the current PR head.
+The current automated suite has 17 passing tests locally. GitHub Tests passed locked sync, pytest, Ruff, strict mypy, and pip-audit on the PR head; CodeQL also passed. The owner separately opened the writer-generated output in S6 and approved it.
