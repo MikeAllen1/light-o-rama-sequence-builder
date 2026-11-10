@@ -97,7 +97,7 @@ def test_synthetic_revision_one_preview_preserves_full_prop_model(tmp_path: Path
     model = read_lorprev(source)
     assert model.revision.value == "1"
     assert len(model.props) == 51
-    assert len(model.channel_grid_entries) == 67
+    assert len(model.channel_grid_entries) == 69
     assert len(model.geometry_points) == 1900
     assert all(entry.source.locator.endswith("/@ChannelGrid") for entry in model.channel_grid_entries)
     assert all(point.x.file == str(source) and point.y.file == str(source) for point in model.geometry_points)
