@@ -26,19 +26,9 @@ def test_synthetic_preview_preserves_props_geometry_and_provenance() -> None:
     assert model.prop_views[0].tag == "PropViews"
 
 
-def test_uploaded_default_preview_is_rejected_as_zero_prop_fixture(
-    tmp_path: Path,
-) -> None:
-    # The owner-provided Default.lorprev is a native empty preview, not a display fixture.
-    # Its safe structural content is represented in the test by an equivalent minimal file.
-    empty = tmp_path / "empty.lorprev"
-    empty.write_text(
-        '<PreviewClass id="fixture" Name="Default" Revision="0">'
-        '<Scene id="scene" Name="Scene 1" /><PropViews /></PreviewClass>',
-        encoding="utf-8",
-    )
+def test_owner_supplied_default_preview_is_rejected_as_zero_prop_fixture() -> None:
     with pytest.raises(LorprevError, match="zero PropClass"):
-        read_lorprev(empty)
+        read_lorprev(FIXTURES / "default_empty.lorprev")
 
 
 def test_unsupported_revision_fails_clearly(tmp_path: Path) -> None:
