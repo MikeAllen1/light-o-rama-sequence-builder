@@ -351,3 +351,25 @@ These are implementation questions, not permission to guess:
 - What resource limits are appropriate for expected song lengths and preview sizes?
 
 Resolve these through additional fixtures, targeted questions, and tests before implementation depends on the answer.
+
+
+## 15. Delivery order and engineering controls
+
+The implementation sequence is governed by `docs/PLAN.md`. The highest-risk unknown is native LOR sequence compatibility, so the project proves read/write/semantic round-trip and owner-open verification before preview parsing or intelligent audio/choreography work.
+
+The delivery order is:
+0. Scaffold and CI.
+1. Native LOR sequence format reader/writer, with owner opening the rewritten file in LOR.
+2. `.lorprev` preview parser.
+3. Walking skeleton: fixed-tempo pulse Timeline through the writer, with owner playback verification in LOR.
+4. Audio analysis.
+5. Prop classifier and `analyze` / `props.yaml`.
+6. Rules engine.
+7. Section-aware planner v1, with owner playback verification.
+8. Vocal separation and syllable-level singing-face choreography, with owner playback verification.
+9. Planner v2 (motifs, call-and-response, signature moments, dynamics).
+10. Polish, reporting, documentation, and packaging.
+
+Every phase is one GitHub Issue, one branch, and one PR. The issue is the acceptance contract. The PR must contain only work for that phase. A phase is complete only after its tests and CI pass, required human verification is recorded, the PR is merged, and the owner approves the next phase. Keep the progress log in `docs/PLAN.md` current so a fresh session can resume without relying on chat history.
+
+**Human verification is not delegated to automated tests.** For designated gates, the owner must open and/or play the output in the target LOR application. The assistant must never claim to have performed that local verification.
