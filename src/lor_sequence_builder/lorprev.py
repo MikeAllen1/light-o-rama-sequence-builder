@@ -42,6 +42,15 @@ class RawElement:
 
 
 @dataclass(frozen=True, slots=True)
+class UnsupportedConstruct:
+    """A source construct requiring later semantic support, with its provenance."""
+
+    kind: str
+    detail: str
+    source: SourceValue
+
+
+@dataclass(frozen=True, slots=True)
 class PropModel:
     """Raw display model; interpretation/classification is deliberately deferred."""
 
@@ -52,6 +61,7 @@ class PropModel:
     scenes: tuple[RawElement, ...]
     prop_views: tuple[RawElement, ...]
     unrecognized_top_level: tuple[RawElement, ...]
+    unsupported_constructs: tuple[UnsupportedConstruct, ...]
 
 
 def _raw_element(element: ET.Element, source: str, locator: str) -> RawElement:
@@ -123,6 +133,28 @@ def read_lorprev(path: str | Path) -> PropModel:
     known = {"PropClass", "Scene", "PropViews"}
     unknown = tuple(child for child in display.children if child.tag not in known)
 
+    # Surface unfamiliar prop/device declarations explicitly. Preserve the raw
+    # source unchanged; these checks do not attempt to classify a prop.
+    unsupported: list[UnsupportedConstruct] = []
+    for prop in prop_nodes:
+        for attribute, kind, supported in (
+            ("DeviceType", "device type", {"LOR"}),
+            (
+                "TraditionalType",
+                "traditional prop type",
+                {"Channel_per_color", "Multicolor_string_1_ch"},
+            ),
+        ):
+            value = prop.attributes.get(attribute)
+            if value is not None and value.value not in supported:
+                unsupported.append(
+                    UnsupportedConstruct(
+                        kind=kind,
+                        detail=f"Unsupported {attribute} value {value.value!r}",
+                        source=value,
+                    )
+                )
+
     return PropModel(
         source_file=str(source),
         revision=SourceValue(
@@ -133,4 +165,5 @@ def read_lorprev(path: str | Path) -> PropModel:
         scenes=scenes,
         prop_views=prop_views,
         unrecognized_top_level=unknown,
+        unsupported_constructs=tuple(unsupported),
     )
