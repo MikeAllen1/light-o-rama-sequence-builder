@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "light-o-rama-sequence-builder"
+version = "0.1.0"
+description = "Music-aware sequence generation tools for Light-O-Rama S6"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary - All rights reserved" }
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.5",
+]
+
+[project.scripts]
+lor-sequence-builder = "lor_sequence_builder.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
