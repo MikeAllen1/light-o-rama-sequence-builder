@@ -9,7 +9,7 @@ from pathlib import Path
 from defusedxml import ElementTree as SafeET
 from defusedxml.common import DefusedXmlException
 
-SUPPORTED_PREVIEW_REVISION = "0"
+SUPPORTED_PREVIEW_REVISIONS = frozenset({"0", "1"})
 MAX_LORPREV_BYTES = 20 * 1024 * 1024
 
 
@@ -77,7 +77,7 @@ def _raw_element(element: ET.Element, source: str, locator: str) -> RawElement:
 
 
 def read_lorprev(path: str | Path) -> PropModel:
-    """Read a standalone S6 preview using only the observed Revision=0 format."""
+    """Read a standalone S6 preview for verified Revision 0 and Revision 1 formats."""
     source = Path(path)
     try:
         size = source.stat().st_size
@@ -103,10 +103,11 @@ def read_lorprev(path: str | Path) -> PropModel:
     revision = root.attrib.get("Revision")
     if revision is None:
         raise LorprevError("LORPREV is missing the PreviewClass Revision attribute")
-    if revision != SUPPORTED_PREVIEW_REVISION:
+    if revision not in SUPPORTED_PREVIEW_REVISIONS:
+        supported = ", ".join(sorted(SUPPORTED_PREVIEW_REVISIONS))
         raise UnsupportedLorprevRevisionError(
             f"Unsupported LORPREV Revision {revision!r}; "
-            f"verified revision is {SUPPORTED_PREVIEW_REVISION}"
+            f"verified revisions are {supported}"
         )
 
     props = tuple(root.findall("PropClass"))
