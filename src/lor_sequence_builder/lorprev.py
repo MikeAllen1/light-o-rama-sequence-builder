@@ -137,7 +137,7 @@ def read_lorprev(path: str | Path) -> PropModel:
     # source unchanged; these checks do not attempt to classify a prop.
     unsupported: list[UnsupportedConstruct] = []
     for prop in prop_nodes:
-        for attribute, kind, supported in (
+        for attribute, kind, supported_values in (
             ("DeviceType", "device type", {"LOR"}),
             (
                 "TraditionalType",
