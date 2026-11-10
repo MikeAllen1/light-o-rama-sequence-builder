@@ -111,22 +111,24 @@ Not-yet-applicable tests are marked pending, never falsely reported as passing.
 ## Current progress log
 
 ### Phase 0 — Scaffold
-- Status: In progress on dedicated branch; no Phase 0 changes merged.
+- Status: Implementation complete; PR open as draft, awaiting owner review and merge. Phase 0 is not yet complete until merged.
 - Issue: https://github.com/MikeAllen1/light-o-rama-sequence-builder/issues/4
+- PR: https://github.com/MikeAllen1/light-o-rama-sequence-builder/pull/4
 - Branch: `phase-0/scaffold`
-- Base commit: `4dda5987a8fcddbe93d784f1b2feefc488bd8a25`
-- Baseline audit: Python 3.11; pip extras; no uv.lock; CI lacked mypy; GitHub Actions used version tags; CLI and application modules were non-empty.
+- Commits: `594f6c4001aa9aca9a28ca873917f6cc14c1ac9d` (scaffold reset); `f70f27a9d61e426edd960457a40232e3f35bb527` (CLI help test fix).
+- Changes: Python 3.12 baseline; uv and committed lockfile; minimal help-only CLI; CLI smoke tests; README and architecture/progress updates; strict mypy in CI; SHA-pinned checkout/setup-python/CodeQL actions; least-privilege workflow permissions; dependency audit skips the unpublished editable project and audits installed tools/dependencies.
+- Removed from this scaffold branch: premature audio analysis, generic sequence model, LOREDIT inspection/extraction, and their tests. No LOR format, preview, audio-analysis, or choreography implementation was added.
 - Baseline CI: Tests run https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42896801786 — 11 pytest tests passed; Ruff passed; pip-audit failed on setuptools 79.0.1 (PYSEC-2026-3447 / GHSA-xmj3-9gf7-h52w) and could not audit the local unpublished package.
-- Current implementation: scaffold reset and tooling/CI alignment are in progress. No LOR parser, writer, preview parser, audio analysis, or choreography work is authorized in this phase.
-- Tests on this branch: Not yet run.
-- Human gate: None for Phase 0.
-- Next: complete scaffold changes, run local checks where possible, open PR, verify CI, and stop for owner approval after merge.
+- Local verification: `uv lock --check --offline` passed; `python -m pytest -q` — 2 passed; `python -m compileall -q src tests` passed; CLI `--help` invocation succeeded. Local Python runtime was 3.13.5; the authoritative Python 3.12 checks are in GitHub Actions.
+- GitHub Tests: push run https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42897598961 — success; PR run https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42897644781 — all test, Ruff, strict mypy, and dependency-audit steps succeeded.
+- GitHub CodeQL PR run: https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42897644876 — analysis was still running at the time of this update.
+- Human gate: None for Phase 0. No LOR application test was claimed or performed.
+- Next: wait for CodeQL result, update this log with final CI status, and ask owner to review/approve merge. After merge, stop and wait for explicit approval before Phase 1.
 
 ### Phase 1 — LOR format
 - Status: Not started.
 - References: one real user .lorprev and one real user .loredit example; originals must not be committed, sanitized fixtures require review.
 - Human gate: owner opens rewritten sequence in target LOR S6.
-
 
 ## Handoff protocol
 
