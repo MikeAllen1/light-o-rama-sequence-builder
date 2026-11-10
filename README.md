@@ -61,6 +61,6 @@ Light-O-Rama documents that licensed sequence files use a standard XML format an
 
 See [docs/S6_FORMAT.md](docs/S6_FORMAT.md) for the implementation notes and sample files needed.
 
-## Project naming and attribution
+## Project identity
 
-The application and generated files will use the project name **Light-O-Rama Sequence Builder**. There is no ChatGPT branding or AI-generated-by attribution in the source code, application UI, metadata, or generated sequence files.
+The application and generated files will use the project name **Light-O-Rama Sequence Builder**.
