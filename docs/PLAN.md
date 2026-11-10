@@ -1,314 +1,129 @@
 # Implementation Plan
 
-**Status:** Proposed — no implementation phase authorized yet  
-**Approval rule:** Complete one phase, show its evidence, and stop. Do not begin the next phase until the project owner approves the completed phase.
+**Status:** Phase 0 — scaffold audit / completion  
+**Current phase:** 0  
+**Next phase:** 1 — LOR format
 
-## Delivery objective
+## Product objective and fixed requirements
 
-Deliver a CLI tool that accepts an audio file and a required `.lorprev` display preview, produces a reviewed `props.yaml`, and then generates a new native S6 `.loredit` sequence choreographed to the music. The tool must be display-independent, must never invent or silently reassign physical channels, and must report anything it cannot safely support.
+Build a display-independent CLI that accepts audio plus a required Light-O-Rama .lorprev preview and produces a new native S6 .loredit sequence. The user workflow remains analyze → review/edit props.yaml → generate. Timeline JSON is the single source of truth and is saved beside the output.
 
-The Timeline JSON is the single source of truth between choreography planning, rules validation, and native LOR serialization.
-
-## Confirmed scope and constraints
-
-- Required preview input: `.lorprev`.
-- Generated sequence: native `.loredit`.
-- Target application family: LOR S6; exact target version is configurable.
-- Initial real-world preview reference: `LOR_2026_Final.lorprev` (PreviewClass root, revision 58, 51 PropClass entries).
-- Initial sequence-format reference: supplied Merry Christmas `.loredit` from the user's actual setup.
-- V1 channel focus: single-color AC/DC and multi-color single-circuit props.
-- RGB/pixel support: not used by the user's display; excluded from initial V1 implementation. Must be detected and explicitly reported as unsupported, never silently dropped.
+- Preview is mandatory for analyze and generate. Missing, unreadable, malformed, unsupported-version, or zero-prop previews fail clearly.
+- Props, controllers, and channels must originate from the preview or reviewed user prop map. Never invent or silently reassign them.
+- Classification combines prop type, shape, grouping, position, channel count, color, and name hints; never names alone.
+- Initial channel support: single-color AC/DC and multi-color single-circuit.
+- RGB/pixel is outside v1 because the user's display does not use pixels. Detect and report unsupported pixel props; never silently drop or fake support.
+- Physical overrides in props.yaml win over inferred preview interpretation but cannot create channel identities.
+- Rules are configuration; invalid Timelines fail with readable rule, prop/channel, and timestamp details.
+- Never modify/overwrite inputs. Output is a new file.
 - V1 excludes GUI, controller upload, live playback, and editing existing sequences.
-- No code is written until the owner approves the architecture and plan.
-- After that approval, each phase requires its own explicit approval before the next phase begins.
+- Python 3.12, uv + committed lockfile, Pydantic, Typer, pytest, Ruff, strict mypy.
+- XML via defusedxml; YAML safe_load; FFmpeg argument list, never shell=True; input size/type/duration limits.
+- No secrets in code; .env gitignored; pin dependencies and run pip-audit.
+- CI uses least privilege and third-party Actions pinned to full commit SHAs. Never use pull_request_target to execute untrusted PR code.
+- Synthetic audio tests only; never commit copyrighted audio.
 
-## Phase gates
+## Mandatory engineering workflow
 
-### Phase 0 — Architecture and plan approval
+- One phase = one GitHub Issue = one branch = one PR.
+- The issue is the contract: scope, non-goals, acceptance criteria, tests, and human gates.
+- Work only on the active phase. No future-phase work, unrelated refactoring, or scope creep.
+- A phase is complete only when acceptance criteria pass, CI is green, the PR is merged, required human verification is recorded, and the owner approves moving forward.
+- Do not start the next phase before explicit owner approval.
+- Keep this file as the persistent progress/handoff log: issue/PR links, branch, commits, exact tests/results, human-gate status, and remaining unknowns.
+- Prefer a fresh session per phase. The next session must be able to resume from this file and the GitHub issue without relying on chat history.
+- Never claim the owner opened or played a file in LOR. Automated tests cannot satisfy human gates.
 
-**Work product:** `docs/ARCHITECTURE.md` and `docs/PLAN.md`.
+## Phase order
 
-**Includes:**
-- Stage boundaries and data flow.
-- CLI contract proposal.
-- Preview/sequence format and fixture policy.
-- V1 supported channel types and pixel limitation.
-- Security and reliability controls.
-- Phased implementation and test gates.
+### Phase 0 — Scaffold
+Build/audit repository structure, CLAUDE.md, ARCHITECTURE.md, PLAN.md, CI (Ruff, strict mypy, pytest), uv + lockfile, and an empty/minimal CLI.
 
-**Exit criteria:**
-- Owner reviews and approves both documents.
-- Open format questions and assumptions are accepted or revised.
-- No implementation code is written in this phase.
+**Done when:** CLI installs and shows help; CI is green on the minimal project; Python 3.12 and uv workflow is established; Ruff, strict mypy, pytest run in CI; Actions are SHA-pinned and least-privilege; dependency audit is included; Phase 0 PR is merged.
 
-**Approval required:** Yes. This is the current phase. Stop after publishing the documents.
+**Existing-state caveat:** The repo already has a Python package, CLI, tests, and CI. Audit against these exact criteria; do not assume completion. Verify Python 3.12, uv/uv.lock, strict mypy, empty/minimal CLI acceptance, SHA-pinned Actions, and test workflow. Make only Phase 0 changes.
 
-### Phase 1 — Fixture inventory and format evidence
+### Phase 1 — LOR format (highest-risk unknown)
+Build fixture-driven sequence reader/writer for native .loredit.
 
-**Goal:** Establish exactly what the supplied `.lorprev` and `.loredit` files encode before writing a parser or writer.
+**Done when:** Read/write fixtures; semantic round-trip tests pass; unsupported versions/constructs fail clearly; no input is modified; output is new; owner opens rewritten file in target S6 and confirms it loads. This is a mandatory human gate. Do not start preview parsing, audio analysis, or choreography during this phase. Fixtures are the format authority; ask when evidence is missing, never guess.
 
-**Work:**
-- Inventory the supplied preview and sequence without modifying either.
-- Identify sensitive/local metadata and create sanitized copies for repository fixtures.
-- Document observed preview revision, root structure, prop/channel/controller relationships, shapes, grids, color capabilities, and stable IDs.
-- Document observed sequence version, root structure, timing representation, effect representation, display references, and metadata required by S6.
-- Identify mismatches or missing evidence; ask the owner for additional examples rather than guessing.
-- Define semantic comparison rules for round-trip tests.
-- Establish a fixture matrix and version-support policy.
+### Phase 2 — Preview parser
+Build .lorprev → raw PropModel plus display/channel/controller data.
 
-**Tests/evidence:**
-- Fixture provenance and sanitization checks.
-- XML security tests (malformed XML, DTD/entity payloads, size limits).
-- Inventory assertions for known fixture facts.
-- Written list of confirmed versus unknown schema details.
+**Done when:** Golden tests pass on every fixture preview; revision detection and unsupported-version errors work; missing/unreadable/malformed/zero-prop previews fail; every entity has source provenance; unsupported types are explicitly reported.
 
-**Exit criteria:**
-- Sanitized fixtures are committed.
-- The format notes are grounded in those fixtures.
-- All writer-critical unknowns are either answered by fixtures or explicitly resolved with the owner.
-- No parser/writer implementation begins before approval of this phase.
+### Phase 3 — Walking skeleton
+Build fixed-tempo "pulse every supported prop on the beat" → Timeline → writer.
 
-**Approval required:** Yes.
+**Done when:** Complete pipeline runs with fixture preview and fixed tempo; Timeline references only preview-derived entities; expected pulse events appear; owner opens and plays it in LOR and confirms synchronization and correct display mapping. Mandatory human gate. This proves plumbing before intelligent behavior.
 
-### Phase 2 — Typed domain models and secure ingest
+### Phase 4 — Audio analysis
+Build beats, downbeats, onsets, sections, energy, and hard stops.
 
-**Goal:** Build stable Pydantic contracts and safe input handling.
+**Done when:** Analysis JSON and a debug plot are generated; plot can be eyeballed against the song; synthetic tests cover known tempo/events/energy/sections/stops; uncertainty and limitations are explicit.
 
-**Work:**
-- Set up Python 3.12, uv, lockfile, Typer, Pydantic, pytest, Ruff, and strict mypy.
-- Define versioned input manifest, raw display/prop/channel/controller models, classified prop model, audio analysis model, rules model, Timeline, and report model.
-- Implement extension/content checks, size and duration limits, input identity/hashing, and safe temporary-file handling.
-- Implement FFmpeg normalization with argument arrays, timeouts, and no shell.
-- Ensure preview is mandatory and zero-prop/unsupported-version inputs fail clearly.
+### Phase 5 — Classifier
+Build prop roles, orientation/direction, segment order, color capability, analyze command, and editable props.yaml.
 
-**Tests/evidence:**
-- Unit tests for valid/invalid input, missing preview, unreadable preview, zero props, unsupported revision, wrong extension/signature, oversize files, duration limit, and FFmpeg failure.
-- No source input modified.
-- Ruff, strict mypy, pytest, dependency audit pass.
+**Done when:** Expected classifications match golden results on all fixtures; low-confidence and unknown classifications are flagged; names alone cannot determine classification; overrides win without changing channel identity; stale prop maps are rejected or explicitly migrated.
 
-**Exit criteria:** All phase tests pass in CI and the owner approves the phase summary.
+### Phase 6 — Rules engine
+Build universal defaults and user profile layering.
 
-**Approval required:** Yes.
+**Done when:** rules/default.yaml and two example profiles exist; schemas and merge behavior are validated; deliberately bad Timelines are rejected with readable rule/prop/channel/timestamp errors; invalid Timelines cannot reach writer.
 
-### Phase 3 — Preview parser
+### Phase 7 — Planner v1
+Build section-aware choreography with basic effects.
 
-**Goal:** Convert supported `.lorprev` fixtures into loss-minimizing raw display models.
+**Done when:** Real song produces a Timeline and sequence passing rules; owner opens and plays it in LOR and confirms it looks intentional, not random or merely beat-flashing; effects feel integrated into the arrangement. Mandatory human gate.
 
-**Work:**
-- Implement defusedxml-based parser for only fixture-verified revisions.
-- Preserve prop, controller, channel, grouping, shape, geometry, grid, and color metadata with source IDs/provenance.
-- Explicitly identify unsupported fields/channel types.
-- Add version dispatch and fail-closed behavior for unsupported revisions.
+### Phase 8 — Vocals
+Build vocal separation, vocal regions, syllable onsets, and singing-face choreography.
 
-**Tests/evidence:**
-- Unit tests for each parser behavior.
-- Golden parse tests across multiple preview fixtures with different sizes and naming styles.
-- Assertions that every parsed channel/prop maps back to source preview identity.
-- Negative XML/security tests.
-- Ruff, strict mypy, pytest pass.
+**Done when:** A supported singing face lip-syncs to words/syllables, rests during instrumentals, and keeps outline on whenever mouth channels are active; owner opens/plays result in LOR and confirms visual behavior. Mandatory human gate.
 
-**Exit criteria:** All fixtures parse accurately; no invented assignments; unsupported data is reported. Owner approves.
+### Phase 9 — Planner v2
+Build motifs, call-and-response, signature moments, and richer dynamics.
 
-**Approval required:** Yes.
+**Done when:** Two different songs produce noticeably different shows; fixed inputs/config produce deterministic planning; owner confirms arrangements are distinct and coherent.
 
-### Phase 4 — Prop classifier and editable props map
+### Phase 10 — Polish
+Build reports, docs, packaging, example profiles, and installation workflow.
 
-**Goal:** Produce useful, reviewable prop classifications without relying on names alone.
-
-**Work:**
-- Implement evidence-based role inference using prop type, shape, grouping, position, channel count, color capability, and name hints.
-- Infer orientation, direction, and segment order only when evidence supports it.
-- Generate versioned human-editable `props.yaml` with confidence, evidence, review flags, and explicit overrides.
-- Validate overrides and bind them to stable preview IDs/fingerprint.
-- Ensure overrides win over inferred values but cannot create/reassign channels.
-
-**Tests/evidence:**
-- Golden classification files for multiple fixture previews, varied naming, layout, shape, and channel types.
-- Tests proving names alone cannot drive classification.
-- Tests for low confidence, unknown props, stale maps, wrong colors, reversed segment order, and override precedence.
-- Tests proving channel/controller/prop identity never changes.
-- Ruff, strict mypy, pytest pass.
-
-**Exit criteria:** Classification results are explainable and owner-reviewable. Owner approves.
-
-**Approval required:** Yes.
-
-### Phase 5 — Audio analysis
-
-**Goal:** Produce a timestamped, confidence-aware musical feature model.
-
-**Work:**
-- Implement tempo, beat, downbeat, onset, section, energy, phrase, and hard-stop analysis.
-- Evaluate librosa and optional madmom only against actual test signals and supported runtime.
-- Evaluate Demucs vocal separation and syllable-onset detection.
-- Keep vocal/syllable events separate from beat events.
-- Document fallback behavior when optional vocal analysis is unavailable.
-
-**Tests/evidence:**
-- Synthetic audio fixtures with known tempo, transients, section/energy changes, and hard stops.
-- Tests for timestamps, confidence, empty/invalid audio, resource limits, and analysis failure.
-- Vocal tests using appropriately licensed/generated test material; no copyrighted user audio committed.
-- Ruff, strict mypy, pytest pass.
-
-**Exit criteria:** Analysis outputs are deterministic enough for tests, uncertainty is visible, and no vocal events are fabricated. Owner approves.
-
-**Approval required:** Yes.
-
-### Phase 6 — Timeline planner
-
-**Goal:** Plan complete, intentional choreography as a versioned Timeline, without writing LOR XML.
-
-**Work:**
-- Define deterministic Timeline schema and JSON serialization.
-- Plan by song sections and phrases, with purposeful contrast, coordinated props, transitions, holds, fades, accents, and selective activation.
-- Respect role, orientation, segment order, color capability, and user overrides.
-- Align singing-face mouth events to vocal syllables, not beats; require outline whenever mouth channels are active.
-- Ensure motion resolves and hard stops stop motion.
-- Keep choreography decisions out of the writer.
-
-**Tests/evidence:**
-- Unit tests for each planner decision family.
-- Golden Timeline tests for multiple prop-map fixtures and synthetic audio scenarios.
-- Determinism tests and Timeline schema-version tests.
-- Negative tests for unknown prop/channel references and incomplete movement behavior.
-- Ruff, strict mypy, pytest pass.
-
-**Exit criteria:** Timeline is coherent, reproducible, and references only valid display entities. Owner approves.
-
-**Approval required:** Yes.
-
-### Phase 7 — Rules engine and profiles
-
-**Goal:** Enforce universal and user-defined constraints before writing.
-
-**Work:**
-- Implement `rules/default.yaml`.
-- Implement two example user profiles in `examples/`.
-- Define strict schema, rule IDs, severity, tunables, and deterministic layering/merge semantics.
-- Implement all universal validators in the architecture document.
-- Produce readable violations naming rule, prop/channel, and timestamp.
-
-**Tests/evidence:**
-- Positive tests for valid timelines.
-- Negative tests for every universal rule, malformed profiles, conflicting rules, and unknown rule keys.
-- Tests for user profile layering and overrides.
-- Tests that any error-level violation prevents serialization.
-- Ruff, strict mypy, pytest pass.
-
-**Exit criteria:** Invalid Timeline cannot reach the writer; reports are actionable. Owner approves.
-
-**Approval required:** Yes.
-
-### Phase 8 — Native S6 writer and round-trip verification
-
-**Goal:** Serialize a validated Timeline into a native `.loredit` file that opens in the configured target LOR version.
-
-**Work:**
-- Implement writer only for fixture-confirmed target versions and channel/effect types.
-- Preserve required display/sequence references and metadata as established by fixtures.
-- Never invent IDs, controller assignments, channels, or unsupported effects.
-- Write a new file atomically and refuse overwrite/input aliasing.
-- Add semantic reader/writer comparison and target-version validation.
-- Explicitly report RGB/pixel and any other unsupported data.
-
-**Tests/evidence:**
-- Round-trip tests: read fixture sequence, write it, and compare semantic content.
-- Golden output tests across multiple fixture displays and supported channel types.
-- Negative tests for invalid Timeline, unknown channel, unsupported effect/channel type, unsupported target version, and output overwrite.
-- Open generated files in the target LOR S6 application and record exact version/result. Automated XML validity alone is not acceptance.
-- Ruff, strict mypy, pytest pass.
-
-**Exit criteria:** Native output passes semantic tests and opens in target LOR version. Owner approves.
-
-**Approval required:** Yes.
-
-### Phase 9 — CLI integration, reports, and release readiness
-
-**Goal:** Deliver the complete two-step user workflow.
-
-**Work:**
-- Integrate `analyze` and `generate` using Typer.
-- Require preview on both commands and reviewed props map on generate.
-- Save Timeline JSON next to output and emit human/machine-readable report.
-- Add actionable errors, help text, examples, and Windows-oriented setup documentation.
-- Verify clean install using uv on supported Python 3.12 environment.
-- Finalize security workflows and dependency pinning.
-
-**Tests/evidence:**
-- End-to-end tests from synthetic audio + sanitized preview through props map, Timeline, rules, and output.
-- Missing/invalid preview must fail before output creation.
-- No input file modified; no output overwrites input or existing file.
-- CI runs Ruff, strict mypy, pytest, and dependency audit.
-- Final manual S6 open test and report review.
-
-**Exit criteria:** All acceptance criteria pass; unsupported features and physical-display testing requirements are clearly disclosed. Owner approves release.
-
-**Approval required:** Yes.
+**Done when:** A new user can install and run by following README; reports cover generated/used/unused props, unsupported items, rules compliance, and physical-test needs; examples are included; CI is green.
 
 ## Definition of done for every phase
 
-No phase is complete based on code being written alone. Each phase must provide:
+1. One GitHub Issue with scope and acceptance criteria.
+2. One dedicated branch and one PR containing only that phase.
+3. Unit tests for the stage/scaffold.
+4. Golden tests across multiple fixtures wherever parsing/classification applies.
+5. Semantic round-trip tests for format/writer work.
+6. Negative tests for failure cases and, once available, invalid Timelines.
+7. Ruff, strict mypy, pytest green in CI; dependency audit where applicable.
+8. Completion summary: changes, exact tests/results, and unverified items.
+9. Required human gate completed by owner.
+10. PR merged and explicit owner approval before next phase.
 
-1. Unit tests for the stage.
-2. Golden-file tests across multiple fixture previews where the phase concerns preview-derived behavior, with expected classification where applicable.
-3. Semantic round-trip coverage for sequence-format/writer phases.
-4. Negative tests proving invalid Timelines are rejected by the rules engine.
-5. Ruff, strict mypy, and pytest passing in CI (plus dependency audit where applicable).
-6. A short summary: what changed, what tests verify, and what remains unverified.
-7. Explicit project-owner approval before starting the next phase.
+Not-yet-applicable tests are marked pending, never falsely reported as passing.
 
-For phases where a particular test category is not yet applicable (for example, the rules engine does not exist during ingest), record it as pending rather than claiming it passed.
+## Current progress log
 
-## Repository organization (proposed)
+### Phase 0 — Scaffold
+- Status: Not yet audited against revised acceptance criteria.
+- Issue/branch/PR: Not created under the new workflow.
+- Existing assets: Python package, CLI, pytest tests, Ruff workflow, CodeQL, Dependabot, security docs, README.
+- Verify: Python 3.12, uv/uv.lock, strict mypy in CI, minimal CLI, SHA-pinned third-party Actions, least-privilege permissions, dependency audit.
+- Tests: No Phase 0 verification run under this revised plan.
+- Human gate: None.
+- Next action: Audit current repo; create Phase 0 issue, branch, and PR before scaffold changes.
 
-```text
-src/lor_auto_sequencer/
-  cli.py
-  models/
-  stages/
-    ingest/
-    preview_parser/
-    prop_classifier/
-    audio_analysis/
-    planner/
-    rules_engine/
-    lor_writer/
-    report/
-  config/
-tests/
-  fixtures/
-    previews/
-    sequences/
-    golden/
-  unit/
-  integration/
-rules/
-  default.yaml
-examples/
-  props.yaml
-  rules-sample-a.yaml
-  rules-sample-b.yaml
-docs/
-  ARCHITECTURE.md
-  PLAN.md
-```
+### Phase 1 — LOR format
+- Status: Not started.
+- References: one real user .lorprev and one real user .loredit example; originals must not be committed, sanitized fixtures require review.
+- Human gate: owner opens rewritten sequence in target LOR S6.
 
-The current repository may be reorganized incrementally after approval; this proposed layout is not permission to perform a broad refactor in advance.
+## Handoff protocol
 
-## CI and dependency policy
-
-- Python 3.12 and uv-managed pinned lockfile.
-- Ruff lint/format checks.
-- Strict mypy.
-- Pytest.
-- Dependency vulnerability audit.
-- GitHub Actions with least-privilege permissions and all third-party actions pinned to full commit SHAs.
-- Never use `pull_request_target` to execute untrusted PR code.
-- Synthetic audio fixtures only; do not commit copyrighted audio.
-- `.lorprev` and `.loredit` fixtures must be sanitized and approved for repository inclusion.
-
-## Current phase status
-
-**Phase 0 — awaiting approval.**
-
-The architecture and plan are proposals. No implementation phase has started under this plan. The next action is owner review of `docs/ARCHITECTURE.md` and `docs/PLAN.md`. Do not begin Phase 1 or write implementation code until the owner explicitly approves Phase 0.
+At the start of each fresh phase session: read this plan and active issue; confirm previous PR is merged and approval recorded; check branch and working tree; work only on the active phase; update this log before PR; stop after phase completion and request approval.
