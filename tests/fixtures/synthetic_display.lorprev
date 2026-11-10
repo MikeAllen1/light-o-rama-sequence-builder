@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreviewClass id="00000000-0000-4000-8000-000000000001" Name="Synthetic Test Display" Revision="0" EmbedBackgrounds="False" LastSelectedSceneId="00000000-0000-4000-8000-000000000010" Brightness="20">
+  <Scene id="00000000-0000-4000-8000-000000000010" Name="Synthetic Scene" HScroll="0" VScroll="0" Zoom="0" CreateGridView="False" />
+  <PropClass id="00000000-0000-4000-8000-000000000020" Name="Test Roofline" DeviceType="AC" ChannelGrid="1" TraditionalType="Single Color" BulbShape="Line" MaxChannels="1" IndividualChannels="False" StartLocation="0" />
+  <PropClass id="00000000-0000-4000-8000-000000000030" Name="Test Tree" DeviceType="AC" ChannelGrid="2" TraditionalType="Single Color" BulbShape="Circle" MaxChannels="1" IndividualChannels="False" StartLocation="1">
+    <shape ShapeName="Circle">
+      <point x="0" y="0" />
+      <point x="100" y="0" />
+      <point x="100" y="100" />
+      <point x="0" y="100" />
+    </shape>
+  </PropClass>
+  <PropViews />
+</PreviewClass>

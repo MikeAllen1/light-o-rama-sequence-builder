@@ -139,3 +139,15 @@ See [GITHUB_WORKFLOW.md](GITHUB_WORKFLOW.md) for branch, PR, review, merge, and 
 ## Handoff protocol
 
 At the start of each fresh phase session: read this plan and active issue; confirm previous PR is merged and approval recorded; check branch and working tree; work only on the active phase; update this log before PR; stop after phase completion and request approval.
+
+
+## Phase 2 — Standalone LORPREV parser
+
+- Status: Parser implementation in progress; no PR or merge yet.
+- Issue: https://github.com/MikeAllen1/light-o-rama-sequence-builder/issues/5
+- Branch: `phase-2/lorprev-parser`
+- Source evidence: owner-supplied `Default.lorprev` (351 bytes). Root is `PreviewClass`, `Revision="0"`, with one `Scene`, empty `PropViews`, and zero `PropClass` elements.
+- Fixtures: `default_empty.lorprev` preserves the safe empty S6 export as a negative test. `synthetic_display.lorprev` uses fictional identifiers, names, channel-grid values, and shape geometry, based on the observed standalone root and embedded PropClass structures.
+- Parser: strict Revision=0 boundary; secure defusedxml parsing; raw attributes and XML descendants retained; per-attribute file/element locator provenance; unknown top-level nodes preserved; explicit missing/malformed/unsafe/unsupported/zero-prop errors.
+- Validation limitation: the synthetic prop-bearing fixture has not yet been imported into S6. Do not claim S6 compatibility or full channel/controller semantics until independently validated. No real house/display data is committed.
+- Scope remains Phase 2 only. Audio analysis, classification, props.yaml, Timeline, rules, and choreography have not been started.
