@@ -73,3 +73,52 @@ def test_invalid_xml_is_rejected(tmp_path: Path):
 
     with pytest.raises(LoreditError):
         inspect_loredit(sample)
+
+
+
+def test_extract_display_props_groups_and_unmapped_sequence_props(tmp_path: Path):
+    sample = tmp_path / "display.loredit"
+    sample.write_text(
+        """<?xml version="1.0"?>
+        <sequence author="Private Name">
+          <PreviewClass>
+            <Scene BackgroundFile="C:\\private\\background.jpg"/>
+            <PropClass id="tree" Name="Tree" DeviceType="LOR"
+                       ChannelGrid="Regular,01,2,2,0,Multi"
+                       TraditionalType="Multicolor_string_1_ch"
+                       TraditionalColors="Red,Green,Blue"
+                       IndividualChannels="True" MaxChannels="16">
+              <shape/>
+            </PropClass>
+            <PropGroup id="yard" Name="Yard" Arrangement="Preview">
+              <member id="tree"/>
+            </PropGroup>
+          </PreviewClass>
+          <SequenceProps>
+            <SeqProp id="tree" name="Tree">
+              <channel row="0" col="0" color="Red"/>
+              <channel row="0" col="1" color="Green"/>
+            </SeqProp>
+            <SeqProp id="orphan" name="No Preview">
+              <channel row="0" col="0" color="White"/>
+            </SeqProp>
+          </SequenceProps>
+        </sequence>""",
+        encoding="utf-8",
+    )
+
+    result = extract_display(sample)
+
+    assert result["preview_prop_count"] == 1
+    assert result["sequence_prop_count"] == 2
+    assert result["props"][0]["name"] == "Tree"
+    assert result["props"][0]["traditional_colors"] == ["Red", "Green", "Blue"]
+    assert result["props"][0]["sequence_channel_count"] == 2
+    assert result["props"][0]["has_sequence_data"] is True
+    assert result["groups"][0]["members"] == ["tree"]
+    assert result["unmapped_sequence_props"] == [
+        {"id": "orphan", "name": "No Preview", "channel_count": 1}
+    ]
+    serialized = str(result)
+    assert "background.jpg" not in serialized
+    assert "Private Name" not in serialized
