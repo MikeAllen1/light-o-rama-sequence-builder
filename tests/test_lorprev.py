@@ -146,6 +146,39 @@ def test_s6_exported_revision_one_golden_fixture_preserves_all_source_data(
     assert model.scenes[0].attributes["Name"].value == "Synthetic Test Scene"
 
 
+def test_unknown_prop_device_values_are_reported_with_source_provenance(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "unsupported-device.lorprev"
+    source.write_text(
+        '<PreviewClass Revision="1"><PropClass id="p" Name="Test" '
+        'DeviceType="UnknownController" TraditionalType="PixelString" />'
+        '</PreviewClass>',
+        encoding="utf-8",
+    )
+    model = read_lorprev(source)
+    assert [item.kind for item in model.unsupported_constructs] == [
+        "device type", "traditional prop type"
+    ]
+    assert model.unsupported_constructs[0].source.value == "UnknownController"
+    assert model.unsupported_constructs[0].source.file == str(source)
+    assert model.unsupported_constructs[0].source.locator.endswith("/@DeviceType")
+    assert model.unsupported_constructs[1].source.value == "PixelString"
+
+
+def test_unknown_top_level_construct_is_preserved_and_reported(tmp_path: Path) -> None:
+    source = tmp_path / "unknown.lorprev"
+    source.write_text(
+        '<PreviewClass Revision="1"><PropClass id="p" />'
+        '<FutureDeviceClass id="future" /></PreviewClass>',
+        encoding="utf-8",
+    )
+    model = read_lorprev(source)
+    assert len(model.unrecognized_top_level) == 1
+    assert model.unrecognized_top_level[0].tag == "FutureDeviceClass"
+    assert model.unrecognized_top_level[0].attributes["id"].value == "future"
+
+
 def test_owner_supplied_default_preview_is_rejected_as_zero_prop_fixture() -> None:
     with pytest.raises(LorprevError, match="zero PropClass"):
         read_lorprev(FIXTURES / "default_empty.lorprev")
