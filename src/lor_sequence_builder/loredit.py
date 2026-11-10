@@ -11,6 +11,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from defusedxml import ElementTree as SafeET
 from defusedxml.common import DefusedXmlException
@@ -70,6 +71,8 @@ def read_loredit(path: str | Path) -> LoreditDocument:
     except (OSError, ET.ParseError, DefusedXmlException) as exc:
         raise LoreditError(f"Invalid or unsafe LOREDIT XML: {source}") from exc
 
+    if root is None:
+        raise LoreditError("LOREDIT XML has no document element")
     if root.tag != "sequence":
         raise LoreditError("LOREDIT root element must be <sequence>")
     version = root.attrib.get("saveFileVersion")
@@ -173,4 +176,6 @@ def semantic_xml(path: str | Path) -> str:
     root = SafeET.parse(
         path, forbid_dtd=True, forbid_entities=True, forbid_external=True
     ).getroot()
-    return ET.tostring(root, encoding="unicode", short_empty_elements=True)
+    if root is None:
+        raise LoreditError("LOREDIT XML has no document element")
+    return cast(str, ET.tostring(root, encoding="unicode", short_empty_elements=True))
