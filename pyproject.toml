@@ -16,6 +16,9 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+audio = [
+  "librosa>=0.10.2",
+]
 dev = [
   "pytest>=8.0",
   "ruff>=0.5",
