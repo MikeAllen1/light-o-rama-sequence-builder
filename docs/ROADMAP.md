@@ -16,9 +16,10 @@
 
 ## Phase 2 — Music analysis
 
-- [ ] Load common audio formats.
-- [ ] Detect tempo candidates and beat/downbeat confidence.
-- [ ] Analyze onset strength, energy, and frequency bands.
+- [x] Load common audio formats through the optional librosa audio dependency.
+- [x] Detect an initial tempo estimate and beat candidates.
+- [x] Detect onset candidates and a relative per-second energy curve.
+- [ ] Evaluate beat/downbeat candidates against manually verified timing.
 - [ ] Identify phrase boundaries and likely song sections.
 - [ ] Provide editable timing and section markers.
 
