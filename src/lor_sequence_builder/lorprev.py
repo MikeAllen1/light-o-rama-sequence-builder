@@ -51,6 +51,23 @@ class UnsupportedConstruct:
 
 
 @dataclass(frozen=True, slots=True)
+class ChannelGridEntry:
+    """One source ChannelGrid entry; comma-separated fields remain uninterpreted."""
+
+    source: SourceValue
+    raw_fields: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class GeometryPoint:
+    """A source geometry point with separately traceable coordinates."""
+
+    x: SourceValue
+    y: SourceValue
+    locator: str
+
+
+@dataclass(frozen=True, slots=True)
 class PropModel:
     """Raw display model; interpretation/classification is deliberately deferred."""
 
@@ -62,6 +79,8 @@ class PropModel:
     prop_views: tuple[RawElement, ...]
     unrecognized_top_level: tuple[RawElement, ...]
     unsupported_constructs: tuple[UnsupportedConstruct, ...]
+    channel_grid_entries: tuple[ChannelGridEntry, ...]
+    geometry_points: tuple[GeometryPoint, ...]
 
 
 def _raw_element(element: ET.Element, source: str, locator: str) -> RawElement:
@@ -84,6 +103,16 @@ def _raw_element(element: ET.Element, source: str, locator: str) -> RawElement:
         text=element.text,
         locator=locator,
     )
+
+
+def _iter_raw_elements(element: RawElement, tag: str) -> tuple[RawElement, ...]:
+    """Return matching descendants in source order, including the element itself."""
+    matches: list[RawElement] = []
+    if element.tag == tag:
+        matches.append(element)
+    for child in element.children:
+        matches.extend(_iter_raw_elements(child, tag))
+    return tuple(matches)
 
 
 def read_lorprev(path: str | Path) -> PropModel:
@@ -155,8 +184,24 @@ def read_lorprev(path: str | Path) -> PropModel:
                     )
                 )
 
-    return PropModel(
-        source_file=str(source),
+    channel_entries: list[ChannelGridEntry] = []
+    geometry_points: list[GeometryPoint] = []
+    for prop in prop_nodes:
+        channel_grid = prop.attributes.get("ChannelGrid")
+        if channel_grid is not None:
+            for entry in channel_grid.value.split(";"):
+                channel_entries.append(
+                    ChannelGridEntry(source=channel_grid, raw_fields=tuple(entry.split(",")))
+                )
+        for point in _iter_raw_elements(prop, "point"):
+            x_value = point.attributes.get("x")
+            y_value = point.attributes.get("y")
+            if x_value is not None and y_value is not None:
+                geometry_points.append(
+                    GeometryPoint(x=x_value, y=y_value, locator=point.locator)
+                )
+
+    return PropModel(        source_file=str(source),
         revision=SourceValue(
             value=revision, file=str(source), locator="/PreviewClass/@Revision"
         ),
@@ -166,4 +211,6 @@ def read_lorprev(path: str | Path) -> PropModel:
         prop_views=prop_views,
         unrecognized_top_level=unknown,
         unsupported_constructs=tuple(unsupported),
+        channel_grid_entries=tuple(channel_entries),
+        geometry_points=tuple(geometry_points),
     )
