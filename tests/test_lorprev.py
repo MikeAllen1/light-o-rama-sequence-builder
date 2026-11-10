@@ -200,6 +200,11 @@ def test_owner_supplied_default_preview_is_rejected_as_zero_prop_fixture() -> No
         read_lorprev(FIXTURES / "default_empty.lorprev")
 
 
+def test_missing_preview_fails_with_actionable_error(tmp_path: Path) -> None:
+    with pytest.raises(LorprevError, match="Cannot access LORPREV file"):
+        read_lorprev(tmp_path / "missing.lorprev")
+
+
 def test_unsupported_revision_fails_clearly(tmp_path: Path) -> None:
     source = tmp_path / "future.lorprev"
     source.write_text(
