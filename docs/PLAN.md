@@ -111,18 +111,22 @@ Not-yet-applicable tests are marked pending, never falsely reported as passing.
 ## Current progress log
 
 ### Phase 0 — Scaffold
-- Status: Not yet audited against revised acceptance criteria.
-- Issue/branch/PR: Not created under the new workflow.
-- Existing assets: Python package, CLI, pytest tests, Ruff workflow, CodeQL, Dependabot, security docs, README.
-- Verify: Python 3.12, uv/uv.lock, strict mypy in CI, minimal CLI, SHA-pinned third-party Actions, least-privilege permissions, dependency audit.
-- Tests: No Phase 0 verification run under this revised plan.
-- Human gate: None.
-- Next action: Audit current repo; create Phase 0 issue, branch, and PR before scaffold changes.
+- Status: In progress on dedicated branch; no Phase 0 changes merged.
+- Issue: https://github.com/MikeAllen1/light-o-rama-sequence-builder/issues/4
+- Branch: `phase-0/scaffold`
+- Base commit: `4dda5987a8fcddbe93d784f1b2feefc488bd8a25`
+- Baseline audit: Python 3.11; pip extras; no uv.lock; CI lacked mypy; GitHub Actions used version tags; CLI and application modules were non-empty.
+- Baseline CI: Tests run https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42896801786 — 11 pytest tests passed; Ruff passed; pip-audit failed on setuptools 79.0.1 (PYSEC-2026-3447 / GHSA-xmj3-9gf7-h52w) and could not audit the local unpublished package.
+- Current implementation: scaffold reset and tooling/CI alignment are in progress. No LOR parser, writer, preview parser, audio analysis, or choreography work is authorized in this phase.
+- Tests on this branch: Not yet run.
+- Human gate: None for Phase 0.
+- Next: complete scaffold changes, run local checks where possible, open PR, verify CI, and stop for owner approval after merge.
 
 ### Phase 1 — LOR format
 - Status: Not started.
 - References: one real user .lorprev and one real user .loredit example; originals must not be committed, sanitized fixtures require review.
 - Human gate: owner opens rewritten sequence in target LOR S6.
+
 
 ## Handoff protocol
 
