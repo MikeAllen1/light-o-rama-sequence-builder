@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from lor_sequence_builder.loredit import LoreditError, inspect_loredit
+from lor_sequence_builder.loredit import LoreditError, extract_display, inspect_loredit
 
 
 def test_inspect_loredit_xml(tmp_path: Path):
