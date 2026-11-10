@@ -48,6 +48,7 @@ Run the command-line tools:
 ```powershell
 lor-sequence-builder --help
 lor-sequence-builder analyze-audio path\to\song.mp3 --output build\audio-analysis.json
+lor-sequence-builder import-display path\to\sample.loredit --output build\display.json
 lor-sequence-builder inspect path\to\sample.loredit
 pytest
 ```
