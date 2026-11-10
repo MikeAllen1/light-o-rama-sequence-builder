@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -101,6 +102,47 @@ def test_synthetic_revision_one_preview_preserves_full_prop_model(tmp_path: Path
     assert model.prop_views[0].tag == "PropViews"
     assert model.props[0].attributes["Name"].file == str(source)
     assert model.props[0].attributes["Name"].locator.endswith("/@Name")
+
+
+def test_s6_exported_revision_one_golden_fixture_preserves_all_source_data(
+    tmp_path: Path,
+) -> None:
+    # The committed fixture is a gzip transport wrapper around the sanitized S6 XML export.
+    fixture = FIXTURES / "s6_revision_1_export.lorprev.gz"
+    source = tmp_path / "s6_revision_1_export.lorprev"
+    with gzip.open(fixture, "rb") as compressed, source.open("wb") as extracted:
+        extracted.write(compressed.read())
+
+    model = read_lorprev(source)
+    assert model.revision.value == "1"
+    assert len(model.props) == 51
+    assert len(model.scenes) == 1
+    assert len(model.prop_views) == 1
+    assert model.prop_views[0].tag == "PropViews"
+    assert sum(p.attributes["BulbShape"].value == "Square" for p in model.props) == 46
+    assert sum(p.attributes["BulbShape"].value == "Hexagon" for p in model.props) == 5
+    assert {p.children[0].attributes["ShapeName"].value for p in model.props} == {
+        "Lines-Connected", "Lines-Unconnected", "Arch", "Star", "Tree 180", "Icicles"
+    }
+    assert sum(
+        len(p.children[0].children) for p in model.props
+    ) == 1900
+    assert sum(
+        p.attributes["TraditionalType"].value == "Channel_per_color"
+        for p in model.props
+    ) == 8
+    assert all(
+        value.file == str(source)
+        for prop in model.props
+        for value in prop.attributes.values()
+    )
+    assert all(
+        value.locator.startswith("/PreviewClass/PropClass[")
+        for prop in model.props
+        for value in prop.attributes.values()
+    )
+    assert model.display.attributes["Name"].value == "Synthetic S6 Export Fixture"
+    assert model.scenes[0].attributes["Name"].value == "Synthetic Test Scene"
 
 
 def test_owner_supplied_default_preview_is_rejected_as_zero_prop_fixture() -> None:
