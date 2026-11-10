@@ -6,5 +6,5 @@
 - The Revision 1 S6 export contains 51 props, one scene, one empty `PropViews`, 1,900 geometry points, 46 square props, 5 hexagon props, six shape names, and eight `Channel_per_color` props. It has no controller or group elements; this phase does not invent them.
 - `default_empty.lorprev` remains a negative zero-prop test. The runtime-generated Revision 1 test remains supplemental synthetic coverage, not the primary golden fixture.
 - Revision 0 and Revision 1 are the only standalone preview revisions covered by current fixtures. Other revisions fail explicitly.
-- Controller/channel semantics are not interpreted by this phase. Values such as `ChannelGrid` and `MasterPropId` are retained as raw source attributes with provenance.
+- `ChannelGrid` is exposed as semicolon-delimited entries with comma-separated raw fields; the parser deliberately does not assign field meanings or controller identities. Geometry `<point>` x/y attributes are exposed as typed coordinate values with individual provenance. `MasterPropId` remains a raw source reference. No controller or group nodes were present in the export, so none are synthesized.
 
