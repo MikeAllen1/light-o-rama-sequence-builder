@@ -129,7 +129,7 @@ See [GITHUB_WORKFLOW.md](GITHUB_WORKFLOW.md) for branch, PR, review, merge, and 
 - Format evidence: owner-tested Light-O-Rama S6 `6.6.0.12`, `saveFileVersion="15"`; source sequence was sanitized into a neutral 51-prop test display with no house background or original house arrangement.
 - Implementation: secure `defusedxml` parsing with DTDs/entities/external references forbidden; v15-only support boundary; opaque XML-tree preservation; `inspect` and `roundtrip` CLI; atomic create-if-absent writer; sequence-prop/preview referential-integrity validation on read and write.
 - Test fixture: compressed, reduced derivative of the approved source. It retains 48 sequence props, 51 preview prop identities, 81 channels, 8 timing grids, and representative INTENSITY/TWINKLE/SHIMMER effects. Preview shape geometry is omitted from the compact automated fixture; the full neutral-grid fixture remains the human-tested baseline and is not committed.
-- Local tests: `PYTHONPATH=src python -m pytest -q` — 15 passed.
+- Local tests: `PYTHONPATH=src python -m pytest -q` — 17 passed.
 - Local CLI: `inspect` reports S6 v15, 20,925 centiseconds, 48 sequence props, and 8 timing grids; `roundtrip` output is semantically equal to the source fixture.
 - Human gate: complete. Owner opened the writer-generated round-trip output in S6 and explicitly confirmed it was fine.
 - Local quality-tool limitation: Ruff and mypy executables are unavailable locally. `uv lock --check --offline` passes. `uv sync --locked --offline` cannot install the registry package because the runtime has no network and the package is not in uv's cache. CI is the authoritative check for locked sync, Ruff, strict mypy, pytest, and pip-audit.
