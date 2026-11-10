@@ -11,6 +11,7 @@ def test_cli_without_arguments_displays_available_commands(
     assert main([]) == 0
     output = " ".join(capsys.readouterr().out.lower().split())
     assert "inspect" in output
+    assert "inspect-preview" in output
     assert "roundtrip" in output
 
 

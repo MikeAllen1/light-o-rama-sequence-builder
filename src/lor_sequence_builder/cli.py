@@ -7,17 +7,20 @@ import sys
 from collections.abc import Sequence
 
 from lor_sequence_builder.loredit import LoreditError, read_loredit, write_loredit
+from lor_sequence_builder.lorprev import LorprevError, read_lorprev
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="lor-sequence-builder",
-        description="Read and write verified Light-O-Rama S6 LOREDIT v15 files.",
+        description="Inspect and process verified Light-O-Rama S6 files.",
     )
     commands = parser.add_subparsers(dest="command")
     inspect = commands.add_parser("inspect", help="summarize a supported LOREDIT file")
     inspect.add_argument("sequence", help="input .loredit file")
-    roundtrip = commands.add_parser("roundtrip", help="write a loss-preserving copy")
+    preview = commands.add_parser("inspect-preview", help="inspect a standalone LORPREV file")
+    preview.add_argument("preview", help="input .lorprev file")
+    roundtrip = commands.add_parser("roundtrip", help="write a loss-preserving LOREDIT copy")
     roundtrip.add_argument("sequence", help="input .loredit file")
     roundtrip.add_argument("output", help="new output .loredit path (must not exist)")
     return parser
@@ -34,6 +37,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.print_help()
         return 0
     try:
+        if options.command == "inspect-preview":
+            model = read_lorprev(options.preview)
+            print(f"Format: standalone LORPREV revision {model.revision.value}")
+            print(f"Props: {len(model.props)}")
+            print(f"Scenes: {len(model.scenes)}")
+            print(f"Prop views: {len(model.prop_views)}")
+            print(f"Unrecognized top-level elements: {len(model.unrecognized_top_level)}")
+            return 0
         document = read_loredit(options.sequence)
         if options.command == "inspect":
             print(f"Format: S6 LOREDIT v{document.save_file_version}")
@@ -44,7 +55,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         output = write_loredit(document, options.output)
         print(f"Wrote: {output}")
         return 0
-    except LoreditError as exc:
+    except (LoreditError, LorprevError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
