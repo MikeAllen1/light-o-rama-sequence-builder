@@ -6,6 +6,7 @@ must be able to review and edit timing before effects are generated.
 
 from __future__ import annotations
 
+from itertools import pairwise
 from pathlib import Path
 from statistics import median
 from typing import Any
@@ -25,7 +26,7 @@ def _interval_summary(times_ms: list[int]) -> dict[str, float | None]:
 
     intervals = [
         float(right - left)
-        for left, right in zip(times_ms, times_ms[1:])
+        for left, right in pairwise(times_ms)
         if right > left
     ]
     if not intervals:
