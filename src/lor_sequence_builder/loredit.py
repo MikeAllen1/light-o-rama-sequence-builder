@@ -11,7 +11,6 @@ import tempfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
 
 from defusedxml import ElementTree as SafeET
 from defusedxml.common import DefusedXmlException
@@ -178,4 +177,4 @@ def semantic_xml(path: str | Path) -> str:
     ).getroot()
     if root is None:
         raise LoreditError("LOREDIT XML has no document element")
-    return cast(str, ET.tostring(root, encoding="unicode", short_empty_elements=True))
+    return ET.tostring(root, encoding="unicode", short_empty_elements=True)
