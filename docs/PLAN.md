@@ -122,7 +122,8 @@ See [GITHUB_WORKFLOW.md](GITHUB_WORKFLOW.md) for branch, PR, review, merge, and 
 - Verification: Python 3.12 CI passed pytest, Ruff, strict mypy, dependency audit, and CodeQL. See the merged PR and its linked runs.
 
 ### Phase 1 — Native S6 LOREDIT format
-- Status: Implementation submitted in a draft PR; automated CI pending.
+- Status: Implementation submitted in draft PR #1; automated CI pending.
+- PR: https://github.com/MikeAllen1/light-o-rama-sequence-builder/pull/1
 - Issue: https://github.com/MikeAllen1/light-o-rama-sequence-builder/issues/1
 - Branch: `phase-1/loredit-format`
 - Format evidence: owner-tested Light-O-Rama S6 `6.6.0.12`, `saveFileVersion="15"`; source sequence was sanitized into a neutral 51-prop test display with no house background or original house arrangement.
