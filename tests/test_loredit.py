@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
 import gzip
 import shutil
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 import pytest
 
@@ -108,8 +108,10 @@ def test_unsupported_version_fails_clearly(tmp_path: Path) -> None:
         b"not xml",
         b"<other />",
         b'<!DOCTYPE x [<!ENTITY e "boom">]><sequence />',
-        b'<!DOCTYPE sequence><sequence saveFileVersion="15" totalCentiseconds="1">'
-        b"<PreviewClass/><SequenceProps/><TimingGrids/></sequence>",
+        (
+            b'<!DOCTYPE sequence><sequence saveFileVersion="15" totalCentiseconds="1">'
+            b"<PreviewClass/><SequenceProps/><TimingGrids/></sequence>"
+        ),
     ],
 )
 def test_invalid_or_unsafe_xml_fails(content: bytes, tmp_path: Path) -> None:
@@ -124,8 +126,10 @@ def test_invalid_or_unsafe_xml_fails(content: bytes, tmp_path: Path) -> None:
     [
         b'<sequence saveFileVersion="15" totalCentiseconds="1"><TimingGrids/></sequence>',
         b'<sequence saveFileVersion="15" totalCentiseconds="1"><SequenceProps/></sequence>',
-        b'<sequence saveFileVersion="15" totalCentiseconds="1">'
-        b'<SequenceProps/><TimingGrids/></sequence>',
+        (
+            b'<sequence saveFileVersion="15" totalCentiseconds="1">'
+            b'<SequenceProps/><TimingGrids/></sequence>'
+        ),
     ],
 )
 def test_missing_required_sections_fail(content: bytes, tmp_path: Path) -> None:
