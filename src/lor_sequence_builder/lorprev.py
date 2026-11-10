@@ -146,7 +146,7 @@ def read_lorprev(path: str | Path) -> PropModel:
             ),
         ):
             value = prop.attributes.get(attribute)
-            if value is not None and value.value not in supported:
+            if value is not None and value.value not in supported_values:
                 unsupported.append(
                     UnsupportedConstruct(
                         kind=kind,
