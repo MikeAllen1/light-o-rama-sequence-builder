@@ -25,6 +25,11 @@ def test_synthetic_revision_zero_preview_preserves_geometry_and_provenance() -> 
     assert model.props[1].children[0].tag == "shape"
     assert model.props[1].children[0].children[0].attributes["x"].value == "0"
     assert model.props[0].attributes["Name"].locator.endswith("/@Name")
+    assert len(model.channel_grid_entries) == 2
+    assert model.channel_grid_entries[0].raw_fields == ("1",)
+    assert len(model.geometry_points) == 4
+    assert model.geometry_points[0].x.value == "0"
+    assert model.geometry_points[0].y.locator.endswith("/@y")
     assert model.scenes[0].attributes["Name"].value == "Synthetic Scene"
     assert model.prop_views[0].tag == "PropViews"
 
@@ -92,6 +97,10 @@ def test_synthetic_revision_one_preview_preserves_full_prop_model(tmp_path: Path
     model = read_lorprev(source)
     assert model.revision.value == "1"
     assert len(model.props) == 51
+    assert len(model.channel_grid_entries) == 67
+    assert len(model.geometry_points) == 1900
+    assert all(entry.source.locator.endswith("/@ChannelGrid") for entry in model.channel_grid_entries)
+    assert all(point.x.file == str(source) and point.y.file == str(source) for point in model.geometry_points)
     assert sum(p.attributes["BulbShape"].value == "Square" for p in model.props) == 46
     assert sum(p.attributes["BulbShape"].value == "Hexagon" for p in model.props) == 5
     assert model.props[0].attributes["ChannelGrid"].value == "Regular,99,01,01,0,Multi"
