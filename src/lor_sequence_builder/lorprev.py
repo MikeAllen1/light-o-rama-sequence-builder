@@ -55,6 +55,7 @@ class ChannelGridEntry:
     """One source ChannelGrid entry; comma-separated fields remain uninterpreted."""
 
     source: SourceValue
+    entry_index: int
     raw_fields: tuple[str, ...]
 
 
@@ -189,9 +190,13 @@ def read_lorprev(path: str | Path) -> PropModel:
     for prop in prop_nodes:
         channel_grid = prop.attributes.get("ChannelGrid")
         if channel_grid is not None:
-            for entry in channel_grid.value.split(";"):
+            for entry_index, entry in enumerate(channel_grid.value.split(";")):
                 channel_entries.append(
-                    ChannelGridEntry(source=channel_grid, raw_fields=tuple(entry.split(",")))
+                    ChannelGridEntry(
+                        source=channel_grid,
+                        entry_index=entry_index,
+                        raw_fields=tuple(entry.split(",")),
+                    )
                 )
         for point in _iter_raw_elements(prop, "point"):
             x_value = point.attributes.get("x")
