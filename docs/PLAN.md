@@ -108,6 +108,10 @@ Build reports, docs, packaging, example profiles, and installation workflow.
 
 Not-yet-applicable tests are marked pending, never falsely reported as passing.
 
+## GitHub workflow
+
+See [GITHUB_WORKFLOW.md](GITHUB_WORKFLOW.md) for branch, PR, review, merge, and repository-protection standards.
+
 ## Current progress log
 
 ### Phase 0 — Scaffold
