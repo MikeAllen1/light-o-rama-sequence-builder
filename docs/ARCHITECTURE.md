@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** Proposed — awaiting project-owner approval  
+**Status:** Phase 0 scaffold in progress; target architecture and contracts documented below  
 **Project:** LOR Auto-Sequencer  
 **V1 interface:** Command line  
 **Target output:** Native Light-O-Rama S6 `.loredit` sequence  
@@ -373,3 +373,29 @@ The delivery order is:
 Every phase is one GitHub Issue, one branch, and one PR. The issue is the acceptance contract. The PR must contain only work for that phase. A phase is complete only after its tests and CI pass, required human verification is recorded, the PR is merged, and the owner approves the next phase. Keep the progress log in `docs/PLAN.md` current so a fresh session can resume without relying on chat history.
 
 **Human verification is not delegated to automated tests.** For designated gates, the owner must open and/or play the output in the target LOR application. The assistant must never claim to have performed that local verification.
+
+
+## 16. Phase 0 scaffold boundary
+
+The Phase 0 repository is intentionally a minimal Python 3.12 package with a CLI entry point that only displays help. No LOR parsing, sequence serialization, preview interpretation, audio processing, prop classification, or choreography belongs in the scaffold. Those capabilities are introduced only in their ordered phases in `PLAN.md`.
+
+The scaffold uses `uv` and a committed `uv.lock`. CI uses Python 3.12, pytest, Ruff, strict mypy, and dependency auditing. Third-party GitHub Actions are pinned to full commit SHAs, and workflow permissions are explicitly read-only except for the CodeQL analysis job's required security-events permission.
+
+The intended source layout is:
+
+```text
+src/lor_sequence_builder/
+  __init__.py
+  cli.py
+tests/
+  test_cli.py
+docs/
+  ARCHITECTURE.md
+  PLAN.md
+.github/
+  workflows/
+    tests.yml
+    codeql.yml
+```
+
+No phase-specific implementation is considered complete merely because a scaffold command or CI check succeeds. The LOR format remains the first implementation risk and is addressed only after Phase 0 is merged and approved.
