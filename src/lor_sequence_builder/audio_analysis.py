@@ -191,9 +191,11 @@ def _energy_curve(rms: list[float]) -> list[dict[str, float]]:
     return result
 
 
-def _hard_stops(rms: list[float]) -> list[dict[str, float]]:
+def _hard_stops(
+    rms: list[float], minimum_silence_seconds: float = 0.75
+) -> list[dict[str, float]]:
     threshold = max(1e-5, max(rms, default=0.0) * 0.025)
-    required_frames = round(0.25 / FRAME_SECONDS)
+    required_frames = max(1, round(minimum_silence_seconds / FRAME_SECONDS))
     stops: list[dict[str, float]] = []
     index = 1
     while index < len(rms):
@@ -356,7 +358,8 @@ def analyze_audio(
                 time += period
                 index += 1
         energy = _energy_curve(rms)
-        stops = _hard_stops(rms)
+        minimum_stop_silence = max(0.75, (60.0 / bpm) * 1.5) if bpm else 0.75
+        stops = _hard_stops(rms, minimum_stop_silence)
         phrases = _phrase_boundaries(duration, bpm, phase, lag)
         sections = _section_candidates(energy)
         report: dict[str, Any] = {
