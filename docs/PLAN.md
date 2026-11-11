@@ -134,7 +134,7 @@ Build universal defaults and user profile layering.
 **Not yet verified in S6:** fade (`startIntensity`/`endIntensity`), `TWINKLE` and `SHIMMER` effects written by `build-from-timeline`. These attributes were observed in native sequences, but no sequence written by this tool with them has been opened in S6 yet. The `pulse` harness keeps its own Phase 3 validation and does not use the rules engine.
 
 ### Phase 6b — "Any specific requirements?"
-**Status: Built; in review.**
+**Status: Complete. Merged 2026-11-11 (#36) on the owner's instruction.**
 
 Owner request (2026-11-11): an optional step before building where a person can write in their requirements. Owner chose both input styles and remembered requirements.
 
@@ -145,7 +145,15 @@ Owner request (2026-11-11): an optional step before building where a person can 
 **Not verified:** a live call to the translation service. It needs the owner's API key and is optional.
 
 ### Phase 7 — Planner v1
+**Status: Built; owner playback gate pending.**
+
 Build section-aware choreography with basic effects.
+
+**Delivered:** `planner.py` and `generate.py`, with the `generate` command (audio or an existing analysis, plus a preview). Sections come from the analyzer's section candidates (or every 8 bars when none), snapped to bar starts, with a low, mid or high energy level relative to the rest of the song and a guessed label (intro, verse, chorus, finale, outro). Hard stops split sections so motion never runs through a silence. Looks per prop kind and energy: arch rows chase every other beat, every beat, then fill each bar; mini tree rows rest, alternate, then pulse; other rows hold, chase, then fill; a mega tree (and multi-segment icicles or outlines) rotates through its segments, faster when loud; stars hold or twinkle; snowflakes rest, pulse on bars, or twinkle; outlines and decorations hold dim, hold brighter, or pulse. Chases follow the real row order in the preview and mirror direction between sections. A louder section opens with a one-beat accent. Requirements shape the plan directly (never-used props excluded, kept-on props held, quiet sections respected, colors and brightness limited, required chase directions). Mouths are never lit until vocal analysis exists. The plan is deterministic and must pass every rule before the writer accepts it. Next to the sequence: Timeline, plan summary, rule report, and (from audio) the analysis and plot. `generate` asks the requirements question first when run interactively without saved requirements.
+
+**Verified by tests:** every fictional display produces a plan that passes all rules with no warnings; louder sections light more; arch chases follow preview order and mirror; nothing is lit during a hard stop; mouths stay dark; requirements change the plan; plans are deterministic; a song without beats still plans; end-to-end from synthesized audio to a native sequence.
+
+**Owner gate (pending):** generate a real song on the owner's display, open and play it in S6, and confirm it looks intentional rather than random or beat-flashing. This also covers the first S6 check of fade, twinkle and shimmer effects written by this tool.
 
 **Done when:** Real song produces a Timeline and sequence passing rules; owner opens and plays it in LOR and confirms it looks intentional, not random or merely beat-flashing; effects feel integrated into the arrangement. Mandatory human gate.
 
