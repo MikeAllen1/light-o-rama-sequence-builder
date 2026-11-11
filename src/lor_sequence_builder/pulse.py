@@ -358,7 +358,7 @@ def _validate_timeline(
     beats = timeline.beat_positions_centiseconds
     if not beats or tuple(sorted(set(beats))) != beats:
         raise PulseGenerationError("Timeline beat positions must be non-empty and strictly increasing")
-    if set(prop_id for prop_id, _ in mapped_channels) != supported:
+    if {prop_id for prop_id, _ in mapped_channels} != supported:
         raise PulseGenerationError("Timeline supported props do not match the native channel map")
 
     expected = {
