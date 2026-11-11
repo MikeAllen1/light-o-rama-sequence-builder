@@ -1,8 +1,8 @@
 # Implementation Plan
 
-**Status:** Phase 3 — fixed-tempo Timeline walking skeleton in progress  
-**Current phase:** 3  
-**Next phase:** 4 — audio analysis (blocked until Phase 3 is merged, its S6 human playback gate is complete, and owner approves)
+**Status:** Phase 3 complete and merged. Phase 4 audio analysis is in progress on `phase-4/audio-analysis` (PR #9).  
+**Current phase:** 4  
+**Next phase:** 5 — prop classification (blocked until Phase 4 is complete, merged, and owner approves).
 
 ## Product objective and fixed requirements
 
@@ -56,10 +56,12 @@ Build .lorprev / embedded PreviewClass → raw PropModel plus display/channel/co
 ### Phase 3 — Walking skeleton
 Build fixed-tempo "pulse every supported prop on the beat" → Timeline → writer.
 
-**Done when:** The independent S6 Revision 58 standalone preview + native v15 sequence fixture runs through the fixed-tempo pipeline; full prop geometry and group parity is checked; every generated event carries a verified ChannelGrid address and native channel coordinate; unsupported/excluded props are enumerated; Timeline and native output are deterministic/validated; owner opens and plays the output in LOR and confirms synchronization and correct physical lights. Mandatory human gate. This proves plumbing before intelligent behavior.
+**Status: Complete and merged.** The owner opened the generated Phase 3 package in Light-O-Rama S6 and confirmed the native sequence loads, the generic fixture preview renders without the private house image, and generated lighting events appear in the timeline. The owner accepted this as the Phase 3 completion check. Physical controller output was not independently verified; Phase 3's completed scope is native file generation and S6 preview rendering, not a claim of confirmed hardware playback.
+
+**Done when:** The fixed-tempo pipeline generates a native v15 sequence and deterministic Timeline; S6 opens the generated file; preview and generated events render; unsupported/excluded props are enumerated.
 
 ### Phase 4 — Audio analysis
-Build beats, downbeats, onsets, sections, energy, and hard stops.
+**Status: In progress on PR #9** (`phase-4/audio-analysis`). Build beats, downbeats, onsets, sections, energy, and hard stops.
 
 **Done when:** Analysis JSON and a debug plot are generated; plot can be eyeballed against the song; synthetic tests cover known tempo/events/energy/sections/stops; uncertainty and limitations are explicit.
 
