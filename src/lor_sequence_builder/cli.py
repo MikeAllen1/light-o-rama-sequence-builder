@@ -8,6 +8,7 @@ from collections.abc import Sequence
 
 from lor_sequence_builder.loredit import LoreditError, read_loredit, write_loredit
 from lor_sequence_builder.lorprev import LorprevError, read_lorprev
+from lor_sequence_builder.pulse import PulseGenerationError, build_pulse_sequence
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -23,6 +24,20 @@ def _build_parser() -> argparse.ArgumentParser:
     roundtrip = commands.add_parser("roundtrip", help="write a loss-preserving LOREDIT copy")
     roundtrip.add_argument("sequence", help="input .loredit file")
     roundtrip.add_argument("output", help="new output .loredit path (must not exist)")
+    pulse = commands.add_parser(
+        "pulse", help="build a fixed-tempo beat-pulse walking-skeleton sequence"
+    )
+    pulse.add_argument("--preview", required=True, help="required standalone .lorprev file")
+    pulse.add_argument("--template", required=True, help="matching native S6 .loredit template")
+    pulse.add_argument("--bpm", required=True, type=int, help="fixed tempo in beats per minute")
+    pulse.add_argument("--output", required=True, help="new output .loredit path")
+    pulse.add_argument("--timeline-output", required=True, help="new deterministic Timeline .json path")
+    pulse.add_argument(
+        "--pulse-duration-cs",
+        type=int,
+        default=10,
+        help="pulse duration in centiseconds (default: 10)",
+    )
     return parser
 
 
@@ -37,6 +52,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.print_help()
         return 0
     try:
+        if options.command == "pulse":
+            result = build_pulse_sequence(
+                preview_path=options.preview,
+                template_path=options.template,
+                output_path=options.output,
+                timeline_path=options.timeline_output,
+                bpm=options.bpm,
+                pulse_duration_centiseconds=options.pulse_duration_cs,
+            )
+            print(f"Sequence: {result.sequence_path}")
+            print(f"Timeline: {result.timeline_path}")
+            print(f"Supported props: {result.supported_prop_count}")
+            print(f"Excluded props: {result.excluded_prop_count}")
+            print(f"Beats: {result.beat_count}")
+            print(f"Pulse events: {result.event_count}")
+            return 0
         if options.command == "inspect-preview":
             model = read_lorprev(options.preview)
             print(f"Format: standalone LORPREV revision {model.revision.value}")
@@ -85,7 +116,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         output = write_loredit(document, options.output)
         print(f"Wrote: {output}")
         return 0
-    except (LoreditError, LorprevError) as exc:
+    except (LoreditError, LorprevError, PulseGenerationError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
