@@ -24,8 +24,8 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
-from lor_sequence_builder.choreography import Choreography, Effect, Movement, seconds
 from lor_sequence_builder.channel_mapping import channel_layout_problem
+from lor_sequence_builder.choreography import Choreography, Effect, Movement, seconds
 from lor_sequence_builder.classifier import (
     PropClassification,
     classify_preview,
