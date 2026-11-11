@@ -713,7 +713,7 @@ def analyze_audio(
                 prefix=f".{plot_path.name}.", suffix=".tmp", delete=False,
             ) as stream:
                 plot_temp = Path(stream.name)
-                _svg_plot(stream, duration, energy, beat_times, downbeats, onsets, sections, stops)
+                _svg_plot(stream.file, duration, energy, beat_times, downbeats, onsets, sections, stops)
             os.link(json_temp, json_path)
             json_published = True
             os.link(plot_temp, plot_path)
