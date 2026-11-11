@@ -480,7 +480,9 @@ def test_concurrent_plot_creation_does_not_leave_partial_json(
     plot_path = tmp_path / "race.svg"
     _click_track(audio)
 
-    real_link = audio_analysis.os.link
+    import os
+
+    real_link = os.link
     link_calls = 0
 
     def create_competing_plot(source: str | Path, destination: str | Path) -> None:
@@ -491,7 +493,7 @@ def test_concurrent_plot_creation_does_not_leave_partial_json(
             raise FileExistsError("simulated concurrent output creation")
         real_link(source, destination)
 
-    monkeypatch.setattr(audio_analysis.os, "link", create_competing_plot)
+    monkeypatch.setattr(os, "link", create_competing_plot)
 
     with pytest.raises(AudioAnalysisError, match="overwrite"):
         analyze_audio(audio, json_path, plot_path)
