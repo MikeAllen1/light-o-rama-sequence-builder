@@ -2,7 +2,7 @@
 
 A display-independent command-line tool for building native Light-O-Rama S6 sequences from music and a required `.lorprev` display preview.
 
-**Project status:** Phase 1 implements a fixture-driven reader and loss-preserving writer for the observed S6 LOREDIT save-file version 15 format. The tool does not yet analyze audio, parse `.lorprev` files, or generate choreography.
+**Project status:** Phase 1's native S6 LOREDIT reader/writer is complete. Phase 2 adds standalone `.lorprev` parsing for observed preview revisions 0 and 1. Audio analysis, prop classification, and choreography have not started.
 
 ## Product workflow
 
@@ -32,12 +32,18 @@ uv sync --locked
 uv run lor-sequence-builder --help
 ```
 
-## Phase 1 commands
+## Current commands
 
 Inspect a sequence:
 
 ```powershell
 uv run lor-sequence-builder inspect .\path\to\show.loredit
+```
+
+Inspect a standalone S6 display preview:
+
+```powershell
+uv run lor-sequence-builder inspect-preview .\\path\\to\\display.lorprev
 ```
 
 Write a new round-trip copy (the destination must not already exist):
@@ -46,7 +52,7 @@ Write a new round-trip copy (the destination must not already exist):
 uv run lor-sequence-builder roundtrip .\path\to\show.loredit .\output\roundtrip.loredit
 ```
 
-The reader currently accepts only `saveFileVersion="15"`, the version represented by the reviewed fixture. XML is parsed with `defusedxml`, with DTDs, entities, and external references forbidden. The writer preserves the parsed XML tree opaquely and atomically creates a new output without overwriting the input or an existing destination.
+The LOREDIT reader currently accepts only `saveFileVersion="15"`, the version represented by the reviewed fixture. The standalone LORPREV parser currently supports internal `Revision` values `0` and `1`; this is separate from the LOREDIT save-file version. XML is parsed with `defusedxml`, with DTDs, entities, and external references forbidden. The writer preserves the parsed XML tree opaquely and atomically creates a new output without overwriting the input or an existing destination.
 
 ## Development checks
 
