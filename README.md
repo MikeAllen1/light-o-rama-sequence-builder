@@ -54,7 +54,7 @@ uv run lor-sequence-builder roundtrip .\path\to\show.loredit .\output\roundtrip.
 
 The LOREDIT reader currently accepts only `saveFileVersion="15"`, the version represented by the reviewed fixture. The preview parser supports internal `Revision` values `0`, `1`, `56`, and `58`; these are distinct from the LOREDIT save-file version. XML is parsed with `defusedxml`, with DTDs, entities, and external references forbidden. The writer preserves the parsed XML tree semantically and creates a new output without overwriting the input or an existing destination. XML serialization is not byte-identical: comments, original BOM/line endings, and quote style are not guaranteed to survive.
 
-The preview is the authoritative display map. For LOR props, each `ChannelGrid` row exposes network, Unit ID, and the circuit value present in that row; for DMX props, universe and channel are exposed. These are address fields only: remaining fields are retained verbatim and are not yet semantically interpreted. The original row and source locator are retained. The parser enforces a 20 MiB input limit, 256-level XML nesting limit, and 100,000-element limit, and reports missing or duplicate prop IDs rather than treating them as reliable identities. `PropGroup` and `member` records are parsed into typed group/member models, including prop ID references, arrangement, orientation, top, and left values. The supplied Revision 56 fixture contains 51 props and one group with five members.
+The preview is the authoritative display map. For LOR props, each `ChannelGrid` row exposes network, Unit ID, and the circuit value present in that row; for DMX props, universe and channel are exposed. These are address fields only: remaining fields are retained verbatim and are not yet semantically interpreted. The original row and source locator are retained. The parser enforces a 20 MiB input limit, 256-level XML nesting limit, and 100,000-element limit, and reports missing or duplicate prop IDs rather than treating them as reliable identities. `PropGroup` and `member` records are parsed into typed group/member models, including prop ID references, arrangement, orientation, top, and left values. The runtime-generated synthetic Revision 56 integration preview contains 51 fictional props and one group with five members.
 
 ## Phase 4 audio analysis (in progress)
 
@@ -90,23 +90,23 @@ The command writes a deterministic, versioned Timeline JSON and a new `.loredit`
 
 ## Development checks
 
-The pinned development tools are centralized in `requirements-dev.txt`. CI tests Python 3.12 and 3.13 on Windows and Linux. After `uv sync --locked`, run:
+Pinned developer tools live in the locked `dev` dependency group in `pyproject.toml` and `uv.lock`. CI tests Python 3.12, 3.13, and 3.14 on Windows and Linux. After `uv sync --locked --group dev`, run:
 
 ```powershell
-uv run --no-sync --with-requirements requirements-dev.txt coverage run --branch --source=lor_sequence_builder -m pytest
-uv run --no-sync --with-requirements requirements-dev.txt coverage report --show-missing
-uv run --no-sync --with-requirements requirements-dev.txt ruff check .
-uv run --no-sync --with-requirements requirements-dev.txt mypy --strict src tests
+uv run --no-sync coverage run --branch --source=lor_sequence_builder -m pytest
+uv run --no-sync coverage report --show-missing
+uv run --no-sync ruff check .
+uv run --no-sync mypy --strict src tests
 ```
 
-CI audits the locked production dependency export separately with `pip-audit`; developer tooling is not mixed into that production dependency audit. The development-tool pins are centralized but are not yet part of `uv.lock`; moving the complete dev dependency graph into the lockfile remains outstanding.
+CI audits the locked production dependency export separately with `pip-audit`; developer tooling is not mixed into that production dependency audit. The `pip-audit` command scans the exported locked runtime requirements only; the audit tool itself is installed from the locked `dev` group.
 
 
 ## Repository structure
 
 ```text
 src/lor_sequence_builder/  Python package and CLI
-tests/                     Unit tests and sanitized fixtures
+tests/                     Unit tests and runtime-generated synthetic fixtures
 docs/                      Architecture, format evidence, and phased plan
 .github/workflows/         CI and CodeQL workflows
 SECURITY.md                Security policy
@@ -118,7 +118,7 @@ SECURITY.md                Security policy
 - Props, channels, and controller identities must come from the preview or an explicitly reviewed prop map; never invent or silently reassign them.
 - The user's display does not use pixel props. Pixel/RGB choreography is outside v1 and unsupported props must be reported, not faked or silently omitted.
 - Source audio, previews, and sequence files are read-only. Generated output must be a new file.
-- Never commit original show files, private previews, copyrighted audio, local machine paths, or secrets. Use sanitized fixtures only after review.
+- Never commit user-owned show files, private previews, copyrighted audio, local machine paths, or secrets. Tests generate synthetic sequences and previews at runtime.
 - No GUI, controller upload, live playback, or editing existing sequences in v1.
 
 This is an independent project and is not affiliated with or endorsed by Light-O-Rama.
