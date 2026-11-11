@@ -169,3 +169,28 @@ def test_sequence_prop_may_reference_native_preview_group_id(
 
     document = read_loredit(source)
     assert document.root.find(f"./SequenceProps/SeqProp[@id='{group_id}']") is not None
+
+
+def test_reader_rejects_excessive_xml_nesting(tmp_path: Path) -> None:
+    source = tmp_path / "deep.loredit"
+    nested = "<nested>" * 256 + "</nested>" * 256
+    source.write_text(
+        '<sequence saveFileVersion="15" totalCentiseconds="1">'
+        + nested
+        + "<PreviewClass/><SequenceProps/><TimingGrids/></sequence>",
+        encoding="utf-8",
+    )
+    with pytest.raises(LoreditError, match="nesting depth"):
+        read_loredit(source)
+
+
+def test_reader_rejects_excessive_xml_element_count(tmp_path: Path) -> None:
+    source = tmp_path / "many-elements.loredit"
+    source.write_text(
+        '<sequence saveFileVersion="15" totalCentiseconds="1">'
+        + "<extension/>" * 100_000
+        + "<PreviewClass/><SequenceProps/><TimingGrids/></sequence>",
+        encoding="utf-8",
+    )
+    with pytest.raises(LoreditError, match="element limit"):
+        read_loredit(source)
