@@ -18,7 +18,7 @@ playwright_api = pytest.importorskip("playwright.sync_api")
 
 def _sequence_xml() -> str:
     return """<?xml version="1.0" encoding="utf-8"?>
-<sequence saveFileVersion="15" totalCentiseconds="1000" musicTitle="Browser Acceptance">
+<sequence saveFileVersion="15" totalCentiseconds="10000" musicTitle="Browser Acceptance">
   <PreviewClass id="preview">
     <PropGroup id="group-front" Name="Front Yard">
       <member id="prop-tree" />
@@ -121,6 +121,20 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                     inspector = page.locator("#inspectorContent").inner_text()
                     assert "Tree" in inspector
                     assert "INTENSITY" in inspector
+
+                    initial_width = page.locator("#canvasContent").evaluate(
+                        "(element) => element.clientWidth"
+                    )
+                    page.locator("#zoomSlider").evaluate(
+                        """(element) => {
+                          element.value = "44";
+                          element.dispatchEvent(new Event("input", { bubbles: true }));
+                        }"""
+                    )
+                    zoomed_width = page.locator("#canvasContent").evaluate(
+                        "(element) => element.clientWidth"
+                    )
+                    assert zoomed_width > initial_width
 
                     page.locator("#audioFile").set_input_files(str(audio_path))
                     page.wait_for_function(
