@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import tempfile
-import uuid
 import xml.etree.ElementTree as ET
+import sys
 
 from defusedxml import ElementTree as SafeET
 import zipfile
@@ -17,8 +16,8 @@ from lor_sequence_builder.loredit import read_loredit
 from lor_sequence_builder.pulse import build_pulse_sequence
 
 ROOT = Path(__file__).resolve().parents[1]
-FIXTURES = ROOT / "tests" / "fixtures"
-TEMPLATE_FIXTURE = FIXTURES / "basic_show.loredit"
+sys.path.insert(0, str(ROOT))
+from tests.fixture_builders import write_synthetic_loredit  # noqa: E402
 
 PACKAGE_README = """PHASE 3 LIGHT-O-RAMA S6 TEST
 
@@ -51,13 +50,10 @@ def _strip_local_background_references(template: Path) -> None:
             }:
                 del element.attrib[attribute]
                 removed += 1
-    if removed == 0:
-        raise RuntimeError("Expected a local preview background reference to sanitize.")
-
     preview_class = root.find("PreviewClass")
     if preview_class is None:
         raise RuntimeError("The native S6 template has no PreviewClass to isolate.")
-    preview_class.set("id", str(uuid.uuid4()))
+    preview_class.set("id", "synthetic-isolated-preview")
     preview_class.set("Name", "Isolated Phase 3 Test Preview")
     preview_class.set("EmbedBackgrounds", "False")
     preview_class.attrib.pop("LastSelectedSceneId", None)
@@ -68,9 +64,6 @@ def _strip_local_background_references(template: Path) -> None:
 
 def build_package(destination: Path) -> None:
     """Generate, validate, and package the sample sequence and Timeline."""
-    if not TEMPLATE_FIXTURE.is_file():
-        raise FileNotFoundError("The committed independent Phase 3 template fixture is missing.")
-
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
         destination.unlink()
@@ -82,7 +75,7 @@ def build_package(destination: Path) -> None:
         sequence = work / "Phase3-Test.loredit"
         timeline_path = work / "Phase3-Test.timeline.json"
 
-        shutil.copyfile(TEMPLATE_FIXTURE, template)
+        write_synthetic_loredit(template)
         _strip_local_background_references(template)
         template_root = SafeET.parse(
             template, forbid_dtd=True, forbid_entities=True, forbid_external=True
