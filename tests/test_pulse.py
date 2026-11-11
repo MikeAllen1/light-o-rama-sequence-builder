@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from defusedxml import ElementTree as ET
+import xml.etree.ElementTree as ET
+
+from defusedxml.ElementTree import parse as safe_parse
 import pytest
 
 from lor_sequence_builder.loredit import read_loredit
@@ -16,7 +18,7 @@ def independent_inputs(tmp_path: Path) -> tuple[Path, Path]:
     template_path = write_synthetic_loredit(
         tmp_path / "independent-template.loredit"
     )
-    preview_root = ET.parse(template_path).getroot().find("PreviewClass")
+    preview_root = safe_parse(template_path).getroot().find("PreviewClass")
     assert preview_root is not None
     ET.ElementTree(preview_root).write(
         preview_path, encoding="utf-8", xml_declaration=True
@@ -29,7 +31,7 @@ def matching_inputs(tmp_path: Path) -> tuple[Path, Path]:
     template = tmp_path / "template.loredit"
     write_synthetic_loredit(template)
 
-    tree = ET.parse(template)
+    tree = safe_parse(template)
     root = tree.getroot()
     preview = root.find("PreviewClass")
     sequence_props = root.find("SequenceProps")
@@ -133,7 +135,7 @@ def test_preview_template_identity_mismatch_fails_before_output(
     tmp_path: Path, matching_inputs: tuple[Path, Path]
 ) -> None:
     preview, template = matching_inputs
-    tree = ET.parse(preview)
+    tree = safe_parse(preview)
     prop = tree.getroot().find("PropClass")
     assert prop is not None
     prop.set("id", "not-a-template-prop")
@@ -219,7 +221,7 @@ def test_prop_without_native_sequence_mapping_is_explicitly_excluded(
     tmp_path: Path, matching_inputs: tuple[Path, Path]
 ) -> None:
     preview, template = matching_inputs
-    tree = ET.parse(preview)
+    tree = safe_parse(preview)
     supported = next(
         prop
         for prop in tree.getroot().findall("PropClass")
@@ -229,7 +231,7 @@ def test_prop_without_native_sequence_mapping_is_explicitly_excluded(
     prop_id = supported.get("id")
     assert prop_id is not None
 
-    sequence_tree = ET.parse(template)
+    sequence_tree = safe_parse(template)
     sequence_props = sequence_tree.getroot().find("SequenceProps")
     assert sequence_props is not None
     sequence_prop = sequence_props.find(f"SeqProp[@id='{prop_id}']")
@@ -254,10 +256,10 @@ def test_incomplete_native_channel_is_explicitly_excluded(
     tmp_path: Path, matching_inputs: tuple[Path, Path]
 ) -> None:
     preview, template = matching_inputs
-    sequence_tree = ET.parse(template)
+    sequence_tree = safe_parse(template)
     sequence_props = sequence_tree.getroot().find("SequenceProps")
     assert sequence_props is not None
-    preview_tree = ET.parse(preview)
+    preview_tree = safe_parse(preview)
     supported = next(
         prop
         for prop in preview_tree.getroot().findall("PropClass")
@@ -287,8 +289,8 @@ def test_ac_and_dc_device_types_are_recognized_but_explicitly_excluded(
     tmp_path: Path, matching_inputs: tuple[Path, Path], device_type: str
 ) -> None:
     preview, template = matching_inputs
-    preview_tree = ET.parse(preview)
-    template_tree = ET.parse(template)
+    preview_tree = safe_parse(preview)
+    template_tree = safe_parse(template)
     preview_prop = next(
         prop
         for prop in preview_tree.getroot().findall("PropClass")
@@ -319,8 +321,8 @@ def test_channelgrid_address_count_must_match_native_channel_count(
     tmp_path: Path, matching_inputs: tuple[Path, Path]
 ) -> None:
     preview, template = matching_inputs
-    preview_tree = ET.parse(preview)
-    template_tree = ET.parse(template)
+    preview_tree = safe_parse(preview)
+    template_tree = safe_parse(template)
     prop = next(
         item
         for item in preview_tree.getroot().findall("PropClass")
@@ -351,7 +353,7 @@ def test_independent_s6_preview_and_native_template_prove_channel_mapping(
     tmp_path: Path,
 ) -> None:
     preview, template = independent_inputs(tmp_path)
-    preview_root = ET.parse(preview).getroot()
+    preview_root = safe_parse(preview).getroot()
     template_root = read_loredit(template).root
     assert preview_root.get("Revision") == "56"
     embedded_preview = template_root.find("PreviewClass")
@@ -410,7 +412,7 @@ def test_geometry_mismatch_between_independent_preview_and_template_is_rejected(
     tmp_path: Path,
 ) -> None:
     preview, template = independent_inputs(tmp_path)
-    tree = ET.parse(preview)
+    tree = safe_parse(preview)
     prop = tree.getroot().find(".//PropClass")
     assert prop is not None
     # The fixture intentionally contains no geometry. Add a synthetic shape
@@ -432,7 +434,7 @@ def test_prop_group_relationship_mismatch_is_rejected(
     tmp_path: Path,
 ) -> None:
     preview, template = independent_inputs(tmp_path)
-    tree = ET.parse(preview)
+    tree = safe_parse(preview)
     group = tree.getroot().find("PropGroup")
     assert group is not None
     member = group.find("member")
@@ -488,7 +490,7 @@ def test_unreasonably_long_template_is_rejected_before_beat_allocation(
     tmp_path: Path, matching_inputs: tuple[Path, Path]
 ) -> None:
     preview, template = matching_inputs
-    tree = ET.parse(template)
+    tree = safe_parse(template)
     tree.getroot().set("totalCentiseconds", "999999999999")
     tree.write(template, encoding="utf-8", xml_declaration=True)
 
@@ -505,7 +507,7 @@ def test_preview_template_channel_declarations_must_match(
     tmp_path: Path, matching_inputs: tuple[Path, Path]
 ) -> None:
     preview, template = matching_inputs
-    tree = ET.parse(preview)
+    tree = safe_parse(preview)
     prop = next(
         item
         for item in tree.getroot().findall("PropClass")
@@ -530,8 +532,8 @@ def test_display_with_no_supported_props_fails_before_output(
     tmp_path: Path, matching_inputs: tuple[Path, Path]
 ) -> None:
     preview, template = matching_inputs
-    preview_tree = ET.parse(preview)
-    template_tree = ET.parse(template)
+    preview_tree = safe_parse(preview)
+    template_tree = safe_parse(template)
     for root in (preview_tree.getroot(), template_tree.getroot()):
         preview_class = root if root.tag == "PreviewClass" else root.find("PreviewClass")
         assert preview_class is not None
