@@ -207,3 +207,23 @@ The Phase 4 baseline is merged in `2b962bd39d51b052c3f97d76876a29176dc627ae`. Th
 - Final hardening: corrected cross-platform frame-time test tolerance; documented leading-silence hard-stop candidates; beat-grid confidence is reported separately from tempo confidence.
 - Human gate: pending real-song review. No user audio or real-song diagnostic outputs have been reviewed in this phase.
 - Next step: complete real-song review and evaluate whether confidence and candidate markers are useful before requesting approval for Phase 5. Do not start classifier work until owner approval.
+
+
+### Phase 4 real-audio review follow-up — 2026-11-11
+
+- Status: In progress; PR #12 remains open and unmerged. Phase 5 is blocked. No merge to `master` and no Phase 5 work has occurred.
+- PR: https://github.com/MikeAllen1/light-o-rama-sequence-builder/pull/12
+- Branch: `phase-4/real-audio-review`
+- Scope: correct the real-audio analysis limitations recorded in `docs/PHASE4_REAL_AUDIO_REVIEW.md`; no choreography or prop-classifier work.
+- Follow-up commits on the branch:
+  - `e6a091e7bc064a52f2155985be8989794613c170` — restore test collection and report tempo candidates.
+  - `f65c3052877979e5caae9ce66d2711b93aff78eb` — add 10 ms hop / overlapping-window timing resolution and report schema v1.3.
+  - `b2216240198f67e5dc7b11594d8ef12fa1cfe166` — suppress steady-tone periodic ripple and penalize competing beat-phase evidence.
+  - `88e82a475bbe67425c5122c278e64ece6d0cd7f9` — always include the selected tempo as the first tempo candidate.
+  - `05c35e5f86276c8daeb56820334ac1de4a8f23df` — document the seven production sequence references and v1.3 ten-track recheck.
+  - `836ac68fe6632b08c07311a173ee1693d28a3a9d` — ensure the selected candidate BPM reflects parabolic lag refinement exactly.
+- Analyzer changes: 551-sample (approximately 50 ms) RMS/energy-flux windows at 110-sample (approximately 10 ms) hops; window-centered transient/beat timestamps; 1% periodicity-variance floor; half-period/competing-phase penalty; selected tempo included first in the six-candidate list; report/schema v1.3 records hop and window durations.
+- Tests on prior complete code head `b2216240198f67e5dc7b11594d8ef12fa1cfe166`: Linux pytest (99 tests), Ruff, strict mypy, pip-audit, Windows compatibility tests, CodeQL, and Phase 3 Validation Package all passed. The subsequent `05c35e5` test run exposed one candidate-rounding assertion (102 passed, 1 failed); `836ac68` corrects the report value. CI for current head `836ac68` is pending and must be checked before claiming a green PR.
+- Real-audio recheck: all ten supplied audio streams were reprocessed with a source-equivalent reproduction of v1.3 logic (not the packaged CLI). All ten beat grids remain ambiguous because competing phase energy is substantial; the tempo alias problem is not accepted as solved. Two sequence/audio pairs match in duration within 0.02 seconds: Christmas Vacation Intro and Underneath the Tree. No audio or native .loredit files were committed.
+- Production reference set: seven owner-authored finalized 2026 .loredit sequences are documented as examples of real display style, not as perfect gold-standard output. Their native files remain outside the repository.
+- Remaining acceptance: run the packaged CLI against all ten supplied tracks (or clearly retain the source-equivalent limitation); inspect diagnostic SVGs against the actual audio; resolve or explicitly abstain on tempo aliases; review whether onset/section candidates are useful; confirm the 30 ms lighting-lead behavior against actual sequences; owner review and explicit approval. Phase 5 remains blocked until these gates are satisfied.
