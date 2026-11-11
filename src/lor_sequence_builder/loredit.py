@@ -131,21 +131,31 @@ def _validate_sequence_prop_references(root: ET.Element) -> None:
     if preview is None or sequence_props is None:
         raise LoreditError("LOREDIT must contain PreviewClass and SequenceProps sections")
 
-    preview_ids = {
-        prop.attrib["id"]
-        for prop in preview.findall("PropClass")
-        if prop.attrib.get("id")
-    }
-    preview_ids.update(
-        group.attrib["id"]
-        for group in preview.findall("PropGroup")
-        if group.attrib.get("id")
-    )
-    orphan_ids = [
-        prop.attrib.get("id", "<missing id>")
-        for prop in sequence_props.findall("SeqProp")
-        if prop.attrib.get("id") not in preview_ids
-    ]
+    preview_ids: set[str] = set()
+    for element_name in ("PropClass", "PropGroup"):
+        for index, element in enumerate(preview.findall(element_name)):
+            element_id = element.attrib.get("id", "")
+            if not element_id.strip():
+                raise LoreditError(
+                    f"PreviewClass {element_name} at index {index} has a missing or blank id"
+                )
+            if element_id in preview_ids:
+                raise LoreditError(
+                    f"PreviewClass contains duplicate identity {element_id!r}"
+                )
+            preview_ids.add(element_id)
+
+    sequence_prop_ids: set[str] = set()
+    orphan_ids: list[str] = []
+    for index, prop in enumerate(sequence_props.findall("SeqProp")):
+        prop_id = prop.attrib.get("id", "")
+        if not prop_id.strip():
+            raise LoreditError(f"SequenceProps SeqProp at index {index} has a missing or blank id")
+        if prop_id in sequence_prop_ids:
+            raise LoreditError(f"SequenceProps contains duplicate SeqProp id {prop_id!r}")
+        sequence_prop_ids.add(prop_id)
+        if prop_id not in preview_ids:
+            orphan_ids.append(prop_id)
     if orphan_ids:
         joined = ", ".join(orphan_ids)
         raise LoreditError(

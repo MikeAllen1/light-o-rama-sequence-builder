@@ -75,6 +75,9 @@ BEAT_SUPPORT_RATIO = 0.2
 DOWNBEAT_MIN_EVIDENCE = 0.1
 # Fewer bars than this is too little evidence to infer the bar phase.
 DOWNBEAT_MIN_BARS = 4
+# Dense self-similarity recurrence matrices are quadratic in beat count. Above
+# this limit, section detection falls back to its bounded loudness-change signal.
+MAX_SECTION_RECURRENCE_BEATS = 2_000
 
 FloatArray = npt.NDArray[np.float64]
 IntArray = npt.NDArray[np.int64]
@@ -221,12 +224,15 @@ def _detect_onsets(envelope: FloatArray) -> list[dict[str, Any]]:
     ]
 
 
-def _fit_tempo_bounds(bpm: float, min_bpm: int, max_bpm: int) -> float:
+def _fit_tempo_bounds(bpm: float, min_bpm: int, max_bpm: int) -> float | None:
+    """Return an octave-equivalent tempo inside the requested range, if one exists."""
+    if not math.isfinite(bpm) or bpm <= 0:
+        return None
     while bpm < min_bpm and bpm * 2 <= max_bpm:
         bpm *= 2
     while bpm > max_bpm and bpm / 2 >= min_bpm:
         bpm /= 2
-    return bpm
+    return bpm if min_bpm <= bpm <= max_bpm else None
 
 
 def _drop_unsupported_beats(envelope: FloatArray, frames: IntArray) -> IntArray:
@@ -264,7 +270,10 @@ def _track_beats(
     )
     if not math.isfinite(global_tempo) or global_tempo <= 0:
         return None, empty, 0.0, 0.0
-    global_tempo = _fit_tempo_bounds(global_tempo, min_bpm, max_bpm)
+    fitted_global_tempo = _fit_tempo_bounds(global_tempo, min_bpm, max_bpm)
+    if fitted_global_tempo is None:
+        return None, empty, 0.0, 0.0
+    global_tempo = fitted_global_tempo
     _, frames_any = librosa.beat.beat_track(
         onset_envelope=envelope, sr=SAMPLE_RATE, hop_length=HOP_LENGTH,
         bpm=global_tempo, units="frames", trim=False,
@@ -283,7 +292,10 @@ def _track_beats(
     period = float(np.polyfit(beat_numbers, times, 1)[0])
     if not math.isfinite(period) or period <= 0:
         return None, empty, 0.0, 0.0
-    bpm = _fit_tempo_bounds(60.0 / period, min_bpm, max_bpm)
+    fitted_bpm = _fit_tempo_bounds(60.0 / period, min_bpm, max_bpm)
+    if fitted_bpm is None:
+        return None, empty, 0.0, 0.0
+    bpm = fitted_bpm
 
     # Tempo stability: share of local tempo estimates agreeing with the global
     # tempo (or its half/double, which describe the same pulse).
@@ -368,6 +380,18 @@ def _checkerboard_novelty(recurrence: FloatArray, half_width: int) -> FloatArray
     )
 
 
+def _section_recurrence_novelty(features: FloatArray) -> FloatArray:
+    """Compute self-similarity novelty only when its dense matrix is bounded."""
+    beat_count = features.shape[1]
+    if beat_count > MAX_SECTION_RECURRENCE_BEATS:
+        return np.zeros(beat_count, dtype=np.float64)
+    recurrence = np.asarray(
+        librosa.segment.recurrence_matrix(features, mode="affinity", sym=True, width=3),
+        dtype=np.float64,
+    )
+    return np.maximum(_checkerboard_novelty(recurrence, SECTION_KERNEL_BEATS), 0.0)
+
+
 def _structural_sections(
     samples: npt.NDArray[np.float32],
     beat_frames: IntArray,
@@ -386,12 +410,7 @@ def _structural_sections(
             dtype=np.float64,
         ),
     ])
-    recurrence = np.asarray(
-        librosa.segment.recurrence_matrix(features, mode="affinity", sym=True, width=3),
-        dtype=np.float64,
-    )
-    novelty = np.maximum(_checkerboard_novelty(recurrence, SECTION_KERNEL_BEATS), 0.0)
-    novelty = novelty[:beat_count]
+    novelty = _section_recurrence_novelty(features)[:beat_count]
     rms = np.asarray(librosa.feature.rms(y=samples, hop_length=HOP_LENGTH), dtype=np.float64)
     loudness = _beat_sync(np.log1p(rms * 100.0), beat_frames)[0]
     loudness_change = np.zeros(beat_count, dtype=np.float64)

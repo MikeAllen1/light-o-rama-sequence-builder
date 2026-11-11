@@ -194,3 +194,31 @@ def test_reader_rejects_excessive_xml_element_count(tmp_path: Path) -> None:
     )
     with pytest.raises(LoreditError, match="element limit"):
         read_loredit(source)
+
+
+@pytest.mark.parametrize("duplicate_kind", ["prop", "group", "sequence_prop"])
+def test_reader_rejects_duplicate_native_identities(
+    tmp_path: Path, fixture_path: Path, duplicate_kind: str
+) -> None:
+    source = tmp_path / f"duplicate-{duplicate_kind}.loredit"
+    tree = ET.parse(fixture_path)
+    root = tree.getroot()
+    preview = root.find("PreviewClass")
+    sequence_props = root.find("SequenceProps")
+    assert preview is not None and sequence_props is not None
+
+    if duplicate_kind == "prop":
+        props = preview.findall("PropClass")
+        props[1].set("id", props[0].get("id", ""))
+    elif duplicate_kind == "group":
+        group = ET.SubElement(preview, "PropGroup", {"id": "duplicate-group-id"})
+        props = preview.findall("PropClass")
+        props[0].set("id", group.get("id", ""))
+    else:
+        props = sequence_props.findall("SeqProp")
+        duplicate = ET.fromstring(ET.tostring(props[0]))
+        sequence_props.append(duplicate)
+
+    tree.write(source, encoding="utf-8", xml_declaration=True)
+    with pytest.raises(LoreditError, match="duplicate"):
+        read_loredit(source)
