@@ -209,71 +209,85 @@ def _build_timeline(
         name = _attribute(prop, "Name") or prop_id
         device_type = _attribute(prop, "DeviceType")
         traditional_type = _attribute(prop, "TraditionalType")
-        reason: str | None = None
 
         if device_type not in SUPPORTED_DEVICE_TYPES:
-            reason = (
-                f"DeviceType {device_type!r} is outside the verified walking-skeleton "
-                "support boundary (LOR only)"
+            excluded.append(
+                ExcludedProp(
+                    prop_id=prop_id,
+                    name=name,
+                    reason=(
+                        f"DeviceType {device_type!r} is outside the verified "
+                        "walking-skeleton support boundary (LOR only)"
+                    ),
+                )
             )
-        elif traditional_type not in SUPPORTED_TRADITIONAL_TYPES:
-            reason = (
-                f"TraditionalType {traditional_type!r} is outside the verified support "
-                "boundary (Single Color and Multicolor_string_1_ch)"
+            continue
+        if traditional_type not in SUPPORTED_TRADITIONAL_TYPES:
+            excluded.append(
+                ExcludedProp(
+                    prop_id=prop_id,
+                    name=name,
+                    reason=(
+                        f"TraditionalType {traditional_type!r} is outside the "
+                        "verified support boundary (Single Color and "
+                        "Multicolor_string_1_ch)"
+                    ),
+                )
             )
+            continue
 
         channel_grid = _attribute(prop, "ChannelGrid")
-        if reason is None:
-            if channel_grid is None:
-                reason = "No ChannelGrid assignment is present"
-            else:
-                entries = channel_grid.split(";")
-                if not entries or any(
-                    len(entry.split(",")) < 3
-                    or not all(entry.split(",")[:3])
-                    for entry in entries
-                ):
-                    reason = "ChannelGrid lacks a complete LOR network/Unit ID/circuit address"
+        if channel_grid is None:
+            raise PulseGenerationError(
+                f"Supported prop {prop_id!r} has no ChannelGrid assignment"
+            )
+        entries = channel_grid.split(";")
+        if not entries or any(
+            len(entry.split(",")) < 3 or not all(entry.split(",")[:3])
+            for entry in entries
+        ):
+            raise PulseGenerationError(
+                f"Supported prop {prop_id!r} lacks a complete "
+                "LOR network/Unit ID/circuit address"
+            )
 
         sequence_prop = sequence_prop_map.get(prop_id)
-        if reason is None and sequence_prop is None:
-            reason = "Template has no matching SeqProp; no native channel mapping is available"
-
-        native_channels = (
-            sequence_prop.findall("channel") if sequence_prop is not None else []
-        )
-        if reason is None and not native_channels:
-            reason = "Matching SeqProp contains no native channel records"
+        if sequence_prop is None:
+            raise PulseGenerationError(
+                f"Supported prop {prop_id!r} has no matching SeqProp in the template"
+            )
+        native_channels = sequence_prop.findall("channel")
+        if not native_channels:
+            raise PulseGenerationError(
+                f"Supported prop {prop_id!r} has no native channel records in the template"
+            )
 
         channel_refs: list[_MappedChannel] = []
-        if reason is None:
-            seen_coordinates: set[tuple[str, str, str]] = set()
-            for index, channel in enumerate(native_channels):
-                row = _attribute(channel, "row")
-                col = _attribute(channel, "col")
-                color = _attribute(channel, "color")
-                if row is None or col is None or color is None:
-                    reason = (
-                        f"Native channel {index} is missing row, col, or color coordinates"
-                    )
-                    break
-                coordinates = (row, col, color)
-                if coordinates in seen_coordinates:
-                    reason = f"Duplicate native channel coordinates {coordinates!r}"
-                    break
-                seen_coordinates.add(coordinates)
-                reference = TimelineChannel(
-                    prop_id=prop_id,
-                    channel_index=index,
-                    row=row,
-                    col=col,
-                    color=color,
+        seen_coordinates: set[tuple[str, str, str]] = set()
+        for index, channel in enumerate(native_channels):
+            row = _attribute(channel, "row")
+            col = _attribute(channel, "col")
+            color = _attribute(channel, "color")
+            if row is None or col is None or color is None:
+                raise PulseGenerationError(
+                    f"Supported prop {prop_id!r} native channel {index} is missing "
+                    "row, col, or color coordinates"
                 )
-                channel_refs.append(_MappedChannel(reference=reference, element=channel))
-
-        if reason is not None:
-            excluded.append(ExcludedProp(prop_id=prop_id, name=name, reason=reason))
-            continue
+            coordinates = (row, col, color)
+            if coordinates in seen_coordinates:
+                raise PulseGenerationError(
+                    f"Supported prop {prop_id!r} has duplicate native channel "
+                    f"coordinates {coordinates!r}"
+                )
+            seen_coordinates.add(coordinates)
+            reference = TimelineChannel(
+                prop_id=prop_id,
+                channel_index=index,
+                row=row,
+                col=col,
+                color=color,
+            )
+            channel_refs.append(_MappedChannel(reference=reference, element=channel))
 
         supported_prop_ids.append(prop_id)
         channels_by_prop[prop_id] = channel_refs
