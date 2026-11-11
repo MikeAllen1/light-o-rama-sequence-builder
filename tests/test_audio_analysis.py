@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import math
+import shutil
+import subprocess
 import wave
 from pathlib import Path
 
@@ -278,3 +280,47 @@ def test_analysis_schema_documents_the_emitted_v1_contract() -> None:
         "method", "provenance", "limitations", "tempo", "beats", "downbeats",
         "onsets", "energy", "phrase_boundaries", "section_candidates", "hard_stops",
     }
+
+
+
+def test_analyzer_accepts_mp3_input_and_recovers_tempo(tmp_path: Path) -> None:
+    ffmpeg = shutil.which("ffmpeg")
+    assert ffmpeg is not None, "FFmpeg is a required test/runtime dependency"
+    source = tmp_path / "source.wav"
+    audio = tmp_path / "song.mp3"
+    _click_track(source, duration=8.0, bpm=120.0)
+    subprocess.run(
+        [
+            ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
+            "-i", str(source), "-map", "0:a:0", "-c:a", "libmp3lame",
+            "-q:a", "3", str(audio),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    report = analyze_audio(
+        audio, tmp_path / "mp3.json", tmp_path / "mp3.svg",
+        min_bpm=100, max_bpm=140,
+    )
+
+    assert report["audio"]["duration_seconds"] == pytest.approx(8.0, abs=0.2)
+    assert report["analysis"]["tempo"]["bpm"] == pytest.approx(120.0, abs=5.0)
+    assert len(report["audio"]["sha256"]) == 64
+    assert (tmp_path / "mp3.svg").is_file()
+
+
+def test_default_tempo_range_does_not_double_a_90_bpm_track(tmp_path: Path) -> None:
+    audio = tmp_path / "known-90-bpm-default-range.wav"
+    _click_track(audio, duration=12.0, bpm=90.0)
+
+    report = analyze_audio(
+        audio, tmp_path / "ninety-default.json", tmp_path / "ninety-default.svg"
+    )
+
+    assert report["analysis"]["tempo"]["bpm"] == pytest.approx(90.0, abs=4.0)
+    beat_times = [event["time"] for event in report["analysis"]["beats"]]
+    assert len(beat_times) >= 10
+    assert beat_times[1] - beat_times[0] == pytest.approx(2 / 3, abs=0.08)
