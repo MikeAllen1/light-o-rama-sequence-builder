@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** Phase 2 merged; Phase 3 fixed-tempo Timeline walking skeleton in progress  
+**Status:** Phases 0–3 merged; Phase 4 audio-analysis baseline merged with real-song acceptance review open. See PLAN.md for authoritative status.  
 **Project:** Light-O-Rama Sequence Builder  
 **V1 interface:** Command line  
 **Target output:** Native Light-O-Rama S6 `.loredit` sequence  
@@ -22,8 +22,8 @@ The original audio, preview, prop map, and any reference sequence are read-only 
 - The display preview input is **`.lorprev`** and is mandatory for both `analyze` and `generate`.
 - The generated sequence output is **`.loredit`**, intended to open in the configured target LOR S6 version.
 - The committed standalone preview golden fixture is a sanitized fictional S6 export with internal `Revision="1"`. A second sanitized golden fixture is extracted from the `PreviewClass` embedded in the supplied `fixture_candidate.loredit` (S6 6.6.0.12); it has internal `Revision="56"`, 51 props, and one `PropGroup` containing five prop references. These preview revisions are distinct from the LOREDIT save-file version. The original private owner preview is not committed.
-- The supplied Merry Christmas `.loredit` is an example sequence from the user's actual setup and is a sequence-format reference associated with that setup.
-- The user's display does **not** use pixel props. RGB/pixel support is therefore a declared V1 limitation, not something to fake or infer. If a preview contains a channel/prop type the current writer cannot safely represent, the tool must report it and must not silently drop it or claim full support.
+- Owner-supplied sequences are used only to derive sanitized format fixtures. They are format evidence, not a reference display; nothing about any one display may be hardcoded.
+- RGB/pixel support is a declared V1 limitation, not something to fake or infer. If a preview contains a channel/prop type the current writer cannot safely represent, the tool must report it and must not silently drop it or claim full support.
 - V1 is CLI-only. GUI, controller upload, live playback, and editing existing sequences are out of scope.
 
 ## 3. Design principles
@@ -102,15 +102,15 @@ Every stage has typed Pydantic inputs and outputs. A stage may use the public mo
 
 **Responsibilities:**
 - Parse XML with `defusedxml`; reject DTD/entity expansion and malformed XML.
-- Identify the root/schema family and preview format revision before interpreting fields.
+- Identify the root/schema family (`PreviewClass`) before interpreting fields. `PreviewClass/@Revision` is an edit counter that S6 increments each time a preview is saved. It is not a format version: it is recorded as metadata only and must never be used to accept, reject, or interpret a preview.
 - Parse into raw, loss-minimizing typed models: display metadata, props, prop IDs, groups, geometry/position, shape/grid, channel count and assignments, device/controller references, color/channel capability, and any other relevant metadata present in the preview.
 - Preserve source identifiers and provenance for every channel and prop.
-- Fail clearly on unsupported preview revisions rather than best-effort parsing that could corrupt assignments.
+- Fail clearly on structurally unsupported or ambiguous constructs rather than best-effort parsing that could corrupt assignments.
 - Treat names and descriptive metadata as untrusted text.
 
 **Outputs:** `RawDisplayModel` and `RawPropModel[]`.
 
-**Known preview references:** Revision 0 is covered by a small synthetic fixture; Revision 1 by the supplied standalone `.lorprev`; Revision 56 by the `PreviewClass` extracted from the supplied S6 6.6.0.12 `.loredit`. The Revision 56 fixture contains 51 props and a real `PropGroup` with five `member` references. These internal preview revisions are distinct from the LOREDIT `saveFileVersion` and S6 application build.
+**Known preview references:** a small synthetic fixture, the supplied standalone S6 `.lorprev` export, and the `PreviewClass` extracted from the supplied S6 6.6.0.12 `.loredit` (51 props and a real `PropGroup` with five `member` references). Fixture file names include the edit revision of the source preview for traceability only. The LOREDIT `saveFileVersion` is a real format version and remains gated; preview edit revisions are not.
 
 **Controller/channel interpretation:** Each LOR prop `ChannelGrid` row exposes network, Unit ID, and the circuit value present in that row; each DMX row exposes universe and channel. These are address fields, not a complete interpretation of every field or channel-range behavior. Remaining row fields are retained verbatim and are not yet semantically interpreted. The parser retains the complete original value and source locator. `Undetermined` is a recognized unassigned device type. Later phases must not infer channel counts, ranges, color semantics, or controller capabilities from unparsed fields.
 
@@ -206,7 +206,7 @@ The exact `.loredit` schema is not to be inferred from memory. The supplied real
 
 **Responsibilities:**
 - Require exact prop-ID set equality, semantic equality of every complete `PropClass` subtree (all attributes, master-prop references, shapes, and geometry), and semantic equality of all `PropGroup` records (member references and arrangement). Numeric geometry/layout coordinates may differ only by 1e-6 to tolerate export formatting. Never remap IDs based on names or order.
-- The independent integration fixture pairs an S6-exported standalone Revision 58 preview with a separate native S6 v15 sequence whose embedded preview is Revision 56. Preview revision markers may differ; physical display content must match.
+- The independent integration fixture derives its standalone preview from the template's embedded PreviewClass. Edit revision values may differ between a standalone preview and a sequence's embedded copy and are ignored; physical display content must match.
 - Support only `DeviceType=LOR` with `TraditionalType=Single Color`, `Multicolor_string_1_ch`, or `Channel_per_color`, complete LOR ChannelGrid addresses, and matching native channel records.
 - Exclude unsupported device/prop types and any prop without a provable native mapping explicitly in Timeline JSON. A missing SeqProp, incomplete address, ChannelGrid/native-channel count mismatch, or unverified coordinate pattern is a per-prop exclusion with a reason; no event is generated for it.
 - AC/DC values remain recognized by the preview parser for legacy compatibility but are explicitly excluded from Phase 3 because their native mapping has not been verified.
@@ -266,7 +266,7 @@ Use Pydantic models for public configuration/stage boundaries; small internal im
 
 Files:
 - `rules/default.yaml`: universal rules and default tunables.
-- `examples/rules-sample-a.yaml` and `examples/rules-sample-b.yaml`: illustrative user profiles, clearly labeled examples and not tied to the user's actual display.
+- `examples/rules-sample-a.yaml` and `examples/rules-sample-b.yaml`: illustrative user profiles, clearly labeled examples and not tied to any specific real display.
 
 CLI selection:
 - Default profile is always loaded.
@@ -314,12 +314,12 @@ The currently supplied preview and sequence establish an initial real-world refe
 
 ## 10. V1 channel support and declared limitation
 
-V1 will prioritize the channel types actually present in the user's display and confirmed by fixtures:
+V1 prioritizes the non-pixel channel types most common in LOR displays, as confirmed by fixtures:
 
 - Single-color AC/DC channels.
 - Multi-color props whose colors share a single circuit, with correct handling so they are not treated as independent single-color channels.
 
-**RGB/pixel props are not used by the user's display and are outside the initial V1 implementation target.** The architecture should leave a typed extension point for them, but V1 must not emit pixel choreography or pretend to support pixel data. If a preview includes RGB/pixel props, they must be explicitly listed as unsupported in analysis and the generation report. Generation must fail if the requested sequence would require unsupported pixel channels or if excluding them would violate the user's no-silent-drop requirement. Adding pixel support later requires dedicated preview/sequence fixtures and target-LOR verification.
+**RGB/pixel props are outside the initial V1 implementation target.** The architecture should leave a typed extension point for them, but V1 must not emit pixel choreography or pretend to support pixel data. If a preview includes RGB/pixel props, they must be explicitly listed as unsupported in analysis and the generation report. Generation must fail if the requested sequence would require unsupported pixel channels or if excluding them would violate the no-silent-drop requirement. Adding pixel support later requires dedicated preview/sequence fixtures and target-LOR verification.
 
 Any other unsupported channel or effect type follows the same explicit-report-and-fail policy where safe output cannot be guaranteed.
 
@@ -343,7 +343,7 @@ Any other unsupported channel or effect type follows the same explicit-report-an
 
 Errors should identify the stage, input, and corrective action without dumping sensitive file contents. Examples:
 - Preview missing/unreadable/empty: stop before classification or generation.
-- Unsupported preview revision: report detected revision and supported revisions.
+- Unsupported preview structure: report the construct, its locator, and why it cannot be interpreted safely.
 - Preview has zero props: stop with a clear error.
 - Prop classification uncertain: produce a review flag and evidence; do not silently assume.
 - Unsupported channel type: list prop/channel identity and reason.
@@ -365,11 +365,11 @@ Errors should identify the stage, input, and corrective action without dumping s
 ## 14. Open technical questions to resolve during fixture-led phases
 
 These are implementation questions, not permission to guess:
-- Which `.lorprev` revisions and S6 application versions will be officially supported?
+- Which S6 application versions and LOREDIT `saveFileVersion` values will be officially supported?
 - Which exact `.loredit` elements/attributes are required for each supported channel/effect type?
 - How are timing grids, event boundaries, effect settings, and sequence references represented across supported versions?
 - Which preview properties encode physical segment order/orientation reliably, and which require user overrides?
-- Which channel types/effects are present in the user's display but not yet represented by the supplied fixture pair?
+- Which common channel types/effects are not yet represented by any committed fixture?
 - What resource limits are appropriate for expected song lengths and preview sizes?
 
 Resolve these through additional fixtures, targeted questions, and tests before implementation depends on the answer.

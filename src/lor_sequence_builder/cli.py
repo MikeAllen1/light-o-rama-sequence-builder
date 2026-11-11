@@ -109,7 +109,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if options.command == "inspect-preview":
             model = read_lorprev(options.preview)
-            print(f"Format: standalone LORPREV revision {model.revision.value}")
+            edit_revision = model.revision.value if model.revision else "not recorded"
+            print("Format: standalone LORPREV")
+            print(f"Preview edit revision: {edit_revision}")
             print(f"Props: {len(model.props)}")
             print(f"Scenes: {len(model.scenes)}")
             print(f"Prop views: {len(model.prop_views)}")

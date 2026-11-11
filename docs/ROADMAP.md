@@ -5,8 +5,8 @@ This roadmap follows the authoritative phase order and acceptance gates in [PLAN
 - [x] Phase 0 — Repository scaffold and CI
 - [x] Phase 1 — Native S6 LOREDIT v15 reader/writer; owner confirmed the round-trip file opens in S6
 - [x] Phase 2 — Standalone/embedded LORPREV parser, prop groups, channel-address provenance, and hardening; merged in PR #6
-- [ ] Phase 3 — Fixed-tempo Timeline walking skeleton; PR #7 in progress; owner S6 playback verification pending
-- [ ] Phase 4 — Audio analysis (beats, downbeats, onsets, sections, energy, hard stops)
+- [x] Phase 3 — Fixed-tempo Timeline walking skeleton; merged; owner confirmed the generated sequence opens and renders in S6
+- [ ] Phase 4 — Audio analysis; baseline merged in PR #9, real-song acceptance review open
 - [ ] Phase 5 — Prop classifier and editable `props.yaml`
 - [ ] Phase 6 — Rules engine and user-profile layering
 - [ ] Phase 7 — Section-aware choreography planner v1; owner playback gate
