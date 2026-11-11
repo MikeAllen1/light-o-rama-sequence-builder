@@ -191,3 +191,38 @@ def test_cli_check_build_and_list(tmp_path: Path, capsys: pytest.CaptureFixture[
     timeline.write_text("{}", encoding="utf-8")
     assert main(["check-timeline", str(preview), str(timeline)]) == 2
     assert "missing" in capsys.readouterr().err
+
+
+def test_timeline_writer_rejects_sparse_lor_channel_grid_without_compacting(
+    tmp_path: Path,
+) -> None:
+    display = classic_yard()
+    preview = _preview(tmp_path, display)
+    tree = ET.parse(preview)
+    prop = tree.getroot().find("./PropClass[@Name='Arch 1']")
+    assert prop is not None
+    prop.set("ChannelGrid", "Regular,99,01,01,0,White;;Regular,99,01,03,0,White")
+    tree.write(preview, encoding="utf-8", xml_declaration=True)
+
+    output = tmp_path / "sparse.loredit"
+    report = tmp_path / "sparse.json"
+    with pytest.raises(SequenceWriteError, match="malformed LOR channel assignments"):
+        build_from_timeline(preview, _good(display), load_rule_set(), "song.mp3", output, report)
+    assert not output.exists()
+    assert not report.exists()
+
+
+def test_timeline_writer_rejects_missing_preview_group_identity(tmp_path: Path) -> None:
+    display = classic_yard()
+    preview = _preview(tmp_path, display)
+    tree = ET.parse(preview)
+    root = tree.getroot()
+    group = ET.SubElement(root, "PropGroup", {"Name": "Ambiguous"})
+    ET.SubElement(group, "member", {"id": _ids(display)["Arch 1"]})
+    tree.write(preview, encoding="utf-8", xml_declaration=True)
+
+    with pytest.raises(SequenceWriteError, match="invalid prop/group identities"):
+        build_from_timeline(
+            preview, _good(display), load_rule_set(), "song.mp3",
+            tmp_path / "invalid.loredit", tmp_path / "invalid.json",
+        )
