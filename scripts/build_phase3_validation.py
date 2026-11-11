@@ -7,9 +7,9 @@ import base64
 import gzip
 import json
 import tempfile
+import uuid
 import xml.etree.ElementTree as ET
 import zipfile
-import uuid
 from pathlib import Path
 
 from lor_sequence_builder.loredit import read_loredit
@@ -43,10 +43,11 @@ def _decode_fixture(source: Path, destination: Path) -> None:
 
 
 def _strip_local_background_references(template: Path) -> None:
-    """Remove workstation-local background paths before deriving the standalone preview."""
+    """Remove local image paths and isolate the test preview from S6 saved displays."""
     tree = ET.parse(template)
+    root = tree.getroot()
     removed = 0
-    for element in tree.getroot().iter():
+    for element in root.iter():
         for attribute in tuple(element.attrib):
             if attribute.casefold() in {
                 "backgroundfile",
@@ -58,22 +59,17 @@ def _strip_local_background_references(template: Path) -> None:
     if removed == 0:
         raise RuntimeError("Expected a local preview background reference to sanitize.")
 
-    # S6 can resolve an embedded PreviewClass ID to an existing local display.
-    # Reusing the fixture ID can resurrect the user's house photo even after
-    # all file paths and embedded picture records have been removed.
-    preview_class = tree.getroot().find("PreviewClass")
+    preview_class = root.find("PreviewClass")
     if preview_class is None:
         raise RuntimeError("The native S6 template has no PreviewClass to isolate.")
     preview_class.set("id", str(uuid.uuid4()))
     preview_class.set("Name", "Isolated Phase 3 Test Preview")
     preview_class.set("EmbedBackgrounds", "False")
     preview_class.attrib.pop("LastSelectedSceneId", None)
-
     pictures = preview_class.find("pictures")
     if pictures is not None:
         pictures.clear()
     tree.write(template, encoding="utf-8", xml_declaration=True)
-
 
 def build_package(destination: Path) -> None:
     """Generate, validate, and package the sample sequence and Timeline."""
