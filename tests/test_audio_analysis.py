@@ -177,6 +177,24 @@ def test_competing_offbeat_accents_reduce_beat_grid_confidence(tmp_path: Path) -
     assert analysis["beats"][0]["confidence"] <= 0.05
 
 
+
+def test_tempo_at_search_boundary_is_marked_low_confidence(tmp_path: Path) -> None:
+    """A peak pinned to the configured ceiling is censored, not a confident estimate."""
+    audio = tmp_path / "above-range-220-bpm.wav"
+    _click_track(audio, duration=12.0, bpm=220.0)
+
+    report = analyze_audio(
+        audio, tmp_path / "above-range.json", tmp_path / "above-range.svg"
+    )
+
+    tempo = report["analysis"]["tempo"]
+    assert tempo["bpm"] is not None
+    assert tempo["bpm"] >= 195.0
+    assert tempo["confidence"] <= 0.1
+    assert report["analysis"]["beats"]
+    assert report["analysis"]["beats"][0]["confidence"] <= 0.1
+
+
 def test_analysis_refuses_to_overwrite_outputs(tmp_path: Path) -> None:
     audio = tmp_path / "known.wav"
     _click_track(audio)
