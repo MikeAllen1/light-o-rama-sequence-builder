@@ -10,6 +10,7 @@
   const MAX_AUDIO_BYTES = 200 * 1024 * 1024;
   const MAX_XML_ELEMENTS = 100000;
   const MAX_JSON_BYTES = 5 * 1024 * 1024;
+  const MAX_CANVAS_PIXELS = 36000000;
   const MAX_XML_DEPTH = 256;
 
   const state = {
@@ -655,6 +656,19 @@
     ctx.fillStyle = "#10171f";
     ctx.fillRect(0, 0, width, height);
 
+    state.rows.forEach((row, index) => {
+      const y = index * ROW_HEIGHT;
+      if (row.kind === "group") ctx.fillStyle = "#1b2732";
+      else if (row.kind === "prop") ctx.fillStyle = "#18212a";
+      else ctx.fillStyle = index % 2 ? "#111a22" : "#121c25";
+      ctx.fillRect(0, y, width, ROW_HEIGHT);
+      ctx.strokeStyle = "#202d38";
+      ctx.beginPath();
+      ctx.moveTo(0, y + ROW_HEIGHT - .5);
+      ctx.lineTo(width, y + ROW_HEIGHT - .5);
+      ctx.stroke();
+    });
+
     for (let second = 0; second <= getTimelineDurationSeconds(); second++) {
       const x = second * pps;
       ctx.strokeStyle = second % 5 === 0 ? "#293844" : "#1b2731";
@@ -664,6 +678,7 @@
       ctx.lineTo(Math.floor(x) + .5, height);
       ctx.stroke();
     }
+
     const bars = state.sequence.timingGrids.find((grid) => /^bars?$/i.test(grid.name));
     if (bars) {
       ctx.strokeStyle = "rgba(176, 140, 230, .23)";
@@ -676,68 +691,86 @@
       });
     }
 
+    const beatGrid = state.sequence.timingGrids.find((grid) => /^beats?$/i.test(grid.name));
+    const analysis = state.analysis && state.analysis.analysis;
+    if (beatGrid) {
+      ctx.strokeStyle = "rgba(84, 184, 143, .12)";
+      timingGridMarks(beatGrid).forEach((cs) => {
+        const x = (cs / 100) * pps;
+        ctx.beginPath();
+        ctx.moveTo(Math.floor(x) + .5, 0);
+        ctx.lineTo(Math.floor(x) + .5, height);
+        ctx.stroke();
+      });
+    } else if (analysis && Array.isArray(analysis.beats)) {
+      ctx.strokeStyle = "rgba(84, 184, 143, .10)";
+      analysis.beats.forEach((event) => {
+        const x = Number(event.time) * pps;
+        ctx.beginPath();
+        ctx.moveTo(Math.floor(x) + .5, 0);
+        ctx.lineTo(Math.floor(x) + .5, height);
+        ctx.stroke();
+      });
+    }
+
+    if (!bars && analysis && Array.isArray(analysis.downbeats)) {
+      ctx.strokeStyle = "rgba(178, 139, 232, .17)";
+      analysis.downbeats.forEach((event) => {
+        const x = Number(event.time) * pps;
+        ctx.beginPath();
+        ctx.moveTo(Math.floor(x) + .5, 0);
+        ctx.lineTo(Math.floor(x) + .5, height);
+        ctx.stroke();
+      });
+    }
+
     state.rows.forEach((row, index) => {
+      if (row.kind !== "channel") return;
       const y = index * ROW_HEIGHT;
-      if (row.kind === "group") {
-        ctx.fillStyle = "#1b2732";
-        ctx.fillRect(0, y, width, ROW_HEIGHT);
-      } else if (row.kind === "prop") {
-        ctx.fillStyle = "#18212a";
-        ctx.fillRect(0, y, width, ROW_HEIGHT);
-      } else {
-        ctx.fillStyle = index % 2 ? "#111a22" : "#121c25";
-        ctx.fillRect(0, y, width, ROW_HEIGHT);
-        for (const effect of row.channel.effects) {
-          const x1 = effect.start / 100 * pps;
-          const x2 = effect.end / 100 * pps;
-          const blockWidth = Math.max(1.5, x2 - x1);
-          const attrs = effect.attributes;
-          const startIntensity = Number(attrs.startIntensity != null ? attrs.startIntensity :
-            attrs.intensity != null ? attrs.intensity : 100);
-          const endIntensity = Number(attrs.endIntensity != null ? attrs.endIntensity :
-            attrs.intensity != null ? attrs.intensity : startIntensity);
-          const average = Math.max(0, Math.min(100, (startIntensity + endIntensity) / 2));
-          ctx.globalAlpha = .28 + .72 * average / 100;
-          if (effect.type === "INTENSITY" && startIntensity !== endIntensity) {
-            const gradient = ctx.createLinearGradient(x1, 0, x2, 0);
-            gradient.addColorStop(0, "#317fa8");
-            gradient.addColorStop(1, "#8ad0e0");
-            ctx.fillStyle = gradient;
-          } else {
-            ctx.fillStyle = effectColor(effect);
-          }
-          ctx.fillRect(x1, y + 4, blockWidth, ROW_HEIGHT - 8);
-          ctx.globalAlpha = 1;
-          if (effect.type === "TWINKLE") {
-            ctx.strokeStyle = "rgba(238, 225, 255, .65)";
-            ctx.setLineDash([2, 3]);
-            ctx.beginPath();
-            ctx.moveTo(x1, y + 6);
-            ctx.lineTo(x2, y + 6);
-            ctx.stroke();
-            ctx.setLineDash([]);
-          } else if (effect.type === "SHIMMER") {
-            ctx.strokeStyle = "rgba(255, 239, 208, .65)";
-            ctx.beginPath();
-            ctx.moveTo(x1, y + ROW_HEIGHT / 2);
-            ctx.lineTo(x2, y + ROW_HEIGHT / 2);
-            ctx.stroke();
-          }
-          if (state.selectedEffect === effect) {
-            ctx.strokeStyle = "#f3f7fa";
-            ctx.lineWidth = 1.5;
-            ctx.strokeRect(x1, y + 3, blockWidth, ROW_HEIGHT - 6);
-          }
+      for (const effect of row.channel.effects) {
+        const x1 = effect.start / 100 * pps;
+        const x2 = effect.end / 100 * pps;
+        const blockWidth = Math.max(1.5, x2 - x1);
+        const attrs = effect.attributes;
+        const startIntensity = Number(attrs.startIntensity != null ? attrs.startIntensity :
+          attrs.intensity != null ? attrs.intensity : 100);
+        const endIntensity = Number(attrs.endIntensity != null ? attrs.endIntensity :
+          attrs.intensity != null ? attrs.intensity : startIntensity);
+        const average = Math.max(0, Math.min(100, (startIntensity + endIntensity) / 2));
+        ctx.globalAlpha = .28 + .72 * average / 100;
+        if (effect.type === "INTENSITY" && startIntensity !== endIntensity) {
+          const gradient = ctx.createLinearGradient(x1, 0, x2, 0);
+          gradient.addColorStop(0, "#317fa8");
+          gradient.addColorStop(1, "#8ad0e0");
+          ctx.fillStyle = gradient;
+        } else {
+          ctx.fillStyle = effectColor(effect);
+        }
+        ctx.fillRect(x1, y + 4, blockWidth, ROW_HEIGHT - 8);
+        ctx.globalAlpha = 1;
+        if (effect.type === "TWINKLE") {
+          ctx.strokeStyle = "rgba(238, 225, 255, .65)";
+          ctx.setLineDash([2, 3]);
+          ctx.beginPath();
+          ctx.moveTo(x1, y + 6);
+          ctx.lineTo(x2, y + 6);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        } else if (effect.type === "SHIMMER") {
+          ctx.strokeStyle = "rgba(255, 239, 208, .65)";
+          ctx.beginPath();
+          ctx.moveTo(x1, y + ROW_HEIGHT / 2);
+          ctx.lineTo(x2, y + ROW_HEIGHT / 2);
+          ctx.stroke();
+        }
+        if (state.selectedEffect === effect) {
+          ctx.strokeStyle = "#f3f7fa";
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(x1, y + 3, blockWidth, ROW_HEIGHT - 6);
         }
       }
-      ctx.strokeStyle = "#202d38";
-      ctx.beginPath();
-      ctx.moveTo(0, y + ROW_HEIGHT - .5);
-      ctx.lineTo(width, y + ROW_HEIGHT - .5);
-      ctx.stroke();
     });
   }
-
   function updatePlayhead() {
     if (!state.sequence) return;
     const seconds = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
@@ -758,10 +791,19 @@
     buildLanes();
     renderLabels();
     const duration = getTimelineDurationSeconds();
+    const contentHeight = RULER_HEIGHT + WAVE_HEIGHT +
+      state.lanes.length * MARKER_HEIGHT + state.rows.length * ROW_HEIGHT;
+    const maxWidth = Math.max(canvasViewport.clientWidth, Math.min(30000,
+      Math.floor(MAX_CANVAS_PIXELS / contentHeight)));
+    const maxPps = Math.min(48, maxWidth / duration);
+    const minPps = Math.min(1, maxPps);
+    state.pxPerSecond = Math.max(minPps, Math.min(maxPps, state.pxPerSecond));
+    $("zoomSlider").min = String(minPps);
+    $("zoomSlider").max = String(maxPps);
+    $("zoomSlider").value = String(state.pxPerSecond);
     const width = Math.max(canvasViewport.clientWidth, Math.ceil(duration * state.pxPerSecond));
     $("canvasContent").style.width = width + "px";
-    $("labelsContent").style.height = (RULER_HEIGHT + WAVE_HEIGHT +
-      state.lanes.length * MARKER_HEIGHT + state.rows.length * ROW_HEIGHT) + "px";
+    $("labelsContent").style.height = contentHeight + "px";
     drawRuler(width, duration, state.pxPerSecond);
     drawWaveform(width, state.pxPerSecond);
     drawMarkers(width, state.pxPerSecond);
@@ -1110,7 +1152,9 @@
       if (!state.sequence) return;
       const available = Math.max(1, canvasViewport.clientWidth - 20);
       const duration = getTimelineDurationSeconds();
-      state.pxPerSecond = Math.max(1, Math.min(48, Math.floor(available / duration)));
+      const minimum = Number($("zoomSlider").min);
+      const maximum = Number($("zoomSlider").max);
+      state.pxPerSecond = Math.max(minimum, Math.min(maximum, available / duration));
       $("zoomSlider").value = String(state.pxPerSecond);
       refreshTimeline();
       canvasViewport.scrollLeft = 0;
