@@ -37,6 +37,15 @@ def test_browser_workspace_is_packaged_and_served_with_security_headers(
         assert "default-src 'self'" in response.headers["Content-Security-Policy"]
         assert "X-Content-Type-Options" in response.headers
         assert "LOR SEQUENCER" in body
+    with urlopen(local_server + "/app.js", timeout=3) as response:
+        script = response.read().decode("utf-8")
+        assert response.status == 200
+        assert "function parseSequence" in script
+        assert "function drawWaveform" in script
+    with urlopen(local_server + "/app.css", timeout=3) as response:
+        stylesheet = response.read().decode("utf-8")
+        assert response.status == 200
+        assert ".timeline-workspace" in stylesheet
 
 
 def test_audio_analysis_endpoint_rejects_cross_origin_requests(local_server: str) -> None:
@@ -86,6 +95,7 @@ def test_audio_analysis_endpoint_rejects_dns_rebinding_host(local_server: str) -
     with pytest.raises(HTTPError) as error:
         urlopen(request, timeout=3)
     assert error.value.code == 403
+
 
 def test_mp3_signature_detection_handles_id3_and_mpeg_frames() -> None:
     assert _looks_like_mp3(bytes([73, 68, 51, 3, 0, 0]))
