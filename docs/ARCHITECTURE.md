@@ -1,6 +1,5 @@
 # Architecture
 
-**Status:** Phases 0–3 complete and merged; Phase 4 real-audio acceptance review in progress on PR #12  
 **Project:** Light-O-Rama Sequence Builder  
 **V1 interface:** Command line  
 **Target output:** Native Light-O-Rama S6 `.loredit` sequence  
@@ -8,7 +7,7 @@
 
 ## 1. Purpose and scope
 
-LOR Auto-Sequencer accepts an audio file and the display's required `.lorprev` file, then creates a new native LOR sequence choreographed to the music. It is intended to work with different LOR displays without embedding any particular user's prop names, channel numbers, controller assignments, layout, or naming conventions in code.
+Light-O-Rama Sequence Builder accepts an audio file and the display's required `.lorprev` file, then creates a new native LOR sequence choreographed to the music. It is intended to work with different LOR displays without embedding any particular user's prop names, channel numbers, controller assignments, layout, or naming conventions in code.
 
 The workflow has two explicit commands:
 
@@ -21,8 +20,8 @@ The original audio, preview, prop map, and any reference sequence are read-only 
 
 - The display preview input is **`.lorprev`** and is mandatory for both `analyze` and `generate`.
 - The generated sequence output is **`.loredit`**, intended to open in the configured target LOR S6 version.
-- The committed standalone preview golden fixture is a sanitized fictional S6 export with internal `Revision="1"`. A second sanitized golden fixture is extracted from the `PreviewClass` embedded in the supplied `fixture_candidate.loredit` (S6 6.6.0.12); it has internal `Revision="56"`, 51 props, and one `PropGroup` containing five prop references. These preview revisions are distinct from the LOREDIT save-file version. The original private owner preview is not committed.
-- The supplied Merry Christmas `.loredit` is an example sequence from the user's actual setup and is a sequence-format reference associated with that setup.
+- Owner-provided `.loredit` and `.lorprev` files are private inputs and must remain outside the repository, including sanitized or transformed derivatives. Automated tests use hand-authored or runtime-generated synthetic XML with fictional identifiers and data.
+- Preview revision coverage in tests is synthetic and is not represented as a committed real-world golden export. The preview revision marker is distinct from the LOREDIT save-file version.
 - The user's display does **not** use pixel props. RGB/pixel support is therefore a declared V1 limitation, not something to fake or infer. If a preview contains a channel/prop type the current writer cannot safely represent, the tool must report it and must not silently drop it or claim full support.
 - V1 is CLI-only. GUI, controller upload, live playback, and editing existing sequences are out of scope.
 
@@ -110,7 +109,7 @@ Every stage has typed Pydantic inputs and outputs. A stage may use the public mo
 
 **Outputs:** `RawDisplayModel` and `RawPropModel[]`.
 
-**Known preview references:** Revision 0 is covered by a small synthetic fixture; Revision 1 by the supplied standalone `.lorprev`; Revision 56 by the `PreviewClass` extracted from the supplied S6 6.6.0.12 `.loredit`. The Revision 56 fixture contains 51 props and a real `PropGroup` with five `member` references. These internal preview revisions are distinct from the LOREDIT `saveFileVersion` and S6 application build.
+**Automated preview coverage:** Revision 0 uses a small hand-authored synthetic fixture; Revision 1 and Revision 56 are covered by runtime-generated synthetic XML. The Revision 56 test model includes 51 fictional props and a five-member `PropGroup`. These internal preview revisions are distinct from the LOREDIT `saveFileVersion` and S6 application build. No owner export or derived LOR file is committed.
 
 **Controller/channel interpretation:** Each LOR prop `ChannelGrid` row exposes network, Unit ID, and the circuit value present in that row; each DMX row exposes universe and channel. These are address fields, not a complete interpretation of every field or channel-range behavior. Remaining row fields are retained verbatim and are not yet semantically interpreted. The parser retains the complete original value and source locator. `Undetermined` is a recognized unassigned device type. Later phases must not infer channel counts, ranges, color semantics, or controller capabilities from unparsed fields.
 
@@ -198,7 +197,7 @@ User profiles may add display-specific constraints and adjust tunables such as e
 - Refuse unsupported target versions or unsupported effects/channel constructs.
 - Write to a new output path and verify the resulting file is well-formed and structurally valid.
 
-The exact `.loredit` schema is not to be inferred from memory. The supplied real sequence is a starting reference; additional sanitized fixtures and round-trip tests must establish the structures needed for each supported feature.
+The exact `.loredit` schema is not to be inferred from memory. Owner-supplied examples may be inspected outside the repository, but committed tests must use synthetic data. Additional synthetic fixtures and round-trip tests must establish the structures needed for each supported feature.
 
 ### 5.9 Phase 3 walking-skeleton orchestrator
 
@@ -310,7 +309,7 @@ The test fixtures are the format authority. Never guess schemas from memory or e
 - A round-trip test must compare meaning (props, channel references, timing, effect types/settings, and relevant metadata), not XML whitespace or attribute ordering.
 - Automated structural validation is necessary but not sufficient. Each supported writer/version combination also requires opening the generated file in the target LOR application. Record that manual verification in the release/test report.
 
-The currently supplied preview and sequence establish an initial real-world reference pair. Additional sanitized fixtures are needed before claiming broad display compatibility.
+Owner-supplied examples have informed parser development but remain outside the repository. Synthetic tests do not establish broad display compatibility by themselves; target-version S6 verification remains required.
 
 ## 10. V1 channel support and declared limitation
 
@@ -375,57 +374,9 @@ These are implementation questions, not permission to guess:
 Resolve these through additional fixtures, targeted questions, and tests before implementation depends on the answer.
 
 
-## 15. Delivery order and engineering controls
-
-The implementation sequence is governed by `docs/PLAN.md`. The highest-risk unknown is native LOR sequence compatibility, so the project proves read/write/semantic round-trip and owner-open verification before preview parsing or intelligent audio/choreography work.
-
-The delivery order is:
-0. Scaffold and CI.
-1. Native LOR sequence format reader/writer, with owner opening the rewritten file in LOR.
-2. `.lorprev` preview parser.
-3. Walking skeleton: fixed-tempo pulse Timeline through the writer, with owner playback verification in LOR.
-4. Audio analysis.
-5. Prop classifier and `analyze` / `props.yaml`.
-6. Rules engine.
-7. Section-aware planner v1, with owner playback verification.
-8. Vocal separation and syllable-level singing-face choreography, with owner playback verification.
-9. Planner v2 (motifs, call-and-response, signature moments, dynamics).
-10. Polish, reporting, documentation, and packaging.
-
-Every phase is one GitHub Issue, one branch, and one PR. The issue is the acceptance contract. The PR must contain only work for that phase. A phase is complete only after its tests and CI pass, required human verification is recorded, the PR is merged, and the owner approves the next phase. Keep the progress log in `docs/PLAN.md` current so a fresh session can resume without relying on chat history.
-
-**Human verification is not delegated to automated tests.** For designated gates, the owner must open and/or play the output in the target LOR application. The assistant must never claim to have performed that local verification.
-
-
-## 16. Phase 0 scaffold boundary
-
-The Phase 0 repository is intentionally a minimal Python 3.12 package with a CLI entry point that only displays help. No LOR parsing, sequence serialization, preview interpretation, audio processing, prop classification, or choreography belongs in the scaffold. Those capabilities are introduced only in their ordered phases in `PLAN.md`.
-
-The scaffold uses `uv` and a committed `uv.lock`. CI uses Python 3.12, pytest, Ruff, strict mypy, and dependency auditing. Third-party GitHub Actions are pinned to full commit SHAs, and workflow permissions are explicitly read-only except for the CodeQL analysis job's required security-events permission.
-
-The intended source layout is:
-
-```text
-src/lor_sequence_builder/
-  __init__.py
-  cli.py
-tests/
-  test_cli.py
-docs/
-  ARCHITECTURE.md
-  PLAN.md
-.github/
-  workflows/
-    tests.yml
-    codeql.yml
-```
-
-No phase-specific implementation is considered complete merely because a scaffold command or CI check succeeds. The LOR format remains the first implementation risk and is addressed only after Phase 0 is merged and approved.
-
-
 ## Phase 4 implementation boundary
 
-The initial Phase 4 analyzer is implemented in `audio_analysis.py` and exposed as `analyze-audio`. FFmpeg is an external runtime requirement and normalizes the first audio stream to mono 11.025 kHz signed 16-bit PCM. Inputs are limited to 200 MiB and 30 minutes; clips shorter than two seconds are rejected. The pipeline uses the Python standard library only after normalization, avoiding a heavyweight machine-learning dependency at this stage.
+The Phase 4 analyzer is exposed as `analyze-audio`; `audio_analysis.py` orchestrates the focused `audio_common.py`, `audio_io.py`, `audio_features.py`, `audio_tempo.py`, and `audio_plot.py` modules. FFmpeg is an external runtime requirement and normalizes the first audio stream to mono 11.025 kHz signed 16-bit PCM. Inputs are limited to 200 MiB and 30 minutes; clips shorter than two seconds are rejected. The pipeline uses the Python standard library only after normalization, avoiding a heavyweight machine-learning dependency at this stage.
 
 The CLI exposes configurable minimum and maximum tempo bounds (30–300 BPM, with defaults of 60–200 BPM). The versioned JSON records these configuration values and keeps tempo, beats, downbeats, onsets, RMS energy, phrase candidates, section candidates, and hard-stop candidates as separate fields. Tempo uses autocorrelation over positive frame-energy flux; downbeats are provisional beat-one/every-fourth-beat assumptions; phrase candidates are fixed 16-beat groupings; section candidates are energy-change points without verse/chorus labels; hard stops are sustained near-silence candidates. These are deliberately conservative estimates, not semantic music understanding. The SVG diagnostic overlays energy, beat positions, onsets, and stop candidates.
 
