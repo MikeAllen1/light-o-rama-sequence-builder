@@ -18,6 +18,7 @@ with a message naming the file and the key, never silently ignored.
 from __future__ import annotations
 
 import copy
+import math
 import re
 from dataclasses import dataclass
 from importlib import resources
@@ -229,6 +230,8 @@ def _check(value: Any, param: _Param, where: str) -> Any:
         if isinstance(value, bool) or not isinstance(value, int | float):
             raise RuleProfileError(f"{where} must be a number")
         value = float(value)
+        if not math.isfinite(value):
+            raise RuleProfileError(f"{where} must be a finite number")
     elif param.kind is int:
         if isinstance(value, bool) or not isinstance(value, int):
             raise RuleProfileError(f"{where} must be a whole number")
@@ -310,7 +313,7 @@ def _requirement(raw: Any, index: int, source: str) -> Requirement:
     if not isinstance(raw, dict):
         raise RuleProfileError(f"{where} must be a mapping")
     kind = raw.get("type")
-    if kind not in REQUIREMENT_TYPES:
+    if not isinstance(kind, str) or kind not in REQUIREMENT_TYPES:
         raise RuleProfileError(
             f"{where}.type must be one of {', '.join(REQUIREMENT_TYPES)}"
         )
