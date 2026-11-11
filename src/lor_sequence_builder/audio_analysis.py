@@ -20,7 +20,8 @@ from typing import Any
 
 ANALYSIS_SCHEMA_VERSION = "1.0"
 SAMPLE_RATE = 11_025
-FRAME_SECONDS = 0.05
+FRAME_SAMPLES = round(SAMPLE_RATE * 0.05)
+FRAME_SECONDS = FRAME_SAMPLES / SAMPLE_RATE
 MAX_INPUT_BYTES = 200 * 1024 * 1024
 MAX_DURATION_SECONDS = 30 * 60
 MIN_DURATION_SECONDS = 2.0
@@ -78,7 +79,7 @@ def _read_features(wav_path: Path) -> tuple[list[float], list[float], float]:
                 raise AudioAnalysisError("Audio must be at least 2 seconds long")
             if duration > MAX_DURATION_SECONDS or frames_total > MAX_DECODED_SAMPLES:
                 raise AudioAnalysisError("Audio exceeds the 30-minute analysis limit")
-            window = max(1, round(rate * FRAME_SECONDS))
+            window = FRAME_SAMPLES
             rms_values: list[float] = []
             previous_energy = 0.0
             flux_values: list[float] = []
