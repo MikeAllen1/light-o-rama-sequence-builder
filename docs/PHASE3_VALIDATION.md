@@ -17,7 +17,7 @@ The generated native S6 v15 sequence should open, and its supported sample props
 
 ## Important limitation
 
-The committed preview/template pair is sanitized and fictional. This test validates that the generated native file opens in S6 and that its sequence preview animates. It does **not** validate or activate the owner's real controllers, physical lights, or house channel mapping. Testing actual hardware requires a separate run using the owner's real matching preview and sequence template.
+The committed preview/template pair is fictional and synthetic. This test validates that the generated native file opens in S6 and that its sequence preview animates. It does **not** validate or activate physical controllers, lights, or channel assignments. Hardware validation requires a separate owner-run test with the matching display configuration; keep real display files local and out of the repository.
 
 ## If something fails
 

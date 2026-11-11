@@ -191,7 +191,7 @@ User profiles may add display-specific constraints and adjust tunables such as e
 **Inputs:** Validated Timeline, exact preview-derived display mapping, configured target LOR version.
 
 **Responsibilities:**
-- Serialize only validated Timeline events to the native `.loredit` schema demonstrated by committed, sanitized fixtures.
+- Serialize only validated Timeline events to the native `.loredit` schema supported by locally inspected S6 format evidence and documented structural observations. Synthetic fixtures provide regression coverage; they do not establish the native format by themselves.
 - Preserve required target-version metadata and references needed by LOR.
 - Never invent or reassign channel/controller/prop identifiers.
 - Never contain musical analysis or choreography policy.
@@ -299,22 +299,21 @@ Names and option defaults are proposals pending approval. Both commands require 
 
 ## 9. Compatibility and fixture policy
 
-The test fixtures are the format authority. Never guess schemas from memory or extrapolate compatibility from one file.
+S6-generated samples inspected locally and their documented structural observations are the format evidence. Synthetic fixtures provide repeatable regression coverage; they are not native-format authority and must not be presented as sanitized owner data.
 
-- Keep sanitized `.lorprev` and `.loredit` fixtures under `tests/fixtures/`.
-- Never commit the user's original display preview, original sequences, audio, local media paths, personal metadata, or private preview/background assets.
-- Create multiple preview fixtures covering materially different file sizes, naming styles, groups/shapes, and supported channel types.
-- For each fixture, maintain expected prop classification and channel provenance.
-- Include sequence fixtures for each supported output construct and target-version family.
-- Add golden-file tests for parsing/classification and semantic round-trip tests.
-- A round-trip test must compare meaning (props, channel references, timing, effect types/settings, and relevant metadata), not XML whitespace or attribute ordering.
+- Keep only fictional, hand-authored or runtime-generated synthetic `.lorprev` and `.loredit` fixtures under `tests/fixtures/`.
+- Never commit original or sanitized owner/customer previews, sequences, audio, local media paths, personal metadata, or private preview/background assets.
+- Create synthetic preview fixtures covering materially different structures, groups/shapes, and supported channel types without copying owner/customer identifiers or content.
+- For each fixture, maintain expected parser behavior, prop classification, and channel provenance.
+- Include synthetic sequence fixtures for each supported output construct and target-version family.
+- Add regression tests for parsing/classification and semantic round trips. Tests must compare meaning (props, channel references, timing, effect types/settings, and relevant metadata), not XML whitespace or attribute ordering.
 - Automated structural validation is necessary but not sufficient. Each supported writer/version combination also requires opening the generated file in the target LOR application. Record that manual verification in the release/test report.
 
-The currently supplied preview and sequence establish an initial real-world reference pair. Additional sanitized fixtures are needed before claiming broad display compatibility.
+The initial format investigation used local S6 exports that are not retained in the repository. Additional format claims require targeted S6-generated evidence reviewed locally; retain only synthetic regression cases and non-sensitive structural observations.
 
 ## 10. V1 channel support and declared limitation
 
-V1 prioritizes the non-pixel channel types most common in LOR displays, as confirmed by fixtures:
+V1 currently implements and tests the following non-pixel channel types. Synthetic fixtures exercise these behaviors but do not establish how common they are across LOR displays:
 
 - Single-color AC/DC channels.
 - Multi-color props whose colors share a single circuit, with correct handling so they are not treated as independent single-color channels.

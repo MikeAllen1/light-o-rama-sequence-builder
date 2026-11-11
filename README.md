@@ -103,7 +103,7 @@ uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --
 
 ```text
 src/lor_sequence_builder/  Python package and CLI
-tests/                     Unit tests and sanitized fixtures
+tests/                     Unit tests and synthetic fixtures
 docs/                      Architecture, format evidence, and phased plan
 .github/workflows/         CI and CodeQL workflows
 SECURITY.md                Security policy
@@ -117,7 +117,7 @@ LICENSE                    MIT license
 - Props, channels, and controller identities must come from the preview or an explicitly reviewed prop map; never invent or silently reassign them.
 - V1 does not support pixel/RGB props. Unsupported props must be reported, not faked or silently omitted.
 - Source audio, previews, and sequence files are read-only. Generated output must be a new file.
-- Never commit original show files, private previews, copyrighted audio, local machine paths, or secrets. Use sanitized fixtures only after review.
+- Never commit original or sanitized show files, private previews, copyrighted audio, local machine paths, or secrets. Tests use fictional, hand-authored or runtime-generated synthetic fixtures only.
 - No GUI, controller upload, live playback, or editing existing sequences in v1.
 
 This is an independent project and is not affiliated with or endorsed by Light-O-Rama.
