@@ -34,12 +34,12 @@ secrets/
 credentials/
 local.settings.json
 
-# Light-O-Rama show files, display previews, and user media (keep original files local)
-# Sanitized test fixtures are committed as base64 (.b64) transport copies under tests/fixtures/.
+# Light-O-Rama show files, display previews, and user media.
+# The one hand-authored fictional preview is explicitly allowlisted below.
 *.lorprev
 *.LORPREV
 *.lorpreview
-!tests/fixtures/*.lorprev
+!tests/fixtures/synthetic_display.lorprev
 *.loredit
 *.lms
 *.las
