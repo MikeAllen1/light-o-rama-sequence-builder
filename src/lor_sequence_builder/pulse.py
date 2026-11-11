@@ -344,22 +344,62 @@ def _validate_timeline(
     mapped_channels: dict[tuple[str, int], ET.Element],
 ) -> None:
     supported = set(timeline.supported_prop_ids)
+    if len(supported) != len(timeline.supported_prop_ids):
+        raise PulseGenerationError("Timeline contains duplicate supported prop IDs")
     if not supported.issubset(preview_ids):
         raise PulseGenerationError("Timeline contains a prop ID absent from the preview")
-    if len(timeline.beat_positions_centiseconds) == 0:
-        raise PulseGenerationError("Timeline contains no beat positions")
+
+    excluded_ids = [prop.prop_id for prop in timeline.excluded_props]
+    if len(set(excluded_ids)) != len(excluded_ids):
+        raise PulseGenerationError("Timeline contains duplicate excluded prop IDs")
+    if not set(excluded_ids).issubset(preview_ids) or supported.intersection(excluded_ids):
+        raise PulseGenerationError("Timeline excluded-prop references are invalid")
+
+    beats = timeline.beat_positions_centiseconds
+    if not beats or tuple(sorted(set(beats))) != beats:
+        raise PulseGenerationError("Timeline beat positions must be non-empty and strictly increasing")
+    if set(prop_id for prop_id, _ in mapped_channels) != supported:
+        raise PulseGenerationError("Timeline supported props do not match the native channel map")
+
+    expected = {
+        (beat_index, prop_id, channel_index)
+        for beat_index in range(len(beats))
+        for prop_id, channel_index in mapped_channels
+    }
+    if len(expected) != len(timeline.events):
+        raise PulseGenerationError("Timeline does not contain exactly one pulse per beat/channel")
+
+    observed: set[tuple[int, str, int]] = set()
     for event in timeline.events:
         channel = event.channel
         if channel.prop_id not in preview_ids or channel.prop_id not in supported:
             raise PulseGenerationError("Timeline event references an unknown or unsupported prop")
-        if (channel.prop_id, channel.channel_index) not in mapped_channels:
-            raise PulseGenerationError("Timeline event references an unknown native channel")
-        if event.start_centisecond not in timeline.beat_positions_centiseconds:
-            raise PulseGenerationError("Timeline event does not begin on a generated beat")
+        key = (event.beat_index, channel.prop_id, channel.channel_index)
+        if key not in expected or key in observed:
+            raise PulseGenerationError("Timeline event has an invalid or duplicate beat/channel reference")
+        if event.beat_index < 0 or event.beat_index >= len(beats):
+            raise PulseGenerationError("Timeline event references an invalid beat index")
+        if event.start_centisecond != beats[event.beat_index]:
+            raise PulseGenerationError("Timeline event does not begin at its indexed beat position")
         if event.start_centisecond < 0 or event.end_centisecond > timeline.duration_centiseconds:
             raise PulseGenerationError("Timeline event extends outside sequence duration")
-        if event.end_centisecond <= event.start_centisecond:
-            raise PulseGenerationError("Timeline event has an empty or negative duration")
+        expected_end = min(
+            event.start_centisecond + timeline.pulse_duration_centiseconds,
+            timeline.duration_centiseconds,
+        )
+        if event.end_centisecond != expected_end:
+            raise PulseGenerationError("Timeline event duration does not match the configured pulse")
+        native_channel = mapped_channels[(channel.prop_id, channel.channel_index)]
+        if (
+            native_channel.attrib.get("row") != channel.row
+            or native_channel.attrib.get("col") != channel.col
+            or native_channel.attrib.get("color") != channel.color
+        ):
+            raise PulseGenerationError("Timeline channel coordinates do not match the native template")
+        observed.add(key)
+
+    if observed != expected:
+        raise PulseGenerationError("Timeline is missing one or more expected beat/channel pulses")
 
 
 def build_pulse_sequence(
