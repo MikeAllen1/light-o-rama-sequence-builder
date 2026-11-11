@@ -7,7 +7,6 @@ import random
 
 import pytest
 
-
 from lor_sequence_builder.formation import formation
 from lor_sequence_builder.planner import plan_show
 from lor_sequence_builder.rules import (
