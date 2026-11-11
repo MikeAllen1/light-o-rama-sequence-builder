@@ -179,17 +179,17 @@ def test_competing_offbeat_accents_reduce_beat_grid_confidence(tmp_path: Path) -
 
 
 def test_tempo_at_search_boundary_is_marked_low_confidence(tmp_path: Path) -> None:
-    """A known tempo at the configured ceiling is censored, not confident."""
-    audio = tmp_path / "at-range-180-bpm.wav"
-    _click_track(audio, duration=12.0, bpm=180.0)
+    """An estimate pinned near the configured ceiling is censored, not confident."""
+    audio = tmp_path / "above-range-220-bpm.wav"
+    _click_track(audio, duration=12.0, bpm=220.0)
 
     report = analyze_audio(
-        audio, tmp_path / "at-range.json", tmp_path / "at-range.svg",
-        min_bpm=50, max_bpm=180,
+        audio, tmp_path / "above-range.json", tmp_path / "above-range.svg",
+        min_bpm=100, max_bpm=110,
     )
 
     tempo = report["analysis"]["tempo"]
-    assert tempo["bpm"] == pytest.approx(180.0, abs=3.0)
+    assert tempo["bpm"] == pytest.approx(109.32, abs=2.0)
     assert tempo["confidence"] <= 0.1
     assert report["analysis"]["beats"]
     assert report["analysis"]["beats"][0]["confidence"] <= 0.1
