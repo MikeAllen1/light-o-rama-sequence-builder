@@ -187,6 +187,12 @@ def _construct_mapping(loader: _UniqueKeyLoader, node: yaml.MappingNode) -> dict
     mapping: dict[Any, Any] = {}
     for key_node, value_node in node.value:
         key = loader.construct_object(key_node)
+        try:
+            hash(key)
+        except TypeError as exc:
+            raise RuleProfileError(
+                f"line {key_node.start_mark.line + 1}: mapping keys must be scalar/hashable"
+            ) from exc
         if key in mapping:
             raise RuleProfileError(
                 f"line {key_node.start_mark.line + 1}: key {key!r} appears more than once"
