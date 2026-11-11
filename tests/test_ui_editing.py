@@ -225,13 +225,13 @@ def test_export_check_refuses_overlaps_and_foreign_requests(workspace: str) -> N
     from urllib.request import Request, urlopen
 
     def post(body: bytes, *, original: bytes | None = None,
-             **headers: str) -> tuple[int, dict[str, Any]]:
+             headers: dict[str, str] | None = None) -> tuple[int, dict[str, Any]]:
         request_body = json.dumps({
             "original": (original if original is not None else sequence_text().encode()).decode(),
             "edited": body.decode(),
         }).encode()
         request = Request(workspace + "api/export", data=request_body, method="POST",
-                          headers={"Content-Type": "application/json", **headers})
+                          headers={"Content-Type": "application/json", **(headers or {})})
         try:
             with urlopen(request, timeout=5) as response:
                 return response.status, json.loads(response.read())
@@ -259,5 +259,5 @@ def test_export_check_refuses_overlaps_and_foreign_requests(workspace: str) -> N
     assert duplicated != good
     assert post(duplicated)[0] == 200
     assert post(b"<not-a-sequence/>")[0] == 422
-    assert post(good, Origin="http://attacker.example")[0] == 403
-    assert post(good, **{"Content-Type": "text/plain"})[0] == 415
+    assert post(good, headers={"Origin": "http://attacker.example"})[0] == 403
+    assert post(good, headers={"Content-Type": "text/plain"})[0] == 415
