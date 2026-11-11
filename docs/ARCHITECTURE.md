@@ -212,7 +212,7 @@ The exact `.loredit` schema is not to be inferred from memory. The supplied real
 - Generate deterministic integer-centisecond beat positions from an explicitly supplied integer BPM (30–300); no audio analysis or tempo inference occurs in this phase.
 - Replace prior effects in the in-memory template copy with short `INTENSITY` pulses at each beat for every supported native channel.
 - Validate Timeline prop/channel references and event bounds before serialization; re-read the generated LOREDIT before publishing outputs.
-- Write a versioned Timeline JSON with source SHA-256 fingerprints, BPM, beat positions, supported/excluded props, and event references.
+- Write a versioned Timeline JSON with SHA-256 fingerprints of the validated parsed XML trees, BPM, beat positions, supported/excluded props, and event references.
 
 This is a temporary engineering harness, not the final user workflow. It requires a compatible S6 sequence template because the current writer preserves a verified native v15 document rather than constructing a blank sequence. The owner must open and play the output in S6; automated checks do not satisfy this human gate.
 
