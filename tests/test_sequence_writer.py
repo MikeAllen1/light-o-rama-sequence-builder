@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+import lor_sequence_builder.sequence_writer as sequence_writer_module
+
 from lor_sequence_builder.choreography import (
     Choreography,
     Effect,
@@ -16,8 +18,6 @@ from lor_sequence_builder.choreography import (
 from lor_sequence_builder.cli import main
 from lor_sequence_builder.loredit import read_loredit
 from lor_sequence_builder.rules import load_rule_set
-import lor_sequence_builder.sequence_writer as sequence_writer_module
-
 from lor_sequence_builder.sequence_writer import (
     RulesFailedError,
     SequenceWriteError,
