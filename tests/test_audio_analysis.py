@@ -467,3 +467,27 @@ def test_analysis_does_not_publish_json_when_plot_generation_fails(
     assert not json_path.exists()
     assert not plot_path.exists()
     assert not list(tmp_path.glob(".atomic.*.tmp"))
+
+
+
+def test_concurrent_plot_creation_does_not_leave_partial_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import lor_sequence_builder.audio_analysis as audio_analysis
+
+    audio = tmp_path / "race.wav"
+    json_path = tmp_path / "race.json"
+    plot_path = tmp_path / "race.svg"
+    _click_track(audio)
+
+    def create_competing_plot(path: Path, *args: object, **kwargs: object) -> None:
+        path.write_text("another process won", encoding="utf-8")
+
+    monkeypatch.setattr(audio_analysis, "_svg_plot", create_competing_plot)
+
+    with pytest.raises(AudioAnalysisError, match="overwrite"):
+        analyze_audio(audio, json_path, plot_path)
+
+    assert not json_path.exists()
+    assert plot_path.read_text(encoding="utf-8") == "another process won"
+    assert not list(tmp_path.glob(".race.*.tmp"))
