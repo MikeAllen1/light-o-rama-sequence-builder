@@ -5,6 +5,8 @@ from __future__ import annotations
 import itertools
 import random
 
+import pytest
+
 
 from lor_sequence_builder.formation import formation
 from lor_sequence_builder.planner import plan_show
@@ -154,7 +156,9 @@ def test_random_invented_yards_plan_without_breaking_a_rule() -> None:
 
 
 
-def test_formation_spatial_work_scales_without_all_pairs_comparisons(monkeypatch) -> None:
+def test_formation_spatial_work_scales_without_all_pairs_comparisons(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from types import SimpleNamespace
 
     import lor_sequence_builder.formation as module
@@ -170,7 +174,7 @@ def test_formation_spatial_work_scales_without_all_pairs_comparisons(monkeypatch
     calls = 0
     original = module.math.dist
 
-    def counted(left, right):
+    def counted(left: tuple[float, float], right: tuple[float, float]) -> float:
         nonlocal calls
         calls += 1
         return original(left, right)
