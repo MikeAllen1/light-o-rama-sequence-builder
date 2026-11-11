@@ -29,7 +29,6 @@ from lor_sequence_builder.channel_mapping import (
     channel_layout_problem,
     parse_channel_grid,
 )
-from lor_sequence_builder.channel_mapping import COLUMN_LAYOUT_TYPES
 from lor_sequence_builder.loredit import LoreditDocument
 from lor_sequence_builder.lorprev import (
     MAX_CHANNEL_GRID_ENTRIES_PER_PROP,
