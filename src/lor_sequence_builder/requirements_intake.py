@@ -438,7 +438,9 @@ def gather_requirements(
     guided: bool = False,
 ) -> tuple[Requirement, ...]:
     """Run the intake conversation and return the requirements to use for this build."""
-    saved = load_saved_requirements(preview_path)
+    # A fresh start must not parse or validate the saved sidecar: that is the
+    # state the caller explicitly asked to bypass (including malformed YAML).
+    saved = () if fresh else load_saved_requirements(preview_path)
     existing = () if fresh else saved
     if existing:
         _show(say, f"Saved requirements for this display ({len(existing)}):", existing)
