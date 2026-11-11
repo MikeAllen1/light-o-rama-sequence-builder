@@ -170,6 +170,22 @@ def build_from_timeline(
         raise SequenceWriteError("Preview, sequence output and report must be different paths")
     if output.exists():
         raise SequenceWriteError(f"Sequence output already exists; refusing to overwrite: {output}")
+    if report_output.exists():
+        try:
+            previous_report = json.loads(report_output.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise SequenceWriteError(
+                f"Report already exists; refusing to overwrite: {report_output}"
+            ) from exc
+        if not (
+            isinstance(previous_report, dict)
+            and previous_report.get("build_report_version") == 1
+            and previous_report.get("build_status") == "failed"
+            and previous_report.get("sequence_output") == str(output.resolve())
+        ):
+            raise SequenceWriteError(
+                f"Report already exists; refusing to overwrite: {report_output}"
+            )
 
     preview_model = read_lorprev(preview_source)
     invalid_identities = [
