@@ -204,11 +204,14 @@ def load_analysis(path: str | Path) -> dict[str, Any]:
                     f"Analysis JSON field {key!r} contains a non-object event"
                 )
             raw_time = event.get("time")
-            if (isinstance(raw_time, bool) or not isinstance(raw_time, int | float)
-                    or not math.isfinite(float(raw_time))
+            if isinstance(raw_time, bool) or not isinstance(raw_time, int | float):
+                raise EvaluationError(
+                    f"Analysis field {key!r} has an event without a numeric time"
+                )
+            if (not math.isfinite(float(raw_time))
                     or not 0 <= float(raw_time) <= float(duration)):
                 raise EvaluationError(
-                    f"Analysis JSON field {key!r} contains an invalid or missing event time"
+                    f"Analysis field {key!r} contains an invalid time outside the audio duration"
                 )
 
     energy = payload.get("energy")

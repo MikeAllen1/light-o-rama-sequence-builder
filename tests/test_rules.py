@@ -327,7 +327,7 @@ def test_movements_must_reach_every_prop_in_order() -> None:
     assert findings == [
         "Arch 2 channel 1 at 0:09.00: Effect belongs to movement 'ghost', which is not defined",
         "Arch 4 at 0:01.00: The chase 'c' never reaches this prop, so it stops partway",
-        "Arch 3 at 0:01.20: The chase 'c' reaches this prop before the one listed ahead of it",
+        "Arch 3 at 0:01.20: The chase 'c' reaches this prop at the same time as or before the one listed ahead of it",
     ]
 
 
