@@ -436,6 +436,7 @@ def test_api_transport_refuses_redirects_before_forwarding_credentials() -> None
 
     request = urllib.request.Request(API_URL, headers={"x-api-key": "test-secret"})
     handler = _RejectRedirects()
-    assert handler.redirect_request(
+    result: object = handler.redirect_request(
         request, None, 302, "Found", {}, "https://attacker.example/collect"
-    ) is None
+    )
+    assert result is None
