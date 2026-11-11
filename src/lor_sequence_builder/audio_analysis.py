@@ -230,6 +230,16 @@ def _estimate_tempo(
     return round(bpm, 2), round(confidence, 4), refined_lag, phase, round(phase_confidence, 4)
 
 
+def _beat_grid_status(
+    has_beats: bool, tempo_confidence: float, phase_confidence: float
+) -> str:
+    if not has_beats:
+        return "unavailable"
+    if tempo_confidence * phase_confidence < 0.2:
+        return "ambiguous"
+    return "provisional"
+
+
 def _energy_curve(rms: list[float]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     frames_per_second = round(1.0 / FRAME_SECONDS)
@@ -443,13 +453,9 @@ def analyze_audio(
         stops = _hard_stops(rms, minimum_stop_silence)
         phrases = _phrase_boundaries(duration, bpm, phase, lag)
         sections = _section_candidates(energy)
-        beat_grid_confidence = tempo_confidence * phase_confidence
-        if not beat_times:
-            beat_grid_status = "unavailable"
-        elif beat_grid_confidence < 0.2:
-            beat_grid_status = "ambiguous"
-        else:
-            beat_grid_status = "provisional"
+        beat_grid_status = _beat_grid_status(
+            bool(beat_times), tempo_confidence, phase_confidence
+        )
         report: dict[str, Any] = {
             "schema_version": ANALYSIS_SCHEMA_VERSION,
             "audio": {
