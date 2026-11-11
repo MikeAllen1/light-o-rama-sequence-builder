@@ -39,6 +39,41 @@ def _click_track(path: Path, duration: float = 8.0, bpm: float = 120.0) -> None:
         output.writeframes(array.array("h", samples).tobytes())
 
 
+def _rhythmic_track(path: Path, duration: float = 8.0, bpm: float = 120.0) -> None:
+    """Create a basic kick/snare-like pulse with weaker offbeat accents."""
+    rate = 11_025
+    total = int(rate * duration)
+    samples = [0] * total
+    beat_seconds = 60.0 / bpm
+    beat_index = 0
+    beat_time = 0.3
+    beat_amplitudes = (15_000, 6_000, 9_000, 6_000)
+
+    events: list[tuple[float, int]] = []
+    while beat_time + 0.03 < duration:
+        events.append((beat_time, beat_amplitudes[beat_index % 4]))
+        events.append((beat_time + beat_seconds / 2.0, 3_500))
+        beat_index += 1
+        beat_time = 0.3 + beat_index * beat_seconds
+
+    for onset, amplitude in events:
+        start = int(onset * rate)
+        count = int(0.03 * rate)
+        for offset in range(count):
+            envelope = min(1.0, offset / 30, (count - offset) / 30)
+            samples[start + offset] = int(
+                amplitude * envelope * math.sin(2.0 * math.pi * 880 * offset / rate)
+            )
+
+    with wave.open(str(path), "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(rate)
+        import array
+
+        output.writeframes(array.array("h", samples).tobytes())
+
+
 def test_analyze_audio_detects_tempo_beats_onsets_and_hard_stop(tmp_path: Path) -> None:
     audio = tmp_path / "known-120-bpm.wav"
     report_path = tmp_path / "analysis.json"
@@ -76,6 +111,28 @@ def test_analyze_audio_detects_tempo_beats_onsets_and_hard_stop(tmp_path: Path) 
     assert "<svg" in svg
     assert "provisional downbeats" in svg
     assert "energy transitions" in svg
+
+
+def test_tempo_estimator_handles_syncopation_and_uneven_beat_accents(
+    tmp_path: Path,
+) -> None:
+    audio = tmp_path / "syncopated-120-bpm.wav"
+    _rhythmic_track(audio, duration=12.0, bpm=120.0)
+
+    report = analyze_audio(
+        audio, tmp_path / "syncopated.json", tmp_path / "syncopated.svg",
+        min_bpm=50, max_bpm=200,
+    )
+
+    tempo = report["analysis"]["tempo"]["bpm"]
+    beats = [event["time"] for event in report["analysis"]["beats"]]
+    assert tempo == pytest.approx(120.0, abs=5.0)
+    assert beats[0] == pytest.approx(0.3, abs=0.15)
+    assert len(beats) >= 16
+    assert all(
+        (right - left) == pytest.approx(60.0 / tempo, abs=0.08)
+        for left, right in itertools.pairwise(beats)
+    )
 
 
 def test_analysis_refuses_to_overwrite_outputs(tmp_path: Path) -> None:
