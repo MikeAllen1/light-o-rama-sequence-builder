@@ -7,6 +7,7 @@ from typing import Any
 
 from lor_sequence_builder.audio_common import FRAME_CENTER_SECONDS, FRAME_SECONDS
 
+
 def _median(values: list[float]) -> float:
     if not values:
         return 0.0
