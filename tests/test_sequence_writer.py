@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -339,20 +340,29 @@ def test_writer_converts_malformed_direct_numeric_data_to_sequence_write_error(
 
 
 
-def test_writer_wraps_invalid_direct_choreography_collection(
-    tmp_path: Path,
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("effects", None),
+        ("movements", None),
+        ("sections", None),
+        ("hard_stops_centiseconds", None),
+        ("vocal_regions", []),
+    ],
+)
+def test_writer_wraps_invalid_direct_choreography_collections(
+    tmp_path: Path, field: str, value: object
 ) -> None:
     display = classic_yard()
     preview = _preview(tmp_path, display)
-    invalid = Choreography(
-        duration_centiseconds=2000,
-        effects=None,  # type: ignore[arg-type]
-    )
+    base = Choreography(duration_centiseconds=2000, effects=())
+    invalid = dataclasses.replace(base, **{field: cast(Any, value)})
+
     with pytest.raises(SequenceWriteError, match="Invalid choreography data"):
         build_from_timeline(
             preview, invalid, load_rule_set(), "song.mp3",
-            tmp_path / "invalid-collection.loredit",
-            tmp_path / "invalid-collection.json",
+            tmp_path / f"invalid-{field}.loredit",
+            tmp_path / f"invalid-{field}.json",
         )
 
 
