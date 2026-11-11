@@ -35,7 +35,15 @@ python_files = ["test_*.py"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.ruff.lint]
 select = ["E", "W", "I", "B", "UP", "S", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["S101", "E501"]
+"tests/**/*.py" = ["S101", "E501"]
+"src/lor_sequence_builder/audio_analysis.py" = ["E501"]
+"src/lor_sequence_builder/audio_plot.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"
