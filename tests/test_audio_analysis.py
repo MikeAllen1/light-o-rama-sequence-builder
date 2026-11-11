@@ -324,3 +324,39 @@ def test_default_tempo_range_does_not_double_a_90_bpm_track(tmp_path: Path) -> N
     beat_times = [event["time"] for event in report["analysis"]["beats"]]
     assert len(beat_times) >= 10
     assert beat_times[1] - beat_times[0] == pytest.approx(2 / 3, abs=0.08)
+
+
+
+def test_analyzer_rejects_audio_shorter_than_two_seconds(tmp_path: Path) -> None:
+    audio = tmp_path / "too-short.wav"
+    with wave.open(str(audio), "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(11_025)
+        output.writeframes(b"\\x00\\x00" * 11_025)
+
+    with pytest.raises(AudioAnalysisError, match="at least 2 seconds"):
+        analyze_audio(audio, tmp_path / "short.json", tmp_path / "short.svg")
+
+
+def test_analyzer_rejects_input_over_200_mib_before_decoding(tmp_path: Path) -> None:
+    audio = tmp_path / "oversized.bin"
+    with audio.open("wb") as output:
+        output.truncate(200 * 1024 * 1024 + 1)
+
+    with pytest.raises(AudioAnalysisError, match="200 MiB"):
+        analyze_audio(audio, tmp_path / "large.json", tmp_path / "large.svg")
+
+
+def test_analyzer_rejects_audio_over_30_minutes(tmp_path: Path) -> None:
+    audio = tmp_path / "over-limit.wav"
+    silence = b"\\x00\\x00" * 11_025
+    with wave.open(str(audio), "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(11_025)
+        for _ in range(1_801):
+            output.writeframesraw(silence)
+
+    with pytest.raises(AudioAnalysisError, match="30-minute analysis limit"):
+        analyze_audio(audio, tmp_path / "long.json", tmp_path / "long.svg")
