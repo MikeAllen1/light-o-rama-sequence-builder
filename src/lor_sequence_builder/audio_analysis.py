@@ -167,8 +167,6 @@ def _estimate_tempo(
     positive = [score for score, _ in candidates if score > 0]
     mean_score = math.fsum(positive) / len(positive) if positive else 0.0
     confidence = max(0.0, min(1.0, (best_score - mean_score) / (abs(best_score) + 1e-12)))
-    if confidence < 0.15:
-        return None, round(confidence, 4), None, None
     bpm = 60.0 / (best_lag * FRAME_SECONDS)
     # Phase maximizes onset strength sampled at the candidate beat period.
     period = best_lag
