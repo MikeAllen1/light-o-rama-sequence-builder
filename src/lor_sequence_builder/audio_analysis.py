@@ -208,7 +208,6 @@ def _hard_stops(
                     "time": round(index * FRAME_SECONDS, 3),
                     "silence_duration": round((end - index) * FRAME_SECONDS, 3),
                     "confidence": 0.8,
-                    "method": "sustained near-silence threshold",
                 })
             index = end
         else:
