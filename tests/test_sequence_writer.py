@@ -18,7 +18,6 @@ from lor_sequence_builder.choreography import (
 )
 from lor_sequence_builder.cli import main
 from lor_sequence_builder.loredit import read_loredit
-from lor_sequence_builder.new_sequence import NewSequenceError
 from lor_sequence_builder.new_sequence import NewSequenceError, build_new_sequence
 from lor_sequence_builder.rules import load_rule_set
 from lor_sequence_builder.sequence_writer import (
