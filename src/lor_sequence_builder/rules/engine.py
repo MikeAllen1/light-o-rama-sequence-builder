@@ -1006,7 +1006,7 @@ def _validate_choreography_numeric_fields(choreography: Choreography) -> None:
         if isinstance(value, bool) or not isinstance(value, int):
             raise ChoreographyError(f"Choreography {field_name} must be an integer")
 
-    def require_tuple(value: object, field_name: str) -> tuple[object, ...]:
+    def require_tuple(value: object, field_name: str) -> tuple[Any, ...]:
         if not isinstance(value, tuple):
             raise ChoreographyError(f"Choreography {field_name} must be a tuple")
         return value
