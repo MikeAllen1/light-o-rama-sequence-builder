@@ -36,7 +36,7 @@ Confidence values are heuristic and uncalibrated. Treat them as relative evidenc
 Listen to the song while following the plot. Record:
 
 1. Whether the beat markers stay aligned from the beginning through the end, or gradually drift.
-2. Whether the estimated BPM is the perceived tempo or a half/double-time interpretation.
+2. Whether the estimated BPM is the perceived tempo or a half/double-time interpretation, especially where strong backbeats, syncopation, or subdivisions compete with the main pulse.
 3. Whether the provisional downbeats land on actual bar starts. Do not assume 4/4.
 4. Whether amber onset marks correspond to meaningful audible attacks, and whether important attacks are missed.
 5. Whether teal transitions correspond to audible changes in arrangement or dynamics.
