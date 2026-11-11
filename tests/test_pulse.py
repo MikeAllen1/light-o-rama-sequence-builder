@@ -362,9 +362,9 @@ def test_independent_s6_preview_and_native_template_prove_channel_mapping(
     result = build_pulse_sequence(preview, template, output, timeline_path, bpm=120)
     timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
 
-    assert result.supported_prop_count == 42
-    assert result.excluded_prop_count == 9
-    assert result.event_count == 72 * result.beat_count
+    assert result.supported_prop_count == 48
+    assert result.excluded_prop_count == 3
+    assert result.event_count == 81 * result.beat_count
     assert len(timeline["events"]) == result.event_count
 
     preview_props = {
@@ -385,9 +385,14 @@ def test_independent_s6_preview_and_native_template_prove_channel_mapping(
         assert channel["network"] == address[0]
         assert channel["unit_id"] == address[1]
         assert channel["circuit"] == address[2]
+        traditional_type = prop.get("TraditionalType")
         assert channel["row"] == native.get("row") == "0"
-        assert channel["col"] == native.get("col") == str(channel["channel_index"])
-        assert channel["color"] == native.get("color")
+        if traditional_type == "Channel_per_color":
+            assert channel["col"] == native.get("col") == "0"
+            assert channel["color"] == native.get("color") == str(channel["channel_index"])
+        else:
+            assert channel["col"] == native.get("col") == str(channel["channel_index"])
+            assert channel["color"] == native.get("color")
     generated = read_loredit(output)
     assert len(generated.root.findall("./SequenceProps/SeqProp/channel/effect")) == result.event_count
 
