@@ -136,7 +136,15 @@ def build_new_sequence(
     if len(music_filename) > 240:
         raise NewSequenceError("Audio file name is too long")
 
-    props = preview.findall("PropClass")
+    # Normalize master references on a private copy. Whitespace-only values
+    # mean "not linked", just like a missing or empty attribute; keeping the
+    # normalized value in the embedded preview also prevents S6 from treating
+    # it as a real master reference later.
+    normalized_preview = copy.deepcopy(preview)
+    props = normalized_preview.findall("PropClass")
+    for prop in props:
+        if "MasterPropId" in prop.attrib:
+            prop.set("MasterPropId", prop.attrib["MasterPropId"].strip())
     if not props:
         raise NewSequenceError("Preview contains zero PropClass entries")
     prop_ids = [prop.attrib.get("id", "") for prop in props]
@@ -180,7 +188,7 @@ def build_new_sequence(
     attributes.update(_TRAILING_DEFAULTS)
     root = ET.Element("sequence", attributes)
 
-    root.append(copy.deepcopy(preview))
+    root.append(normalized_preview)
     ET.SubElement(root, "BeatChannels", {"MaxDisplayedRows": "10"})
     ET.SubElement(root, "Subsequences")
 
