@@ -874,7 +874,7 @@ def test_direct_movement_with_non_iterable_props_fails_without_crashing() -> Non
                for item in findings)
 
 
-def test_direct_movement_with_non_integer_time_fails_validation() -> None:
+def test_direct_movement_with_non_integer_time_raises_domain_error() -> None:
     display = classic_yard()
     timeline = Choreography(
         duration_centiseconds=SONG,
@@ -883,11 +883,8 @@ def test_direct_movement_with_non_integer_time_fails_validation() -> None:
                             "left_to_right", True, 100),),
     )
 
-    report = _check(display, timeline)
-    _, findings = _result(report, "effects_well_formed")
-
-    assert not report.ok
-    assert any("start and end times must be integers" in item for item in findings)
+    with pytest.raises(ChoreographyError, match=r"movements\\[0\\].start_centisecond must be an integer"):
+        _check(display, timeline)
 
 
 
@@ -960,6 +957,48 @@ def test_direct_choreography_rejects_invalid_section_stop_and_vocal_times(
 ) -> None:
     with pytest.raises(ChoreographyError, match=field):
         _check(classic_yard(), timeline)
+
+
+
+def test_direct_movement_with_non_iterable_props_fails_without_crashing() -> None:
+    display = classic_yard()
+    timeline = Choreography(
+        duration_centiseconds=SONG,
+        effects=(),
+        movements=(Movement("bad-props", "fall", cast(tuple[str, ...], None),
+                            "top_to_bottom", 0, 100),),
+    )
+
+    report = _check(display, timeline)
+    _, findings = _result(report, "effects_well_formed")
+
+    assert not report.ok
+    assert any("must contain at least one prop" in item for item in findings)
+
+
+def test_direct_section_hard_stop_and_vocal_times_raise_domain_errors() -> None:
+    display = classic_yard()
+
+    bad_section = Choreography(
+        duration_centiseconds=SONG, effects=(),
+        sections=(Section("verse", cast(int, "0"), 100),),
+    )
+    with pytest.raises(ChoreographyError, match=r"sections\\[0\\].start_centisecond must be an integer"):
+        _check(display, bad_section)
+
+    bad_stop = Choreography(
+        duration_centiseconds=SONG, effects=(),
+        hard_stops_centiseconds=(cast(int, "100"),),
+    )
+    with pytest.raises(ChoreographyError, match=r"hard_stops_centiseconds\\[0\\] must be an integer"):
+        _check(display, bad_stop)
+
+    bad_vocals = Choreography(
+        duration_centiseconds=SONG, effects=(),
+        vocal_regions=((cast(int, "0"), 100),),
+    )
+    with pytest.raises(ChoreographyError, match=r"vocal_regions\\[0\\]\\[0\\] must be an integer"):
+        _check(display, bad_vocals)
 
 
 def test_duplicate_group_names_union_members_for_name_selectors() -> None:
