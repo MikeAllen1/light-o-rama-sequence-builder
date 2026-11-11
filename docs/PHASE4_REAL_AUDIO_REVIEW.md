@@ -143,3 +143,19 @@ All ten supplied audio streams were reprocessed using an independent source-equi
 The v1.3 phase check leaves all ten beat grids ambiguous. The strongest competing phase, including the half-period alternative, carries at least 46% of the selected phase score on this set. That is evidence that RMS/energy-flux alone cannot reliably decide which recurring accent is the metrical beat; it is not evidence that the songs have no beat. The selected BPM values also remain candidates rather than ground truth. Half/double-time alternatives remain material on several tracks, including Siberian Sleigh Ride, Deck the Halls, and Frosty the Snowman.
 
 The v1.3 changes improve timestamp granularity, suppress steady-tone periodic ripple, expose the selected tempo in the candidate list, and make competing phase evidence more conservative. They do not yet satisfy the tempo-alias acceptance criterion or prove that the analysis is musically actionable. Phase 4 remains open; Phase 5 remains blocked.
+
+
+## Packaged CLI recheck procedure
+
+The source-equivalent recheck above is not a substitute for running the installed project entry point. A repeatable harness is now available at `scripts/run_real_audio_review.py`. It invokes the locked `lor-sequence-builder analyze-audio` console command once for each of the ten named tracks, verifies that each run emits schema v1.3 JSON and an SVG, and writes per-track JSON/SVG files plus `summary.json` and `summary.csv`. It does not copy or modify the source audio and refuses to reuse a non-empty output directory.
+
+From the repository root, with the ten original audio files in one folder:
+
+```powershell
+uv sync --locked --group dev
+python scripts/run_real_audio_review.py --input-dir "C:\\Path\\To\\TenTracks" --output-dir ".\\dist\\phase4-real-audio-cli"
+```
+
+The harness uses `uv run --locked --no-sync lor-sequence-builder analyze-audio` internally, so it tests the installed console entry point from the locked project environment rather than calling the analysis function directly. It returns a non-zero exit code if any track fails, produces a missing/invalid report, or emits a schema version other than 1.3. Keep the generated reports outside version control; review the SVGs alongside listening and compare the selected tempo/candidate list with the v1.3 baseline table above.
+
+**Status:** harness added; packaged CLI execution and owner review of the ten generated SVGs remain pending. Do not mark Phase 4 accepted until those results are reviewed and tempo alias behavior is resolved or explicitly abstained from.
