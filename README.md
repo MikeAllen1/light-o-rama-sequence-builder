@@ -2,7 +2,7 @@
 
 A display-independent command-line tool for building native Light-O-Rama S6 sequences from music and a required `.lorprev` display preview.
 
-**Project status:** Phase 1's native S6 LOREDIT reader/writer is complete. Phase 2 parses standalone `.lorprev` files and embedded `PreviewClass` data for observed revisions 0, 1, and 56, including props, controller/channel assignments, and prop groups. Audio analysis, prop classification, and choreography have not started.
+**Project status:** Phase 1's native S6 LOREDIT reader/writer and Phase 2's standalone/embedded preview parser are complete and merged. Phase 3's fixed-tempo Timeline-to-native-sequence walking skeleton is in progress. Audio analysis, prop classification, rules, and intelligent choreography have not started.
 
 ## Product workflow
 
@@ -55,6 +55,25 @@ uv run lor-sequence-builder roundtrip .\path\to\show.loredit .\output\roundtrip.
 The LOREDIT reader currently accepts only `saveFileVersion="15"`, the version represented by the reviewed fixture. The preview parser supports internal `Revision` values `0`, `1`, and `56`; these are distinct from the LOREDIT save-file version. XML is parsed with `defusedxml`, with DTDs, entities, and external references forbidden. The writer preserves the parsed XML tree opaquely and atomically creates a new output without overwriting the input or an existing destination.
 
 The preview is the authoritative display map. For LOR props, each `ChannelGrid` row exposes network, Unit ID, and the circuit value present in that row; for DMX props, universe and channel are exposed. These are address fields only: remaining fields are retained verbatim and are not yet semantically interpreted. The original row and source locator are retained. The parser enforces a 20 MiB input limit, 256-level XML nesting limit, and 100,000-element limit, and reports missing or duplicate prop IDs rather than treating them as reliable identities. `PropGroup` and `member` records are parsed into typed group/member models, including prop ID references, arrangement, orientation, top, and left values. The supplied Revision 56 fixture contains 51 props and one group with five members.
+
+## Phase 3 walking skeleton
+
+The temporary engineering command `pulse` proves the preview → Timeline → native S6 writer path using a fixed BPM. It does not analyze audio or create intelligent choreography. It requires a native S6 v15 `.loredit` template whose embedded prop IDs match the supplied standalone preview exactly.
+
+Example:
+
+```powershell
+uv run lor-sequence-builder pulse \
+  --preview .\\display.lorprev \
+  --template .\\template.loredit \
+  --bpm 120 \
+  --output .\\pulse-test.loredit \
+  --timeline-output .\\pulse-test.timeline.json
+```
+
+The initial walking-skeleton support boundary is intentionally narrow: `DeviceType=LOR` with `TraditionalType=Single Color` or `Multicolor_string_1_ch`, complete LOR ChannelGrid addresses, and matching native channels in the template. Other prop types are listed in the Timeline as excluded. A prop inside the supported type boundary that lacks a complete preview assignment or native template channel causes generation to fail closed. Existing effects in the template copy are replaced by short intensity pulses at the requested fixed tempo. The template's duration controls the generated sequence duration.
+
+The command writes a deterministic, versioned Timeline JSON and a new `.loredit`; it refuses to overwrite inputs or existing outputs. The generated file still requires manual opening and playback verification in the target S6 release.
 
 ## Development checks
 
