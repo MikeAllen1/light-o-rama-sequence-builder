@@ -394,6 +394,16 @@ def test_missing_preview_fails_with_actionable_error(tmp_path: Path) -> None:
         read_lorprev(tmp_path / "missing.lorprev")
 
 
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"",
+        b"not xml",
+        b"<Other />",
+        b'<!DOCTYPE x [<!ENTITY e "boom">]><PreviewClass Revision="0" />',
+        b'<PreviewClass Revision="0" />',
+    ],
+)
 def test_invalid_or_unsafe_previews_fail(content: bytes, tmp_path: Path) -> None:
     source = tmp_path / "invalid.lorprev"
     source.write_bytes(content)
@@ -449,6 +459,7 @@ def test_xml_element_count_limit_is_enforced_during_parse(
         read_lorprev(source)
 
 
+@pytest.mark.parametrize("revision", ["2", "12", "58", "999"])
 def test_any_edit_revision_is_accepted_and_recorded(tmp_path: Path, revision: str) -> None:
     # Revision is an edit counter, not a format version; it must never gate parsing.
     source = tmp_path / "edited.lorprev"
