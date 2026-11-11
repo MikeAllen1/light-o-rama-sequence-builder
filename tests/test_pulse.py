@@ -324,7 +324,7 @@ def test_preview_template_channel_declarations_must_match(
     prop.set("ChannelGrid", "Different,99,99,99,0,White")
     tree.write(preview, encoding="utf-8", xml_declaration=True)
 
-    with pytest.raises(PulseGenerationError, match=f"mismatched ChannelGrid"):
+    with pytest.raises(PulseGenerationError, match="mismatched ChannelGrid"):
         build_pulse_sequence(
             preview, template, tmp_path / "channel-mismatch.loredit",
             tmp_path / "channel-mismatch.json", bpm=120
