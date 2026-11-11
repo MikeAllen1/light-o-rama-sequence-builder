@@ -341,12 +341,14 @@ def test_preview_size_limit_is_enforced_while_reading(tmp_path: Path) -> None:
     with pytest.raises(LorprevError, match="20 MiB limit"):
         read_lorprev(source)
 
-def test_owner_supplied_s6_revision_56_preview_parses_native_prop_group(
+def test_synthetic_revision_56_preview_parses_native_prop_group(
     tmp_path: Path,
 ) -> None:
-    fixture = FIXTURES / "s6_revision_56_group_export.lorprev"
-    source = tmp_path / "s6_revision_56_group_export.lorprev"
-    shutil.copyfile(fixture, source)
+    template = write_synthetic_loredit(tmp_path / "synthetic-template.loredit")
+    source = tmp_path / "synthetic-revision-56.lorprev"
+    preview = ET.parse(template).getroot().find("PreviewClass")
+    assert preview is not None
+    ET.ElementTree(preview).write(source, encoding="utf-8", xml_declaration=True)
 
     model = read_lorprev(source)
     assert model.revision.value == "56"
@@ -355,8 +357,8 @@ def test_owner_supplied_s6_revision_56_preview_parses_native_prop_group(
 
     group = model.groups[0]
     assert group.group_id is not None
-    assert group.group_id.value == "00000000-0000-4000-8000-000000000037"
-    assert group.name is not None and group.name.value == "Fixture Group 01"
+    assert group.group_id.value == "synthetic-group-0001"
+    assert group.name is not None and group.name.value == "Synthetic Fixture Group"
     assert group.arrangement is not None and group.arrangement.value == "Preview"
     assert len(group.members) == 5
     prop_names = {
@@ -368,28 +370,38 @@ def test_owner_supplied_s6_revision_56_preview_parses_native_prop_group(
         for member in group.members
         if member.prop_id is not None
     ] == [
-        "Fixture Prop 011",
-        "Fixture Prop 010",
-        "Fixture Prop 009",
-        "Fixture Prop 008",
-        "Fixture Prop 007",
+        "Synthetic Prop 11",
+        "Synthetic Prop 10",
+        "Synthetic Prop 09",
+        "Synthetic Prop 08",
+        "Synthetic Prop 07",
     ]
-    assert all(member.orientation is not None and member.orientation.value == "normal"
-               for member in group.members)
-    assert all(member.top is not None and member.top.value == "0"
-               for member in group.members)
-    assert all(member.left is not None and member.left.value == "0"
-               for member in group.members)
+    assert all(
+        member.orientation is not None and member.orientation.value == "normal"
+        for member in group.members
+    )
+    assert all(
+        member.top is not None and member.top.value == "0"
+        for member in group.members
+    )
+    assert all(
+        member.left is not None and member.left.value == "0"
+        for member in group.members
+    )
     assert group.source.locator == "/PreviewClass/PropGroup[0]"
-    assert all(member.source.locator.startswith(group.source.locator + "/member[")
-               for member in group.members)
+    assert all(
+        member.source.locator.startswith(group.source.locator + "/member[")
+        for member in group.members
+    )
     assert model.unsupported_constructs == ()
     assert model.unrecognized_top_level == ()
 
 
-def test_owner_supplied_default_preview_is_rejected_as_zero_prop_fixture() -> None:
+def test_empty_synthetic_preview_is_rejected_as_zero_prop_fixture(tmp_path: Path) -> None:
+    source = tmp_path / "empty-preview.lorprev"
+    source.write_text('<PreviewClass Revision="1" />', encoding="utf-8")
     with pytest.raises(LorprevError, match="zero PropClass"):
-        read_lorprev(FIXTURES / "default_empty.lorprev")
+        read_lorprev(source)
 
 
 def test_missing_preview_fails_with_actionable_error(tmp_path: Path) -> None:
