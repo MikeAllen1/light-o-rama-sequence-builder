@@ -7,7 +7,7 @@ import math
 import tempfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
+from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 from defusedxml.ElementTree import parse as safe_parse
