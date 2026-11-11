@@ -9,20 +9,13 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
-from defusedxml import ElementTree as SafeET
-from defusedxml.common import DefusedXmlException
-
 from lor_sequence_builder.loredit import (
-    MAX_LOREDIT_BYTES,
     LoreditDocument,
     LoreditError,
     read_loredit,
     write_loredit,
 )
-from lor_sequence_builder.lorprev import (
-    MAX_LORPREV_BYTES,
-    read_lorprev,
-)
+from lor_sequence_builder.lorprev import PropModel, RawElement, read_lorprev
 from lor_sequence_builder.timeline import (
     ExcludedProp,
     PulseEvent,
@@ -60,27 +53,22 @@ class _MappedChannel:
     element: ET.Element
 
 
-def _sha256(path: Path, limit: int) -> str:
-    try:
-        with path.open("rb") as stream:
-            content = stream.read(limit + 1)
-    except OSError as exc:
-        raise PulseGenerationError(f"Cannot read input for fingerprinting: {path}") from exc
-    if len(content) > limit:
-        raise PulseGenerationError(f"Input exceeds the supported size limit: {path}")
-    return hashlib.sha256(content).hexdigest()
+def _element_from_raw(raw: RawElement) -> ET.Element:
+    """Rebuild an XML element from the already-validated, loss-preserving preview model."""
+    element = ET.Element(
+        raw.tag,
+        {name: value.value for name, value in raw.attributes.items()},
+    )
+    element.text = raw.text
+    element.tail = raw.tail
+    for child in raw.children:
+        element.append(_element_from_raw(child))
+    return element
 
 
-def _preview_root(path: Path) -> ET.Element:
-    try:
-        root = SafeET.parse(
-            path, forbid_dtd=True, forbid_entities=True, forbid_external=True
-        ).getroot()
-    except (OSError, ET.ParseError, DefusedXmlException) as exc:
-        raise PulseGenerationError(f"Cannot securely read preview XML: {path}") from exc
-    if root is None or root.tag != "PreviewClass":
-        raise PulseGenerationError("Preview root must be <PreviewClass>")
-    return root
+def _xml_fingerprint(root: ET.Element) -> str:
+    """Fingerprint the exact parsed XML tree used by this generation run."""
+    return hashlib.sha256(ET.tostring(root, encoding="utf-8")).hexdigest()
 
 
 def _attribute(element: ET.Element, name: str) -> str | None:
@@ -155,8 +143,8 @@ def _write_timeline_temp(path: Path, content: str) -> None:
 def _build_timeline(
     preview_root: ET.Element,
     document: LoreditDocument,
-    preview_path: Path,
-    template_path: Path,
+    preview_xml_sha256: str,
+    template_xml_sha256: str,
     bpm: int,
     pulse_duration_centiseconds: int,
 ) -> tuple[Timeline, dict[tuple[str, int], ET.Element]]:
@@ -336,8 +324,8 @@ def _build_timeline(
     timeline = Timeline(
         schema_version="1.0",
         timebase="integer centiseconds from sequence start",
-        preview_sha256=_sha256(preview_path, MAX_LORPREV_BYTES),
-        template_sha256=_sha256(template_path, MAX_LOREDIT_BYTES),
+        preview_xml_sha256=preview_xml_sha256,
+        template_xml_sha256=template_xml_sha256,
         bpm=bpm,
         duration_centiseconds=duration,
         pulse_duration_centiseconds=pulse_duration_centiseconds,
@@ -403,14 +391,14 @@ def build_pulse_sequence(
     preview_model = read_lorprev(preview_source)
     if any(item.kind == "prop identity" for item in preview_model.unsupported_constructs):
         raise PulseGenerationError("Preview contains missing or duplicate prop identities")
-    preview_root = _preview_root(preview_source)
+    preview_root = _element_from_raw(preview_model.display)
     document = read_loredit(template_source)
 
     timeline, mapped_channels = _build_timeline(
         preview_root,
         document,
-        preview_source,
-        template_source,
+        _xml_fingerprint(preview_root),
+        _xml_fingerprint(document.root),
         bpm,
         pulse_duration_centiseconds,
     )
