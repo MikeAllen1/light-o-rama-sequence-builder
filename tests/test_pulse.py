@@ -21,8 +21,20 @@ def matching_inputs(tmp_path: Path) -> tuple[Path, Path]:
         shutil.copyfileobj(source, target)
 
     tree = ET.parse(template)
-    preview = tree.getroot().find("PreviewClass")
+    root = tree.getroot()
+    preview = root.find("PreviewClass")
+    sequence_props = root.find("SequenceProps")
     assert preview is not None
+    assert sequence_props is not None
+    # The compact source fixture has three preview-only props with no SeqProp.
+    # Build a deliberately matched test display from the exact prop IDs that
+    # already have native sequence-channel records; no channel IDs are invented.
+    sequence_ids = {
+        prop.get("id") for prop in sequence_props.findall("SeqProp")
+    }
+    for prop in list(preview.findall("PropClass")):
+        if prop.get("id") not in sequence_ids:
+            preview.remove(prop)
     preview_path = tmp_path / "display.lorprev"
     ET.ElementTree(preview).write(preview_path, encoding="utf-8", xml_declaration=True)
     return preview_path, template
