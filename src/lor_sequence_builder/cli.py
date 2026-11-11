@@ -349,6 +349,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"Sequence: {written.sequence_path}")
             print(f"Report: {written.report_path}")
             print(f"Effects: {written.effect_count}")
+            print(f"Excluded props: {len(written.excluded_props)}")
+            for excluded in written.excluded_props:
+                print(
+                    f"  Excluded prop {excluded.prop_id} ({excluded.name}): "
+                    f"{excluded.reason}"
+                )
             return 0
         if options.command == "evaluate-analysis":
             results = evaluate(
