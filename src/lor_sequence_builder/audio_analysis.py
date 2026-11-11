@@ -19,7 +19,7 @@ import tempfile
 import wave
 from importlib import metadata
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 import librosa
 import numpy as np
@@ -34,6 +34,9 @@ MAX_INPUT_BYTES = 200 * 1024 * 1024
 MAX_DURATION_SECONDS = 30 * 60
 MIN_DURATION_SECONDS = 2.0
 MAX_DECODED_SAMPLES = SAMPLE_RATE * MAX_DURATION_SECONDS
+# Allow one second beyond the accepted duration so _read_samples can report
+# the established duration-limit error instead of FFmpeg truncating at 30:00.
+MAX_NORMALIZED_BYTES = (SAMPLE_RATE * (MAX_DURATION_SECONDS + 2) * 2) + 44
 MIN_BPM = 60
 MAX_BPM = 200
 SUPPORTED_BEATS_PER_BAR = (3, 4)
@@ -115,7 +118,7 @@ def _normalize(path: Path, output: Path) -> str:
         "-protocol_whitelist", "file,pipe", "-f", demuxer, "-i", str(path.resolve()),
         "-t", str(MAX_DURATION_SECONDS + 1), "-map", "0:a:0",
         "-vn", "-ac", "1", "-ar", str(SAMPLE_RATE), "-c:a", "pcm_s16le", "-f", "wav",
-        str(output),
+        "-fs", str(MAX_NORMALIZED_BYTES), str(output),
     ]
     try:
         completed = subprocess.run(
@@ -127,6 +130,12 @@ def _normalize(path: Path, output: Path) -> str:
     if completed.returncode != 0:
         detail = completed.stderr.strip()[-500:]
         raise AudioAnalysisError(f"FFmpeg could not decode the audio: {detail}")
+    try:
+        normalized_size = output.stat().st_size
+    except OSError as exc:
+        raise AudioAnalysisError("FFmpeg did not create its normalized output") from exc
+    if normalized_size > MAX_NORMALIZED_BYTES:
+        raise AudioAnalysisError("Normalized audio exceeds the configured disk-space limit")
     return ffmpeg_version
 
 
@@ -497,7 +506,7 @@ def _section_candidates(energy: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 def _svg_plot(
-    path: Path,
+    stream: IO[str],
     duration: float,
     energy: list[dict[str, Any]],
     beats: list[float],
@@ -545,8 +554,11 @@ def _svg_plot(
         '<text x="70" y="500" font-family="sans-serif" font-size="11">Blue: RMS energy | Green: beats | Purple: downbeats | Amber: onsets | Teal: section candidates | Red: hard stops</text>',
         '</svg>',
     ])
-    with path.open("x", encoding="utf-8") as stream:
-        stream.write("\n".join(parts))
+    # Write through the NamedTemporaryFile handle; never close and reopen a
+    # reserved path in a potentially shared output directory.
+    stream.write("\n".join(parts))
+    stream.flush()
+    os.fsync(stream.fileno())
 
 
 def _phrase_boundaries(downbeats: list[float], bar_confidence: float) -> list[dict[str, Any]]:
@@ -733,8 +745,7 @@ def analyze_audio(
                 prefix=f".{plot_path.name}.", suffix=".tmp", delete=False,
             ) as stream:
                 plot_temp = Path(stream.name)
-            plot_temp.unlink()
-            _svg_plot(plot_temp, duration, energy, beat_times, downbeats, onsets, sections, stops)
+                _svg_plot(stream.file, duration, energy, beat_times, downbeats, onsets, sections, stops)
             os.link(json_temp, json_path)
             json_published = True
             os.link(plot_temp, plot_path)

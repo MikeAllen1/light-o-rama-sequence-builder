@@ -139,6 +139,10 @@ def test_new_sequence_round_trips_through_the_native_reader(tmp_path: Path) -> N
         (30 * 60 * 100 + 1, "song.mp3", "duration"),
         (100, "  ", "audio file name"),
         (100, "bad\nname.mp3", "control characters"),
+        (100, "../outside.mp3", "relative path"),
+        (100, "C:\\outside.mp3", "relative path"),
+        (100, "\\\\server\\share\\song.mp3", "relative path"),
+        (100, "x" * 241 + ".mp3", "too long"),
     ],
 )
 def test_new_sequence_rejects_invalid_settings(

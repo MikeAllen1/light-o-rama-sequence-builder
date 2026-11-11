@@ -75,8 +75,11 @@ def read_loredit(path: str | Path) -> LoreditDocument:
         )
         depth = 0
         element_count = 0
-        for event, _element in iterator:
+        root: ET.Element | None = None
+        for event, element in iterator:
             if event == "start":
+                if root is None:
+                    root = element
                 depth += 1
                 element_count += 1
                 if depth > MAX_LOREDIT_DEPTH:
@@ -89,7 +92,6 @@ def read_loredit(path: str | Path) -> LoreditDocument:
                     )
             else:
                 depth -= 1
-        root = iterator.root
     except LoreditError:
         raise
     except (OSError, ET.ParseError, DefusedXmlException) as exc:
