@@ -93,7 +93,8 @@ The command writes a deterministic, versioned Timeline JSON and a new `.loredit`
 The pinned development tools are centralized in `requirements-dev.txt`. CI tests Python 3.12 and 3.13 on Windows and Linux. After `uv sync --locked`, run:
 
 ```powershell
-uv run --no-sync --with-requirements requirements-dev.txt python -m pytest
+uv run --no-sync --with-requirements requirements-dev.txt coverage run --branch --source=lor_sequence_builder -m pytest
+uv run --no-sync --with-requirements requirements-dev.txt coverage report --show-missing
 uv run --no-sync --with-requirements requirements-dev.txt ruff check .
 uv run --no-sync --with-requirements requirements-dev.txt mypy --strict src tests
 ```
