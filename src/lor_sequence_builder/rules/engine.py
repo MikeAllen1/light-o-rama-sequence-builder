@@ -369,9 +369,15 @@ def _movement_identity_valid(movement: Movement) -> bool:
     return (
         isinstance(movement.movement_id, str)
         and bool(movement.movement_id.strip())
+        and movement.kind in MOVEMENT_KINDS
+        and movement.direction in MOVEMENT_DIRECTIONS
         and isinstance(movement.prop_ids, tuple)
         and bool(movement.prop_ids)
         and all(isinstance(pid, str) and bool(pid.strip()) for pid in movement.prop_ids)
+        and isinstance(movement.start_centisecond, int)
+        and not isinstance(movement.start_centisecond, bool)
+        and isinstance(movement.end_centisecond, int)
+        and not isinstance(movement.end_centisecond, bool)
     )
 
 
