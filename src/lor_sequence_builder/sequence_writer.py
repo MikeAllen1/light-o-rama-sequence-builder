@@ -265,7 +265,6 @@ def build_from_timeline(
     try:
         write_loredit(built.document, output)
     except LoreditError as exc:
-        output.unlink(missing_ok=True)
         _write_build_report(
             report_output, report, output, status="failed", sequence_written=False,
             failure_stage="sequence_write", error=str(exc),
