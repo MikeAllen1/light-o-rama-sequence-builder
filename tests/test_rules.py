@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,7 @@ from lor_sequence_builder.rules import (
     RuleReport,
     RuleSet,
     check_choreography,
+    display_from_preview,
     load_rule_set,
 )
 from tests.display_builders import (
@@ -706,3 +708,20 @@ def test_duplicate_movement_ids_are_reported() -> None:
     _, findings = _result(report, "effects_well_formed")
     assert any("Movement id 'duplicate' is used more than once" in item
                for item in findings)
+
+
+def test_duplicate_group_names_union_members_for_name_selectors() -> None:
+    builder = classic_yard()
+    root = builder.element()
+    duplicate = ET.SubElement(
+        root, "PropGroup", {"id": "second-arches-group", "Name": "Arches"}
+    )
+    mini_tree_id = _ids(builder)["Mini Tree 1"]
+    ET.SubElement(duplicate, "member", {"id": mini_tree_id})
+
+    display = display_from_preview(root)
+
+    expected = {
+        _ids(builder)[f"Arch {index}"] for index in range(1, 5)
+    } | {mini_tree_id}
+    assert set(display.groups["Arches"]) == expected
