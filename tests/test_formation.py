@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import itertools
+import math
 import random
 
 import pytest
 
 from lor_sequence_builder.formation import formation
+from lor_sequence_builder.rules.engine import Display, DisplayProp
 from lor_sequence_builder.planner import plan_show
 from lor_sequence_builder.rules import (
     check_choreography,
@@ -158,27 +160,35 @@ def test_random_invented_yards_plan_without_breaking_a_rule() -> None:
 def test_formation_spatial_work_scales_without_all_pairs_comparisons(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from types import SimpleNamespace
-
-    import lor_sequence_builder.formation as module
-
     rng = random.Random(41)
-    props = {}
-    for index in range(2500):
-        prop_id = f"p{index}"
-        props[prop_id] = SimpleNamespace(
-            prop_id=prop_id,
+    props = {
+        f"p{index}": DisplayProp(
+            prop_id=f"p{index}",
+            name=f"Prop {index}",
+            role="snowflake",
+            channel_count=1,
+            color_kind="single",
+            channel_colors=("Red",),
+            linked_to=None,
+            layout_problem=None,
             center=(rng.uniform(-100, 100), rng.uniform(-100, 100)),
+            direction="none",
+            group=None,
+            position_in_row=None,
+            row_size=None,
         )
+        for index in range(2500)
+    }
+    display = Display(props=props, groups={})
     calls = 0
-    original = module.math.dist
+    original = math.dist
 
     def counted(left: tuple[float, float], right: tuple[float, float]) -> float:
         nonlocal calls
         calls += 1
         return original(left, right)
 
-    monkeypatch.setattr(module.math, "dist", counted)
-    result = module.formation(SimpleNamespace(props=props), set(props))
+    monkeypatch.setattr(math, "dist", counted)
+    result = formation(display, set(props))
     assert result.kind in {"clusters", "scatter", "rows", "columns"}
     assert calls < 250_000
