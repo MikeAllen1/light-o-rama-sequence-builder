@@ -72,7 +72,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
                 print(f"  {name}: {len(group.members)} members, arrangement={arrangement}")
             print(f"Geometry points: {len(model.geometry_points)}")
-            print(f"Unsupported prop/device constructs: {len(model.unsupported_constructs)}")
+            print(f"Unsupported constructs: {len(model.unsupported_constructs)}")
             print(f"Unrecognized elements (all levels): {len(model.unrecognized_elements)}")
             return 0
         document = read_loredit(options.sequence)
