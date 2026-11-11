@@ -871,8 +871,8 @@ def test_tempo_octave_normalization_never_returns_out_of_range_values() -> None:
 def test_section_recurrence_matrix_is_skipped_above_beat_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import numpy as np
     import lor_sequence_builder.audio_analysis as audio_module
+    import numpy as np
 
     def unexpected_recurrence(*args: object, **kwargs: object) -> object:
         raise AssertionError("quadratic recurrence allocation must be skipped")
