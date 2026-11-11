@@ -890,11 +890,11 @@
 
   async function loadAudio(file) {
     if (!file) return;
-    const requestId = ++state.audioRequestId;
     if (file.size <= 0 || file.size > MAX_AUDIO_BYTES) {
       setBanner("Audio must be non-empty and no larger than 200 MiB.", "error");
       return;
     }
+    const requestId = ++state.audioRequestId;
     state.audioFile = file;
     state.audioBuffer = null;
     state.waveformPeaks = null;
@@ -1104,7 +1104,7 @@
       canvasViewport.scrollLeft = 0;
     });
     $("meterSelect").addEventListener("change", () => {
-      if (state.audioFile) analyzeSelectedAudio(state.audioFile);
+      if (state.audioFile && state.audioBuffer) analyzeSelectedAudio(state.audioFile);
     });
     $("playButton").addEventListener("click", async () => {
       if (!state.audioFile) return;
