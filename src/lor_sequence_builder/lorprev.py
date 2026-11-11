@@ -11,6 +11,7 @@ from defusedxml.common import DefusedXmlException
 
 SUPPORTED_PREVIEW_REVISIONS = frozenset({"0", "1"})
 MAX_LORPREV_BYTES = 20 * 1024 * 1024
+MAX_XML_DEPTH = 256
 
 
 class LorprevError(ValueError):
@@ -85,8 +86,14 @@ class PropModel:
     geometry_points: tuple[GeometryPoint, ...]
 
 
-def _raw_element(element: ET.Element, source: str, locator: str) -> RawElement:
-    """Capture all attributes and descendants without normalizing source values."""
+def _raw_element(
+    element: ET.Element, source: str, locator: str, depth: int = 0
+) -> RawElement:
+    """Capture source XML while bounding nesting depth against stack exhaustion."""
+    if depth > MAX_XML_DEPTH:
+        raise LorprevError(
+            f"LORPREV XML nesting exceeds the maximum depth of {MAX_XML_DEPTH}"
+        )
     attributes = {
         key: SourceValue(value=value, file=source, locator=f"{locator}/@{key}")
         for key, value in element.attrib.items()
@@ -97,7 +104,7 @@ def _raw_element(element: ET.Element, source: str, locator: str) -> RawElement:
         index = counts.get(child.tag, 0)
         counts[child.tag] = index + 1
         child_locator = f"{locator}/{child.tag}[{index}]"
-        children.append(_raw_element(child, source, child_locator))
+        children.append(_raw_element(child, source, child_locator, depth + 1))
     return RawElement(
         tag=str(element.tag),
         attributes=attributes,
