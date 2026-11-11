@@ -197,8 +197,16 @@
     const ungrouped = [];
     for (const prop of sequence.props) {
       const groupId = sequence.membership.get(prop.id);
-      if (groupId && groupIds.has(groupId)) propsByGroup.get(groupId).push(prop);
-      else ungrouped.push(prop);
+      if (groupId && groupIds.has(groupId)) {
+        propsByGroup.get(groupId).push(prop);
+      } else if (groupIds.has(prop.id)) {
+        // S6 can include a channel-less SeqProp whose ID is the PropGroup ID.
+        // The group header already represents that placeholder; don't create a
+        // duplicate empty prop row under "Ungrouped props".
+        if (prop.channels.length) propsByGroup.get(prop.id).push(prop);
+      } else {
+        ungrouped.push(prop);
+      }
     }
     const rows = [];
     function appendProp(prop) {
