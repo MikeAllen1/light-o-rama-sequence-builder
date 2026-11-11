@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** Phase 2 — standalone LORPREV parser in progress; later-stage contracts are planned below  
+**Status:** Phase 2 — preview parser for standalone and embedded PreviewClass data in progress; later-stage contracts are planned below  
 **Project:** Light-O-Rama Sequence Builder  
 **V1 interface:** Command line  
 **Target output:** Native Light-O-Rama S6 `.loredit` sequence  
@@ -21,7 +21,7 @@ The original audio, preview, prop map, and any reference sequence are read-only 
 
 - The display preview input is **`.lorprev`** and is mandatory for both `analyze` and `generate`.
 - The generated sequence output is **`.loredit`**, intended to open in the configured target LOR S6 version.
-- The committed standalone preview golden fixture is a sanitized fictional export confirmed to originate from Light-O-Rama S6. Its internal `Revision="1"` marker is the parser compatibility evidence; the exact minor S6 application build is optional provenance and was not recorded. The private owner preview is not committed.
+- The committed standalone preview golden fixture is a sanitized fictional S6 export with internal `Revision="1"`. A second sanitized golden fixture is extracted from the `PreviewClass` embedded in the supplied `fixture_candidate.loredit` (S6 6.6.0.12); it has internal `Revision="56"`, 51 props, and one `PropGroup` containing five prop references. These preview revisions are distinct from the LOREDIT save-file version. The original private owner preview is not committed.
 - The supplied Merry Christmas `.loredit` is an example sequence from the user's actual setup and is a sequence-format reference associated with that setup.
 - The user's display does **not** use pixel props. RGB/pixel support is therefore a declared V1 limitation, not something to fake or infer. If a preview contains a channel/prop type the current writer cannot safely represent, the tool must report it and must not silently drop it or claim full support.
 - V1 is CLI-only. GUI, controller upload, live playback, and editing existing sequences are out of scope.
@@ -110,7 +110,11 @@ Every stage has typed Pydantic inputs and outputs. A stage may use the public mo
 
 **Outputs:** `RawDisplayModel` and `RawPropModel[]`.
 
-**Known standalone reference:** The sanitized S6-exported `.lorprev` golden fixture has a `PreviewClass` root, internal `Revision="1"`, and 51 `PropClass` entries. A separate synthetic fixture covers Revision 0. These standalone preview revision markers are not the same thing as the `.loredit` `saveFileVersion` or the S6 application build. Parser support is based on observed standalone preview revisions and fixtures.\n\n**Controller/channel interpretation:** Light-O-Rama documents the preview as the source of prop channel assignments. For `DeviceType="LOR"`, the documented `ChannelGrid` address fields are network, Unit ID, and circuit; network + Unit ID identify the controller address. For `DeviceType="DMX"`, the documented fields are universe and channel. The parser exposes these typed address fields while retaining every raw field and the original source locator. `Undetermined` is a recognized unassigned device type. This is not a separate controller-object XML model. Group membership and arrangement are preview data too, but the current S6 golden export contains no group entities, so group semantics remain an explicit evidence gap.
+**Known preview references:** Revision 0 is covered by a small synthetic fixture; Revision 1 by the supplied standalone `.lorprev`; Revision 56 by the `PreviewClass` extracted from the supplied S6 6.6.0.12 `.loredit`. The Revision 56 fixture contains 51 props and a real `PropGroup` with five `member` references. These internal preview revisions are distinct from the LOREDIT `saveFileVersion` and S6 application build.
+
+**Controller/channel interpretation:** Each LOR prop `ChannelGrid` row exposes network, Unit ID, and circuit; each DMX row exposes universe and channel. The parser retains the original row and source locator. `Undetermined` is a recognized unassigned device type.
+
+**Group interpretation:** A direct `PropGroup` contains direct `member` elements. The parser exposes group ID, name, arrangement, ordered member prop IDs, orientation, top, and left values. It validates that each referenced member ID resolves to a prop in the same preview; missing or dangling references are preserved and reported as unsupported constructs. Raw group/member elements and per-attribute provenance remain available.
 
 ### 5.3 `prop_classifier`
 
