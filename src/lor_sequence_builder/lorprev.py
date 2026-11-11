@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import io
 import xml.etree.ElementTree as ET
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 
 from defusedxml import ElementTree as SafeET
 from defusedxml.common import DefusedXmlException
@@ -35,11 +37,17 @@ class RawElement:
     """Loss-preserving representation of one source XML element."""
 
     tag: str
-    attributes: dict[str, SourceValue]
+    attributes: Mapping[str, SourceValue]
     children: tuple[RawElement, ...]
     text: str | None
     tail: str | None
     locator: str
+
+    def __post_init__(self) -> None:
+        # frozen=True protects attribute rebinding, not a caller-owned dict.
+        # Copy before wrapping so neither the source dict nor this view can mutate
+        # the parsed, loss-preserving document after validation.
+        object.__setattr__(self, "attributes", MappingProxyType(dict(self.attributes)))
 
 
 @dataclass(frozen=True, slots=True)
@@ -278,7 +286,27 @@ def read_lorprev(path: str | Path) -> PropModel:
         prop_ids.add(prop_id.value)
 
     groups: list[PropGroupModel] = []
+    all_identity_ids = set(prop_ids)
     for group in group_nodes:
+        group_id = group.attributes.get("id")
+        if group_id is None or not group_id.value.strip():
+            unsupported.append(
+                UnsupportedConstruct(
+                    kind="prop group identity",
+                    detail="PropGroup is missing a non-empty id attribute",
+                    source=SourceValue("", str(source), f"{group.locator}/@id"),
+                )
+            )
+        elif group_id.value in all_identity_ids:
+            unsupported.append(
+                UnsupportedConstruct(
+                    kind="prop group identity",
+                    detail=f"Duplicate identity id {group_id.value!r} across PropClass/PropGroup",
+                    source=group_id,
+                )
+            )
+        else:
+            all_identity_ids.add(group_id.value)
         members: list[PropGroupMemberModel] = []
         for member in (child for child in group.children if child.tag == "member"):
             member_id = member.attributes.get("id")
@@ -311,7 +339,7 @@ def read_lorprev(path: str | Path) -> PropModel:
         groups.append(
             PropGroupModel(
                 source=group,
-                group_id=group.attributes.get("id"),
+                group_id=group_id,
                 name=group.attributes.get("Name"),
                 arrangement=group.attributes.get("Arrangement"),
                 members=tuple(members),

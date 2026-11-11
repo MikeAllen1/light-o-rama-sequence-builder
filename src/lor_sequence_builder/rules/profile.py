@@ -18,6 +18,7 @@ with a message naming the file and the key, never silently ignored.
 from __future__ import annotations
 
 import copy
+import math
 import re
 from dataclasses import dataclass
 from importlib import resources
@@ -186,6 +187,12 @@ def _construct_mapping(loader: _UniqueKeyLoader, node: yaml.MappingNode) -> dict
     mapping: dict[Any, Any] = {}
     for key_node, value_node in node.value:
         key = loader.construct_object(key_node)
+        try:
+            hash(key)
+        except TypeError as exc:
+            raise RuleProfileError(
+                f"line {key_node.start_mark.line + 1}: mapping keys must be scalar/hashable"
+            ) from exc
         if key in mapping:
             raise RuleProfileError(
                 f"line {key_node.start_mark.line + 1}: key {key!r} appears more than once"
@@ -229,6 +236,8 @@ def _check(value: Any, param: _Param, where: str) -> Any:
         if isinstance(value, bool) or not isinstance(value, int | float):
             raise RuleProfileError(f"{where} must be a number")
         value = float(value)
+        if not math.isfinite(value):
+            raise RuleProfileError(f"{where} must be a finite number")
     elif param.kind is int:
         if isinstance(value, bool) or not isinstance(value, int):
             raise RuleProfileError(f"{where} must be a whole number")
@@ -309,8 +318,12 @@ def _requirement(raw: Any, index: int, source: str) -> Requirement:
     where = f"{source}: requirements[{index}]"
     if not isinstance(raw, dict):
         raise RuleProfileError(f"{where} must be a mapping")
+    non_text_keys = [key for key in raw if not isinstance(key, str)]
+    if non_text_keys:
+        rendered = ", ".join(repr(key) for key in non_text_keys)
+        raise RuleProfileError(f"{where} field names must be text; found {rendered}")
     kind = raw.get("type")
-    if kind not in REQUIREMENT_TYPES:
+    if not isinstance(kind, str) or kind not in REQUIREMENT_TYPES:
         raise RuleProfileError(
             f"{where}.type must be one of {', '.join(REQUIREMENT_TYPES)}"
         )

@@ -22,7 +22,7 @@ import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
-from lor_sequence_builder.new_sequence import channel_layout_problem
+from lor_sequence_builder.channel_mapping import channel_layout_problem
 
 ROLES = (
     "arch",
@@ -200,7 +200,9 @@ def prop_center(prop: ET.Element) -> tuple[float, float] | None:
 
 
 def _channel_entries(prop: ET.Element) -> list[list[str]]:
-    return [entry.split(",") for entry in prop.get("ChannelGrid", "").split(";") if entry]
+    value = prop.get("ChannelGrid", "")
+    # Preserve empty slots: dropping one shifts every subsequent physical index.
+    return [entry.split(",") for entry in value.split(";")] if value else []
 
 
 def _shape_name(prop: ET.Element) -> str:
@@ -229,9 +231,11 @@ def _color_capability(prop: ET.Element) -> ColorCapability:
     traditional = prop.get("TraditionalType", "")
     device = prop.get("DeviceType", "")
     listed = tuple(c.strip() for c in prop.get("TraditionalColors", "").split(",") if c.strip())
-    entry_colors = tuple(
-        entry[5].strip() for entry in _channel_entries(prop) if len(entry) > 5 and entry[5].strip()
-    )
+    entries = _channel_entries(prop)
+    # Keep one slot per physical channel. Filtering blank color fields shifts
+    # later colors onto the wrong channel (for example, blank, Red, Green).
+    entry_colors = tuple(entry[5].strip() if len(entry) > 5 else "" for entry in entries)
+    has_entry_colors = any(entry_colors)
     if device not in {"LOR", "AC", "DC"} or prop.get("StringType", "Traditional") != "Traditional":
         return ColorCapability(
             "unsupported", listed, False,
@@ -248,7 +252,7 @@ def _color_capability(prop: ET.Element) -> ColorCapability:
             "All colors share one circuit; no single color can be shown alone",
         )
     if traditional == "Channel_per_color":
-        colors = entry_colors or listed
+        colors = entry_colors if has_entry_colors else listed
         return ColorCapability(
             "color_per_channel", colors, True, "Each color has its own channel and can be shown alone"
         )

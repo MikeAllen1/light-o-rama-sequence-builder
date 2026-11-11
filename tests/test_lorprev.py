@@ -518,3 +518,28 @@ def test_total_channel_grid_entry_limit_is_enforced(
     )
     with pytest.raises(LorprevError, match="total ChannelGrid entry limit"):
         read_lorprev(source)
+
+
+@pytest.mark.parametrize(
+    ("groups", "detail"),
+    [
+        ('<PropGroup Name="Missing" />', "missing a non-empty id"),
+        ('<PropGroup id="" Name="Blank" />', "missing a non-empty id"),
+        ('<PropGroup id="same" /><PropGroup id="same" />', "Duplicate identity id 'same'"),
+        ('<PropGroup id="prop-1" />', "Duplicate identity id 'prop-1'"),
+    ],
+)
+def test_prop_group_ids_must_be_present_and_unique_across_preview_identities(
+    tmp_path: Path, groups: str, detail: str
+) -> None:
+    source = tmp_path / "invalid-group-identity.lorprev"
+    source.write_text(
+        '<PreviewClass Revision="1"><PropClass id="prop-1" Name="One" />'
+        + groups + '</PreviewClass>',
+        encoding="utf-8",
+    )
+    model = read_lorprev(source)
+    findings = [item for item in model.unsupported_constructs
+                if item.kind == "prop group identity"]
+    assert len(findings) == 1
+    assert detail in findings[0].detail

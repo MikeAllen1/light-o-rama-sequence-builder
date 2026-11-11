@@ -99,11 +99,17 @@ def read_timing_grid(sequence_path: str | Path, grid_name: str) -> list[float]:
         for timing in matches[0].findall("timing"):
             raw = timing.attrib.get("centisecond", "")
             try:
-                marks.append(int(raw) / 100.0)
+                centisecond = int(raw)
             except ValueError as exc:
                 raise EvaluationError(
                     f"Timing grid {grid_name!r} has a non-integer centisecond {raw!r}"
                 ) from exc
+            if not 0 <= centisecond <= document.total_centiseconds:
+                raise EvaluationError(
+                    f"Timing grid {grid_name!r} has centisecond {centisecond} "
+                    f"outside sequence duration 0-{document.total_centiseconds}"
+                )
+            marks.append(centisecond / 100.0)
         return sorted(set(marks))
     available = sorted(
         grid.attrib.get("name", "")
@@ -139,12 +145,25 @@ def _event_times(analysis: dict[str, Any], key: str) -> list[float]:
     return times
 
 
+def _reject_duplicate_object_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject duplicate JSON names instead of silently retaining the last value."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise EvaluationError(f"Analysis JSON contains duplicate object key {key!r}")
+        result[key] = value
+    return result
+
+
 def load_analysis(path: str | Path) -> dict[str, Any]:
     source = Path(path)
     try:
         if source.stat().st_size > MAX_ANALYSIS_BYTES:
             raise EvaluationError("Analysis JSON exceeds the 50 MiB limit")
-        data = json.loads(source.read_text(encoding="utf-8"))
+        data = json.loads(
+            source.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_object_keys,
+        )
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise EvaluationError(f"Cannot read analysis JSON: {source}") from exc
     if not isinstance(data, dict):
