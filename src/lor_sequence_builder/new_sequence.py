@@ -24,13 +24,13 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import PurePosixPath, PureWindowsPath
 
-from lor_sequence_builder.loredit import LoreditDocument
 from lor_sequence_builder.channel_mapping import (
     COLOR_LAYOUT_TYPES,
-    COLUMN_LAYOUT_TYPES,
+    COLUMN_LAYOUT_TYPES as COLUMN_LAYOUT_TYPES,
     channel_layout_problem,
     parse_channel_grid,
 )
+from lor_sequence_builder.loredit import LoreditDocument
 from lor_sequence_builder.lorprev import (
     MAX_CHANNEL_GRID_ENTRIES_PER_PROP,
     MAX_CHANNEL_GRID_ENTRIES_TOTAL,
