@@ -230,6 +230,8 @@ def _estimate_tempo(
             offset = 0.5 * (left_score - right_score) / denominator
             if abs(offset) <= 0.5:
                 refined_lag += offset
+    if tempo_candidates:
+        tempo_candidates[0]["bpm"] = round(60.0 / (refined_lag * FRAME_SECONDS), 2)
     positive = [score for score, _ in candidates if score > 0]
     mean_score = math.fsum(positive) / len(positive) if positive else 0.0
     confidence = max(0.0, min(1.0, (best_score - mean_score) / (abs(best_score) + 1e-12)))

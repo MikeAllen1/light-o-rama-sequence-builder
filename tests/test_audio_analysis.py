@@ -93,7 +93,7 @@ def test_analyze_audio_detects_tempo_beats_onsets_and_hard_stop(tmp_path: Path) 
     assert analysis["tempo"]["bpm"] == pytest.approx(120.0, abs=3.0)
     assert analysis["tempo"]["candidates"]
     assert analysis["tempo"]["candidates"][0]["bpm"] == pytest.approx(
-        analysis["tempo"]["bpm"], abs=0.1
+        analysis["tempo"]["bpm"], abs=0.01
     )
     assert analysis["tempo"]["candidates"][0]["relative_score"] == 1.0
     assert any(candidate["bpm"] == pytest.approx(60.0, abs=3.0) for candidate in analysis["tempo"]["candidates"])
