@@ -21,6 +21,8 @@
     audioUrl: null,
     analysis: null,
     vocals: null,
+    lyrics: null,
+    syncCheck: null,
     rows: [],
     lanes: [],
     pxPerSecond: 22,
@@ -30,8 +32,15 @@
     animationFrame: 0,
     audioRequestId: 0,
     sequenceRequestId: 0,
-    vocalRequestId: 0
+    vocalRequestId: 0,
+    lyricRequestId: 0
   };
+
+  // Sync check tolerances, in seconds.
+  const SYNC_ON_TIME = 0.04;
+  const SYNC_NEAR_MISS = 0.15;
+  // A "big lighting change" is at least this many channels starting together.
+  const SYNC_CLUSTER = 4;
 
   const audio = $("audioPlayer");
   const canvasViewport = $("canvasViewport");
@@ -242,6 +251,156 @@
     return grid.marks;
   }
 
+  function sortedTimes(events) {
+    return events.map((event) => Number(event.time))
+      .filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
+  }
+
+  function nearest(sorted, value) {
+    let low = 0;
+    let high = sorted.length - 1;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (sorted[middle] < value) low = middle + 1;
+      else high = middle;
+    }
+    let best = Infinity;
+    for (const index of [low - 1, low]) {
+      if (index >= 0 && index < sorted.length) {
+        best = Math.min(best, Math.abs(sorted[index] - value));
+      }
+    }
+    return best;
+  }
+
+  // Strong musical moments (bar starts, crash candidates, the loudest tenth of the
+  // transients) checked against big lighting changes (several channels starting
+  // together). A moment whose nearest big change is 40-150 ms away is a possible
+  // out-of-sync hit; farther away it simply has no lighting response, which may be
+  // intended. This reports evidence and the tolerance; it does not judge intent.
+  function syncCheck() {
+    const analysis = state.analysis && state.analysis.analysis;
+    if (!analysis || !state.sequence) return null;
+    if (state.syncCheck && state.syncCheck.analysis === analysis &&
+        state.syncCheck.sequence === state.sequence) return state.syncCheck;
+    const counts = new Map();
+    for (const prop of state.sequence.props) {
+      for (const channel of prop.channels) {
+        for (const effect of channel.effects) {
+          counts.set(effect.start, (counts.get(effect.start) || 0) + 1);
+        }
+      }
+    }
+    const changes = Array.from(counts.entries())
+      .filter(([, count]) => count >= SYNC_CLUSTER).map(([cs]) => cs / 100)
+      .sort((x, y) => x - y);
+    const onsets = (analysis.onsets || []).slice()
+      .sort((x, y) => (Number(y.strength) || 0) - (Number(x.strength) || 0));
+    const strongest = onsets.slice(0, Math.max(1, Math.floor(onsets.length / 10)));
+    const moments = sortedTimes([].concat(analysis.downbeats || [], analysis.crashes || [],
+      strongest)).filter((time, index, all) => index === 0 || time - all[index - 1] > 0.03);
+    const flagged = [];
+    let onTime = 0;
+    for (const time of moments) {
+      let best = null;
+      let low = 0;
+      let high = changes.length - 1;
+      while (low < high) {
+        const middle = (low + high) >> 1;
+        if (changes[middle] < time) low = middle + 1;
+        else high = middle;
+      }
+      for (const index of [low - 1, low]) {
+        if (index >= 0 && index < changes.length) {
+          const offset = changes[index] - time;
+          if (best == null || Math.abs(offset) < Math.abs(best)) best = offset;
+        }
+      }
+      if (best == null) continue;
+      const distance = Math.abs(best);
+      if (distance <= SYNC_ON_TIME) onTime += 1;
+      else if (distance <= SYNC_NEAR_MISS) {
+        const ms = Math.round(distance * 1000);
+        flagged.push({ time, offset_ms: Math.round(best * 1000),
+          method: "nearest big lighting change is " + ms + " ms " + (best < 0 ? "early" : "late") });
+      }
+    }
+    state.syncCheck = { analysis, sequence: state.sequence, moments: moments.length, onTime,
+      flagged };
+    return state.syncCheck;
+  }
+
+  function effectsAt(seconds, toleranceCs) {
+    const cs = seconds * 100;
+    const found = [];
+    for (const prop of state.sequence.props) {
+      prop.channels.forEach((channel, index) => {
+        for (const effect of channel.effects) {
+          if (effect.start - toleranceCs <= cs && cs < effect.end + toleranceCs) {
+            found.push({ prop, channelIndex: index, effect });
+          }
+        }
+      });
+    }
+    return found;
+  }
+
+  function inspectMoment(seconds, lane) {
+    const inspector = $("inspectorContent");
+    inspector.replaceChildren();
+    const add = (text, primary) => {
+      const item = document.createElement("div");
+      if (primary) item.className = "inspector-primary";
+      item.textContent = text;
+      inspector.appendChild(item);
+    };
+    add(formatCentiseconds(seconds * 100) + (lane ? " · " + lane.label : ""), true);
+    if (lane && lane.kind === "lyrics") {
+      const line = lane.events.find((item) => item.start <= seconds && seconds < item.end);
+      if (line) {
+        add("\u201c" + line.text + "\u201d", true);
+        add(line.verified ? "Lyric text from an imported file" :
+          "Transcribed automatically: unverified until reviewed");
+        if (line.words && line.words.length) {
+          add("Words: " + line.words.map((word) => word.text + " " +
+            formatCentiseconds(word.start * 100)).join(" · "));
+        }
+      }
+    }
+    if (lane && lane.kind === "offbeat") {
+      const hit = lane.events.find((item) => Math.abs(item.time - seconds) < 0.02);
+      if (hit) add("Strong musical moment; " + hit.method + " (on time is within " +
+        Math.round(SYNC_ON_TIME * 1000) + " ms).", true);
+    }
+    const found = effectsAt(seconds, 10);
+    const starting = found.filter((item) => Math.abs(item.effect.start - seconds * 100) <= 10);
+    const names = Array.from(new Set(found.map((item) => item.prop.name)));
+    add(starting.length + " effect(s) start within 0.1 s; " + names.length +
+      " prop(s) lit: " + names.slice(0, 14).join(", ") + (names.length > 14 ? ", …" : ""));
+  }
+
+  function handleMarkerClick(event) {
+    if (!state.sequence) return;
+    const canvas = $("markersCanvas");
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const lane = state.lanes[Math.floor((event.clientY - rect.top) / MARKER_HEIGHT)];
+    let seconds = Math.max(0, x / state.pxPerSecond);
+    if (lane && lane.kind !== "lyrics" && lane.kind !== "energy" && lane.kind !== "tempo") {
+      // Snap to the nearest marker within 6 pixels, so a click lands on the event.
+      const times = sortedTimes(lane.events.map((item) =>
+        ({ time: item.time != null ? item.time : item.start })));
+      let best = null;
+      for (const time of times) {
+        if (Math.abs(time - seconds) * state.pxPerSecond <= 6 &&
+            (best == null || Math.abs(time - seconds) < Math.abs(best - seconds))) best = time;
+      }
+      if (best != null) seconds = best;
+    }
+    seekAudio(seconds);
+    inspectMoment(seconds, lane);
+  }
+
   function buildLanes() {
     const lanes = [];
     for (const grid of state.sequence ? state.sequence.timingGrids : []) {
@@ -276,7 +435,25 @@
       if (analysis.hard_stops && analysis.hard_stops.length) lanes.push({
         label: "Near-silence candidates", source: "estimated", kind: "stops", events: analysis.hard_stops
       });
+      if (Array.isArray(analysis.tempo_curve) && analysis.tempo_curve.length) lanes.push({
+        label: "Tempo (local BPM)", source: "librosa", kind: "tempo", events: analysis.tempo_curve
+      });
+      if (Array.isArray(analysis.high_hits) && analysis.high_hits.length) lanes.push({
+        label: "High-pitched hits", source: "librosa", kind: "hits", events: analysis.high_hits
+      });
+      if (Array.isArray(analysis.crashes) && analysis.crashes.length) lanes.push({
+        label: "Cymbal crash candidates", source: "heuristic", kind: "crashes", events: analysis.crashes
+      });
     }
+    if (state.lyrics && state.lyrics.lines.length) lanes.push({
+      label: state.lyrics.source === "transcribed" ? "Lyrics (unverified)" : "Lyrics",
+      source: state.lyrics.source, kind: "lyrics", events: state.lyrics.lines
+    });
+    const sync = syncCheck();
+    if (sync) lanes.push({
+      label: "Possible out-of-sync hits", source: "check · " + sync.flagged.length +
+        " of " + sync.moments, kind: "offbeat", events: sync.flagged
+    });
     if (state.vocals) {
       if (state.vocals.regions && state.vocals.regions.length) lanes.push({
         label: "Vocal regions", source: "heuristic", kind: "vocal-regions", events: state.vocals.regions
@@ -285,6 +462,11 @@
         label: "Vocal syllables / holds", source: "heuristic", kind: "syllables", events: state.vocals.syllables
       });
     }
+    // Arranged like a DAW reference area: what is sung first, right under the
+    // waveform, then song structure, then rhythm, then the sequence's own grids.
+    const order = ["lyrics", "vocal-regions", "syllables", "sections", "stops", "phrases",
+      "downbeats", "beats", "tempo", "crashes", "hits", "onsets", "energy", "native", "offbeat"];
+    lanes.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
     state.lanes = lanes;
     return lanes;
   }
@@ -417,6 +599,17 @@
       }
     }
     const bars = state.sequence.timingGrids.find((grid) => /^bars?$/i.test(grid.name));
+    const downbeats = state.analysis && state.analysis.analysis &&
+      state.analysis.analysis.downbeats;
+    if (!bars && downbeats && downbeats.length) {
+      // No native bar grid: number the estimated bars, drawn dimmer as estimates.
+      ctx.fillStyle = "#8a7bb0";
+      downbeats.forEach((event, index) => {
+        const x = Number(event.time) * pps;
+        ctx.fillRect(x, 17, 1, RULER_HEIGHT - 17);
+        if (pps >= 10 || index % 4 === 0) ctx.fillText("~" + (index + 1), x + 3, 27);
+      });
+    }
     if (bars) {
       ctx.fillStyle = "#b59ce9";
       timingGridMarks(bars).forEach((cs, index) => {
@@ -534,7 +727,12 @@
       energy: "#6ca4b7",
       stops: "#d56e70",
       "vocal-regions": "#5ea8d9",
-      syllables: "#d48db9"
+      syllables: "#d48db9",
+      tempo: "#e0c35a",
+      hits: "#9fd3e6",
+      crashes: "#f2e27a",
+      lyrics: "#e8b7d8",
+      offbeat: "#e8665f"
     };
     state.lanes.forEach((lane, laneIndex) => {
       const y = laneIndex * MARKER_HEIGHT;
@@ -546,6 +744,65 @@
       ctx.lineTo(width, y + MARKER_HEIGHT - .5);
       ctx.stroke();
       const color = colors[lane.kind] || "#8096a6";
+      if (lane.kind === "tempo") {
+        const values = lane.events.map((item) => Number(item.bpm)).filter(Number.isFinite);
+        const low = Math.min(...values);
+        const high = Math.max(...values);
+        const span = Math.max(1, high - low);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        lane.events.forEach((item, index) => {
+          const px = Number(item.time) * pps;
+          const py = y + MARKER_HEIGHT - 4 - ((Number(item.bpm) - low) / span) * (MARKER_HEIGHT - 9);
+          if (index === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        });
+        ctx.stroke();
+        // Label the tempo wherever it settles at a new value.
+        ctx.fillStyle = color;
+        ctx.font = "9px Segoe UI, sans-serif";
+        let lastLabelX = -999;
+        let lastBpm = null;
+        lane.events.forEach((item) => {
+          const bpm = Math.round(Number(item.bpm));
+          const px = Number(item.time) * pps;
+          if ((lastBpm == null || Math.abs(bpm - lastBpm) >= 3) && px - lastLabelX > 46) {
+            ctx.fillText(bpm + " BPM", px + 3, y + 9);
+            lastLabelX = px;
+            lastBpm = bpm;
+          }
+        });
+        return;
+      }
+      if (lane.kind === "lyrics") {
+        ctx.font = "10px Segoe UI, sans-serif";
+        for (const line of lane.events) {
+          const x1 = Number(line.start) * pps;
+          const x2 = Number(line.end) * pps;
+          if (!(x2 > x1)) continue;
+          ctx.globalAlpha = 0.22;
+          ctx.fillStyle = color;
+          ctx.fillRect(x1, y + 3, x2 - x1, MARKER_HEIGHT - 6);
+          ctx.globalAlpha = 1;
+          ctx.strokeStyle = color;
+          ctx.setLineDash(line.verified ? [] : [3, 2]);
+          ctx.strokeRect(x1 + .5, y + 3.5, Math.max(1, x2 - x1 - 1), MARKER_HEIGHT - 7);
+          ctx.setLineDash([]);
+          ctx.fillStyle = "rgba(225, 230, 236, .85)";
+          for (const word of line.words || []) {
+            ctx.fillRect(Number(word.start) * pps, y + MARKER_HEIGHT - 6, 1, 3);
+          }
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(x1 + 2, y, Math.max(0, x2 - x1 - 4), MARKER_HEIGHT);
+          ctx.clip();
+          ctx.fillStyle = "#f2e6ee";
+          ctx.fillText(line.text, x1 + 4, y + 14);
+          ctx.restore();
+        }
+        return;
+      }
       if (lane.kind === "energy") {
         const maximum = lane.events.reduce(
           (value, event) => Math.max(value, Number(event.rms) || 0),
@@ -630,7 +887,7 @@
             ctx.globalAlpha = 0.8;
           }
           ctx.strokeStyle = color;
-          ctx.lineWidth = lane.kind === "downbeats" ? 2 : 1;
+          ctx.lineWidth = lane.kind === "downbeats" || lane.kind === "crashes" ? 2 : 1;
           ctx.setLineDash(lowConfidence ? [2, 3] : []);
           ctx.beginPath();
           ctx.moveTo(Math.floor(x) + .5, y + (lane.kind === "onsets" ? 10 : 2));
@@ -680,6 +937,17 @@
     }
 
     const bars = state.sequence.timingGrids.find((grid) => /^bars?$/i.test(grid.name));
+    const downbeats = state.analysis && state.analysis.analysis &&
+      state.analysis.analysis.downbeats;
+    if (!bars && downbeats && downbeats.length) {
+      // No native bar grid: number the estimated bars, drawn dimmer as estimates.
+      ctx.fillStyle = "#8a7bb0";
+      downbeats.forEach((event, index) => {
+        const x = Number(event.time) * pps;
+        ctx.fillRect(x, 17, 1, RULER_HEIGHT - 17);
+        if (pps >= 10 || index % 4 === 0) ctx.fillText("~" + (index + 1), x + 3, 27);
+      });
+    }
     if (bars) {
       ctx.strokeStyle = "rgba(176, 140, 230, .23)";
       timingGridMarks(bars).forEach((cs) => {
@@ -1063,6 +1331,74 @@
     }
   }
 
+  function parseLyricsText(text, name) {
+    const lines = [];
+    const lrc = /\[(\d{1,3}):(\d{1,2}(?:\.\d{1,3})?)\]/g;
+    const cue = /(?:(\d+):)?(\d{1,2}):(\d{1,2})[.,](\d{1,3})\s*-->\s*(?:(\d+):)?(\d{1,2}):(\d{1,2})[.,](\d{1,3})/;
+    const toSeconds = (h, m, s, f) => Number(h || 0) * 3600 + Number(m) * 60 + Number(s) +
+      Number(String(f).padEnd(3, "0").slice(0, 3)) / 1000;
+    if (lrc.test(text)) {
+      for (const raw of text.split(/\r?\n/)) {
+        const stamps = Array.from(raw.matchAll(/\[(\d{1,3}):(\d{1,2}(?:\.\d{1,3})?)\]/g));
+        const words = raw.replace(/\[[^\]]*\]/g, "").trim();
+        for (const stamp of stamps) {
+          if (words) lines.push({ start: Number(stamp[1]) * 60 + Number(stamp[2]), end: null, text: words });
+        }
+      }
+    } else {
+      for (const block of text.replace(/\r\n/g, "\n").split(/\n\s*\n/)) {
+        const match = block.match(cue);
+        if (!match) continue;
+        const after = block.slice(match.index + match[0].length).trim().split("\n");
+        const words = after.map((line) => line.replace(/<[^>]+>/g, "").trim()).join(" ").trim();
+        if (words) lines.push({ start: toSeconds(match[1], match[2], match[3], match[4]),
+          end: toSeconds(match[5], match[6], match[7], match[8]), text: words });
+      }
+    }
+    if (!lines.length) throw new Error(name + ": no LRC time tags or SRT/VTT cues found.");
+    lines.sort((a, b) => a.start - b.start);
+    lines.forEach((line, index) => {
+      if (line.end == null) line.end = index + 1 < lines.length ? lines[index + 1].start : line.start + 4;
+      line.verified = true;
+      line.words = [];
+    });
+    return { schema_version: "lyrics-1.0", source: "imported", lines };
+  }
+
+  async function loadLyrics(file) {
+    if (!file) return;
+    const requestId = ++state.lyricRequestId;
+    try {
+      if (file.size > MAX_JSON_BYTES) throw new Error("Lyrics file exceeds the 5 MiB input limit.");
+      const text = await file.text();
+      if (requestId !== state.lyricRequestId) return;
+      let data;
+      if (/\.json$/i.test(file.name)) {
+        data = JSON.parse(text);
+        if (!data || data.schema_version !== "lyrics-1.0" || !Array.isArray(data.lines) ||
+            data.lines.length > 5000) throw new Error("Expected a lyrics-1.0 JSON document.");
+      } else {
+        data = parseLyricsText(text, file.name);
+      }
+      for (const line of data.lines) {
+        const start = Number(line.start);
+        const end = Number(line.end);
+        if (!line || typeof line.text !== "string" || !Number.isFinite(start) ||
+            !Number.isFinite(end) || start < 0 || end <= start || end > 1801) {
+          throw new Error("Lyrics contain an invalid line.");
+        }
+      }
+      state.lyrics = data;
+      refreshTimeline();
+      setBanner(data.source === "transcribed"
+        ? "Loaded " + data.lines.length + " transcribed lyric lines. They are unverified: speech recognition mishears sung words. Dashed outlines mark unverified lines."
+        : "Loaded " + data.lines.length + " lyric lines from " + file.name + ".", "good");
+    } catch (error) {
+      if (requestId !== state.lyricRequestId) return;
+      setBanner(error.message || String(error), "error");
+    }
+  }
+
   function inspectEffect(effect, row) {
     state.selectedEffect = effect;
     const attrs = effect.attributes;
@@ -1136,6 +1472,7 @@
     bindFile("welcomeAudioFile", loadAudio);
     bindFile("analysisFile", loadAnalysis);
     bindFile("vocalsFile", loadVocals);
+    bindFile("lyricsFile", loadLyrics);
 
     $("zoomSlider").addEventListener("input", (event) => {
       const centerTime = state.sequence
@@ -1192,7 +1529,7 @@
       if (state.sequence) refreshTimeline();
     });
     $("waveformCanvas").addEventListener("click", (event) => seekFromPointer(event, $("waveformCanvas")));
-    $("markersCanvas").addEventListener("click", (event) => seekFromPointer(event, $("markersCanvas")));
+    $("markersCanvas").addEventListener("click", handleMarkerClick);
     $("tracksCanvas").addEventListener("click", handleTrackClick);
   }
 

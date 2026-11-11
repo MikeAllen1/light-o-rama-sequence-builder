@@ -91,6 +91,18 @@ Before building, it asks whether you have any specific requirements (skipped whe
 - `Song.timeline.json`, `Song.plan.json`, `Song.rules.json`: every decision, the section plan with props used and left out, and the rule report.
 - `Song.analysis.json` and `Song.analysis.svg`: the music analysis. Pass `--analysis` instead of `--audio` to reuse one.
 
+### Lyrics for the workspace
+
+The browser workspace can show timed lyrics under the waveform:
+
+```powershell
+uv run lor-sequence-builder lyrics --import .\Song.lrc --output .\Song.lyrics.json
+uv sync --locked --extra lyrics   # optional, once: offline speech recognition
+uv run lor-sequence-builder lyrics --audio .\Song.vocals.wav --output .\Song.lyrics.json
+```
+
+Imported LRC, SRT or VTT lyrics are your own text. Transcribed lyrics are always marked unverified, because speech recognition mishears sung words; a vocals-only track gives the best timing. Nothing is sent anywhere.
+
 ### Singing faces
 
 Faces drawn as separate props (outline, mouth shapes, eyes) sing along: the mouth opens on each syllable (wider on stronger ones, an "O" mouth on some held notes when you have one, the closed mouth between words), the eyes blink every few seconds, the outline stays on whenever a mouth is on, and the face rests during instrumentals. Parts are recognized by their names in the preview: `outline`; `mouth` or `lips` with `closed`, `half`, `open`, or `o`; `eyes open`, `eyes closed`.

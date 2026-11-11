@@ -100,6 +100,13 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                                         "phrase_boundaries": [],
                                         "section_candidates": [],
                                         "hard_stops": [],
+                                        "tempo_curve": [
+                                            {"time": 0.0, "bpm": 120},
+                                            {"time": 1.0, "bpm": 112},
+                                            {"time": 2.0, "bpm": 121},
+                                        ],
+                                        "high_hits": [{"time": 0.25, "confidence": 0.7}],
+                                        "crashes": [{"time": 1.0, "confidence": 0.8}],
                                     },
                                 },
                                 "warning": None,
@@ -144,10 +151,11 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                     assert zoomed_width > initial_width
 
                     page.locator("#audioFile").set_input_files(str(audio_path))
-                    page.wait_for_function(
-                        "document.querySelector('#analysisMessage').textContent.includes('Audio analysis complete')",
-                        timeout=15000,
-                    )
+                    # Poll from the test side: the page's script-src 'self' policy
+                    # blocks the string predicates that wait_for_function evaluates.
+                    page.locator("#analysisMessage").filter(
+                        has_text="Audio analysis complete"
+                    ).wait_for(timeout=15000)
                     assert not page.locator("#playButton").is_disabled()
                     assert "Beat candidates" in page.locator("#markerLabels").inner_text()
                     assert "RMS energy envelope" in page.locator("#markerLabels").inner_text()
@@ -173,6 +181,32 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                         "(element) => Number.parseFloat(element.style.left)"
                     )
                     assert abs(playhead_left - 88) < 1
+
+                    labels = page.locator("#markerLabels").inner_text()
+                    for lane in ("Tempo (local BPM)", "High-pitched hits",
+                                 "Cymbal crash candidates", "Possible out-of-sync hits"):
+                        assert lane in labels
+
+                    page.locator("#lyricsFile").set_input_files(
+                        {
+                            "name": "song.lrc",
+                            "mimeType": "text/plain",
+                            "buffer": b"[00:00.50]Hello lights\n[00:01.50]Second line\n",
+                        }
+                    )
+                    page.locator("#markerLabels").filter(has_text="Lyrics").wait_for()
+                    # Lyrics sit first, right under the waveform.
+                    first_lane = page.locator("#markerLabels > div").first.inner_text()
+                    assert first_lane.startswith("Lyrics")
+                    seconds = page.locator("#audioPlayer").evaluate("(a) => a.currentTime")
+                    pixels_per_second = 88 / seconds
+                    page.locator("#markersCanvas").click(
+                        position={"x": 0.9 * pixels_per_second, "y": 11}
+                    )
+                    inspector = page.locator("#inspectorContent").inner_text()
+                    assert "Hello lights" in inspector
+                    assert "Lyric text from an imported file" in inspector
+                    assert "prop(s) lit" in inspector
                 finally:
                     browser.close()
     finally:

@@ -254,6 +254,79 @@ def _high_hits(samples: npt.NDArray[np.float32]) -> list[dict[str, Any]]:
     return events
 
 
+CRASH_LOUDNESS_PERCENTILE = 97
+CRASH_JUMP = 2.0
+CRASH_RING = 0.55
+CRASH_SPACING = 1.0
+
+
+def _crashes(samples: npt.NDArray[np.float32], hits: list[dict[str, Any]]
+             ) -> list[dict[str, Any]]:
+    """Cymbal crash candidates: loud high-frequency hits that ring on afterwards.
+
+    A hi-hat or tambourine hit dies away within a tenth of a second; a crash
+    cymbal keeps ringing. Each high hit is kept when the high band jumps well
+    above what came just before, is among the loudest high-band moments in the
+    song, and is still at least 55% of that peak a quarter to half a second
+    later. Crashes closer than a second apart count once.
+    """
+    if not hits:
+        return []
+    mel = librosa.feature.melspectrogram(y=samples, sr=SAMPLE_RATE, hop_length=HOP_LENGTH,
+                                         fmin=HIGH_BAND_HZ, n_mels=32)
+    energy = np.asarray(np.sqrt(np.sum(mel, axis=0)), dtype=np.float64)
+    if energy.size == 0:
+        return []
+    loud = float(np.percentile(energy, CRASH_LOUDNESS_PERCENTILE)) or 1.0
+    per_second = SAMPLE_RATE / HOP_LENGTH
+    events: list[dict[str, Any]] = []
+    for hit in hits:
+        frame = int(float(hit["time"]) * per_second)
+        if frame >= energy.size:
+            continue
+        peak = float(np.max(energy[frame:frame + max(1, int(0.05 * per_second))]))
+        before = energy[max(0, frame - int(0.3 * per_second)):max(1, frame - 1)]
+        after = energy[frame + int(0.25 * per_second):frame + int(0.5 * per_second)]
+        if after.size == 0 or before.size == 0:
+            continue
+        prior = float(np.mean(before))
+        sustain = float(np.mean(after))
+        if peak >= loud and peak >= CRASH_JUMP * prior and sustain >= CRASH_RING * peak:
+            if events and float(hit["time"]) - float(events[-1]["time"]) < CRASH_SPACING:
+                continue
+            events.append({
+                "time": hit["time"],
+                "confidence": round(min(1.0, sustain / peak), 4),
+                "method": "high_band_hit_with_sustained_ring",
+            })
+    return events
+
+
+def _tempo_curve(envelope: FloatArray, bpm: float | None) -> list[dict[str, Any]]:
+    """Local tempo once per second, so tempo changes are visible, not hidden in one BPM."""
+    if bpm is None or envelope.size < 16:
+        return []
+    local = np.asarray(
+        librosa.feature.tempo(onset_envelope=envelope, sr=SAMPLE_RATE, hop_length=HOP_LENGTH,
+                              aggregate=None, max_tempo=300.0),
+        dtype=np.float64,
+    )
+    local = np.where(np.isfinite(local) & (local > 0), local, bpm)
+    # Fold each estimate to the song tempo's octave, then smooth over 4 seconds.
+    folded = local.copy()
+    for _ in range(4):
+        folded = np.where(folded > bpm * 1.41, folded / 2, folded)
+        folded = np.where(folded < bpm / 1.41, folded * 2, folded)
+    width = int(4 * SAMPLE_RATE / HOP_LENGTH) | 1
+    padded = np.pad(folded, width // 2, mode="edge")
+    smooth = np.median(np.lib.stride_tricks.sliding_window_view(padded, width), axis=1)
+    per_second = SAMPLE_RATE / HOP_LENGTH
+    return [
+        {"time": float(second), "bpm": round(float(smooth[int(second * per_second)]), 2)}
+        for second in range(int(smooth.size / per_second))
+    ]
+
+
 def _fit_tempo_bounds(bpm: float, min_bpm: int, max_bpm: int) -> float | None:
     """Return an octave-equivalent tempo inside the requested range, if one exists."""
     if not math.isfinite(bpm) or bpm <= 0:
@@ -798,6 +871,8 @@ def analyze_audio(
                 ],
                 "onsets": onsets,
                 "high_hits": high_hits,
+                "crashes": _crashes(samples, high_hits),
+                "tempo_curve": _tempo_curve(envelope, bpm),
                 "energy": energy,
                 "phrase_boundaries": phrases,
                 "section_candidates": sections,
