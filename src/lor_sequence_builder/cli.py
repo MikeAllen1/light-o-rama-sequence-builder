@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Sequence
 import sys
+from collections.abc import Sequence
 
 from lor_sequence_builder.audio_analysis import (
     MAX_BPM as MAX_AUDIO_BPM,
