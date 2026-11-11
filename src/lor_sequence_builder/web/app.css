@@ -171,3 +171,10 @@ canvas { display: block; }
 
 .legend-energy { background: #6ca4b7; }
 .legend-phrase { background: #8c79c7; }
+
+.legend-onset { background: #d99b56; }
+.legend-section { background: #4fa9b7; }
+.legend-stop { background: #d56e70; }
+.legend-vocal { background: #5ea8d9; }
+.legend-syllable { background: #d48db9; }
+.legend-native { background: #8096a6; }
