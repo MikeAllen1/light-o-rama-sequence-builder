@@ -62,6 +62,8 @@ def test_pulse_pipeline_writes_native_sequence_and_versioned_timeline(
     assert timeline["schema_version"] == "1.0"
     assert timeline["timebase"] == "integer centiseconds from sequence start"
     assert timeline["bpm"] == 120
+    assert len(timeline["preview_xml_sha256"]) == 64
+    assert len(timeline["template_xml_sha256"]) == 64
     assert timeline["beat_positions_centiseconds"][:4] == [0, 50, 100, 150]
     assert len(timeline["events"]) == result.event_count
     assert len(timeline["supported_prop_ids"]) == result.supported_prop_count
