@@ -31,6 +31,7 @@ MOVEMENT_DIRECTIONS = (
 )
 MAX_TIMELINE_BYTES = 50 * 1024 * 1024
 MAX_EFFECTS = 500_000
+MAX_MOVEMENTS = 100_000
 
 
 class ChoreographyError(ValueError):
@@ -213,6 +214,9 @@ def parse_choreography(data: Any) -> Choreography:
     raw_effects = _list(root["effects"], "effects")
     if len(raw_effects) > MAX_EFFECTS:
         raise ChoreographyError(f"Timeline has more than {MAX_EFFECTS} effects")
+    raw_movements = _list(root.get("movements", []), "movements")
+    if len(raw_movements) > MAX_MOVEMENTS:
+        raise ChoreographyError(f"Timeline has more than {MAX_MOVEMENTS} movements")
     sections = []
     for i, raw in enumerate(_list(root.get("sections", []), "sections")):
         section = _object(raw, f"sections[{i}]", {"label", "start_centisecond", "end_centisecond"},
@@ -233,7 +237,7 @@ def parse_choreography(data: Any) -> Choreography:
         effects=tuple(_effect(raw, f"effects[{i}]") for i, raw in enumerate(raw_effects)),
         movements=tuple(
             _movement(raw, f"movements[{i}]")
-            for i, raw in enumerate(_list(root.get("movements", []), "movements"))
+            for i, raw in enumerate(raw_movements)
         ),
         sections=tuple(sections),
         hard_stops_centiseconds=tuple(
