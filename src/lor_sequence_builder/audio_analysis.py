@@ -171,18 +171,19 @@ def _estimate_tempo(
     best_score = max(score for score, _ in candidates)
     if best_score <= 1e-12:
         return None, 0.0, None, None, 0.0
-    # Select the strongest local autocorrelation maximum, not the shortest
-    # peak above an arbitrary fraction of the strongest score. The previous
-    # shortest-peak rule systematically preferred double-time aliases.
-    # This still cannot resolve every musical half/double-time ambiguity; the
-    # confidence and candidate metadata must communicate that limitation.
+    # Autocorrelation has octave/subdivision aliases: the strongest peak can
+    # represent a slower metrical level (for example, half-time). Prefer the
+    # shortest local peak retaining a substantial share of the strongest
+    # correlation. This is a deliberate tempo-prior heuristic, not meter
+    # detection; real music can still produce half/double-time ambiguity.
     scores_by_lag = {lag: score for score, lag in candidates}
     local_peaks = [
-        (score, lag) for score, lag in candidates
+        lag for score, lag in candidates
         if score >= scores_by_lag.get(lag - 1, float("-inf"))
         and score >= scores_by_lag.get(lag + 1, float("-inf"))
+        and score >= best_score * 0.50
     ]
-    best_lag = max(local_peaks, default=max(candidates))[1]
+    best_lag = min(local_peaks) if local_peaks else max(candidates)[1]
     # Parabolic interpolation around the discrete correlation peak reduces
     # BPM quantization error for tempos whose beat period is not an integer
     # number of 50 ms analysis frames.
