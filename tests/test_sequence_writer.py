@@ -18,6 +18,7 @@ from lor_sequence_builder.choreography import (
 )
 from lor_sequence_builder.cli import main
 from lor_sequence_builder.loredit import read_loredit
+from lor_sequence_builder.new_sequence import NewSequenceError, build_new_sequence
 from lor_sequence_builder.rules import load_rule_set
 from lor_sequence_builder.sequence_writer import (
     RulesFailedError,
@@ -249,12 +250,12 @@ def test_failed_native_build_report_is_truthful_and_same_attempt_can_retry(
     preview = _preview(tmp_path, display)
     output = tmp_path / "retry.loredit"
     report_path = tmp_path / "retry.json"
-    original_builder = sequence_writer_module.build_new_sequence
+    original_builder = build_new_sequence
 
     def fail_native_build(*args: object, **kwargs: object) -> object:
-        raise sequence_writer_module.NewSequenceError("synthetic native build failure")
+        raise NewSequenceError("synthetic native build failure")
 
-    monkeypatch.setattr(sequence_writer_module, "build_new_sequence", fail_native_build)
+    monkeypatch.setattr("lor_sequence_builder.sequence_writer.build_new_sequence", fail_native_build)
     with pytest.raises(SequenceWriteError, match="synthetic native build failure"):
         build_from_timeline(
             preview, _good(display), load_rule_set(), "song.mp3", output, report_path
@@ -267,7 +268,7 @@ def test_failed_native_build_report_is_truthful_and_same_attempt_can_retry(
     assert failed["sequence_written"] is False
     assert not output.exists()
 
-    monkeypatch.setattr(sequence_writer_module, "build_new_sequence", original_builder)
+    monkeypatch.setattr("lor_sequence_builder.sequence_writer.build_new_sequence", original_builder)
     result = build_from_timeline(
         preview, _good(display), load_rule_set(), "song.mp3", output, report_path
     )
