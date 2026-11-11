@@ -822,15 +822,16 @@ def test_ffmpeg_normalization_restricts_protocol_and_demuxer(
     from lor_sequence_builder import audio_analysis
 
     calls: list[list[str]] = []
-    monkeypatch.setattr(audio_analysis.shutil, "which", lambda _: "ffmpeg")
+    monkeypatch.setattr(shutil, "which", lambda _: "ffmpeg")
 
     def fake_run(command: list[str], **_: object) -> SimpleNamespace:
         calls.append(command)
         if "-version" in command:
             return SimpleNamespace(returncode=0, stdout="ffmpeg version test", stderr="")
+        Path(command[-1]).write_bytes(b"\0" * 44)
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    monkeypatch.setattr(audio_analysis.subprocess, "run", fake_run)
+    monkeypatch.setattr(subprocess, "run", fake_run)
     audio_analysis._normalize(tmp_path / "sample.wav", tmp_path / "normalized.wav")
 
     decode = calls[1]
@@ -845,9 +846,9 @@ def test_ffmpeg_normalization_rejects_unknown_demuxer(
 
     from lor_sequence_builder import audio_analysis
 
-    monkeypatch.setattr(audio_analysis.shutil, "which", lambda _: "ffmpeg")
+    monkeypatch.setattr(shutil, "which", lambda _: "ffmpeg")
     monkeypatch.setattr(
-        audio_analysis.subprocess, "run",
+        subprocess, "run",
         lambda *_args, **_kwargs: SimpleNamespace(
             returncode=0, stdout="ffmpeg version test", stderr=""
         ),
