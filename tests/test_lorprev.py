@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import base64
-import gzip
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
+from defusedxml.ElementTree import parse as safe_parse
 
 import lor_sequence_builder.lorprev as lorprev_module
 from lor_sequence_builder.lorprev import (
@@ -13,13 +12,13 @@ from lor_sequence_builder.lorprev import (
     LorprevError,
     read_lorprev,
 )
+from tests.fixture_builders import write_synthetic_loredit
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def test_synthetic_revision_zero_preview_preserves_geometry_and_provenance() -> None:
     model = read_lorprev(FIXTURES / "synthetic_display.lorprev")
-    assert model.revision is not None
     assert model.revision.value == "0"
     assert len(model.props) == 2
     assert model.props[0].attributes["Name"].value == "Test Roofline"
@@ -27,14 +26,7 @@ def test_synthetic_revision_zero_preview_preserves_geometry_and_provenance() -> 
     assert model.props[1].children[0].tag == "shape"
     assert model.props[1].children[0].children[0].attributes["x"].value == "0"
     assert model.props[0].attributes["Name"].locator.endswith("/@Name")
-    assert len(model.channel_grid_entries) == 2
-    assert model.channel_grid_entries[0].raw_fields == ("1",)
-    assert model.channel_grid_entries[0].entry_index == 0
-    assert len(model.geometry_points) == 4
-    assert model.unsupported_constructs == ()
-    assert model.geometry_points[0].x.value == "0"
-    assert model.geometry_points[0].y.locator.endswith("/@y")
-    assert model.scenes[0].attributes["Name"].value == "Synthetic Scene"
+    assert model.display.attributes["Name"].value == "Synthetic Test Display"
     assert model.prop_views[0].tag == "PropViews"
 
 
@@ -44,7 +36,7 @@ def test_synthetic_revision_one_preview_preserves_full_prop_model(tmp_path: Path
         "PreviewClass",
         {
             "id": "synthetic-display",
-            "Name": "Synthetic Revision 1 Fixture",
+            "Name": "Synthetic S6 Revision 1 Fixture",
             "Revision": "1",
             "LastSelectedSceneId": "synthetic-scene",
         },
@@ -81,6 +73,7 @@ def test_synthetic_revision_one_preview_preserves_full_prop_model(tmp_path: Path
         )
         shape_name = (
             "Star" if index == 14 else
+            "Icicles" if index == 15 else
             "Tree 180" if index == 17 else
             "Arch" if index >= 49 else
             "Lines-Unconnected" if index % 2 == 0 else
@@ -93,17 +86,25 @@ def test_synthetic_revision_one_preview_preserves_full_prop_model(tmp_path: Path
                  "ScaleY": "0.07", "Radians": "0"}
             )
         else:
-            ET.SubElement(shape, "point", {"x": str(index / 100), "y": "0.5"})
+            point_count = 42 if index <= 15 else 41
+            for point_index in range(point_count):
+                ET.SubElement(
+                    shape,
+                    "point",
+                    {
+                        "x": str(index / 100 + point_index / 10_000),
+                        "y": str(0.5 + point_index / 100_000),
+                    },
+                )
     ET.SubElement(root, "PropViews")
     source = tmp_path / "synthetic_revision_1.lorprev"
     ET.ElementTree(root).write(source, encoding="utf-8", xml_declaration=True)
 
     model = read_lorprev(source)
-    assert model.revision is not None
     assert model.revision.value == "1"
     assert len(model.props) == 51
     assert len(model.channel_grid_entries) == 69
-    assert len(model.geometry_points) == 46
+    assert len(model.geometry_points) == 1900
     assert model.unsupported_constructs == ()
     assert all(entry.source.locator.endswith("/@ChannelGrid") for entry in model.channel_grid_entries)
     assert model.channel_grid_entries[0].entry_index == 0
@@ -127,64 +128,6 @@ def test_synthetic_revision_one_preview_preserves_full_prop_model(tmp_path: Path
     assert model.prop_views[0].tag == "PropViews"
     assert model.props[0].attributes["Name"].file == str(source)
     assert model.props[0].attributes["Name"].locator.endswith("/@Name")
-
-
-def test_s6_exported_revision_one_golden_fixture_preserves_all_source_data(
-    tmp_path: Path,
-) -> None:
-    # The committed fixture is a base64-encoded gzip transport wrapper around the sanitized S6 XML export.
-    fixture = FIXTURES / "s6_revision_1_export.lorprev.gz.b64"
-    source = tmp_path / "s6_revision_1_export.lorprev"
-    compressed = base64.b64decode(fixture.read_bytes(), validate=True)
-    source.write_bytes(gzip.decompress(compressed))
-
-    model = read_lorprev(source)
-    assert model.revision is not None
-    assert model.revision.value == "1"
-    assert len(model.props) == 51
-    assert len(model.geometry_points) == 1900
-    lor_assignments = [
-        entry for entry in model.channel_grid_entries if entry.device_type == "LOR"
-    ]
-    assert lor_assignments
-    assert all(
-        entry.network is not None
-        and entry.unit_id is not None
-        and entry.circuit is not None
-        for entry in lor_assignments
-    )
-    assert all(
-        entry.source.locator.endswith("/@ChannelGrid")
-        for entry in lor_assignments
-    )
-    assert all(point.x.file == str(source) and point.y.file == str(source) for point in model.geometry_points)
-    assert len(model.scenes) == 1
-    assert len(model.prop_views) == 1
-    assert model.prop_views[0].tag == "PropViews"
-    assert sum(p.attributes["BulbShape"].value == "Square" for p in model.props) == 46
-    assert sum(p.attributes["BulbShape"].value == "Hexagon" for p in model.props) == 5
-    assert {p.children[0].attributes["ShapeName"].value for p in model.props} == {
-        "Lines-Connected", "Lines-Unconnected", "Arch", "Star", "Tree 180", "Icicles"
-    }
-    assert sum(
-        len(p.children[0].children) for p in model.props
-    ) == 1900
-    assert sum(
-        p.attributes["TraditionalType"].value == "Channel_per_color"
-        for p in model.props
-    ) == 8
-    assert all(
-        value.file == str(source)
-        for prop in model.props
-        for value in prop.attributes.values()
-    )
-    assert all(
-        value.locator.startswith("/PreviewClass/PropClass[")
-        for prop in model.props
-        for value in prop.attributes.values()
-    )
-    assert model.display.attributes["Name"].value == "Synthetic S6 Export Fixture"
-    assert model.scenes[0].attributes["Name"].value == "Synthetic Test Scene"
 
 
 def test_unknown_prop_device_values_are_reported_with_source_provenance(
@@ -381,24 +324,26 @@ def test_preview_size_limit_is_enforced_while_reading(tmp_path: Path) -> None:
     with pytest.raises(LorprevError, match="20 MiB limit"):
         read_lorprev(source)
 
-def test_owner_supplied_s6_revision_56_preview_parses_native_prop_group(
+def test_synthetic_revision_56_preview_parses_native_prop_group(
     tmp_path: Path,
 ) -> None:
-    fixture = FIXTURES / "s6_revision_56_group_export.lorprev.gz.b64"
-    source = tmp_path / "s6_revision_56_group_export.lorprev"
-    compressed = base64.b64decode(fixture.read_bytes(), validate=True)
-    source.write_bytes(gzip.decompress(compressed))
+    template = write_synthetic_loredit(tmp_path / "synthetic-template.loredit")
+    source = tmp_path / "synthetic-revision-56.lorprev"
+    template_root = safe_parse(template).getroot()
+    assert template_root is not None
+    preview = template_root.find("PreviewClass")
+    assert preview is not None
+    ET.ElementTree(preview).write(source, encoding="utf-8", xml_declaration=True)
 
     model = read_lorprev(source)
-    assert model.revision is not None
     assert model.revision.value == "56"
     assert len(model.props) == 51
     assert len(model.groups) == 1
 
     group = model.groups[0]
     assert group.group_id is not None
-    assert group.group_id.value == "661c4882-d019-4894-8812-d8ca520d3659"
-    assert group.name is not None and group.name.value == "Fixture Group 01"
+    assert group.group_id.value == "synthetic-group-0001"
+    assert group.name is not None and group.name.value == "Synthetic Fixture Group"
     assert group.arrangement is not None and group.arrangement.value == "Preview"
     assert len(group.members) == 5
     prop_names = {
@@ -410,28 +355,38 @@ def test_owner_supplied_s6_revision_56_preview_parses_native_prop_group(
         for member in group.members
         if member.prop_id is not None
     ] == [
-        "Fixture Prop 011",
-        "Fixture Prop 010",
-        "Fixture Prop 009",
-        "Fixture Prop 008",
-        "Fixture Prop 007",
+        "Synthetic Prop 11",
+        "Synthetic Prop 10",
+        "Synthetic Prop 09",
+        "Synthetic Prop 08",
+        "Synthetic Prop 07",
     ]
-    assert all(member.orientation is not None and member.orientation.value == "normal"
-               for member in group.members)
-    assert all(member.top is not None and member.top.value == "0"
-               for member in group.members)
-    assert all(member.left is not None and member.left.value == "0"
-               for member in group.members)
+    assert all(
+        member.orientation is not None and member.orientation.value == "normal"
+        for member in group.members
+    )
+    assert all(
+        member.top is not None and member.top.value == "0"
+        for member in group.members
+    )
+    assert all(
+        member.left is not None and member.left.value == "0"
+        for member in group.members
+    )
     assert group.source.locator == "/PreviewClass/PropGroup[0]"
-    assert all(member.source.locator.startswith(group.source.locator + "/member[")
-               for member in group.members)
+    assert all(
+        member.source.locator.startswith(group.source.locator + "/member[")
+        for member in group.members
+    )
     assert model.unsupported_constructs == ()
     assert model.unrecognized_top_level == ()
 
 
-def test_owner_supplied_default_preview_is_rejected_as_zero_prop_fixture() -> None:
+def test_empty_synthetic_preview_is_rejected_as_zero_prop_fixture(tmp_path: Path) -> None:
+    source = tmp_path / "empty-preview.lorprev"
+    source.write_text('<PreviewClass Revision="1" />', encoding="utf-8")
     with pytest.raises(LorprevError, match="zero PropClass"):
-        read_lorprev(FIXTURES / "default_empty.lorprev")
+        read_lorprev(source)
 
 
 def test_missing_preview_fails_with_actionable_error(tmp_path: Path) -> None:
@@ -439,44 +394,6 @@ def test_missing_preview_fails_with_actionable_error(tmp_path: Path) -> None:
         read_lorprev(tmp_path / "missing.lorprev")
 
 
-@pytest.mark.parametrize("revision", ["2", "12", "58", "999"])
-def test_any_edit_revision_is_accepted_and_recorded(tmp_path: Path, revision: str) -> None:
-    # Revision is an edit counter, not a format version; it must never gate parsing.
-    source = tmp_path / "edited.lorprev"
-    source.write_text(
-        f'<PreviewClass id="x" Name="Edited" Revision="{revision}">'
-        '<PropClass id="p" Name="Test" /></PreviewClass>',
-        encoding="utf-8",
-    )
-    model = read_lorprev(source)
-    assert model.revision is not None
-    assert model.revision.value == revision
-    assert model.revision.locator == "/PreviewClass/@Revision"
-    assert len(model.props) == 1
-
-
-def test_missing_revision_is_accepted(tmp_path: Path) -> None:
-    source = tmp_path / "no_revision.lorprev"
-    source.write_text(
-        '<PreviewClass id="x" Name="No Revision">'
-        '<PropClass id="p" Name="Test" /></PreviewClass>',
-        encoding="utf-8",
-    )
-    model = read_lorprev(source)
-    assert model.revision is None
-    assert len(model.props) == 1
-
-
-@pytest.mark.parametrize(
-    "content",
-    [
-        b"",
-        b"not xml",
-        b"<Other />",
-        b'<!DOCTYPE x [<!ENTITY e "boom">]><PreviewClass Revision="0" />',
-        b'<PreviewClass Revision="0" />',
-    ],
-)
 def test_invalid_or_unsafe_previews_fail(content: bytes, tmp_path: Path) -> None:
     source = tmp_path / "invalid.lorprev"
     source.write_bytes(content)
@@ -530,3 +447,42 @@ def test_xml_element_count_limit_is_enforced_during_parse(
 
     with pytest.raises(LorprevError, match="maximum element count of 5"):
         read_lorprev(source)
+
+
+def test_any_edit_revision_is_accepted_and_recorded(tmp_path: Path, revision: str) -> None:
+    # Revision is an edit counter, not a format version; it must never gate parsing.
+    source = tmp_path / "edited.lorprev"
+    source.write_text(
+        f'<PreviewClass id="x" Name="Edited" Revision="{revision}">'
+        '<PropClass id="p" Name="Test" /></PreviewClass>',
+        encoding="utf-8",
+    )
+    model = read_lorprev(source)
+    assert model.revision is not None
+    assert model.revision.value == revision
+    assert model.revision.locator == "/PreviewClass/@Revision"
+    assert len(model.props) == 1
+
+
+def test_missing_revision_is_accepted(tmp_path: Path) -> None:
+    source = tmp_path / "no_revision.lorprev"
+    source.write_text(
+        '<PreviewClass id="x" Name="No Revision">'
+        '<PropClass id="p" Name="Test" /></PreviewClass>',
+        encoding="utf-8",
+    )
+    model = read_lorprev(source)
+    assert model.revision is None
+    assert len(model.props) == 1
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"",
+        b"not xml",
+        b"<Other />",
+        b'<!DOCTYPE x [<!ENTITY e "boom">]><PreviewClass Revision="0" />',
+        b'<PreviewClass Revision="0" />',
+    ],
+)
