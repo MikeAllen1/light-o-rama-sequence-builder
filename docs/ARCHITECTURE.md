@@ -214,7 +214,7 @@ The exact `.loredit` schema is not to be inferred from memory. The supplied real
 - Validate Timeline prop/channel references and event bounds before serialization; re-read the generated LOREDIT before publishing outputs.
 - Write a versioned Timeline JSON with SHA-256 fingerprints of the validated parsed XML trees, BPM, beat positions, supported/excluded props, and event references.
 
-This is a temporary engineering harness, not the final user workflow. It requires a compatible S6 sequence template because the current writer preserves a verified native v15 document rather than constructing a blank sequence. The owner must open and play the output in S6; automated checks do not satisfy this human gate.
+This is a temporary engineering harness, not the final user workflow. It requires a compatible S6 sequence template because the current writer preserves a verified native v15 document rather than constructing a blank sequence. The template's embedded preview geometry and group arrangement are retained; Phase 3 checks prop IDs and channel declarations but does not merge geometry/group changes from the standalone preview. Use a template saved with the same physical layout as the standalone preview. The owner must open and play the output in S6; automated checks do not satisfy this human gate.
 
 ### 5.8 `report`
 
