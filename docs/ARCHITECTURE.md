@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** Phase 2 — preview parser for standalone and embedded PreviewClass data in progress; later-stage contracts are planned below  
+**Status:** Phase 2 merged; Phase 3 fixed-tempo Timeline walking skeleton in progress  
 **Project:** Light-O-Rama Sequence Builder  
 **V1 interface:** Command line  
 **Target output:** Native Light-O-Rama S6 `.loredit` sequence  
@@ -200,6 +200,22 @@ User profiles may add display-specific constraints and adjust tunables such as e
 
 The exact `.loredit` schema is not to be inferred from memory. The supplied real sequence is a starting reference; additional sanitized fixtures and round-trip tests must establish the structures needed for each supported feature.
 
+### 5.9 Phase 3 walking-skeleton orchestrator
+
+**Inputs:** Required standalone `.lorprev`, matching native S6 v15 `.loredit` template, integer fixed BPM, pulse duration.
+
+**Responsibilities:**
+- Require exact equality between standalone and embedded preview prop-ID sets. Never remap IDs based on names or order.
+- Limit the initial supported set to `DeviceType=LOR` with `TraditionalType=Single Color` or `Multicolor_string_1_ch`, complete LOR ChannelGrid addresses, and existing native channel records in the matching template.
+- Exclude unsupported prop/device types explicitly in Timeline JSON. If a prop inside the supported type boundary lacks a complete ChannelGrid or native channel mapping, fail before writing.
+- Use existing native `channel` row/col/color coordinates from the template as channel identities. Do not derive or invent these coordinates from ChannelGrid rows.
+- Generate deterministic integer-centisecond beat positions from an explicitly supplied integer BPM (30–300); no audio analysis or tempo inference occurs in this phase.
+- Replace prior effects in the in-memory template copy with short `INTENSITY` pulses at each beat for every supported native channel.
+- Validate Timeline prop/channel references and event bounds before serialization; re-read the generated LOREDIT before publishing outputs.
+- Write a versioned Timeline JSON with source SHA-256 fingerprints, BPM, beat positions, supported/excluded props, and event references.
+
+This is a temporary engineering harness, not the final user workflow. It requires a compatible S6 sequence template because the current writer preserves a verified native v15 document rather than constructing a blank sequence. The owner must open and play the output in S6; automated checks do not satisfy this human gate.
+
 ### 5.8 `report`
 
 **Inputs:** Input metadata, classifications, audio analysis, Timeline, rule results, writer/verification results.
@@ -216,14 +232,14 @@ The exact `.loredit` schema is not to be inferred from memory. The supplied real
 
 ## 6. Domain models and artifact contracts
 
-Use Pydantic models for public stage boundaries. Initial model families:
+Use Pydantic models for public configuration/stage boundaries; small internal immutable Timeline value objects may use frozen dataclasses with explicit validation. Initial model families:
 
 - `InputManifest`: paths, file metadata, hashes, detected formats, configured target version, and resource limits.
 - `RawDisplayModel`, `RawPropModel`, `RawChannelModel`, `RawControllerModel`: faithful preview-derived structures and source identifiers.
 - `ClassifiedPropModel`: inferred role, orientation, segment order, color capability, confidence, evidence, review status, and overrides.
 - `AudioAnalysisModel`: tempo, beats, downbeats, onsets, sections, energy curve, hard stops, vocal regions, and syllable events.
 - `RuleProfile`: versioned rule IDs, constraints, and tunables.
-- `Timeline`: versioned timebase, source references, musical sections, and channel/prop events.
+- `Timeline`: versioned timebase, source references, musical sections, and channel/prop events. Phase 3 serializes an immutable dataclass Timeline with schema version, source fingerprints, fixed BPM, centisecond beat positions, supported/excluded props, and native channel references.
 - `GenerationReport`: used/unused entities, unsupported features, validation results, and verification status.
 
 ### Timeline requirements
