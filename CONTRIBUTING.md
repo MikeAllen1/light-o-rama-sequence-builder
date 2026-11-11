@@ -1,6 +1,6 @@
-# Instructions for AI coding sessions
+# Contributing
 
-This repository is built in gated phases. Read these before doing anything:
+This repository is built in gated phases. Every contributor and every working session reads these before doing anything:
 
 1. `docs/PLAN.md` — authoritative phase status, acceptance criteria, open decisions, and handoff log.
 2. The GitHub Issue for the active phase — the contract for scope and acceptance.
