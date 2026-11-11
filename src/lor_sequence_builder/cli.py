@@ -44,6 +44,26 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"Scenes: {len(model.scenes)}")
             print(f"Prop views: {len(model.prop_views)}")
             print(f"Channel-grid entries: {len(model.channel_grid_entries)}")
+            lor_addresses = sorted(
+                {
+                    (entry.network, entry.unit_id)
+                    for entry in model.channel_grid_entries
+                    if entry.network is not None and entry.unit_id is not None
+                }
+            )
+            dmx_universes = sorted(
+                {
+                    entry.universe
+                    for entry in model.channel_grid_entries
+                    if entry.universe is not None
+                }
+            )
+            print(f"LOR controller addresses: {len(lor_addresses)}")
+            for network, unit_id in lor_addresses:
+                print(f"  {network} / {unit_id}")
+            print(f"DMX universes: {len(dmx_universes)}")
+            for universe in dmx_universes:
+                print(f"  {universe}")
             print(f"Geometry points: {len(model.geometry_points)}")
             print(f"Unsupported prop/device constructs: {len(model.unsupported_constructs)}")
             print(f"Unrecognized elements (all levels): {len(model.unrecognized_elements)}")
