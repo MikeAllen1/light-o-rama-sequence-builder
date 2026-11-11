@@ -17,7 +17,7 @@ The generated native S6 v15 sequence should open, and its supported sample props
 
 ## Important limitation
 
-The committed preview/template pair is sanitized and fictional. This test validates that the generated native file opens in S6 and that its sequence preview animates. It does **not** validate or activate the owner's real controllers, physical lights, or house channel mapping. Testing actual hardware requires a separate run using the owner's real matching preview and sequence template.
+The preview/template pair used by the automated package builder is synthetic and fictional; larger sequence data is generated at runtime. No owner `.loredit` or derived copy is stored in the current branch tree. This test validates that the generated native file opens in S6 and that its sequence preview animates. It does **not** validate or activate the owner's real controllers, physical lights, or house channel mapping. Testing actual hardware requires a separate run using the owner's real matching preview and sequence template.
 
 ## If something fails
 
