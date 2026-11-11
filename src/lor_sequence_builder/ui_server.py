@@ -8,7 +8,7 @@ import tempfile
 import webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Sequence, cast
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from lor_sequence_builder.audio_analysis import (
@@ -56,10 +56,15 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
             self.send_error(404)
             return
 
+        expected_host = "127.0.0.1:" + str(cast(ThreadingHTTPServer, self.server).server_port)
+        request_host = self.headers.get("Host")
+        if request_host != expected_host:
+            self.send_error(403, "Requests must use the loopback workspace host")
+            return
         origin = self.headers.get("Origin")
         if origin:
             origin_url = urlsplit(origin)
-            if origin_url.scheme != "http" or origin_url.netloc != self.headers.get("Host"):
+            if origin_url.scheme != "http" or origin_url.netloc != expected_host:
                 self.send_error(403, "Cross-origin requests are not accepted")
                 return
 

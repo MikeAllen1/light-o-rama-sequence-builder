@@ -583,8 +583,16 @@
   function updatePlayhead() {
     if (!state.sequence) return;
     const seconds = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
-    playhead.style.left = (seconds * state.pxPerSecond) + "px";
+    const visibleTime = Math.min(seconds, state.sequence.durationSeconds);
+    playhead.style.left = (visibleTime * state.pxPerSecond) + "px";
     playhead.style.display = state.audioFile ? "block" : "none";
+  }
+
+  function seekAudio(seconds) {
+    if (!state.audioFile) return;
+    const maximum = state.audioBuffer ? state.audioBuffer.duration : state.sequence.durationSeconds;
+    audio.currentTime = Math.max(0, Math.min(seconds, maximum));
+    updatePlayhead();
   }
 
   function refreshTimeline() {
@@ -648,10 +656,18 @@
     if (!AudioContextClass) throw new Error("This browser does not support Web Audio waveform decoding.");
     const context = new AudioContextClass();
     try {
-      const buffer = await context.decodeAudioData(await file.arrayBuffer());
+      const audioBytes = await file.arrayBuffer();
+      const prefix = new Uint8Array(audioBytes, 0, Math.min(4, audioBytes.byteLength));
+      const hasId3 = prefix.length >= 3 && prefix[0] === 73 && prefix[1] === 68 && prefix[2] === 51;
+      const hasMpegSync = prefix.length >= 2 && prefix[0] === 255 && (prefix[1] & 224) === 224;
+      const mislabeledMp3 = file.name.toLowerCase().endsWith(".mp4") && (hasId3 || hasMpegSync);
+      const playbackSource = mislabeledMp3
+        ? new Blob([audioBytes], { type: "audio/mpeg" })
+        : file;
+      const buffer = await context.decodeAudioData(audioBytes.slice(0));
       state.audioBuffer = buffer;
       if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
-      state.audioUrl = URL.createObjectURL(file);
+      state.audioUrl = URL.createObjectURL(playbackSource);
       audio.src = state.audioUrl;
       $("playButton").disabled = false;
       $("stopButton").disabled = false;
@@ -776,8 +792,7 @@
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const seconds = Math.max(0, Math.min(state.sequence.durationSeconds, x / state.pxPerSecond));
-    if (state.audioFile) audio.currentTime = seconds;
-    updatePlayhead();
+    seekAudio(seconds);
   }
 
   function handleTrackClick(event) {
@@ -797,8 +812,7 @@
         return;
       }
     }
-    if (state.audioFile) audio.currentTime = Math.min(seconds, state.sequence.durationSeconds);
-    updatePlayhead();
+    seekAudio(seconds);
   }
 
   function syncScroll() {
@@ -825,8 +839,15 @@
     bindFile("vocalsFile", loadVocals);
 
     $("zoomSlider").addEventListener("input", (event) => {
+      const centerTime = state.sequence
+        ? (canvasViewport.scrollLeft + canvasViewport.clientWidth / 2) / state.pxPerSecond
+        : 0;
       state.pxPerSecond = Number(event.target.value);
       refreshTimeline();
+      if (state.sequence) {
+        canvasViewport.scrollLeft = Math.max(0,
+          centerTime * state.pxPerSecond - canvasViewport.clientWidth / 2);
+      }
     });
     $("fitButton").addEventListener("click", () => {
       if (!state.sequence) return;

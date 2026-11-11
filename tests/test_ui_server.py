@@ -70,6 +70,23 @@ def test_audio_analysis_endpoint_rejects_unsupported_extensions(local_server: st
     assert error.value.code == 415
 
 
+
+def test_audio_analysis_endpoint_rejects_dns_rebinding_host(local_server: str) -> None:
+    request = Request(
+        local_server + "/api/analyze",
+        data=b"not-a-real-audio-file",
+        headers={
+            "Host": "attacker.example",
+            "Origin": "http://attacker.example",
+            "Content-Type": "application/octet-stream",
+            "X-Audio-Filename": "song.mp3",
+        },
+        method="POST",
+    )
+    with pytest.raises(HTTPError) as error:
+        urlopen(request, timeout=3)
+    assert error.value.code == 403
+
 def test_mp3_signature_detection_handles_id3_and_mpeg_frames() -> None:
     assert _looks_like_mp3(bytes([73, 68, 51, 3, 0, 0]))
     assert _looks_like_mp3(bytes([255, 251, 180, 64]))

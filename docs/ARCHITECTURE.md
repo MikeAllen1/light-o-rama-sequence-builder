@@ -183,19 +183,6 @@ Initial universal validators:
 
 User profiles may add display-specific constraints and adjust tunables such as effect density, intensity ranges, and which props sing which vocal parts. User profiles layer over the default profile using documented merge semantics. Conflicting or invalid rules must be reported, not silently resolved.
 
-### 5.8 Browser sequencing workspace
-
-The browser workspace is a presentation and interaction layer over the existing sequence and analysis contracts; it does not replace the Python engine.
-
-- The user selects a native S6 v15 `.loredit` file and matching audio from the browser. The sequence is parsed in the browser as untrusted XML, with DTD/entity declarations rejected and explicit byte, depth, and element-count limits.
-- The track model is derived from native `SequenceProps/SeqProp/channel/effect` records and embedded `PreviewClass/PropGroup/member` references. Prop names, channel coordinates, event boundaries, and timing-grid marks are source data, not demo content.
-- The waveform is computed from decoded samples in the browser. It is not synthesized from RMS or replaced with a decorative waveform.
-- When launched through `lor-sequence-ui`, audio bytes are posted to a loopback-only endpoint and passed to the existing `analyze_audio` function. Uploads are bounded, held only in a temporary directory, and deleted after analysis. The endpoint is not exposed on a network interface and does not forward audio to a remote service.
-- The UI displays native sequence timing grids separately from estimated beat/downbeat/onset/section/silence events returned by the analyzer. Confidence and method remain available; section candidates are not mislabeled as verse or chorus.
-- Optional `vocals-1.0` reports can be displayed as heuristic vocal regions and syllable candidates. That format does not contain recognized words or lyric timestamps.
-- The first workspace release is read-only. Selection, navigation, playback, track collapse, and effect inspection do not mutate the LOREDIT. Editing and safe export require a later, separately tested phase.
-- Desktop wrapping and installation are final-stage work. The browser workspace remains the development interface until the sequencing and editing workflow is complete.
-
 ### 5.7 `lor_writer`
 
 **Inputs:** Validated Timeline, exact preview-derived display mapping, configured target LOR version.
@@ -241,6 +228,20 @@ This is a temporary engineering harness, not the final user workflow. It require
 - Rules passed, warnings, and violations.
 - Output file and Timeline JSON paths.
 - What has been verified by automated tests versus what still requires opening/testing in the target LOR application and on the physical display.
+
+### 5.10 Browser sequencing workspace
+
+The browser workspace is a presentation and interaction layer over the existing sequence and analysis contracts; it does not replace the Python engine.
+
+- The user selects a native S6 v15 `.loredit` file and matching audio from the browser. The sequence is parsed in the browser as untrusted XML, with DTD/entity declarations rejected and explicit byte, depth, and element-count limits.
+- The track model is derived from native `SequenceProps/SeqProp/channel/effect` records and embedded `PreviewClass/PropGroup/member` references. Prop names, channel coordinates, event boundaries, and timing-grid marks are source data, not demo content.
+- The waveform is computed from decoded samples in the browser. It is not synthesized from RMS or replaced with a decorative waveform.
+- When launched through `lor-sequence-ui`, audio bytes are posted to a loopback-only endpoint and passed to the existing `analyze_audio` function. Uploads are bounded, held only in a temporary directory, and deleted after analysis. The endpoint is not exposed on a network interface and does not forward audio to a remote service.
+- The UI displays native sequence timing grids separately from estimated beat/downbeat/onset/section/silence events returned by the analyzer. Confidence and method remain available; section candidates are not mislabeled as verse or chorus.
+- Optional `vocals-1.0` reports can be displayed as heuristic vocal regions and syllable candidates. That format does not contain recognized words or lyric timestamps.
+- The first workspace release is read-only. Selection, navigation, playback, track collapse, and effect inspection do not mutate the LOREDIT. Editing and safe export require a later, separately tested phase.
+- Desktop wrapping and installation are final-stage work. The browser workspace remains the development interface until the sequencing and editing workflow is complete.
+
 
 ## 6. Domain models and artifact contracts
 
@@ -360,10 +361,10 @@ Errors should identify the stage, input, and corrective action without dumping s
 
 ## 13. Explicitly out of scope for V1
 
-- GUI.
+- Desktop application wrapper, installer, and desktop packaging before final delivery.
 - Uploading sequences to controllers.
 - Live playback/control.
-- Editing existing sequence files.
+- Editing existing sequence files in the initial read-only browser workspace; browser-based editing is a later phase.
 - RGB/pixel choreography implementation (declared limitation; unsupported inputs are reported).
 - Cloud processing or account integration.
 
@@ -395,7 +396,9 @@ The delivery order is:
 7. Section-aware planner v1, with owner playback verification.
 8. Vocal separation and syllable-level singing-face choreography, with owner playback verification.
 9. Planner v2 (motifs, call-and-response, signature moments, dynamics).
-10. Polish, reporting, documentation, and packaging.
+10. Polish, reporting, documentation, and Python package distribution.
+11A. Browser-first sequencing workspace, followed by browser editing and musical-alignment phases.
+Final. Desktop wrapper and packaging, only after the browser sequencing and editing workflows are complete.
 
 Every phase is one GitHub Issue, one branch, and one PR. The issue is the acceptance contract. The PR must contain only work for that phase. A phase is complete only after its tests and CI pass, required human verification is recorded, the PR is merged, and the owner approves the next phase. Keep the progress log in `docs/PLAN.md` current so a fresh session can resume without relying on chat history.
 
