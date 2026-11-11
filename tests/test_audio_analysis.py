@@ -473,8 +473,6 @@ def test_analysis_does_not_publish_json_when_plot_generation_fails(
 def test_concurrent_plot_creation_does_not_leave_partial_json(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from lor_sequence_builder import audio_analysis
-
     audio = tmp_path / "race.wav"
     json_path = tmp_path / "race.json"
     plot_path = tmp_path / "race.svg"
