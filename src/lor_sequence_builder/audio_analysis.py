@@ -134,7 +134,7 @@ def _detect_onsets(flux: list[float]) -> list[dict[str, float]]:
     return peaks
 
 
-def _estimate_tempo(flux: list[float], duration: float) -> tuple[float | None, float, int | None, int | None]:
+def _estimate_tempo(\n    flux: list[float], min_bpm: int, max_bpm: int\n) -> tuple[float | None, float, int | None, int | None]:
     if len(flux) < 40:
         return None, 0.0, None, None
     # Autocorrelation of onset strength; frame spacing is 50 ms.
@@ -333,7 +333,7 @@ def analyze_audio(
             _normalize(source, normalized)
             rms, flux, duration = _read_features(normalized)
         onsets = _detect_onsets(flux)
-        bpm, tempo_confidence, lag, phase = _estimate_tempo(flux, duration)
+        bpm, tempo_confidence, lag, phase = _estimate_tempo(flux, min_bpm, max_bpm)
         beat_times: list[float] = []
         downbeats: list[float] = []
         if lag is not None and phase is not None and bpm is not None:
