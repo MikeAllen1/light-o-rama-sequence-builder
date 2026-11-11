@@ -871,6 +871,7 @@ def test_tempo_octave_normalization_never_returns_out_of_range_values() -> None:
 def test_section_recurrence_matrix_is_skipped_above_beat_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import librosa
     import numpy as np
 
     import lor_sequence_builder.audio_analysis as audio_module
@@ -878,7 +879,7 @@ def test_section_recurrence_matrix_is_skipped_above_beat_limit(
     def unexpected_recurrence(*args: object, **kwargs: object) -> object:
         raise AssertionError("quadratic recurrence allocation must be skipped")
 
-    monkeypatch.setattr(audio_module.librosa.segment, "recurrence_matrix", unexpected_recurrence)
+    monkeypatch.setattr(librosa.segment, "recurrence_matrix", unexpected_recurrence)
     features = np.ones((8, audio_module.MAX_SECTION_RECURRENCE_BEATS + 1), dtype=np.float64)
 
     novelty = audio_module._section_recurrence_novelty(features)
