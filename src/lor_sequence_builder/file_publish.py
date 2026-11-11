@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 from collections.abc import Callable, Sequence
-import contextlib
 from pathlib import Path
 from typing import BinaryIO
 
