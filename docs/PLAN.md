@@ -1,8 +1,8 @@
 # Implementation Plan
 
-**Status:** Phase 3 — fixed-tempo Timeline walking skeleton in progress  
-**Current phase:** 3  
-**Next phase:** 4 — audio analysis (blocked until Phase 3 is merged, its S6 human playback gate is complete, and owner approves)
+**Status:** Phase 3 merged; its physical S6 playback gate is pending. Phase 4 audio-analysis branch started by explicit owner direction.  
+**Current phase:** 4  
+**Next phase:** 5 — prop classification (blocked until Phase 4 is complete, merged, and owner approves)
 
 ## Product objective and fixed requirements
 
@@ -28,7 +28,7 @@ Build a display-independent CLI that accepts audio plus a required Light-O-Rama 
 - One phase = one GitHub Issue = one branch = one PR.
 - The issue is the contract: scope, non-goals, acceptance criteria, tests, and human gates.
 - Work only on the active phase. No future-phase work, unrelated refactoring, or scope creep.
-- A phase is complete only when acceptance criteria pass, CI is green, the PR is merged, required human verification is recorded, and the owner approves moving forward.
+- A phase is complete only when acceptance criteria pass, CI is green, the PR is merged, required human verification is recorded, and the owner approves moving forward. The owner explicitly authorized Phase 4 branch work to proceed while Phase 3's physical playback gate remains pending; Phase 4 must not be merged until that gate is reported complete and the owner explicitly authorizes the merge.
 - Do not start the next phase before explicit owner approval.
 - Keep this file as the persistent progress/handoff log: issue/PR links, branch, commits, exact tests/results, human-gate status, and remaining unknowns.
 - Prefer a fresh session per phase. The next session must be able to resume from this file and the GitHub issue without relying on chat history.
@@ -169,7 +169,7 @@ At the start of each fresh phase session: read this plan and active issue; confi
 
 ## Phase 3 — Fixed-tempo Timeline walking skeleton
 
-- Status: Implementation in progress; PR #7 is draft/open. No merge and no S6 playback verification have occurred.
+- Status: Merged in PR #7. Physical S6 playback verification remains pending; the owner has not yet reported opening/playing the generated pulse sequence on the actual display.
 - Issue: https://github.com/MikeAllen1/light-o-rama-sequence-builder/issues/7
 - PR: https://github.com/MikeAllen1/light-o-rama-sequence-builder/pull/7
 - Branch: `phase-3/walking-skeleton`
@@ -184,3 +184,15 @@ At the start of each fresh phase session: read this plan and active issue; confi
 - Human gate: pending. Owner must open and play a generated file in Light-O-Rama S6 and confirm beat synchronization and correct physical/display mapping. Automated tests cannot satisfy this gate.
 - Latest code-bearing commit: `b0872b46292276d97b0eb42ba1eb4d8ebb4ec8b5`. Tests workflow: https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42941298309 — 65 pytest tests passed, Ruff passed, strict mypy passed, and pip-audit passed. CodeQL: https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42941303887 — passed. The subsequent handoff-log-only update was also validated: Tests https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42941442561 and CodeQL https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42941442362 both passed.
 - Remaining Phase 3 work: owner must run the command with a matching local preview/template pair, open the generated `.loredit` in S6, and confirm pulse timing plus display mapping. Do not merge or begin Phase 4 before the human gate and explicit approval.
+
+
+## Phase 4 — Audio analysis
+
+- Status: Started on a dedicated branch at the owner's explicit direction. Implementation and acceptance testing are in progress; no Phase 4 PR has been opened or merged.
+- Issue: https://github.com/MikeAllen1/light-o-rama-sequence-builder/issues/8
+- Branch: `phase-4/audio-analysis` (created from `master` after Phase 3 PR #7 merged).
+- Scope: audio validation/normalization, tempo and beat estimation, downbeats, onsets/transients, phrase/section estimates, energy/dynamics, hard stops, versioned analysis JSON, and a debug plot. All event classes remain distinct and uncertain estimates carry confidence.
+- Non-goals: prop classification/props.yaml, rules engine, choreography/effect planning, vocal separation/syllable detection, and changes to native S6 serialization.
+- Phase 3 dependency: the owner will test the Phase 3 generated sequence in S6. By explicit owner instruction, Phase 4 development proceeds in parallel, but this branch must remain unmerged until the owner reports the Phase 3 physical playback result and explicitly authorizes the Phase 4 merge.
+- Initial repository inspection: the project currently declares only `defusedxml`; there is no audio-analysis dependency or module yet. Select and pin analysis dependencies only after validating Python 3.12 compatibility, runtime/resource cost, license, and reproducibility. Do not silently introduce a heavyweight stack.
+- Human verification: pending owner S6 playback test for Phase 3; Phase 4 analysis plot/audio alignment review will also be required before Phase 4 is considered complete.
