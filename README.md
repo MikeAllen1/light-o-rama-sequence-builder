@@ -63,12 +63,7 @@ The temporary engineering command `pulse` proves the preview → Timeline → na
 Example:
 
 ```powershell
-uv run lor-sequence-builder pulse \
-  --preview .\\display.lorprev \
-  --template .\\template.loredit \
-  --bpm 120 \
-  --output .\\pulse-test.loredit \
-  --timeline-output .\\pulse-test.timeline.json
+uv run lor-sequence-builder pulse --preview .\display.lorprev --template .\template.loredit --bpm 120 --output .\pulse-test.loredit --timeline-output .\pulse-test.timeline.json
 ```
 
 The initial walking-skeleton support boundary is intentionally narrow: `DeviceType=LOR` with `TraditionalType=Single Color` or `Multicolor_string_1_ch`, complete LOR ChannelGrid addresses, and matching native channels in the template. Other prop types are listed in the Timeline as excluded. A prop inside the supported type boundary that lacks a complete preview assignment or native template channel causes generation to fail closed. Existing effects in the template copy are replaced by short intensity pulses at the requested fixed tempo. The template's duration controls the generated sequence duration.
