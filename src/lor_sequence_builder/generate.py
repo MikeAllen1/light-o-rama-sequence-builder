@@ -10,12 +10,12 @@ can be reviewed. Inputs are never modified and no output is overwritten.
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from lor_sequence_builder.artifacts import write_new_text_atomically
 from lor_sequence_builder.audio_analysis import analyze_audio
 from lor_sequence_builder.choreography import choreography_json
 from lor_sequence_builder.evaluation import load_analysis
@@ -65,10 +65,7 @@ def output_paths(output_path: str | Path) -> dict[str, Path]:
 
 def _write_new(path: Path, text: str) -> None:
     try:
-        with path.open("x", encoding="utf-8", newline="\n") as stream:
-            stream.write(text)
-            stream.flush()
-            os.fsync(stream.fileno())
+        write_new_text_atomically(path, text)
     except OSError as exc:
         raise SequenceWriteError(f"Cannot write {path}: {exc}") from exc
 

@@ -945,3 +945,32 @@ def test_duplicate_group_names_union_members_for_name_selectors() -> None:
         _ids(builder)[f"Arch {index}"] for index in range(1, 5)
     } | {mini_tree_id}
     assert set(display.groups["Arches"]) == expected
+
+
+def test_sequential_chases_reject_simultaneous_prop_starts() -> None:
+    display = classic_yard()
+    ids = _ids(display)
+    arches = tuple(ids[f"Arch {i}"] for i in range(1, 5))
+    timeline = Choreography(
+        duration_centiseconds=SONG,
+        effects=tuple(_on(prop_id, 100, 150, movement_id="same-time") for prop_id in arches),
+        movements=(Movement("same-time", "chase", arches, "left_to_right", 100, 300),),
+    )
+    status, findings = _result(_check(display, timeline), "movements_complete")
+    assert status == "failed"
+    assert any("before the one listed ahead" in finding for finding in findings)
+
+
+def test_segmented_fall_rejects_simultaneous_segment_starts() -> None:
+    display = DisplayBuilder("Vertical Top")
+    drop = display.add("Drop", "outline", shape="Lines-Connected", channels=3,
+                       points=[(0.0, 0.5), (0.0, -0.5)], start="Top")
+    timeline = Choreography(
+        duration_centiseconds=SONG,
+        effects=tuple(_on(drop, 100, 150, channel, movement_id="same-time")
+                      for channel in range(3)),
+        movements=(Movement("same-time", "fall", (drop,), "top_to_bottom", 100, 300),),
+    )
+    status, findings = _result(_check(display, timeline), "falls_go_down")
+    assert status == "failed"
+    assert any("from the bottom up" in finding for finding in findings)

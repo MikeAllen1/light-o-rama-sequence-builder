@@ -5,8 +5,8 @@ This document distinguishes security controls committed to the repository from h
 ## Configured in the repository
 
 - **Dependabot version updates:** `.github/dependabot.yml` checks Python dependencies and GitHub Actions weekly and opens update pull requests.
-- **Automated tests and dependency audit:** `.github/workflows/tests.yml` runs tests, Ruff, and `pip-audit`. The workflow has read-only repository permissions and disables persisted checkout credentials.
-- **CodeQL:** `.github/workflows/codeql.yml` runs Python code scanning on pushes and pull requests to `master`, plus a weekly scheduled scan. The analysis job receives only the permissions needed to publish code-scanning results.
+- **Automated tests and dependency audit:** `.github/workflows/tests.yml` runs tests, Ruff, and `pip-audit` for the default dependencies; a separate job audits the combined optional `vocals` and `lyrics` dependency graph. The workflow has read-only repository permissions and disables persisted checkout credentials.
+- **CodeQL:** `.github/workflows/codeql.yml` runs Python and JavaScript code scanning on pushes and pull requests to `master`, plus a weekly scheduled scan. The analysis job receives only the permissions needed to publish code-scanning results.
 - **Security policy:** `SECURITY.md` explains responsible vulnerability reporting and safe handling of user files.
 - **Local-file exclusions:** `.gitignore` excludes local secrets, private keys, audio, and Light-O-Rama sequence files. Only the explicitly named fictional preview fixture is allowlisted.
 
@@ -14,11 +14,11 @@ This document distinguishes security controls committed to the repository from h
 
 The repository owner reported on 2026-11-11 that the requested GitHub security-settings work had been completed. The connected GitHub integration cannot independently inspect all repository security feature toggles, so this is recorded as owner-reported rather than independently verified.
 
-**Branch protection is a separate verification item.** The connected integration's latest ruleset listing returned no rulesets. Confirm in GitHub Settings → Rules → Rulesets whether an active ruleset targets `master`. Recommended protections:
+**Branch protection is a separate verification item.** The connected integration verified that `master` reports `protected: false` and that the `Protect` ruleset exists with enforcement disabled. Enable it in GitHub Settings → Rules → Rulesets and verify that it targets `master`. Recommended protections:
 
 - Require a pull request before changes merge to `master`.
 - Require the **Tests / test** status check.
-- Require the **CodeQL / Analyze Python** status check after it has appeared successfully.
+- Require the **CodeQL / Analyze Python and JavaScript** status check after it has appeared successfully.
 - Block force pushes.
 - Block branch deletion.
 - Require conversation resolution if review comments are used.

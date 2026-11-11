@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   analyze:
-    name: Analyze Python
+    name: Analyze Python and JavaScript
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -28,9 +28,9 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066
         with:
-          languages: python
+          languages: python,javascript-typescript
           build-mode: none
       - name: Analyze
         uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066
         with:
-          category: "/language:python"
+          category: "/language:python-javascript-typescript"

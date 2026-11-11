@@ -289,3 +289,38 @@ def test_a_mustache_face_sings_with_up_open_and_down_resting() -> None:
                for e in up)
     # The resting mustache also shows before anyone sings.
     assert any(e.start_centisecond < 190 for e in down)
+
+
+def test_vocal_json_rejects_malformed_events(tmp_path: Path) -> None:
+    path = tmp_path / "bad-vocals.json"
+    path.write_text(json.dumps({
+        "schema_version": "vocals-1.0", "duration_seconds": 12.0,
+        "regions": [None], "syllables": [],
+    }), encoding="utf-8")
+    with pytest.raises(VocalAnalysisError, match="non-object"):
+        load_vocals(path)
+
+    path.write_text(json.dumps({
+        "schema_version": "vocals-1.0", "duration_seconds": 12.0,
+        "regions": [], "syllables": [{"start": 1, "end": 2, "strength": 4}],
+    }), encoding="utf-8")
+    with pytest.raises(VocalAnalysisError, match="strength"):
+        load_vocals(path)
+
+
+def test_vocal_json_rejects_event_count_and_duration_overflow(tmp_path: Path) -> None:
+    path = tmp_path / "vocals.json"
+    payload = {
+        "schema_version": "vocals-1.0", "duration_seconds": 12.0,
+        "regions": [], "syllables": [],
+    }
+    payload["regions"] = [{"start": 0.0, "end": 1.0}] * 100_001
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(VocalAnalysisError, match="at most"):
+        load_vocals(path)
+
+    payload["regions"] = []
+    payload["duration_seconds"] = 1801.0
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(VocalAnalysisError, match="duration_seconds"):
+        load_vocals(path)

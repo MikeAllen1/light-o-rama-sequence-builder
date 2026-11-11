@@ -13,9 +13,10 @@ from __future__ import annotations
 import importlib.util
 import logging
 import os
-import shutil
 import tempfile
 from pathlib import Path
+
+from lor_sequence_builder.artifacts import copy_new_file_atomically
 
 MODEL_FILENAME = "UVR-MDX-NET-Voc_FT.onnx"
 
@@ -62,10 +63,8 @@ def separate_vocals(audio_path: str | Path, vocals_output: str | Path) -> Path:
                   if "(vocals)" in Path(name).name.lower()]
         if not vocals or not vocals[0].is_file():
             raise SeparationError("Vocal separation did not produce a vocals track")
-        output.parent.mkdir(parents=True, exist_ok=True)
         try:
-            with vocals[0].open("rb") as source, output.open("xb") as target:
-                shutil.copyfileobj(source, target)
+            copy_new_file_atomically(vocals[0], output)
         except OSError as exc:
             raise SeparationError(f"Cannot save separated vocals: {output}") from exc
     return output

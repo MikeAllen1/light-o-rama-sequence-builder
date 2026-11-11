@@ -194,9 +194,42 @@ def load_analysis(path: str | Path) -> dict[str, Any]:
     payload = data.get("analysis")
     if not isinstance(payload, dict):
         raise EvaluationError("Analysis JSON is missing its analysis object")
-    for key in ("beats", "downbeats", "section_candidates"):
+    required_arrays = ("beats", "downbeats", "section_candidates")
+    optional_arrays = ("onsets", "energy", "phrase_boundaries", "hard_stops",
+                       "high_hits", "crashes", "tempo_curve")
+    for key in required_arrays:
         if not isinstance(payload.get(key), list):
             raise EvaluationError(f"Analysis JSON field {key!r} must be a list")
+    for key in optional_arrays:
+        if key in payload and not isinstance(payload[key], list):
+            raise EvaluationError(f"Analysis JSON field {key!r} must be a list")
+    for key in (*required_arrays, *(name for name in optional_arrays if name in payload)):
+        events = payload[key]
+        if len(events) > 100_000:
+            raise EvaluationError(f"Analysis JSON field {key!r} exceeds 100,000 events")
+        for event in events:
+            if not isinstance(event, dict):
+                raise EvaluationError(f"Analysis JSON field {key!r} contains a non-object event")
+            raw_time = event.get("time")
+            if (isinstance(raw_time, bool) or not isinstance(raw_time, int | float)
+                    or not math.isfinite(float(raw_time))
+                    or not 0 <= float(raw_time) <= float(duration) + 1):
+                raise EvaluationError(f"Analysis JSON field {key!r} has an invalid time (numeric time required)")
+            if key == "energy":
+                rms = event.get("rms")
+                if (isinstance(rms, bool) or not isinstance(rms, int | float)
+                        or not math.isfinite(float(rms)) or float(rms) < 0):
+                    raise EvaluationError("Analysis energy event has an invalid rms value")
+            elif key == "hard_stops":
+                silence = event.get("silence_duration")
+                if (isinstance(silence, bool) or not isinstance(silence, int | float)
+                        or not math.isfinite(float(silence)) or float(silence) <= 0):
+                    raise EvaluationError("Analysis hard-stop event has an invalid silence_duration")
+            elif key == "onsets":
+                strength = event.get("strength")
+                if (isinstance(strength, bool) or not isinstance(strength, int | float)
+                        or not math.isfinite(float(strength)) or float(strength) < 0):
+                    raise EvaluationError("Analysis onset event has an invalid strength")
     return data
 
 

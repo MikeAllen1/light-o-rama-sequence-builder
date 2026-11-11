@@ -19,10 +19,11 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import os
 import re
 from pathlib import Path
 from typing import Any
+
+from lor_sequence_builder.artifacts import write_new_text_atomically
 
 LYRICS_SCHEMA_VERSION = "lyrics-1.0"
 DEFAULT_MODEL = "base.en"
@@ -164,12 +165,10 @@ def write_lyrics(document: dict[str, Any], output: str | Path) -> Path:
     path = Path(output)
     if path.exists():
         raise LyricsError(f"Refusing to overwrite existing lyrics: {path}")
-    path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with path.open("x", encoding="utf-8", newline="\n") as stream:
-            stream.write(json.dumps(document, indent=2, ensure_ascii=False) + "\n")
-            stream.flush()
-            os.fsync(stream.fileno())
+        write_new_text_atomically(
+            path, json.dumps(document, indent=2, ensure_ascii=False) + "\n"
+        )
     except OSError as exc:
         raise LyricsError(f"Cannot write lyrics: {path}") from exc
     return path

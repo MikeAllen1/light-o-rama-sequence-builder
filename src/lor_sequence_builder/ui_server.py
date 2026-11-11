@@ -29,6 +29,7 @@ from lor_sequence_builder.show_builder import ShowBuildError, ShowSessions
 
 _WEB_ROOT = Path(__file__).with_name("web")
 _MAX_UPLOAD_BYTES = MAX_INPUT_BYTES
+_MAX_EXPORT_BYTES = 4 * MAX_LOREDIT_BYTES + 1024 * 1024
 _MAX_JSON_BYTES = 256 * 1024
 # Shows being built from the browser (preview, song, requirements, generate).
 SHOWS = ShowSessions()
@@ -43,7 +44,7 @@ def _looks_like_mp3(data: bytes) -> bool:
     )
 
 
-def check_edited_sequence(payload: bytes) -> dict[str, Any]:
+def check_edited_sequence(payload: bytes, original_payload: bytes | None = None) -> dict[str, Any]:
     """Validate an edited sequence from the browser before it is downloaded.
 
     The same safe reader used for every LOREDIT input checks the XML, the save-file
@@ -54,7 +55,12 @@ def check_edited_sequence(payload: bytes) -> dict[str, Any]:
         path = Path(directory) / "edited.loredit"
         path.write_bytes(payload)
         document = read_loredit(path)
-    problems = effect_timing_problems(document)
+        original = None
+        if original_payload is not None:
+            original_path = Path(directory) / "original.loredit"
+            original_path.write_bytes(original_payload)
+            original = read_loredit(original_path)
+    problems = effect_timing_problems(document, original=original)
     if problems:
         raise LoreditError("The edited sequence has timing problems: " + "; ".join(problems))
     root = document.root
@@ -245,13 +251,24 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
         return payload
 
     def _check_export(self) -> None:
-        payload = self._read_body("application/xml", MAX_LOREDIT_BYTES, "Sequence")
+        payload = self._read_body("application/json", _MAX_EXPORT_BYTES, "Sequence export")
         if payload is None:
             return
         try:
-            self._send_json(200, check_edited_sequence(payload))
-        except LoreditError as exc:
-            self._send_json(422, {"error": str(exc)})
+            request = json.loads(payload)
+            if not isinstance(request, dict):
+                raise LoreditError("Sequence export request must be an object")
+            edited = request.get("edited")
+            original = request.get("original")
+            if (not isinstance(edited, str) or not isinstance(original, str)
+                    or len(edited.encode("utf-8")) > MAX_LOREDIT_BYTES
+                    or len(original.encode("utf-8")) > MAX_LOREDIT_BYTES):
+                raise LoreditError("Sequence export must include bounded original and edited XML")
+            self._send_json(200, check_edited_sequence(
+                edited.encode("utf-8"), original.encode("utf-8")
+            ))
+        except (LoreditError, UnicodeError, ValueError, TypeError) as exc:
+            self._send_json(422, {"error": str(exc) or "Invalid sequence export request"})
         except OSError:
             self._send_json(500, {"error": "The edited sequence could not be checked"})
 

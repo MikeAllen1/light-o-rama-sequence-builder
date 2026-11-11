@@ -227,10 +227,21 @@ The display (data, not instructions):
 Transport = Callable[[str, dict[str, str], bytes], bytes]
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Never forward API credentials to a redirect target."""
+
+    def redirect_request(
+        self, req: urllib.request.Request, fp: Any, code: int, msg: str,
+        headers: Any, newurl: str,
+    ) -> urllib.request.Request | None:
+        return None
+
+
 def _urllib_transport(url: str, headers: dict[str, str], body: bytes) -> bytes:
     request = urllib.request.Request(url, data=body, headers=headers, method="POST")
+    opener = urllib.request.build_opener(_NoRedirectHandler())
     try:
-        with urllib.request.urlopen(request, timeout=90) as response:
+        with opener.open(request, timeout=90) as response:
             data: bytes = response.read(MAX_RESPONSE_BYTES + 1)
     except urllib.error.HTTPError as exc:
         detail = exc.read(2000).decode("utf-8", "replace")

@@ -1,8 +1,8 @@
 # Light-O-Rama Sequence Builder
 
-A display-independent Light-O-Rama S6 sequence builder with a Python CLI and a browser-based local sequencing workspace. The browser workspace is being developed now; desktop packaging is deliberately deferred until the end.
+A display-independent Light-O-Rama S6 sequence builder with a Python CLI and a browser-based local sequencing workspace for inspecting, editing, reviewing, and creating sequences. Desktop packaging is deliberately deferred until the end.
 
-**Project status:** Phases 0 through 8 are merged; the owner playback gates for Phase 7 (planner) and Phase 8 (singing faces) remain open. Phase 11A adds the browser-first sequencing workspace; it is not a desktop app. Desktop packaging remains a final-stage deliverable. See [docs/PLAN.md](docs/PLAN.md) for the authoritative status.
+**Project status:** Phases 0 through 8 are merged; the owner playback gates for Phase 7 (planner) and Phase 8 (singing faces) remain open. Phases 11A and 11B provide the browser sequencing workspace, effect editing, and music review. Browser-based new-show creation and review-data validation are merged. Owner visual acceptance on real sequences remains open. It is not a desktop app; desktop packaging remains a final-stage deliverable. See [docs/PLAN.md](docs/PLAN.md) for the authoritative status.
 
 ## Product workflow
 
@@ -12,7 +12,7 @@ The planned workflow is:
 2. Review the report. Correct anything wrong in the S6 Preview Editor itself (shape type, grouping, start location, name) and run it again; the preview is the only input.
 3. `generate` — create a new native S6 `.loredit`, a Timeline JSON file, and a report.
 
-The implementation is deliberately staged. The native S6 read/write path and fixed-tempo sequence-generation path are established. Phase 4 adds audio feature analysis; intelligent choreography comes later.
+The implementation is deliberately staged. The native S6 read/write path, audio analysis, planner, and browser sequencing workspace are established. Planner improvements and browser-based show creation continue in separate phases.
 
 See [docs/PLAN.md](docs/PLAN.md) for the phase order, acceptance criteria, and handoff log. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the intended system boundaries and data contracts.
 
@@ -74,7 +74,7 @@ uv run lor-sequence-ui
 
 The server binds only to `127.0.0.1`. Open a native S6 v15 `.loredit` file and its matching audio. The workspace builds tracks from the sequence's actual props, channels, embedded prop groups, timing grids, and effects; the waveform is decoded from the selected audio. When served by this command, the selected audio is sent only to the local Python analysis endpoint and held in a temporary directory while the existing librosa analyzer runs. The source audio and sequence are not modified or retained by the server.
 
-**New show** builds a show from the browser: choose the preview and the song, add optional requirements (remembered per display), generate, then review it against the music and save it. The workspace also supports synchronized navigation, playback, musical marker visualization, track expansion/collapse, and effect editing: select, move, trim, create, delete, duplicate, undo/redo, snapping to musical events, one-click retiming of out-of-sync hits, and a checked export to a new file. A music review corrects beats, bars, crashes, hits, section names and lyrics, fits a tempo map between confirmed bars, and saves a review file that `generate --analysis` accepts (see docs/SEQUENCER_UI.md). Optional saved audio-analysis JSON and `vocals-1.0` JSON can be loaded. Vocal regions and syllable candidates are heuristic; the current vocal format does not recognize words or provide lyrics.
+The workspace supports synchronized navigation, playback, musical marker visualization, track expansion/collapse, and effect editing: select, move, trim, create, delete, duplicate, undo/redo, snapping to musical events, one-click retiming of out-of-sync hits, and a checked export to a new file. A music review corrects beats, bars, crashes, hits, section names and lyrics, fits a tempo map between confirmed bars, and saves a review file that `generate --analysis` accepts (see docs/SEQUENCER_UI.md). Optional saved audio-analysis JSON and `vocals-1.0` JSON can be loaded. Vocal regions and syllable candidates are heuristic; the current vocal format does not recognize words or provide lyrics.
 
 This is a browser application, not a desktop wrapper. Do not install Electron, Tauri, or another desktop framework during the sequencing-workspace phases.
 
