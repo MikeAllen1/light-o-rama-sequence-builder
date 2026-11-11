@@ -33,16 +33,18 @@ def _build_parser() -> argparse.ArgumentParser:
     pulse.add_argument("--bpm", required=True, type=int, help="fixed tempo in beats per minute")
     pulse.add_argument("--output", required=True, help="new output .loredit path")
     pulse.add_argument("--timeline-output", required=True, help="new deterministic Timeline .json path")
-    analyze = commands.add_parser("analyze-audio", help="analyze music and write JSON plus SVG diagnostics")
-    analyze.add_argument("audio", help="input audio file supported by FFmpeg")
-    analyze.add_argument("--output-json", required=True, help="new versioned analysis JSON path")
-    analyze.add_argument("--plot", required=True, help="new SVG diagnostic plot path")
     pulse.add_argument(
         "--pulse-duration-cs",
         type=int,
         default=10,
         help="pulse duration in centiseconds (default: 10)",
     )
+    analyze = commands.add_parser(
+        "analyze-audio", help="analyze music and write JSON plus SVG diagnostics"
+    )
+    analyze.add_argument("audio", help="input audio file supported by FFmpeg")
+    analyze.add_argument("--output-json", required=True, help="new versioned analysis JSON path")
+    analyze.add_argument("--plot", required=True, help="new SVG diagnostic plot path")
     return parser
 
 
