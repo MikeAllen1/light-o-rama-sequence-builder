@@ -178,7 +178,8 @@ def _build_parser() -> argparse.ArgumentParser:
     generate.add_argument("--preview", required=True, help="required standalone .lorprev file")
     source = generate.add_mutually_exclusive_group(required=True)
     source.add_argument("--audio", help="song audio file supported by FFmpeg")
-    source.add_argument("--analysis", help="existing analysis JSON from analyze-audio")
+    source.add_argument("--analysis", help="existing analysis JSON from analyze-audio, "
+                        "or a music review saved by the workspace")
     generate.add_argument("--output", required=True, help="new output .loredit path")
     generate.add_argument(
         "--music-filename",

@@ -38,6 +38,9 @@
     drag: null,
     clipboard: null,
     cursorCs: 0,
+    reviewSelection: null,
+    reviewDrag: null,
+    reviewDirty: false,
     animationFrame: 0,
     audioRequestId: 0,
     sequenceRequestId: 0,
@@ -494,6 +497,11 @@
       "downbeats", "beats", "tempo", "crashes", "hits", "onsets", "energy", "native", "offbeat"];
     lanes.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
     state.lanes = lanes;
+    const chosen = state.reviewSelection;
+    if (chosen) {
+      const target = reviewLane(laneByKind(chosen.kind));
+      if (!target || !target.owner[target.key].includes(chosen.event)) state.reviewSelection = null;
+    }
     return lanes;
   }
 
@@ -513,7 +521,10 @@
         ? confidences.reduce((sum, value) => sum + value, 0) / confidences.length
         : null;
       const methods = Array.from(new Set(items.map((event) => event.method).filter(Boolean)));
-      badge.textContent = source + (average == null ? "" : " · c " + average.toFixed(2));
+      const confirmed = items.filter((event) => event && (event.status === "confirmed" ||
+        (event.text != null && event.verified))).length;
+      badge.textContent = source + (average == null ? "" : " · c " + average.toFixed(2)) +
+        (confirmed ? " · ✓" + confirmed : "");
       if (average != null && average < 0.2) badge.classList.add("low-confidence");
       div.title = source + (methods.length ? "; method: " + methods.join(", ") : "") +
         (average == null ? "" :
@@ -811,10 +822,13 @@
           ctx.fillStyle = color;
           ctx.fillRect(x1, y + 3, x2 - x1, MARKER_HEIGHT - 6);
           ctx.globalAlpha = 1;
-          ctx.strokeStyle = color;
+          const chosen = state.reviewSelection && state.reviewSelection.event === line;
+          ctx.strokeStyle = chosen ? "#ffffff" : color;
+          ctx.lineWidth = chosen ? 2 : 1;
           ctx.setLineDash(line.verified ? [] : [3, 2]);
           ctx.strokeRect(x1 + .5, y + 3.5, Math.max(1, x2 - x1 - 1), MARKER_HEIGHT - 7);
           ctx.setLineDash([]);
+          ctx.lineWidth = 1;
           ctx.fillStyle = "rgba(225, 230, 236, .85)";
           for (const word of line.words || []) {
             ctx.fillRect(Number(word.start) * pps, y + MARKER_HEIGHT - 6, 1, 3);
@@ -827,6 +841,7 @@
           ctx.fillText(line.text, x1 + 4, y + 14);
           ctx.restore();
         }
+        drawReviewPreview(ctx, lane, y, pps);
         return;
       }
       if (lane.kind === "energy") {
@@ -920,9 +935,74 @@
           ctx.lineTo(Math.floor(x) + .5, y + MARKER_HEIGHT - 3);
           ctx.stroke();
           ctx.restore();
+          drawMarkerStatus(ctx, lane, event, x, y);
         }
       }
+      drawReviewPreview(ctx, lane, y, pps);
     });
+  }
+
+  // Confirmed markers get a filled diamond, fitted ones a hollow one; the selected
+  // marker is white; sections show their part name.
+  function drawMarkerStatus(ctx, lane, event, x, y) {
+    const status = event.status;
+    const chosen = state.reviewSelection && state.reviewSelection.event === event;
+    if (chosen) {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(Math.floor(x) - 1, y + 1, 3, MARKER_HEIGHT - 3);
+    }
+    if (status === "confirmed" || status === "fitted") {
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(x, y + 1);
+      ctx.lineTo(x + 3.5, y + 4.5);
+      ctx.lineTo(x, y + 8);
+      ctx.lineTo(x - 3.5, y + 4.5);
+      ctx.closePath();
+      if (status === "confirmed") {
+        ctx.fillStyle = "#f4f7fa";
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = "#f4f7fa";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    if (lane.kind === "sections" && event.label) {
+      ctx.fillStyle = "#cfeff4";
+      ctx.font = "9px Segoe UI, sans-serif";
+      ctx.fillText(event.label, x + 6, y + 14);
+    }
+  }
+
+  function drawReviewPreview(ctx, lane, y, pps) {
+    const drag = state.reviewDrag;
+    if (!drag || drag.preview == null || drag.hit.lane.kind !== lane.kind) return;
+    ctx.save();
+    ctx.strokeStyle = "#ffffff";
+    ctx.fillStyle = "rgba(255, 255, 255, .25)";
+    ctx.setLineDash([3, 2]);
+    const event = drag.hit.event;
+    if (event.text != null) {
+      let start = Number(event.start);
+      let end = Number(event.end);
+      if (drag.hit.edge === "start") start = drag.preview;
+      else if (drag.hit.edge === "end") end = drag.preview;
+      else {
+        end = drag.preview + (end - start);
+        start = drag.preview;
+      }
+      ctx.fillRect(start * pps, y + 3, Math.max(1, (end - start) * pps), MARKER_HEIGHT - 6);
+      ctx.strokeRect(start * pps, y + 3, Math.max(1, (end - start) * pps), MARKER_HEIGHT - 6);
+    } else {
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(drag.preview * pps, y + 1);
+      ctx.lineTo(drag.preview * pps, y + MARKER_HEIGHT - 2);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   function effectColor(effect) {
@@ -1233,6 +1313,12 @@
       const payload = await response.json();
       if (requestId !== state.audioRequestId) return;
       if (!response.ok) throw new Error(payload.error || "Local analysis failed.");
+      if (state.reviewDirty || state.reviewLoaded) {
+        // Never replace reviewed markers with fresh estimates.
+        setBanner("Audio loaded. Your music review is kept; the fresh automatic analysis was not " +
+          "applied over it.", "good");
+        return;
+      }
       state.analysis = payload.report;
       renderSequenceStats();
       refreshTimeline();
@@ -1303,8 +1389,17 @@
       if (file.size > MAX_JSON_BYTES) throw new Error("Analysis JSON exceeds the 5 MiB input limit.");
       const analysisText = await file.text();
       if (requestId !== state.audioRequestId) return;
-      const data = JSON.parse(analysisText);
+      let data = JSON.parse(analysisText);
       if (!data || typeof data !== "object") throw new Error("Analysis JSON must contain an object.");
+      let review = null;
+      if (data.schema_version === REVIEW_SCHEMA) {
+        // A saved music review: the corrected analysis, reviewed lyrics and meter.
+        review = data;
+        data = review.analysis;
+        if (!data || typeof data !== "object") throw new Error("The music review has no analysis.");
+        if (review.lyrics != null) checkLyrics(review.lyrics);
+      }
+      if (state.reviewDirty && !window.confirm("Replace the unsaved music review?")) return;
       const analysis = data.analysis;
       const requiredArrays = ["beats", "downbeats", "onsets", "energy",
         "phrase_boundaries", "section_candidates", "hard_stops"];
@@ -1329,11 +1424,26 @@
         }
       }
       state.analysis = data;
+      state.reviewLoaded = Boolean(review);
+      state.reviewDirty = false;
+      state.reviewSelection = null;
+      if (review) {
+        if (review.lyrics != null) state.lyrics = review.lyrics;
+        if (review.meter === 3 || review.meter === 4) $("meterSelect").value = String(review.meter);
+      }
       renderSequenceStats();
       refreshTimeline();
+      updateEditControls();
       $("analysisBanner").title = data.analysis.method + "\n" + data.analysis.provenance +
         "\nLimitations: " + data.analysis.limitations.join(" ");
-      setBanner("Loaded saved analysis. Beat, downbeat, onset, section, and silence markers are labeled as estimates.", "good");
+      if (review) {
+        const counts = reviewCounts();
+        setBanner("Loaded music review: " + counts.confirmed + " confirmed and " + counts.fitted +
+          " fitted markers, " + counts.lyric_lines_confirmed + " of " + counts.lyric_lines +
+          " lyric lines confirmed.", "good");
+      } else {
+        setBanner("Loaded saved analysis. Beat, downbeat, onset, section, and silence markers are labeled as estimates.", "good");
+      }
     } catch (error) {
       if (requestId !== state.audioRequestId) return;
       setBanner(error.message || String(error), "error");
@@ -1412,6 +1522,20 @@
     return { schema_version: "lyrics-1.0", source: "imported", lines };
   }
 
+  function checkLyrics(data) {
+    if (!data || data.schema_version !== "lyrics-1.0" || !Array.isArray(data.lines) ||
+        data.lines.length > 5000) throw new Error("Expected a lyrics-1.0 JSON document.");
+    for (const line of data.lines) {
+      const start = Number(line && line.start);
+      const end = Number(line && line.end);
+      if (!line || typeof line.text !== "string" || !Number.isFinite(start) ||
+          !Number.isFinite(end) || start < 0 || end <= start || end > 1801 ||
+          (line.words != null && !Array.isArray(line.words))) {
+        throw new Error("Lyrics contain an invalid line.");
+      }
+    }
+  }
+
   async function loadLyrics(file) {
     if (!file) return;
     const requestId = ++state.lyricRequestId;
@@ -1422,20 +1546,12 @@
       let data;
       if (/\.json$/i.test(file.name)) {
         data = JSON.parse(text);
-        if (!data || data.schema_version !== "lyrics-1.0" || !Array.isArray(data.lines) ||
-            data.lines.length > 5000) throw new Error("Expected a lyrics-1.0 JSON document.");
       } else {
         data = parseLyricsText(text, file.name);
       }
-      for (const line of data.lines) {
-        const start = Number(line.start);
-        const end = Number(line.end);
-        if (!line || typeof line.text !== "string" || !Number.isFinite(start) ||
-            !Number.isFinite(end) || start < 0 || end <= start || end > 1801) {
-          throw new Error("Lyrics contain an invalid line.");
-        }
-      }
+      checkLyrics(data);
       state.lyrics = data;
+      state.reviewSelection = null;
       refreshTimeline();
       setBanner(data.source === "transcribed"
         ? "Loaded " + data.lines.length + " transcribed lyric lines. They are unverified: speech recognition mishears sung words. Dashed outlines mark unverified lines."
@@ -1484,6 +1600,7 @@
     state.undo = [];
     state.redo = [];
     state.dirty = false;
+    state.exported = false;
     state.drag = null;
     state.clipboard = null;
     state.cursorCs = 0;
@@ -1555,6 +1672,10 @@
   }
 
   function setSelection(items) {
+    if (items.length && state.reviewSelection) {
+      state.reviewSelection = null;
+      drawMarkers(Number($("markersCanvas").width), state.pxPerSecond);
+    }
     state.selection = items;
     state.selectionSet = new Set(items.map((item) => item.effect));
     state.selectedEffect = items.length === 1 ? items[0].effect : null;
@@ -1573,6 +1694,11 @@
   }
 
   function perform(command, side) {
+    if (command.music) {
+      performMusic(command, side);
+      afterMusicEdit(null);
+      return;
+    }
     for (const [channel, effects] of command[side]) {
       channel.effects = effects;
       channel.edited = side === "after" ? true : command.wasEdited.get(channel);
@@ -1617,7 +1743,9 @@
     if (!command) return;
     perform(command, "before");
     state.redo.push(command);
-    setSelection(selectionFrom(command.before.keys(), changedEffects(command, "before", "after")));
+    if (!command.music) {
+      setSelection(selectionFrom(command.before.keys(), changedEffects(command, "before", "after")));
+    }
     setBanner("Undid: " + command.label + ".", "good");
   }
 
@@ -1626,7 +1754,9 @@
     if (!command) return;
     perform(command, "after");
     state.undo.push(command);
-    setSelection(selectionFrom(command.after.keys(), changedEffects(command, "after", "before")));
+    if (!command.music) {
+      setSelection(selectionFrom(command.after.keys(), changedEffects(command, "after", "before")));
+    }
     setBanner("Redid: " + command.label + ".", "good");
   }
 
@@ -1660,13 +1790,17 @@
     set("deleteButton", has);
     set("duplicateButton", has);
     set("exportButton", Boolean(state.sequence));
+    set("saveReviewButton", Boolean(state.analysis));
     const status = $("editStatus");
     if (status) {
-      status.textContent = !state.sequence ? "" : !state.undo.length && !state.dirty
-        ? "No edits"
-        : (state.dirty ? "Unexported edits" : "Exported") + " · " + state.undo.length +
-          " change(s) · " + (state.editedChannels || 0) + " channel(s)";
-      status.classList.toggle("dirty", state.dirty);
+      const parts = [];
+      if (state.dirty) parts.push("Unexported edits on " + (state.editedChannels || 0) + " channel(s)");
+      else if (state.exported) parts.push("Edits exported");
+      if (state.reviewDirty) parts.push("unsaved music review");
+      else if (state.reviewSaved) parts.push("music review saved");
+      status.textContent = !state.sequence ? "" : parts.length ? parts.join(" · ") : "No edits";
+      status.classList.toggle("dirty", state.dirty || state.reviewDirty);
+      status.title = status.textContent;
     }
   }
 
@@ -2101,8 +2235,13 @@
     else if (mod && key === "c") handled = copySelection();
     else if (mod && key === "x") { if (copySelection()) deleteSelection(); }
     else if (mod && key === "v") pasteClipboard();
-    else if (!mod && (key === "delete" || key === "backspace")) deleteSelection();
-    else if (key === "escape") setSelection([]);
+    else if (!mod && (key === "delete" || key === "backspace")) {
+      if (!deleteReviewSelection()) deleteSelection();
+    } else if (!mod && key === "enter" && state.reviewSelection) confirmReviewSelection();
+    else if (key === "escape") {
+      setSelection([]);
+      if (state.reviewSelection) reviewSelect(null);
+    }
     else if (!mod && (key === "arrowleft" || key === "arrowright") && state.selection.length) {
       nudgeSelection((key === "arrowleft" ? -1 : 1) * (event.shiftKey ? 10 : 1));
     } else handled = false;
@@ -2329,6 +2468,7 @@
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
     state.dirty = false;
+    state.exported = true;
     updateEditControls();
     setBanner("Checked and saved " + name + " with " + result.effects.toLocaleString() +
       " effects. Your original file is unchanged.", "good");
@@ -2350,9 +2490,510 @@
     $("deleteButton").addEventListener("click", deleteSelection);
     $("duplicateButton").addEventListener("click", duplicateSelection);
     $("exportButton").addEventListener("click", exportEdited);
+    $("saveReviewButton").addEventListener("click", saveReview);
+    const markers = $("markersCanvas");
+    markers.addEventListener("pointerdown", handleMarkerPointerDown);
+    markers.addEventListener("pointermove", handleMarkerPointerMove);
+    markers.addEventListener("pointerup", handleMarkerPointerUp);
+    markers.addEventListener("pointercancel", () => { state.reviewDrag = null; });
+    markers.addEventListener("dblclick", handleMarkerDoubleClick);
     window.addEventListener("beforeunload", (event) => {
-      if (state.dirty) event.preventDefault();
+      if (state.dirty || state.reviewDirty) event.preventDefault();
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Music review: correct the musical reference lanes. Beats, bars, crashes, high
+  // hits, sections and lyric lines can be moved, added, deleted and confirmed. A
+  // marker the user placed or confirmed is "confirmed"; markers fitted between two
+  // confirmed bars are "fitted"; everything else stays "auto". Changes share the
+  // effect editor's undo history and are saved as a music review file that the
+  // generator accepts in place of an analysis.
+
+  const REVIEW_LANES = {
+    beats: { key: "beats", name: "Beat" },
+    downbeats: { key: "downbeats", name: "Bar" },
+    crashes: { key: "crashes", name: "Crash" },
+    hits: { key: "high_hits", name: "High hit" },
+    sections: { key: "section_candidates", name: "Section" }
+  };
+  const SECTION_LABELS = ["Intro", "Verse", "Pre-chorus", "Chorus", "Bridge", "Instrumental",
+    "Breakdown", "Solo", "Outro", "Finale"];
+  const MARKER_PIXELS = 6;
+  const REVIEW_SCHEMA = "music-review-1.0";
+
+  function reviewLane(lane) {
+    if (!lane) return null;
+    if (lane.kind === "lyrics") return state.lyrics ? { owner: state.lyrics, key: "lines", name: "Lyric line" } : null;
+    const spec = REVIEW_LANES[lane.kind];
+    const analysis = state.analysis && state.analysis.analysis;
+    if (!spec || !analysis || !Array.isArray(analysis[spec.key])) return null;
+    return { owner: analysis, key: spec.key, name: spec.name };
+  }
+
+  function eventTime(event) {
+    return Number(event.time != null ? event.time : event.start);
+  }
+
+  function statusOf(event) {
+    if (event.status) return event.status;
+    if (event.text != null) return event.verified ? "confirmed" : "auto";
+    return "auto";
+  }
+
+  function laneByKind(kind) {
+    return state.lanes.find((lane) => lane.kind === kind) || null;
+  }
+
+  function reviewSelect(selection) {
+    state.reviewSelection = selection;
+    if (selection) setSelection([]);
+    renderReviewInspector();
+    drawMarkers(Number($("markersCanvas").width), state.pxPerSecond);
+  }
+
+  function musicChange(target, after) {
+    return { owner: target.owner, key: target.key, before: target.owner[target.key], after };
+  }
+
+  function applyMusic(label, changes, select) {
+    const command = { label, music: changes };
+    performMusic(command, "after");
+    state.undo.push(command);
+    if (state.undo.length > MAX_UNDO) state.undo.shift();
+    state.redo = [];
+    afterMusicEdit(select);
+    setBanner(label + ". Undo with Ctrl+Z.", "good");
+  }
+
+  function performMusic(command, side) {
+    for (const change of command.music) change.owner[change.key] = change[side];
+  }
+
+  function afterMusicEdit(select) {
+    state.reviewDirty = true;
+    state.syncCheck = null;
+    refreshTimeline();
+    updateEditControls();
+    if (select && select.event) {
+      const lane = laneByKind(select.kind);
+      reviewSelect(lane ? { kind: select.kind, event: select.event } : null);
+    } else {
+      reviewSelect(null);
+    }
+  }
+
+  function sortedByTime(events) {
+    return events.slice().sort((a, b) => eventTime(a) - eventTime(b));
+  }
+
+  function round3(value) {
+    return Math.round(value * 1000) / 1000;
+  }
+
+  function movedEvent(event, seconds) {
+    if (event.text != null) {
+      const delta = seconds - Number(event.start);
+      return Object.assign({}, event, {
+        start: round3(seconds), end: round3(Number(event.end) + delta),
+        words: (event.words || []).map((word) => Object.assign({}, word, {
+          start: round3(Number(word.start) + delta), end: round3(Number(word.end) + delta)
+        }))
+      });
+    }
+    return Object.assign({}, event, { time: round3(seconds), status: "confirmed" });
+  }
+
+  function newMarker(kind, seconds) {
+    if (kind === "sections") {
+      return { time: round3(seconds), kind: "structural_change_candidate", relative_change: 0,
+        confidence: 1, label: null, method: "placed in music review", status: "confirmed" };
+    }
+    return { time: round3(seconds), confidence: 1, method: "placed in music review",
+      status: "confirmed" };
+  }
+
+  function replaceEvent(target, event, replacement) {
+    const list = target.owner[target.key].slice();
+    const index = list.indexOf(event);
+    if (index < 0) return null;
+    if (replacement) list[index] = replacement;
+    else list.splice(index, 1);
+    return sortedByTime(list);
+  }
+
+  function markerHit(event) {
+    const canvas = $("markersCanvas");
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const lane = state.lanes[Math.floor((event.clientY - rect.top) / MARKER_HEIGHT)];
+    const seconds = Math.max(0, x / state.pxPerSecond);
+    const hit = { lane, x, seconds, target: reviewLane(lane), event: null, edge: null };
+    if (!hit.target) return hit;
+    const pps = state.pxPerSecond;
+    if (lane.kind === "lyrics") {
+      for (const line of hit.target.owner.lines) {
+        const x1 = Number(line.start) * pps;
+        const x2 = Number(line.end) * pps;
+        if (x < x1 - 4 || x > x2 + 4) continue;
+        if (x2 - x1 > 14 && Math.abs(x - x2) <= 4) return Object.assign(hit, { event: line, edge: "end" });
+        if (x2 - x1 > 14 && Math.abs(x - x1) <= 4) return Object.assign(hit, { event: line, edge: "start" });
+        if (x >= x1 && x < x2) return Object.assign(hit, { event: line });
+      }
+      return hit;
+    }
+    let best = null;
+    for (const item of hit.target.owner[hit.target.key]) {
+      const distance = Math.abs(eventTime(item) * pps - x);
+      if (distance <= MARKER_PIXELS && (best == null || distance < best.distance)) {
+        best = { item, distance };
+      }
+    }
+    if (best) hit.event = best.item;
+    return hit;
+  }
+
+  function reviewCandidates(ownSeconds) {
+    const own = Math.round(ownSeconds * 100);
+    return snapCandidates().filter((cs) => cs !== own);
+  }
+
+  function handleMarkerPointerDown(event) {
+    if (!state.sequence || event.button !== 0) return;
+    const hit = markerHit(event);
+    if (!hit.event) {
+      state.reviewDrag = null;
+      if (state.reviewSelection) reviewSelect(null);
+      handleMarkerClick(event);
+      return;
+    }
+    const seconds = eventTime(hit.event);
+    seekAudio(hit.edge === "end" ? Number(hit.event.end) : seconds);
+    reviewSelect({ kind: hit.lane.kind, event: hit.event });
+    state.reviewDrag = { hit, startX: event.clientX, moved: false, preview: null,
+      candidates: reviewCandidates(hit.edge === "end" ? Number(hit.event.end) : seconds) };
+    $("markersCanvas").setPointerCapture(event.pointerId);
+  }
+
+  function handleMarkerPointerMove(event) {
+    const drag = state.reviewDrag;
+    const canvas = $("markersCanvas");
+    if (!drag) {
+      if (!state.sequence) return;
+      const hit = markerHit(event);
+      canvas.style.cursor = hit.edge ? "ew-resize" : hit.event ? "grab" : hit.target ? "copy" : "pointer";
+      return;
+    }
+    if (!drag.moved && Math.abs(event.clientX - drag.startX) < DRAG_THRESHOLD) return;
+    drag.moved = true;
+    const rect = canvas.getBoundingClientRect();
+    const raw = Math.max(0, (event.clientX - rect.left) / state.pxPerSecond);
+    const { hit } = drag;
+    let cs = snap(Math.round(raw * 100), drag.candidates, event.altKey);
+    if (hit.edge) {
+      cs = snap(Math.round(raw * 100), drag.candidates, event.altKey);
+    } else if (hit.lane.kind === "lyrics") {
+      const offset = drag.hit.seconds - Number(hit.event.start);
+      cs = snap(Math.round((raw - offset) * 100), drag.candidates, event.altKey);
+    }
+    drag.preview = cs / 100;
+    setBanner((hit.edge ? "Line " + hit.edge + " " : hit.target.name + " ") + "→ " +
+      formatCentiseconds(cs) + (event.altKey ? " (snapping off)" : ""), "");
+    drawMarkers(Number(canvas.width), state.pxPerSecond);
+  }
+
+  function handleMarkerPointerUp() {
+    const drag = state.reviewDrag;
+    state.reviewDrag = null;
+    if (!drag || !drag.moved || drag.preview == null) {
+      if (drag) drawMarkers(Number($("markersCanvas").width), state.pxPerSecond);
+      return;
+    }
+    const { hit } = drag;
+    let replacement;
+    if (hit.edge) {
+      const start = hit.edge === "start" ? drag.preview : Number(hit.event.start);
+      const end = hit.edge === "end" ? drag.preview : Number(hit.event.end);
+      if (end - start < 0.05) {
+        setBanner("Not changed: a lyric line needs some length.", "warn");
+        drawMarkers(Number($("markersCanvas").width), state.pxPerSecond);
+        return;
+      }
+      replacement = Object.assign({}, hit.event, { start: round3(start), end: round3(end) });
+    } else {
+      replacement = movedEvent(hit.event, drag.preview);
+    }
+    const after = replaceEvent(hit.target, hit.event, replacement);
+    if (!after) return;
+    applyMusic((hit.edge ? "Trimmed a lyric line" : "Moved a " + hit.target.name.toLowerCase()) +
+      " to " + formatCentiseconds(drag.preview * 100), [musicChange(hit.target, after)],
+    { kind: hit.lane.kind, event: replacement });
+  }
+
+  function handleMarkerDoubleClick(event) {
+    if (!state.sequence) return;
+    const hit = markerHit(event);
+    if (!hit.target || hit.event) return;
+    const seconds = snap(Math.round(hit.seconds * 100), snapCandidates(), event.altKey) / 100;
+    let created;
+    if (hit.lane.kind === "lyrics") {
+      created = { start: round3(seconds), end: round3(seconds + 2), text: "(new line)",
+        verified: false, words: [] };
+    } else {
+      created = newMarker(hit.lane.kind, seconds);
+    }
+    const after = sortedByTime(hit.target.owner[hit.target.key].concat([created]));
+    applyMusic("Added a " + hit.target.name.toLowerCase() + " at " +
+      formatCentiseconds(seconds * 100), [musicChange(hit.target, after)],
+    { kind: hit.lane.kind, event: created });
+  }
+
+  function deleteReviewSelection() {
+    const selection = state.reviewSelection;
+    const target = selection && reviewLane(laneByKind(selection.kind));
+    if (!target) return false;
+    const after = replaceEvent(target, selection.event, null);
+    if (!after) return false;
+    applyMusic("Deleted a " + target.name.toLowerCase(), [musicChange(target, after)], null);
+    return true;
+  }
+
+  function confirmReviewSelection() {
+    const selection = state.reviewSelection;
+    const target = selection && reviewLane(laneByKind(selection.kind));
+    if (!target || statusOf(selection.event) === "confirmed") return false;
+    const replacement = selection.event.text != null
+      ? Object.assign({}, selection.event, { verified: true,
+        words: (selection.event.words || []).map((word) => Object.assign({}, word, { verified: true })) })
+      : Object.assign({}, selection.event, { status: "confirmed" });
+    applyMusic("Confirmed a " + target.name.toLowerCase(),
+      [musicChange(target, replaceEvent(target, selection.event, replacement))],
+      { kind: selection.kind, event: replacement });
+    return true;
+  }
+
+  function editSelected(values) {
+    const selection = state.reviewSelection;
+    const target = selection && reviewLane(laneByKind(selection.kind));
+    if (!target) return;
+    const event = selection.event;
+    let replacement;
+    if (event.text != null) {
+      const text = values.text.trim().replace(/\s+/g, " ");
+      if (!text) {
+        setBanner("Not changed: a lyric line needs words.", "warn");
+        return;
+      }
+      if (!(values.end - values.start >= 0.05) || values.start < 0) {
+        setBanner("Not changed: the line must end after it starts.", "warn");
+        return;
+      }
+      const delta = values.start - Number(event.start);
+      let words = (event.words || []).map((word) => Object.assign({}, word, {
+        start: round3(Number(word.start) + delta), end: round3(Number(word.end) + delta)
+      }));
+      const typed = text.split(" ");
+      if (text !== event.text) {
+        // Typed corrections keep the recognizer's word timings when the word count
+        // still matches; otherwise the line keeps only its own start and end.
+        words = typed.length === words.length
+          ? words.map((word, index) => Object.assign({}, word, { text: typed[index], verified: true }))
+          : [];
+      }
+      replacement = Object.assign({}, event, { text, start: round3(values.start),
+        end: round3(values.end), words, verified: true });
+    } else {
+      replacement = Object.assign({}, event, { time: round3(values.time), status: "confirmed" });
+      if (selection.kind === "sections") replacement.label = values.label || null;
+    }
+    applyMusic("Changed a " + target.name.toLowerCase(),
+      [musicChange(target, replaceEvent(target, event, replacement))],
+      { kind: selection.kind, event: replacement });
+  }
+
+  function medianBarSeconds() {
+    const analysis = state.analysis && state.analysis.analysis;
+    const times = sortedTimes(analysis ? analysis.downbeats : []);
+    const gaps = [];
+    for (let index = 1; index < times.length; index++) gaps.push(times[index] - times[index - 1]);
+    gaps.sort((a, b) => a - b);
+    return gaps.length ? gaps[Math.floor(gaps.length / 2)] : null;
+  }
+
+  function nextConfirmedBar(time) {
+    const analysis = state.analysis.analysis;
+    return sortedByTime(analysis.downbeats).find((event) =>
+      statusOf(event) === "confirmed" && eventTime(event) > time + 0.05) || null;
+  }
+
+  // Tempo map: spread the bars and beats evenly between two confirmed bars. This
+  // handles rubato and tempo changes one stretch at a time, anchored on the bars
+  // the user placed by ear.
+  function fitBetweenBars(bar, bars) {
+    const analysis = state.analysis.analysis;
+    const next = nextConfirmedBar(eventTime(bar));
+    if (!next || !(bars >= 1 && bars <= 64 && Number.isInteger(bars))) return;
+    const meter = Number($("meterSelect").value) || 4;
+    const start = eventTime(bar);
+    const end = eventTime(next);
+    const method = "fitted between confirmed bars (" + bars + " bars of " + meter + ")";
+    const step = (end - start) / (bars * meter);
+    const beats = analysis.beats.filter((event) =>
+      eventTime(event) < start - 0.05 || eventTime(event) > end + 0.05);
+    for (let index = 0; index <= bars * meter; index++) {
+      const fixed = index === 0 || index === bars * meter;
+      beats.push({ time: round3(start + index * step), confidence: 1, method,
+        status: fixed ? "confirmed" : "fitted" });
+    }
+    const downbeats = analysis.downbeats.filter((event) =>
+      eventTime(event) <= start + 0.05 || eventTime(event) >= end - 0.05);
+    for (let index = 1; index < bars; index++) {
+      downbeats.push({ time: round3(start + index * step * meter), confidence: 1, method,
+        status: "fitted" });
+    }
+    const target = (key) => ({ owner: analysis, key });
+    applyMusic("Fitted " + bars + " bar(s) of " + meter + " between " + formatCentiseconds(start * 100) +
+      " and " + formatCentiseconds(end * 100) + ": " + (60 / step).toFixed(1) + " BPM",
+    [musicChange(target("beats"), sortedByTime(beats)),
+      musicChange(target("downbeats"), sortedByTime(downbeats))], { kind: "downbeats", event: bar });
+  }
+
+  function reviewButton(id, text, handler, primary) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.id = id;
+    button.className = "tool-button" + (primary ? " primary" : "") + " inspector-action";
+    button.textContent = text;
+    button.addEventListener("click", handler);
+    return button;
+  }
+
+  function renderReviewInspector() {
+    const selection = state.reviewSelection;
+    if (!selection) return;
+    const lane = laneByKind(selection.kind);
+    const target = reviewLane(lane);
+    if (!target) return;
+    const event = selection.event;
+    const seconds = eventTime(event);
+    inspectMoment(seconds, lane);
+    const inspector = $("inspectorContent");
+    const status = statusOf(event);
+    const note = document.createElement("div");
+    note.className = "inspector-primary";
+    note.textContent = target.name + " · " + (status === "confirmed" ? "confirmed by you"
+      : status === "fitted" ? "fitted between confirmed bars" : "automatic estimate" +
+        (event.method ? " (" + event.method + ")" : ""));
+    inspector.insertBefore(note, inspector.children[1] || null);
+    const form = document.createElement("div");
+    form.className = "edit-form";
+    if (event.text != null) {
+      const text = document.createElement("input");
+      text.type = "text";
+      text.id = "reviewText";
+      text.className = "review-text";
+      text.value = event.text;
+      form.appendChild(field("Words", text));
+      form.appendChild(field("Start s", numberInput("reviewStart", Number(event.start).toFixed(2), 0, null, 0.01)));
+      form.appendChild(field("End s", numberInput("reviewEnd", Number(event.end).toFixed(2), 0, null, 0.01)));
+    } else {
+      form.appendChild(field("Time s", numberInput("reviewTime", seconds.toFixed(3), 0, null, 0.001)));
+      if (selection.kind === "sections") {
+        const label = document.createElement("select");
+        label.id = "reviewLabel";
+        for (const name of [""].concat(SECTION_LABELS)) {
+          const option = document.createElement("option");
+          option.value = name;
+          option.textContent = name || "(unlabeled)";
+          label.appendChild(option);
+        }
+        label.value = event.label || "";
+        form.appendChild(field("Part", label));
+      }
+    }
+    form.appendChild(reviewButton("reviewApply", "Apply", () => {
+      if (event.text != null) {
+        editSelected({ text: $("reviewText").value, start: Number($("reviewStart").value),
+          end: Number($("reviewEnd").value) });
+      } else {
+        const time = Number($("reviewTime").value);
+        if (!Number.isFinite(time) || time < 0) {
+          setBanner("Not changed: the time must be a number of seconds.", "warn");
+          return;
+        }
+        editSelected({ time, label: $("reviewLabel") ? $("reviewLabel").value : null });
+      }
+    }, true));
+    if (status !== "confirmed") {
+      form.appendChild(reviewButton("reviewConfirm", event.text != null ? "Confirm words" : "Confirm",
+        confirmReviewSelection));
+    }
+    form.appendChild(reviewButton("reviewDelete", "Delete", deleteReviewSelection));
+    inspector.appendChild(form);
+    if (selection.kind === "downbeats" && status === "confirmed") {
+      const next = nextConfirmedBar(seconds);
+      const fit = document.createElement("div");
+      fit.className = "edit-form";
+      if (next) {
+        const gap = eventTime(next) - seconds;
+        const bar = medianBarSeconds();
+        const bars = numberInput("fitBars", Math.max(1, Math.round(bar ? gap / bar : 1)), 1, 64, 1);
+        fit.appendChild(field("Bars to " + formatCentiseconds(eventTime(next) * 100), bars));
+        fit.appendChild(reviewButton("fitBarsButton", "Fit bars and beats evenly", () =>
+          fitBetweenBars(event, Number($("fitBars").value))));
+      } else {
+        const hint = document.createElement("div");
+        hint.textContent = "Confirm a later bar to fit the bars and beats between them.";
+        fit.appendChild(hint);
+      }
+      inspector.appendChild(fit);
+    }
+  }
+
+  // --- Saving and loading a review ----------------------------------------------
+
+  function reviewCounts() {
+    const counts = { confirmed: 0, fitted: 0, auto: 0, lyric_lines_confirmed: 0, lyric_lines: 0 };
+    const analysis = state.analysis && state.analysis.analysis;
+    for (const spec of Object.values(REVIEW_LANES)) {
+      for (const event of (analysis && analysis[spec.key]) || []) counts[statusOf(event)] += 1;
+    }
+    for (const line of state.lyrics ? state.lyrics.lines : []) {
+      counts.lyric_lines += 1;
+      if (line.verified) counts.lyric_lines_confirmed += 1;
+    }
+    return counts;
+  }
+
+  function saveReview() {
+    if (!state.analysis) {
+      setBanner("Load or run an audio analysis first; the review corrects it.", "warn");
+      return;
+    }
+    const base = (state.sequence ? state.sequence.filename : "song").replace(/\.(loredit|xml)$/i, "");
+    const document_ = {
+      schema_version: REVIEW_SCHEMA,
+      created_by: "lor-sequence-ui",
+      sequence_file: state.sequence ? state.sequence.filename : null,
+      meter: Number($("meterSelect").value) || 4,
+      counts: reviewCounts(),
+      analysis: state.analysis,
+      lyrics: state.lyrics
+    };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(document_, null, 2) + "\n"],
+      { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = base + ".review.json";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    state.reviewDirty = false;
+    state.reviewSaved = true;
+    updateEditControls();
+    setBanner("Saved " + base + ".review.json. Open it again with Load analysis, or generate from it " +
+      "with --analysis.", "good");
   }
 
   function setup() {
@@ -2392,6 +3033,11 @@
       canvasViewport.scrollLeft = 0;
     });
     $("meterSelect").addEventListener("change", () => {
+      if (state.reviewDirty) {
+        setBanner("Meter set to " + $("meterSelect").value + "/4 for fitting bars. The analysis was " +
+          "not re-run, so your review is kept.", "good");
+        return;
+      }
       if (state.audioFile && state.audioBuffer) analyzeSelectedAudio(state.audioFile);
     });
     $("playButton").addEventListener("click", async () => {
@@ -2424,7 +3070,6 @@
       if (state.sequence) refreshTimeline();
     });
     $("waveformCanvas").addEventListener("click", (event) => seekFromPointer(event, $("waveformCanvas")));
-    $("markersCanvas").addEventListener("click", handleMarkerClick);
     setupEditing();
   }
 

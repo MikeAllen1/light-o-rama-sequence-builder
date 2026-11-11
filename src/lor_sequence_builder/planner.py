@@ -116,6 +116,8 @@ class _Music:
     section_starts: list[int]
     stops: list[tuple[int, int]]
     notes: list[str]
+    # Part names the user gave sections in a music review, by section start.
+    labels: dict[int, str] = field(default_factory=dict)
 
 
 def _music(analysis: dict[str, Any]) -> _Music:
@@ -152,7 +154,13 @@ def _music(analysis: dict[str, Any]) -> _Music:
             stops.append((start, min(duration, start + length)))
     starts = sorted({_snap(t, downbeats) for t in _times(analysis, "section_candidates")
                      if 0 < t < duration})
-    return _Music(duration, beats, downbeats, energy, starts, stops, notes)
+    labels: dict[int, str] = {}
+    for candidate in analysis.get("analysis", {}).get("section_candidates", []):
+        if (isinstance(candidate, dict) and isinstance(candidate.get("label"), str)
+                and candidate["label"].strip() and isinstance(candidate.get("time"), int | float)):
+            labels[_snap(_cs(float(candidate["time"])), downbeats)] = (
+                candidate["label"].strip().lower())
+    return _Music(duration, beats, downbeats, energy, starts, stops, notes, labels)
 
 
 def _snap(time: int, grid: list[int]) -> int:
@@ -207,6 +215,11 @@ def _sections(music: _Music) -> list[PlannedSection]:
             label = "finale" if level == HIGH else "outro"
         else:
             label = "chorus" if level == HIGH else "verse"
+        # A name from the music review wins over the guess. Its marker is matched to
+        # the section that starts nearest it (within a second before, four after).
+        named = [t for t in music.labels if start - 100 <= t < min(end, start + 400)]
+        if named:
+            label = music.labels[min(named, key=lambda t: abs(t - start))]
         sections.append(PlannedSection(label, level, start, end, rel))
     return sections
 
@@ -1017,8 +1030,12 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
     if isinstance(guidance, dict) and guidance.get("stretches"):
         notes.append(f"Beats in {len(guidance['stretches'])} singer-led stretch(es) were placed "
                      "with the vocals' help.")
-    notes.append("Section labels (intro, verse, chorus, finale, outro) are guesses from "
-                 "loudness, not recognition.")
+    if music.labels:
+        notes.append(f"{len(music.labels)} section name(s) come from the music review; the "
+                     "others are guesses from loudness.")
+    else:
+        notes.append("Section labels (intro, verse, chorus, finale, outro) are guesses from "
+                     "loudness, not recognition.")
 
     keep_spans: dict[str, list[tuple[int, int]]] = {}
     for pid, during in constraints.keep_on.items():
