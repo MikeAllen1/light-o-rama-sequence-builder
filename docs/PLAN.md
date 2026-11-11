@@ -141,7 +141,7 @@ See [GITHUB_WORKFLOW.md](GITHUB_WORKFLOW.md) for branch, PR, review, merge, and 
 At the start of each fresh phase session: read this plan and active issue; confirm previous PR is merged and approval recorded; check branch and working tree; work only on the active phase; update this log before PR; stop after phase completion and request approval.
 
 
-## Phase 2 — Standalone LORPREV parser
+## Phase 2 — Preview parser
 
 - Status: Parser implementation now covers the supplied native S6 PreviewClass including its PropGroup; PR #6 remains draft/open and is not merged. The earlier assertion that group evidence was missing was incorrect.
 - Issue: https://github.com/MikeAllen1/light-o-rama-sequence-builder/issues/5
