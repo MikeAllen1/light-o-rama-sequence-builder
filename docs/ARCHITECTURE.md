@@ -112,7 +112,7 @@ Every stage has typed Pydantic inputs and outputs. A stage may use the public mo
 
 **Known preview references:** Revision 0 is covered by a small synthetic fixture; Revision 1 by the supplied standalone `.lorprev`; Revision 56 by the `PreviewClass` extracted from the supplied S6 6.6.0.12 `.loredit`. The Revision 56 fixture contains 51 props and a real `PropGroup` with five `member` references. These internal preview revisions are distinct from the LOREDIT `saveFileVersion` and S6 application build.
 
-**Controller/channel interpretation:** Each LOR prop `ChannelGrid` row exposes network, Unit ID, and circuit; each DMX row exposes universe and channel. The parser retains the original row and source locator. `Undetermined` is a recognized unassigned device type.
+**Controller/channel interpretation:** Each LOR prop `ChannelGrid` row exposes network, Unit ID, and the circuit value present in that row; each DMX row exposes universe and channel. These are address fields, not a complete interpretation of every field or channel-range behavior. Remaining row fields are retained verbatim and are not yet semantically interpreted. The parser retains the complete original value and source locator. `Undetermined` is a recognized unassigned device type. Later phases must not infer channel counts, ranges, color semantics, or controller capabilities from unparsed fields.
 
 **Group interpretation:** A direct `PropGroup` contains direct `member` elements. The parser exposes group ID, name, arrangement, ordered member prop IDs, orientation, top, and left values. It validates that each referenced member ID resolves to a prop in the same preview; missing or dangling references are preserved and reported as unsupported constructs. Raw group/member elements and per-attribute provenance remain available.
 
@@ -309,7 +309,7 @@ Any other unsupported channel or effect type follows the same explicit-report-an
 
 - No secrets in source; environment variables for any future credentials; `.env` remains gitignored.
 - Parse XML with `defusedxml`; no external entities.
-- Enforce configurable file-size, audio-duration, decompression, and processing limits.
+- Enforce file-size, XML nesting-depth, XML element-count, audio-duration, decompression, and processing limits. The Phase 2 preview parser currently applies a 20 MiB file limit, 256-level nesting limit, and 100,000-element limit.
 - Validate extension and content/magic bytes; extension alone is not trusted.
 - Load YAML only with `safe_load`, then validate against strict Pydantic schemas.
 - Invoke FFmpeg with argument arrays, no shell, controlled environment, timeouts, and bounded output paths.
