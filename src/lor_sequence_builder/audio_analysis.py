@@ -111,7 +111,7 @@ def _normalize(path: Path, output: Path, input_demuxer: str | None = None) -> st
         raise AudioAnalysisError("Could not determine the installed FFmpeg version")
     ffmpeg_version = version_result.stdout.splitlines()[0].strip()
     demuxer = input_demuxer or INPUT_DEMUXERS.get(path.suffix.lower())
-    if demuxer not in INPUT_DEMUXERS.values():
+    if demuxer is None or demuxer not in INPUT_DEMUXERS.values():
         supported = ", ".join(sorted(INPUT_DEMUXERS))
         raise AudioAnalysisError(
             f"Unsupported audio file extension {path.suffix!r}; supported extensions: {supported}"

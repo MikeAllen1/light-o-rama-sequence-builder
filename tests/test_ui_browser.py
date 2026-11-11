@@ -6,9 +6,9 @@ import struct
 import tempfile
 import threading
 import wave
-from collections.abc import Iterator
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+
 import pytest
 
 from lor_sequence_builder.ui_server import SequencerRequestHandler
