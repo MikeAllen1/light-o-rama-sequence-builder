@@ -129,6 +129,31 @@ def build_new_sequence(
     if any(not prop_id for prop_id in prop_ids) or len(set(prop_ids)) != len(prop_ids):
         raise NewSequenceError("Preview contains missing or duplicate prop identities")
 
+    props_by_id = {prop.attrib["id"]: prop for prop in props}
+    for prop in props:
+        master_id = prop.attrib.get("MasterPropId", "").strip()
+        if not master_id:
+            continue
+        prop_id = prop.attrib["id"]
+        if master_id == prop_id:
+            raise NewSequenceError(f"Prop {prop_id!r} cannot reference itself as its master")
+        master = props_by_id.get(master_id)
+        if master is None:
+            raise NewSequenceError(
+                f"Prop {prop_id!r} references missing master prop {master_id!r}"
+            )
+        if master.attrib.get("MasterPropId", "").strip():
+            raise NewSequenceError(
+                f"Linked prop {prop_id!r} references another linked prop {master_id!r}; "
+                "master chains and cycles are not supported"
+            )
+        master_reason = _exclusion_reason(master)
+        if master_reason is not None:
+            raise NewSequenceError(
+                f"Linked prop {prop_id!r} references master {master_id!r} "
+                f"without a verified native channel layout: {master_reason}"
+            )
+
     attributes: dict[str, str] = {
         "saveFileVersion": SAVE_FILE_VERSION,
         "AppVersion": app_version,
@@ -181,9 +206,16 @@ def build_new_sequence(
     ET.SubElement(grids, "TimingGridFixed", {"name": "Fixed Grid: 0.05", "spacing": "5"})
     seen_names: set[str] = set()
     for grid in timing_grids:
-        if not grid.name.strip() or grid.name in seen_names:
+        if not isinstance(grid.name, str) or not grid.name.strip() or grid.name in seen_names:
             raise NewSequenceError(f"Timing grid names must be unique and non-empty: {grid.name!r}")
         seen_names.add(grid.name)
+        if any(
+            isinstance(mark, bool) or not isinstance(mark, int)
+            for mark in grid.marks_centiseconds
+        ):
+            raise NewSequenceError(
+                f"Timing grid {grid.name!r} marks must be integer centiseconds"
+            )
         marks = sorted(set(grid.marks_centiseconds))
         if marks and (marks[0] < 0 or marks[-1] > total_centiseconds):
             raise NewSequenceError(f"Timing grid {grid.name!r} has marks outside the sequence")

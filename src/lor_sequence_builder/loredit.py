@@ -17,6 +17,8 @@ from defusedxml.common import DefusedXmlException
 
 SUPPORTED_SAVE_FILE_VERSION = "15"
 MAX_LOREDIT_BYTES = 50 * 1024 * 1024
+MAX_LOREDIT_ELEMENTS = 100_000
+MAX_LOREDIT_DEPTH = 256
 
 
 class LoreditError(ValueError):
@@ -64,9 +66,32 @@ def read_loredit(path: str | Path) -> LoreditDocument:
         )
 
     try:
-        root = SafeET.parse(
-            source, forbid_dtd=True, forbid_entities=True, forbid_external=True
-        ).getroot()
+        iterator = SafeET.iterparse(
+            source,
+            events=("start", "end"),
+            forbid_dtd=True,
+            forbid_entities=True,
+            forbid_external=True,
+        )
+        depth = 0
+        element_count = 0
+        for event, _element in iterator:
+            if event == "start":
+                depth += 1
+                element_count += 1
+                if depth > MAX_LOREDIT_DEPTH:
+                    raise LoreditError(
+                        f"LOREDIT XML exceeds the maximum nesting depth of {MAX_LOREDIT_DEPTH}"
+                    )
+                if element_count > MAX_LOREDIT_ELEMENTS:
+                    raise LoreditError(
+                        f"LOREDIT XML exceeds the {MAX_LOREDIT_ELEMENTS}-element limit"
+                    )
+            else:
+                depth -= 1
+        root = iterator.root
+    except LoreditError:
+        raise
     except (OSError, ET.ParseError, DefusedXmlException) as exc:
         raise LoreditError(f"Invalid or unsafe LOREDIT XML: {source}") from exc
 
