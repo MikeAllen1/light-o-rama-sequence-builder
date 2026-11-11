@@ -7,6 +7,7 @@ import base64
 import gzip
 import json
 import tempfile
+import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
@@ -15,7 +16,6 @@ from lor_sequence_builder.pulse import build_pulse_sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures"
-PREVIEW_FIXTURE = FIXTURES / "s6_revision_58_independent.lorprev.gz.b64"
 TEMPLATE_FIXTURE = FIXTURES / "s6_revision_56_independent_template.loredit.gz.b64"
 
 PACKAGE_README = """PHASE 3 LIGHT-O-RAMA S6 TEST
@@ -41,10 +41,28 @@ def _decode_fixture(source: Path, destination: Path) -> None:
     destination.write_bytes(gzip.decompress(base64.b64decode(encoded, validate=True)))
 
 
+def _strip_local_background_references(template: Path) -> None:
+    """Remove workstation-local background paths before deriving the standalone preview."""
+    tree = ET.parse(template)
+    removed = 0
+    for element in tree.getroot().iter():
+        for attribute in tuple(element.attrib):
+            if attribute.casefold() in {
+                "backgroundfile",
+                "backgroundimage",
+                "backgroundimagefile",
+            }:
+                del element.attrib[attribute]
+                removed += 1
+    if removed == 0:
+        raise RuntimeError("Expected a local preview background reference to sanitize.")
+    tree.write(template, encoding="utf-8", xml_declaration=True)
+
+
 def build_package(destination: Path) -> None:
     """Generate, validate, and package the sample sequence and Timeline."""
-    if not PREVIEW_FIXTURE.is_file() or not TEMPLATE_FIXTURE.is_file():
-        raise FileNotFoundError("The committed independent Phase 3 fixture pair is incomplete.")
+    if not TEMPLATE_FIXTURE.is_file():
+        raise FileNotFoundError("The committed independent Phase 3 template fixture is missing.")
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
@@ -57,8 +75,15 @@ def build_package(destination: Path) -> None:
         sequence = work / "Phase3-Test.loredit"
         timeline_path = work / "Phase3-Test.timeline.json"
 
-        _decode_fixture(PREVIEW_FIXTURE, preview)
         _decode_fixture(TEMPLATE_FIXTURE, template)
+        _strip_local_background_references(template)
+        template_root = ET.parse(template).getroot()
+        embedded_preview = template_root.find("PreviewClass")
+        if embedded_preview is None:
+            raise RuntimeError("The native S6 template does not contain an embedded PreviewClass.")
+        ET.ElementTree(embedded_preview).write(
+            preview, encoding="utf-8", xml_declaration=True
+        )
 
         result = build_pulse_sequence(
             preview_path=preview,
