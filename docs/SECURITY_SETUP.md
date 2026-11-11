@@ -5,7 +5,7 @@ This document separates security controls committed to the repository from GitHu
 ## Configured in the repository
 
 - **Dependabot version updates:** `.github/dependabot.yml` checks Python dependencies and GitHub Actions weekly and opens update pull requests.
-- **Automated tests and dependency audit:** `.github/workflows/tests.yml` runs tests, Ruff, strict mypy, and a `pip-audit` scan of the locked production dependency export. Developer-tool pins are centralized in `requirements-dev.txt`; they are not yet represented in `uv.lock`. The workflow has read-only repository permissions and disables persisted checkout credentials.
+- **Automated tests and dependency audit:** `.github/workflows/tests.yml` runs tests, Ruff, strict mypy, and a `pip-audit` scan of the locked production dependency export; the audit executable is installed from the locked `dev` group. Developer tools are pinned in the locked `dev` dependency group in `pyproject.toml` and `uv.lock`. The workflow has read-only repository permissions and disables persisted checkout credentials.
 - **CodeQL:** `.github/workflows/codeql.yml` runs Python and GitHub Actions code scanning on pushes and pull requests to `master`, plus a weekly scheduled scan. The analysis job receives only the permissions needed to publish code-scanning results.
 - **Security policy:** `SECURITY.md` explains responsible vulnerability reporting and safe handling of user files.
 - **Local-file exclusions:** `.gitignore` excludes local secrets, private keys, audio, and Light-O-Rama sequence files. This is a guardrail, not a substitute for checking staged files.
