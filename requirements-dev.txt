@@ -1,6 +1,0 @@
-# Pinned developer tooling used by local checks and CI.
-pytest==9.2.0
-ruff==0.17.4
-mypy==1.18.2
-coverage==7.13.3
-types-defusedxml==0.7.0.20260504
