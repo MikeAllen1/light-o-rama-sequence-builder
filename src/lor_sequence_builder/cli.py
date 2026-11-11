@@ -75,6 +75,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"Diagnostic plot: {options.plot}")
             print(f"Duration: {report['audio']['duration_seconds']} seconds")
             print(f"Estimated tempo: {tempo['bpm']} BPM (confidence {tempo['confidence']})")
+            if tempo["candidates"]:
+                alternatives = ", ".join(
+                    f"{candidate['bpm']} BPM (relative score {candidate['relative_score']})"
+                    for candidate in tempo["candidates"]
+                )
+                print(f"Tempo candidates: {alternatives}")
+            else:
+                print("Tempo candidates: unavailable")
             print(f"Beat grid status: {analysis['beat_grid_status']}")
             print(f"Beats: {len(analysis['beats'])}")
             beat_events = analysis["beats"]
