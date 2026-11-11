@@ -31,6 +31,19 @@ MAX_INPUT_BYTES = 200 * 1024 * 1024
 MAX_DURATION_SECONDS = 30 * 60
 MIN_DURATION_SECONDS = 2.0
 MAX_DECODED_SAMPLES = SAMPLE_RATE * MAX_DURATION_SECONDS
+MAX_FFMPEG_SECONDS = 300
+INPUT_FORMATS = {
+    ".aac": "aac",
+    ".aif": "aiff",
+    ".aiff": "aiff",
+    ".flac": "flac",
+    ".m4a": "mov",
+    ".mp3": "mp3",
+    ".mp4": "mov",
+    ".ogg": "ogg",
+    ".wav": "wav",
+    ".wma": "asf",
+}
 MIN_BPM = 60
 MAX_BPM = 200
 
@@ -47,7 +60,33 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _snapshot_source(source: Path, destination: Path) -> str:
+    """Copy and hash the exact bytes that FFmpeg will analyze."""
+    digest = hashlib.sha256()
+    total_bytes = 0
+    try:
+        with source.open("rb") as input_stream, destination.open("xb") as snapshot:
+            for block in iter(lambda: input_stream.read(1024 * 1024), b""):
+                total_bytes += len(block)
+                if total_bytes > MAX_INPUT_BYTES:
+                    raise AudioAnalysisError(
+                        "Audio file must be non-empty and no larger than 200 MiB"
+                    )
+                digest.update(block)
+                snapshot.write(block)
+    except OSError as exc:
+        raise AudioAnalysisError(f"Could not create a stable audio input snapshot: {exc}") from exc
+    if total_bytes == 0:
+        raise AudioAnalysisError("Audio input is empty")
+    return digest.hexdigest()
+
+
 def _normalize(path: Path, output: Path) -> str:
+    input_format = INPUT_FORMATS.get(path.suffix.lower())
+    if input_format is None:
+        raise AudioAnalysisError(
+            f"Unsupported audio extension {path.suffix!r}; use a supported audio file type"
+        )
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
         raise AudioAnalysisError(
@@ -64,13 +103,15 @@ def _normalize(path: Path, output: Path) -> str:
     ffmpeg_version = version_result.stdout.splitlines()[0].strip()
     command = [
         ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
+        "-protocol_whitelist", "file",
+        "-f", input_format,
         "-i", str(path.resolve()), "-t", str(MAX_DURATION_SECONDS + 1), "-map", "0:a:0", "-vn", "-ac", "1",
         "-ar", str(SAMPLE_RATE), "-c:a", "pcm_s16le", "-f", "wav", str(output),
     ]
     try:
         completed = subprocess.run(
             command, check=False, capture_output=True, text=True,
-            timeout=MAX_DURATION_SECONDS + 120,
+            timeout=MAX_FFMPEG_SECONDS,
         )
     except subprocess.TimeoutExpired as exc:
         raise AudioAnalysisError("FFmpeg audio normalization exceeded its time limit") from exc
@@ -468,8 +509,11 @@ def analyze_audio(
         json_path.parent.mkdir(parents=True, exist_ok=True)
         plot_path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="lor-audio-") as directory:
-            normalized = Path(directory) / "normalized.wav"
-            ffmpeg_version = _normalize(source, normalized)
+            work_dir = Path(directory)
+            snapshot = work_dir / f"input{source.suffix.lower()}"
+            source_sha256 = _snapshot_source(source, snapshot)
+            normalized = work_dir / "normalized.wav"
+            ffmpeg_version = _normalize(snapshot, normalized)
             rms, flux, duration = _read_features(normalized)
         onsets = _detect_onsets(flux)
         bpm, tempo_confidence, lag, phase, phase_confidence, tempo_candidates = _estimate_tempo(
@@ -500,7 +544,7 @@ def analyze_audio(
             "schema_version": ANALYSIS_SCHEMA_VERSION,
             "audio": {
                 "file_name": source.name,
-                "sha256": _sha256(source),
+                "sha256": source_sha256,
                 "duration_seconds": round(duration, 3),
                 "normalized_sample_rate": SAMPLE_RATE,
                 "channels": 1,

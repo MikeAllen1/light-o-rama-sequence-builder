@@ -9,7 +9,12 @@ from pathlib import Path
 
 import pytest
 
-from lor_sequence_builder.audio_analysis import AudioAnalysisError, analyze_audio
+from lor_sequence_builder.audio_analysis import (
+    AudioAnalysisError,
+    _normalize,
+    _snapshot_source,
+    analyze_audio,
+)
 from lor_sequence_builder.cli import main
 
 
@@ -628,3 +633,55 @@ def test_concurrent_plot_creation_does_not_leave_partial_json(
     assert not json_path.exists()
     assert plot_path.read_text(encoding="utf-8") == "another process won"
     assert not list(tmp_path.glob(".race.*.tmp"))
+
+
+
+def test_snapshot_hash_matches_exact_copied_input(tmp_path: Path) -> None:
+    import hashlib
+
+    source = tmp_path / "song.mp3"
+    snapshot = tmp_path / "snapshot.mp3"
+    original = b"stable audio bytes"
+    source.write_bytes(original)
+
+    digest = _snapshot_source(source, snapshot)
+
+    assert digest == hashlib.sha256(original).hexdigest()
+    assert snapshot.read_bytes() == original
+
+
+def test_ffmpeg_input_is_protocol_limited_and_demuxer_pinned(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    import lor_sequence_builder.audio_analysis as module
+
+    executable = tmp_path / "ffmpeg"
+    executable.write_text("", encoding="utf-8")
+    source = tmp_path / "playlist.mp3"
+    source.write_bytes(b"not actually decoded in this mocked test")
+    commands: list[list[str]] = []
+
+    def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+        commands.append(command)
+        if "-version" in command:
+            return SimpleNamespace(returncode=0, stdout="ffmpeg version test", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(module.shutil, "which", lambda _name: str(executable))
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    _normalize(source, tmp_path / "normalized.wav")
+
+    decode = commands[1]
+    assert decode[decode.index("-protocol_whitelist") + 1] == "file"
+    assert decode[decode.index("-f") + 1] == "mp3"
+    assert decode[decode.index("-i") + 1] == str(source.resolve())
+
+
+def test_ffmpeg_rejects_unrecognized_input_extensions(tmp_path: Path) -> None:
+    source = tmp_path / "playlist.txt"
+    source.write_text("file 'secret.txt'", encoding="utf-8")
+    with pytest.raises(AudioAnalysisError, match="Unsupported audio extension"):
+        _normalize(source, tmp_path / "normalized.wav")

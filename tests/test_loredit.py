@@ -90,6 +90,30 @@ def test_writer_revalidates_document_before_creating_output(
     assert not list(tmp_path.glob("*.tmp"))
 
 
+def test_loredit_rejects_excessive_xml_depth(tmp_path: Path) -> None:
+    source = tmp_path / "too-deep.loredit"
+    nested = "<x>" * 257 + "</x>" * 257
+    source.write_text(
+        '<sequence saveFileVersion="15" totalCentiseconds="1">'
+        f"{nested}<SequenceProps/><TimingGrids/></sequence>",
+        encoding="utf-8",
+    )
+    with pytest.raises(LoreditError, match="nesting exceeds"):
+        read_loredit(source)
+
+
+def test_loredit_rejects_excessive_element_count(tmp_path: Path) -> None:
+    source = tmp_path / "too-many-elements.loredit"
+    children = "<x/>" * 250_001
+    source.write_text(
+        '<sequence saveFileVersion="15" totalCentiseconds="1">'
+        f"{children}<SequenceProps/><TimingGrids/></sequence>",
+        encoding="utf-8",
+    )
+    with pytest.raises(LoreditError, match="element count"):
+        read_loredit(source)
+
+
 def test_unsupported_version_fails_clearly(tmp_path: Path) -> None:
     source = tmp_path / "future.loredit"
     source.write_text(

@@ -221,7 +221,8 @@ def _build_timeline(
     }
     for preview_prop in preview_nodes:
         prop_id = _attribute(preview_prop, "id")
-        assert prop_id is not None
+        if prop_id is None:
+            raise PulseGenerationError("Preview contains a prop with a missing or blank id")
         template_prop = embedded_prop_map[prop_id]
         if not _elements_equivalent(preview_prop, template_prop):
             raise PulseGenerationError(
@@ -256,7 +257,8 @@ def _build_timeline(
 
     for prop in preview_nodes:
         prop_id = _attribute(prop, "id")
-        assert prop_id is not None
+        if prop_id is None:
+            raise PulseGenerationError("Preview contains a prop with a missing or blank id")
         name = _attribute(prop, "Name") or prop_id
         device_type = _attribute(prop, "DeviceType")
         traditional_type = _attribute(prop, "TraditionalType")
@@ -591,7 +593,8 @@ def build_pulse_sequence(
     )
 
     sequence_props = document.root.find("SequenceProps")
-    assert sequence_props is not None
+    if sequence_props is None:
+        raise PulseGenerationError("Template is missing the SequenceProps section")
     for sequence_prop in sequence_props.findall("SeqProp"):
         for channel in sequence_prop.findall("channel"):
             for effect in list(channel.findall("effect")):

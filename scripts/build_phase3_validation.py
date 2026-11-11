@@ -9,6 +9,8 @@ import json
 import tempfile
 import uuid
 import xml.etree.ElementTree as ET
+
+from defusedxml import ElementTree as SafeET
 import zipfile
 from pathlib import Path
 
@@ -44,7 +46,7 @@ def _decode_fixture(source: Path, destination: Path) -> None:
 
 def _strip_local_background_references(template: Path) -> None:
     """Remove local image paths and isolate the test preview from S6 saved displays."""
-    tree = ET.parse(template)
+    tree = SafeET.parse(template, forbid_dtd=True, forbid_entities=True, forbid_external=True)
     root = tree.getroot()
     removed = 0
     for element in root.iter():
@@ -89,7 +91,9 @@ def build_package(destination: Path) -> None:
 
         _decode_fixture(TEMPLATE_FIXTURE, template)
         _strip_local_background_references(template)
-        template_root = ET.parse(template).getroot()
+        template_root = SafeET.parse(
+            template, forbid_dtd=True, forbid_entities=True, forbid_external=True
+        ).getroot()
         embedded_preview = template_root.find("PreviewClass")
         if embedded_preview is None:
             raise RuntimeError("The native S6 template does not contain an embedded PreviewClass.")

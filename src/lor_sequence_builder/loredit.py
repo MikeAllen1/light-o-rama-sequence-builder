@@ -6,6 +6,7 @@ unknown elements and attributes are retained rather than interpreted or rebuilt.
 
 from __future__ import annotations
 
+import io
 import os
 import tempfile
 import xml.etree.ElementTree as ET
@@ -17,6 +18,8 @@ from defusedxml.common import DefusedXmlException
 
 SUPPORTED_SAVE_FILE_VERSION = "15"
 MAX_LOREDIT_BYTES = 50 * 1024 * 1024
+MAX_XML_DEPTH = 256
+MAX_LOREDIT_ELEMENTS = 250_000
 
 
 class LoreditError(ValueError):
@@ -64,9 +67,36 @@ def read_loredit(path: str | Path) -> LoreditDocument:
         )
 
     try:
-        root = SafeET.parse(
-            source, forbid_dtd=True, forbid_entities=True, forbid_external=True
-        ).getroot()
+        content = source.read_bytes()
+        iterator = SafeET.iterparse(
+            io.BytesIO(content),
+            events=("start", "end"),
+            forbid_dtd=True,
+            forbid_entities=True,
+            forbid_external=True,
+        )
+        depth = 0
+        element_count = 0
+        for event, _element in iterator:
+            if event == "start":
+                depth += 1
+                element_count += 1
+                if depth > MAX_XML_DEPTH:
+                    raise LoreditError(
+                        f"LOREDIT XML nesting exceeds the maximum depth of {MAX_XML_DEPTH}"
+                    )
+                if element_count > MAX_LOREDIT_ELEMENTS:
+                    raise LoreditError(
+                        "LOREDIT XML exceeds the maximum element count "
+                        f"of {MAX_LOREDIT_ELEMENTS}"
+                    )
+            else:
+                depth -= 1
+        root = SafeET.fromstring(
+            content, forbid_dtd=True, forbid_entities=True, forbid_external=True
+        )
+    except LoreditError:
+        raise
     except (OSError, ET.ParseError, DefusedXmlException) as exc:
         raise LoreditError(f"Invalid or unsafe LOREDIT XML: {source}") from exc
 
