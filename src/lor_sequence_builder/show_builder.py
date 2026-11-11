@@ -86,6 +86,8 @@ class _Session:
     audio_revision: int = 0
     requirements_revision: int = 0
     generated_dir: Path | None = None
+    active_ops: int = 0
+    closing: bool = False
     requirements: tuple[Requirement, ...] = ()
     lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -138,11 +140,10 @@ class ShowSessions:
             self._drop(oldest.token)
 
     def _drop(self, token: str) -> None:
-        session = self._sessions.get(token)
+        session = self._sessions.pop(token, None)
         if session is not None:
-            # Serialize cleanup with every operation that can read/write the folder.
-            with session.lock:
-                self._sessions.pop(token, None)
+            session.closing = True
+            if session.active_ops == 0:
                 session.folder.cleanup()
 
     def close(self) -> None:
@@ -175,12 +176,16 @@ class ShowSessions:
                 session = None
             if session is None:
                 raise ShowBuildError("This show was not found or has expired; start again")
-            session.lock.acquire()
+            session.active_ops += 1
             session.last_used = time.monotonic()
         try:
-            yield session
+            with session.lock:
+                yield session
         finally:
-            session.lock.release()
+            with self._lock:
+                session.active_ops -= 1
+                if session.closing and session.active_ops == 0:
+                    session.folder.cleanup()
 
     # -- 1. preview
 

@@ -189,29 +189,30 @@ def test_session_expiration_is_enforced_when_a_token_is_used(tmp_path: Path) -> 
     assert not folder.exists()
 
 
-def test_session_cleanup_waits_for_an_active_operation(tmp_path: Path) -> None:
+def test_session_cleanup_defers_folder_removal_until_active_work_finishes(
+    tmp_path: Path,
+) -> None:
     sessions = show_builder.ShowSessions()
     preview = _preview(tmp_path, classic_yard()).read_bytes()
     token = sessions.start(preview, "yard.lorprev")["token"]
     session = sessions.get(token)
     folder = session.path
-    session.lock.acquire()
     started = threading.Event()
-    finished = threading.Event()
+    release = threading.Event()
 
-    def close_sessions() -> None:
-        started.set()
-        sessions.close()
-        finished.set()
+    def active_operation() -> None:
+        with sessions.locked(token):
+            started.set()
+            assert release.wait(timeout=2)
 
-    worker = threading.Thread(target=close_sessions)
+    worker = threading.Thread(target=active_operation)
     worker.start()
     assert started.wait(timeout=2)
-    time.sleep(0.05)
-    assert not finished.is_set() and folder.exists()
-    session.lock.release()
+    sessions.close()
+    assert folder.exists()
+    release.set()
     worker.join(timeout=2)
-    assert finished.is_set() and not folder.exists()
+    assert not folder.exists()
 
 
 def test_failed_audio_replacement_preserves_the_previous_analysis(
