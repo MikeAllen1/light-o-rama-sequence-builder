@@ -188,11 +188,11 @@ canvas { display: block; }
 .edit-bar .tool-button { min-height: 26px; padding: 0 10px; font-size: 10px; }
 .edit-bar .tool-button:disabled { opacity: .4; cursor: default; }
 .snap-heading { color: #718391; font-size: 8px; font-weight: 800; letter-spacing: 1.2px; }
-.snap-option { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.snap-option { white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .snap-option input { margin: 0; accent-color: var(--accent); }
 .snap-hint { color: var(--faint); font-size: 9px; }
 .edit-spacer { flex: 1; }
-.edit-status { color: var(--faint); font-size: 9px; }
+.edit-status { color: var(--faint); font-size: 9px; white-space: nowrap; }
 .edit-status.dirty { color: var(--amber); }
 .tracks-canvas { touch-action: none; }
 .edit-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px 10px; margin-top: 6px; }

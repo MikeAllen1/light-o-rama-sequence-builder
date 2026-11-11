@@ -118,10 +118,10 @@ def test_effects_can_be_edited_and_exported(workspace: str, tmp_path: Path) -> N
             page.locator("#zoomSlider").evaluate(
                 f"""(element) => {{ element.value = "{PPS}";
                     element.dispatchEvent(new Event("input", {{ bubbles: true }})); }}""")
-            box = page.locator("#tracksCanvas").bounding_box()
-            assert box is not None
-
             def at(seconds: float, row: int) -> tuple[float, float]:
+                # Measured every time: the layout above the tracks may change.
+                box = page.locator("#tracksCanvas").bounding_box()
+                assert box is not None
                 return box["x"] + seconds * PPS, box["y"] + row * ROW + ROW / 2
 
             def drag(start: tuple[float, float], end: tuple[float, float],
