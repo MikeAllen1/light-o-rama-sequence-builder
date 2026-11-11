@@ -2,7 +2,7 @@
 
 A display-independent command-line tool for building native Light-O-Rama S6 sequences from music and a required `.lorprev` display preview.
 
-**Project status:** Phases 1–3 are complete and merged. Phase 3's generated native sequence opens in S6 and its fixture preview/events render. Phase 4 audio analysis is in progress on PR #9. Prop classification, rules, and intelligent choreography remain future work.
+**Project status:** Phases 1–3 are complete and merged. Phase 3's generated native sequence opens in S6 and its fixture preview/events render. Phase 4 real-audio validation and security follow-ups are in progress on PR #12. Prop classification, rules, and intelligent choreography remain future work.
 
 ## Product workflow
 
@@ -52,21 +52,21 @@ Write a new round-trip copy (the destination must not already exist):
 uv run lor-sequence-builder roundtrip .\path\to\show.loredit .\output\roundtrip.loredit
 ```
 
-The LOREDIT reader currently accepts only `saveFileVersion="15"`, the version represented by the reviewed fixture. The preview parser supports internal `Revision` values `0`, `1`, and `56`; these are distinct from the LOREDIT save-file version. XML is parsed with `defusedxml`, with DTDs, entities, and external references forbidden. The writer preserves the parsed XML tree opaquely and atomically creates a new output without overwriting the input or an existing destination.
+The LOREDIT reader currently accepts only `saveFileVersion="15"`, the version represented by the reviewed fixture. The preview parser supports internal `Revision` values `0`, `1`, `56`, and `58`; these are distinct from the LOREDIT save-file version. XML is parsed with `defusedxml`, with DTDs, entities, and external references forbidden. The writer preserves the parsed XML tree semantically and creates a new output without overwriting the input or an existing destination. XML serialization is not byte-identical: comments, original BOM/line endings, and quote style are not guaranteed to survive.
 
 The preview is the authoritative display map. For LOR props, each `ChannelGrid` row exposes network, Unit ID, and the circuit value present in that row; for DMX props, universe and channel are exposed. These are address fields only: remaining fields are retained verbatim and are not yet semantically interpreted. The original row and source locator are retained. The parser enforces a 20 MiB input limit, 256-level XML nesting limit, and 100,000-element limit, and reports missing or duplicate prop IDs rather than treating them as reliable identities. `PropGroup` and `member` records are parsed into typed group/member models, including prop ID references, arrangement, orientation, top, and left values. The supplied Revision 56 fixture contains 51 props and one group with five members.
 
 ## Phase 4 audio analysis (in progress)
 
-Install FFmpeg and ensure `ffmpeg` is available on PATH. The first analyzer accepts audio formats FFmpeg can decode, normalizes to mono 11.025 kHz signed 16-bit PCM, and writes a versioned JSON report plus an SVG diagnostic plot:
+Install FFmpeg and ensure `ffmpeg` is available on PATH. The analyzer accepts supported audio formats (MP3, MP4/M4A, WAV, FLAC, AAC, OGG, WMA, and AIFF), normalizes to mono 11.025 kHz signed 16-bit PCM, and writes a versioned JSON report plus an SVG diagnostic plot:
 
 ```powershell
 uv run lor-sequence-builder analyze-audio .\song.mp3 --output-json .\song.analysis.json --plot .\song.analysis.svg --min-bpm 60 --max-bpm 200
 ```
 
-The current deterministic signal-processing baseline estimates one global tempo from positive energy-flux autocorrelation, derives beat/downbeat candidates, detects energy-flux onsets, reports RMS energy, proposes energy-transition and fixed 16-beat phrase candidates, and flags sustained near-silence as hard-stop candidates. It deliberately does **not** claim semantic verse/chorus recognition, changing-tempo tracking, spectral onset classification, or vocal/syllable detection. Confidence, event provenance, tool versions, and limitations are included in the JSON. The formal v1.0 contract is [audio-analysis-v1.schema.json](docs/schemas/audio-analysis-v1.schema.json). Output files must be new paths and are never overwritten.
+The current deterministic signal-processing baseline estimates one global tempo from positive energy-flux autocorrelation, derives beat/downbeat candidates, detects energy-flux onsets, reports RMS energy, proposes energy-transition and fixed 16-beat phrase candidates, and flags sustained near-silence as hard-stop candidates. It deliberately does **not** claim semantic verse/chorus recognition, changing-tempo tracking, spectral onset classification, or vocal/syllable detection. Confidence, event provenance, tool versions, and limitations are included in the JSON. The formal v1.3 contract is [audio-analysis-v1.schema.json](docs/schemas/audio-analysis-v1.schema.json). Output files must be new paths and are never overwritten.
 
-This is an initial measurable baseline, not professional choreography. Inspect the SVG against the song and treat low-confidence or musically implausible estimates as unresolved. Follow the [real-song review procedure](docs/AUDIO_ANALYSIS_REVIEW.md) before relying on these estimates for later planning.
+This is an initial measurable baseline, not professional choreography. Beat grids can remain ambiguous when half-time/double-time and offbeat accents compete; do not treat the selected BPM as ground truth. Inspect the SVG against the song and treat low-confidence or musically implausible estimates as unresolved. Follow the [real-song review procedure](docs/AUDIO_ANALYSIS_REVIEW.md) before relying on these estimates for later planning.
 
 
 
