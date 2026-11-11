@@ -16,7 +16,7 @@ The first release is a read-only reference workspace. It opens a native S6 v15 `
 - Estimated beat, downbeat, transient, RMS energy, four-bar phrase, section-change, and near-silence lanes from the existing audio analyzer.
 - Optional vocal-region and syllable-candidate lanes from `vocals-1.0` JSON.
 
-All timeline elements use the sequence's centisecond timebase. Audio analysis timestamps are seconds from the decoded audio start and are mapped to the same timebase for display. Native timing grids and inferred audio-analysis events remain visually and semantically distinct.
+The shared horizontal extent covers the longer of the sequence and selected audio, so neither the lighting sequence nor an audio tail is silently clipped when their durations differ. Audio analysis timestamps are seconds from the decoded audio start and are mapped onto the same horizontal time axis as the sequence's centisecond timestamps. Native timing grids and inferred audio-analysis events remain visually and semantically distinct.
 
 ## Local processing and safety
 
