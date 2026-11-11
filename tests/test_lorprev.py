@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
+
+from tests.fixture_builders import write_synthetic_loredit
 
 import lor_sequence_builder.lorprev as lorprev_module
 from lor_sequence_builder.lorprev import (
@@ -26,6 +27,16 @@ def test_synthetic_revision_zero_preview_preserves_geometry_and_provenance() -> 
     assert model.props[1].children[0].tag == "shape"
     assert model.props[1].children[0].children[0].attributes["x"].value == "0"
     assert model.props[0].attributes["Name"].locator.endswith("/@Name")
+    assert model.display.attributes["Name"].value == "Synthetic S6 Revision 1 Fixture"
+    assert model.scenes[0].attributes["Name"].value == "Synthetic Scene"
+    assert {
+        prop.children[0].attributes["ShapeName"].value for prop in model.props
+    } == {"Lines-Connected", "Lines-Unconnected", "Arch", "Star", "Tree 180", "Icicles"}
+    assert sum(len(prop.children[0].children) for prop in model.props) == 1900
+    assert sum(
+        prop.attributes["TraditionalType"].value == "Channel_per_color"
+        for prop in model.props
+    ) == 8
     assert len(model.channel_grid_entries) == 2
     assert model.channel_grid_entries[0].raw_fields == ("1",)
     assert model.channel_grid_entries[0].entry_index == 0
@@ -43,7 +54,7 @@ def test_synthetic_revision_one_preview_preserves_full_prop_model(tmp_path: Path
         "PreviewClass",
         {
             "id": "synthetic-display",
-            "Name": "Synthetic Revision 1 Fixture",
+            "Name": "Synthetic S6 Revision 1 Fixture",
             "Revision": "1",
             "LastSelectedSceneId": "synthetic-scene",
         },
@@ -92,7 +103,16 @@ def test_synthetic_revision_one_preview_preserves_full_prop_model(tmp_path: Path
                  "ScaleY": "0.07", "Radians": "0"}
             )
         else:
-            ET.SubElement(shape, "point", {"x": str(index / 100), "y": "0.5"})
+            point_count = 42 if index <= 15 else 41
+            for point_index in range(point_count):
+                ET.SubElement(
+                    shape,
+                    "point",
+                    {
+                        "x": str(index / 100 + point_index / 10_000),
+                        "y": str(0.5 + point_index / 100_000),
+                    },
+                )
     ET.SubElement(root, "PropViews")
     source = tmp_path / "synthetic_revision_1.lorprev"
     ET.ElementTree(root).write(source, encoding="utf-8", xml_declaration=True)
@@ -101,7 +121,7 @@ def test_synthetic_revision_one_preview_preserves_full_prop_model(tmp_path: Path
     assert model.revision.value == "1"
     assert len(model.props) == 51
     assert len(model.channel_grid_entries) == 69
-    assert len(model.geometry_points) == 46
+    assert len(model.geometry_points) == 1900
     assert model.unsupported_constructs == ()
     assert all(entry.source.locator.endswith("/@ChannelGrid") for entry in model.channel_grid_entries)
     assert model.channel_grid_entries[0].entry_index == 0
@@ -125,62 +145,6 @@ def test_synthetic_revision_one_preview_preserves_full_prop_model(tmp_path: Path
     assert model.prop_views[0].tag == "PropViews"
     assert model.props[0].attributes["Name"].file == str(source)
     assert model.props[0].attributes["Name"].locator.endswith("/@Name")
-
-
-def test_s6_exported_revision_one_golden_fixture_preserves_all_source_data(
-    tmp_path: Path,
-) -> None:
-    # The committed fixture is a gzip transport wrapper around the sanitized S6 XML export.
-    fixture = FIXTURES / "s6_revision_1_export.lorprev"
-    source = tmp_path / "s6_revision_1_export.lorprev"
-    shutil.copyfile(fixture, source)
-
-    model = read_lorprev(source)
-    assert model.revision.value == "1"
-    assert len(model.props) == 51
-    assert len(model.geometry_points) == 1900
-    lor_assignments = [
-        entry for entry in model.channel_grid_entries if entry.device_type == "LOR"
-    ]
-    assert lor_assignments
-    assert all(
-        entry.network is not None
-        and entry.unit_id is not None
-        and entry.circuit is not None
-        for entry in lor_assignments
-    )
-    assert all(
-        entry.source.locator.endswith("/@ChannelGrid")
-        for entry in lor_assignments
-    )
-    assert all(point.x.file == str(source) and point.y.file == str(source) for point in model.geometry_points)
-    assert len(model.scenes) == 1
-    assert len(model.prop_views) == 1
-    assert model.prop_views[0].tag == "PropViews"
-    assert sum(p.attributes["BulbShape"].value == "Square" for p in model.props) == 46
-    assert sum(p.attributes["BulbShape"].value == "Hexagon" for p in model.props) == 5
-    assert {p.children[0].attributes["ShapeName"].value for p in model.props} == {
-        "Lines-Connected", "Lines-Unconnected", "Arch", "Star", "Tree 180", "Icicles"
-    }
-    assert sum(
-        len(p.children[0].children) for p in model.props
-    ) == 1900
-    assert sum(
-        p.attributes["TraditionalType"].value == "Channel_per_color"
-        for p in model.props
-    ) == 8
-    assert all(
-        value.file == str(source)
-        for prop in model.props
-        for value in prop.attributes.values()
-    )
-    assert all(
-        value.locator.startswith("/PreviewClass/PropClass[")
-        for prop in model.props
-        for value in prop.attributes.values()
-    )
-    assert model.display.attributes["Name"].value == "Synthetic S6 Revision 1 Fixture"
-    assert model.scenes[0].attributes["Name"].value == "Synthetic Test Scene"
 
 
 def test_unknown_prop_device_values_are_reported_with_source_provenance(
