@@ -122,16 +122,6 @@ def _raw_element(
     )
 
 
-def _iter_raw_elements(element: RawElement, tag: str) -> tuple[RawElement, ...]:
-    """Return matching descendants in source order, including the element itself."""
-    matches: list[RawElement] = []
-    if element.tag == tag:
-        matches.append(element)
-    for child in element.children:
-        matches.extend(_iter_raw_elements(child, tag))
-    return tuple(matches)
-
-
 def _walk_raw_elements(element: RawElement) -> tuple[RawElement, ...]:
     """Return the element and all descendants in source order."""
     matches = [element]
