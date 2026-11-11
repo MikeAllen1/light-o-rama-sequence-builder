@@ -842,6 +842,7 @@ def test_ffmpeg_normalization_rejects_unknown_demuxer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from types import SimpleNamespace
+
     from lor_sequence_builder import audio_analysis
 
     monkeypatch.setattr(audio_analysis.shutil, "which", lambda _: "ffmpeg")
