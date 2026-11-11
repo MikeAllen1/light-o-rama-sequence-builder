@@ -1,6 +1,6 @@
 # GitHub Security Setup
 
-This document separates security controls committed to the repository from GitHub settings that must be enabled in the repository UI.
+This document distinguishes security controls committed to the repository from hosted GitHub settings.
 
 ## Configured in the repository
 
@@ -8,26 +8,13 @@ This document separates security controls committed to the repository from GitHu
 - **Automated tests and dependency audit:** `.github/workflows/tests.yml` runs tests, Ruff, and `pip-audit`. The workflow has read-only repository permissions and disables persisted checkout credentials.
 - **CodeQL:** `.github/workflows/codeql.yml` runs Python code scanning on pushes and pull requests to `master`, plus a weekly scheduled scan. The analysis job receives only the permissions needed to publish code-scanning results.
 - **Security policy:** `SECURITY.md` explains responsible vulnerability reporting and safe handling of user files.
-- **Local-file exclusions:** `.gitignore` excludes local secrets, private keys, audio, and Light-O-Rama sequence files. This is a guardrail, not a substitute for checking staged files.
+- **Local-file exclusions:** `.gitignore` excludes local secrets, private keys, audio, and Light-O-Rama sequence files. Only the explicitly named fictional preview fixture is allowlisted.
 
-## GitHub settings that still need an owner action
+## Hosted GitHub settings — owner-reported status
 
-The GitHub connection used to update repository files does not expose the repository's security-settings write controls. The repository's ruleset listing currently returns no rulesets, and branch-protection settings could not be read through that connection. Do not assume the following hosted controls are enabled just because the workflow files exist.
+The repository owner reported on 2026-11-11 that the requested GitHub security-settings work had been completed. The connected GitHub integration cannot independently inspect all repository security feature toggles, so this is recorded as owner-reported rather than independently verified.
 
-On the repository page, open **Settings → Security → Advanced Security** (GitHub may label the page slightly differently) and enable the following where offered:
-
-1. **Dependency graph**
-2. **Dependabot alerts**
-3. **Dependabot security updates**
-4. **Secret scanning**
-5. **Push protection** for secret scanning
-6. **Private vulnerability reporting**
-
-CodeQL is configured as a workflow in this repository. After its first successful run, confirm that results appear under the repository's **Security → Code scanning** area. Do not also enable a second CodeQL workflow unless you intentionally replace this configuration.
-
-## Protect the default branch
-
-Open **Settings → Rules → Rulesets** and create an active branch ruleset targeting `master`. Recommended protections for this project:
+**Branch protection is a separate verification item.** The connected integration's latest ruleset listing returned no rulesets. Confirm in GitHub Settings → Rules → Rulesets whether an active ruleset targets `master`. Recommended protections:
 
 - Require a pull request before changes merge to `master`.
 - Require the **Tests / test** status check.
@@ -38,12 +25,14 @@ Open **Settings → Rules → Rulesets** and create an active branch ruleset tar
 
 For a solo-maintained repository, one approval is not useful unless another trusted reviewer is available. Do not require an approval count that would prevent you from merging your own work. Status checks and blocking force-pushes/deletion still provide value.
 
+CodeQL is configured as a workflow in this repository. Confirm that results appear under the repository's **Security → Code scanning** area. Do not also enable a second CodeQL workflow unless you intentionally replace this configuration.
+
 ## Safe handling rules
 
 - Keep original `.LOREDIT`, `.LMS`, and `.LAS` files, audio tracks, and unredacted display previews out of the public repository.
 - Inspect `git status` and `git diff --cached` before committing. Ignored files can still be force-added.
 - If a credential is ever committed, revoke or rotate it immediately. Deleting the file in a later commit does not make the exposed credential safe.
-- Use synthetic or sanitized XML fixtures for tests. Remove names, GUIDs, machine paths, media references, and other private details.
+- Use synthetic XML fixtures for tests. Do not add owner/customer names, GUIDs, machine paths, media references, or other private details.
 - Do not put real credentials in issues, pull requests, logs, screenshots, or example configuration files.
 
 ## References
