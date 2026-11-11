@@ -277,6 +277,31 @@ def test_failed_native_build_report_is_truthful_and_same_attempt_can_retry(
     assert succeeded["sequence_written"] is True
 
 
+
+def test_sequence_is_rolled_back_when_success_report_cannot_be_published(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    display = classic_yard()
+    preview = _preview(tmp_path, display)
+    output = tmp_path / "rollback.loredit"
+    report_path = tmp_path / "rollback.json"
+    original = sequence_writer_module._write_build_report
+
+    def fail_success_report(*args: object, **kwargs: object) -> None:
+        if kwargs.get("status") == "success":
+            raise SequenceWriteError("synthetic report publication failure")
+        original(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(sequence_writer_module, "_write_build_report", fail_success_report)
+    with pytest.raises(SequenceWriteError, match="sequence was removed"):
+        build_from_timeline(
+            preview, _good(display), load_rule_set(), "song.mp3", output, report_path
+        )
+
+    assert not output.exists()
+    assert not report_path.exists()
+
+
 def test_timeline_writer_reports_excluded_preview_props(tmp_path: Path) -> None:
     display = classic_yard()
     display.add(
