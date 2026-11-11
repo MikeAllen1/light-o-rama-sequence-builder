@@ -876,7 +876,7 @@
     } catch (error) {
       if (requestId !== state.audioRequestId) return;
       const mismatch = durationMismatchMessage();
-      setBanner("Waveform loaded. Automatic analysis unavailable: "
+      setBanner("Waveform loaded. Automatic analysis unavailable: " +
         (error.message || String(error)) + " Start the workspace with lor-sequence-ui to enable local analysis, or load a saved analysis JSON." +
         (mismatch ? " " + mismatch : ""), "warn");
     }
