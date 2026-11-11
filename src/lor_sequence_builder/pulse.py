@@ -46,6 +46,7 @@ class PulseGenerationResult:
     excluded_prop_count: int
     beat_count: int
     event_count: int
+    excluded_props: tuple[ExcludedProp, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -501,4 +502,5 @@ def build_pulse_sequence(
         excluded_prop_count=len(timeline.excluded_props),
         beat_count=len(timeline.beat_positions_centiseconds),
         event_count=len(timeline.events),
+        excluded_props=timeline.excluded_props,
     )
