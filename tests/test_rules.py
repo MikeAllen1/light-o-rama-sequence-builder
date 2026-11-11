@@ -746,6 +746,28 @@ def test_timeline_json_rejects_duplicate_object_keys_at_any_depth(tmp_path: Path
 
 
 
+
+@pytest.mark.parametrize("blank_index,expected", [
+    (0, ("", "Red", "Green")),
+    (1, ("White", "", "Green")),
+])
+def test_rule_display_preserves_per_channel_color_indexes(
+    blank_index: int, expected: tuple[str, ...]
+) -> None:
+    display = classic_yard()
+    face = next(p for p in display.element().findall("PropClass")
+                if p.get("Name") == "Santa")
+    entries = face.get("ChannelGrid", "").split(";")
+    fields = entries[blank_index].split(",")
+    fields[5] = ""
+    entries[blank_index] = ",".join(fields)
+    face.set("ChannelGrid", ";".join(entries))
+
+    parsed = display_from_preview(display.element())
+
+    assert parsed.props[_ids(display)["Santa"]].channel_colors == expected
+
+
 def test_profile_rejects_non_string_requirement_keys(tmp_path: Path) -> None:
     path = _profile(
         tmp_path,
