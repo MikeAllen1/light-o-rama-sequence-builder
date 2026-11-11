@@ -33,7 +33,7 @@ These differ from the original stack proposal. They are intentional and accepted
 
 ## Open decisions (owner input required before the phase that depends on them)
 
-1. **Sequence creation without a template.** The writer currently requires an existing native `.loredit` whose embedded preview exactly matches the `.lorprev`, then clears its effects. The planned `generate` command takes only audio, preview, and props.yaml, so a typical user has no matching template. Decide before Phase 5 is approved: (a) build a blank native v15 sequence from a preview (requires new fixtures and an S6 open-test human gate), or (b) make a matching sequence file an official `generate` input. Phases 6 and 7 build on this decision.
+1. **Sequence creation without a template (resolved 2026-11-11).** Owner chose to build sequences from scratch: `generate` takes audio, preview, and props.yaml only, and the tool creates a new native sequence itself. A template is not a required input. This becomes Phase 4b, scheduled after Phase 4 acceptance and before Phase 5 because it is the largest remaining format unknown.
 2. **Preview Revision (resolved 2026-11-11).** Owner clarified that `PreviewClass/@Revision` is an edit counter incremented on each save, not a format version. The parser's revision allowlist (which rejected any preview not at revision 0, 1, 56, or 58) was removed; the value is now optional metadata. Compatibility is judged by structure. Do not reintroduce revision-based gating.
 3. **Fixture diversity before Phase 5.** All current real fixtures derive from the same 51-prop display. Classifier golden tests need 2 to 3 previews from materially different displays (different size, messy naming, legacy AC/DC) before Phase 5 can claim display independence.
 4. **License.** An MIT `LICENSE` was added in the docs-cleanup PR as a proposed default. The owner should confirm or replace it before merge.
@@ -85,6 +85,13 @@ Final-head CI: Tests workflow run `42956005759` passed both Linux (pytest, Ruff,
 **Remaining acceptance:** owner review of diagnostic plots against contrasting real songs (fast/percussive, slower, and a song with tempo or arrangement changes), recording tempo/phase alignment, false/missed candidates, and whether confidence communicates uncertainty usefully. Confidence values remain heuristic and uncalibrated; do not treat them as probabilities or use them as the sole basis for choreography. No real-song review is claimed complete. Phase 5 remains blocked until this human review is complete and the owner explicitly approves moving forward.
 
 **Done when:** Analysis JSON and a debug plot are generated; plot is reviewed against real songs; synthetic tests cover known tempo/events/energy/sections/stops; uncertainty and limitations are explicit; confidence behavior is reviewed; CI is green; owner approves Phase 5.
+
+### Phase 4b — Scratch-built sequence writer
+Build a native S6 v15 `.loredit` from a parsed `.lorprev` alone, with no template sequence: sequence metadata, embedded preview, one `SeqProp` and native channel record per supported preview channel, timing grid, duration, and audio reference. Replace the Phase 3 template requirement in `pulse` with this writer.
+
+**Evidence first:** Before writing code, collect native fixtures that show how S6 represents a brand-new sequence created from a preview: at minimum, a new empty sequence created in S6 from a fixture preview, and the same sequence after adding audio. Compare them against the existing v15 fixtures and document every field the writer must produce in `docs/S6_FORMAT.md`. Ask the owner for any field the fixtures do not explain; never fill gaps from memory.
+
+**Done when:** A scratch-built sequence for every committed fixture preview is semantically equal to its S6-created reference fixture (props, channel coordinates, addresses, timing, metadata); unsupported props are enumerated, never silently dropped; `pulse` works with only a preview, audio duration or explicit duration, and BPM; the template path is removed or explicitly deprecated; inputs are never modified; the owner opens a scratch-built sequence in S6, confirms it loads, the preview renders, and events appear. Mandatory human gate.
 
 ### Phase 5 — Classifier
 Build prop roles, orientation/direction, segment order, color capability, analyze command, and editable props.yaml.
