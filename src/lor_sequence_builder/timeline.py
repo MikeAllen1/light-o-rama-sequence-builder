@@ -49,7 +49,7 @@ class Timeline:
     timebase: str
     preview_xml_sha256: str
     template_xml_sha256: str
-    bpm: int
+    bpm: float
     duration_centiseconds: int
     pulse_duration_centiseconds: int
     beat_positions_centiseconds: tuple[int, ...]

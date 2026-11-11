@@ -7,15 +7,13 @@ import pytest
 from lor_sequence_builder.cli import main
 
 
-def test_cli_without_arguments_displays_available_commands(
+def test_cli_without_arguments_exits_with_usage_error(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main([]) == 0
-    output = " ".join(capsys.readouterr().out.lower().split())
-    assert "inspect" in output
-    assert "inspect-preview" in output
-    assert "roundtrip" in output
-    assert "pulse" in output
+    with pytest.raises(SystemExit) as exc_info:
+        main([])
+    assert exc_info.value.code == 2
+    assert "usage:" in capsys.readouterr().err.lower()
 
 
 def test_cli_help_exits_successfully(capsys: pytest.CaptureFixture[str]) -> None:

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import os
 import tempfile
+from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
@@ -107,9 +109,14 @@ def _elements_equivalent(left: ET.Element, right: ET.Element) -> bool:
         _elements_equivalent(a, b) for a, b in zip(left_children, right_children)
     )
 
-def _beat_positions(duration: int, bpm: int) -> tuple[int, ...]:
+def _beat_positions(duration: int, bpm: float) -> tuple[int, ...]:
+    bpm_decimal = Decimal(str(bpm))
     # Bound beat-list allocation before iterating over untrusted template duration.
-    estimated_beats = (duration * bpm + 5999) // 6000
+    estimated_beats = int(
+        (Decimal(duration) * bpm_decimal / Decimal(6000)).to_integral_value(
+            rounding=ROUND_CEILING
+        )
+    )
     if estimated_beats > MAX_TIMELINE_BEATS:
         raise PulseGenerationError(
             f"Timeline would contain more than {MAX_TIMELINE_BEATS} beats; "
@@ -119,7 +126,11 @@ def _beat_positions(duration: int, bpm: int) -> tuple[int, ...]:
     positions: list[int] = []
     beat_index = 0
     while True:
-        position = (6000 * beat_index + bpm // 2) // bpm
+        position = int(
+            (Decimal(6000 * beat_index) / bpm_decimal).to_integral_value(
+                rounding=ROUND_HALF_UP
+            )
+        )
         if position >= duration:
             break
         if positions and position <= positions[-1]:
@@ -183,7 +194,7 @@ def _build_timeline(
     document: LoreditDocument,
     preview_xml_sha256: str,
     template_xml_sha256: str,
-    bpm: int,
+    bpm: float,
     pulse_duration_centiseconds: int,
 ) -> tuple[Timeline, dict[tuple[str, int], _MappedChannel]]:
     embedded_preview = document.root.find("PreviewClass")
@@ -556,7 +567,7 @@ def build_pulse_sequence(
     template_path: str | Path,
     output_path: str | Path,
     timeline_path: str | Path,
-    bpm: int,
+    bpm: float,
     pulse_duration_centiseconds: int = 10,
 ) -> PulseGenerationResult:
     """Build a deterministic beat-pulse sequence from a matching preview/template pair."""
@@ -565,8 +576,15 @@ def build_pulse_sequence(
     output = Path(output_path)
     timeline_output = Path(timeline_path)
 
-    if not isinstance(bpm, int) or isinstance(bpm, bool) or not MIN_BPM <= bpm <= MAX_BPM:
-        raise PulseGenerationError(f"BPM must be an integer from {MIN_BPM} to {MAX_BPM}")
+    if (
+        isinstance(bpm, bool)
+        or not isinstance(bpm, (int, float))
+        or not math.isfinite(bpm)
+        or not MIN_BPM <= bpm <= MAX_BPM
+    ):
+        raise PulseGenerationError(
+            f"BPM must be a finite number from {MIN_BPM} to {MAX_BPM}"
+        )
     if (
         not isinstance(pulse_duration_centiseconds, int)
         or isinstance(pulse_duration_centiseconds, bool)

@@ -6,10 +6,20 @@ import argparse
 import sys
 from collections.abc import Sequence
 
-from lor_sequence_builder.audio_analysis import AudioAnalysisError, analyze_audio
+from lor_sequence_builder.audio_analysis import (
+    MAX_BPM as MAX_AUDIO_BPM,
+    MIN_BPM as MIN_AUDIO_BPM,
+    AudioAnalysisError,
+    analyze_audio,
+)
 from lor_sequence_builder.loredit import LoreditError, read_loredit, write_loredit
 from lor_sequence_builder.lorprev import LorprevError, read_lorprev
-from lor_sequence_builder.pulse import PulseGenerationError, build_pulse_sequence
+from lor_sequence_builder.pulse import (
+    MAX_BPM as MAX_PULSE_BPM,
+    MIN_BPM as MIN_PULSE_BPM,
+    PulseGenerationError,
+    build_pulse_sequence,
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -17,12 +27,12 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="lor-sequence-builder",
         description="Inspect and process verified Light-O-Rama S6 files.",
     )
-    commands = parser.add_subparsers(dest="command")
+    commands = parser.add_subparsers(dest="command", required=True)
     inspect = commands.add_parser("inspect", help="summarize a supported LOREDIT file")
     inspect.add_argument("sequence", help="input .loredit file")
     preview = commands.add_parser("inspect-preview", help="inspect a standalone LORPREV file")
     preview.add_argument("preview", help="input .lorprev file")
-    roundtrip = commands.add_parser("roundtrip", help="write a loss-preserving LOREDIT copy")
+    roundtrip = commands.add_parser("roundtrip", help="write a semantically preserving LOREDIT copy")
     roundtrip.add_argument("sequence", help="input .loredit file")
     roundtrip.add_argument("output", help="new output .loredit path (must not exist)")
     pulse = commands.add_parser(
@@ -30,7 +40,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     pulse.add_argument("--preview", required=True, help="required standalone .lorprev file")
     pulse.add_argument("--template", required=True, help="matching native S6 .loredit template")
-    pulse.add_argument("--bpm", required=True, type=int, help="fixed tempo in beats per minute")
+    pulse.add_argument(
+        "--bpm",
+        required=True,
+        type=float,
+        help=f"fixed tempo in beats per minute ({MIN_PULSE_BPM}–{MAX_PULSE_BPM}, decimals allowed)",
+    )
     pulse.add_argument("--output", required=True, help="new output .loredit path")
     pulse.add_argument("--timeline-output", required=True, help="new deterministic Timeline .json path")
     pulse.add_argument(
@@ -45,21 +60,25 @@ def _build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("audio", help="input audio file supported by FFmpeg")
     analyze.add_argument("--output-json", required=True, help="new versioned analysis JSON path")
     analyze.add_argument("--plot", required=True, help="new SVG diagnostic plot path")
-    analyze.add_argument("--min-bpm", type=int, default=60, help="minimum tempo to search (default: 60)")
-    analyze.add_argument("--max-bpm", type=int, default=200, help="maximum tempo to search (default: 200)")
+    analyze.add_argument(
+        "--min-bpm",
+        type=int,
+        default=MIN_AUDIO_BPM,
+        help=f"minimum tempo to search (default: {MIN_AUDIO_BPM})",
+    )
+    analyze.add_argument(
+        "--max-bpm",
+        type=int,
+        default=MAX_AUDIO_BPM,
+        help=f"maximum tempo to search (default: {MAX_AUDIO_BPM})",
+    )
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(argv) if argv is not None else sys.argv[1:]
     parser = _build_parser()
-    if not arguments:
-        parser.print_help()
-        return 0
     options = parser.parse_args(arguments)
-    if options.command is None:
-        parser.print_help()
-        return 0
     try:
         if options.command == "analyze-audio":
             report = analyze_audio(
@@ -154,16 +173,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"Unsupported constructs: {len(model.unsupported_constructs)}")
             print(f"Unrecognized elements (all levels): {len(model.unrecognized_elements)}")
             return 0
-        document = read_loredit(options.sequence)
         if options.command == "inspect":
+            document = read_loredit(options.sequence)
             print(f"Format: S6 LOREDIT v{document.save_file_version}")
             print(f"Duration: {document.total_centiseconds} centiseconds")
             print(f"Sequence props: {len(document.root.findall('./SequenceProps/SeqProp'))}")
             print(f"Timing grids: {len(document.root.findall('./TimingGrids/*'))}")
             return 0
-        output = write_loredit(document, options.output)
-        print(f"Wrote: {output}")
-        return 0
+        if options.command == "roundtrip":
+            document = read_loredit(options.sequence)
+            output = write_loredit(document, options.output)
+            print(f"Wrote: {output}")
+            return 0
+        parser.error(f"Unsupported command: {options.command}")
     except (AudioAnalysisError, LoreditError, LorprevError, PulseGenerationError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

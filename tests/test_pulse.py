@@ -552,3 +552,22 @@ def test_display_with_no_supported_props_fails_before_output(
         build_pulse_sequence(preview, template, output, timeline, bpm=120)
     assert not output.exists()
     assert not timeline.exists()
+
+
+
+def test_fractional_bpm_is_supported(
+    tmp_path: Path, matching_inputs: tuple[Path, Path]
+) -> None:
+    preview, template = matching_inputs
+    output = tmp_path / "fractional-pulse.loredit"
+    timeline_path = tmp_path / "fractional-pulse.timeline.json"
+
+    result = build_pulse_sequence(
+        preview, template, output, timeline_path, bpm=127.43
+    )
+
+    timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
+    assert timeline["bpm"] == pytest.approx(127.43)
+    assert result.beat_count > 0
+    positions = timeline["beat_positions_centiseconds"]
+    assert positions[:5] == [0, 47, 94, 141, 188]
