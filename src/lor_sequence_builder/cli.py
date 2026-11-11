@@ -64,6 +64,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"DMX universes: {len(dmx_universes)}")
             for universe in dmx_universes:
                 print(f"  {universe}")
+            print(f"Prop groups: {len(model.groups)}")
+            for group in model.groups:
+                name = group.name.value if group.name is not None else "(unnamed)"
+                arrangement = (
+                    group.arrangement.value if group.arrangement is not None else "unspecified"
+                )
+                print(f"  {name}: {len(group.members)} members, arrangement={arrangement}")
             print(f"Geometry points: {len(model.geometry_points)}")
             print(f"Unsupported prop/device constructs: {len(model.unsupported_constructs)}")
             print(f"Unrecognized elements (all levels): {len(model.unrecognized_elements)}")
