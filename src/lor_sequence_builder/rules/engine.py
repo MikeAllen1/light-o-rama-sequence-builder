@@ -29,6 +29,7 @@ from lor_sequence_builder.choreography import (
     MOVEMENT_DIRECTIONS,
     MOVEMENT_KINDS,
     Choreography,
+    ChoreographyError,
     Effect,
     Movement,
     seconds,
@@ -996,10 +997,54 @@ def describe_requirement(req: Requirement) -> str:
 # ---------------------------------------------------------------- entry point
 
 
+def _validate_choreography_numeric_fields(choreography: Choreography) -> None:
+    """Protect the public dataclass API from values the JSON parser would reject."""
+    def require_int(value: object, field_name: str) -> None:
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ChoreographyError(f"Choreography {field_name} must be an integer")
+
+    require_int(choreography.duration_centiseconds, "duration_centiseconds")
+    for index, effect in enumerate(choreography.effects):
+        if not isinstance(effect, Effect):
+            raise ChoreographyError(f"Choreography effects[{index}] must be an Effect")
+        if not isinstance(effect.prop_id, str) or not effect.prop_id.strip():
+            raise ChoreographyError(f"Choreography effects[{index}].prop_id must be text")
+        require_int(effect.channel_index, f"effects[{index}].channel_index")
+        require_int(effect.start_centisecond, f"effects[{index}].start_centisecond")
+        require_int(effect.end_centisecond, f"effects[{index}].end_centisecond")
+        require_int(effect.start_intensity, f"effects[{index}].start_intensity")
+        require_int(effect.end_intensity, f"effects[{index}].end_intensity")
+        if effect.movement_id is not None and not isinstance(effect.movement_id, str):
+            raise ChoreographyError(f"Choreography effects[{index}].movement_id must be text")
+        if effect.color is not None and not isinstance(effect.color, str):
+            raise ChoreographyError(f"Choreography effects[{index}].color must be text")
+    for index, movement in enumerate(choreography.movements):
+        if not isinstance(movement, Movement):
+            raise ChoreographyError(f"Choreography movements[{index}] must be a Movement")
+        require_int(movement.start_centisecond, f"movements[{index}].start_centisecond")
+        require_int(movement.end_centisecond, f"movements[{index}].end_centisecond")
+    for index, section in enumerate(choreography.sections):
+        if not isinstance(section, Section):
+            raise ChoreographyError(f"Choreography sections[{index}] must be a Section")
+        if not isinstance(section.label, str):
+            raise ChoreographyError(f"Choreography sections[{index}].label must be text")
+        require_int(section.start_centisecond, f"sections[{index}].start_centisecond")
+        require_int(section.end_centisecond, f"sections[{index}].end_centisecond")
+    for index, stop in enumerate(choreography.hard_stops_centiseconds):
+        require_int(stop, f"hard_stops_centiseconds[{index}]")
+    if choreography.vocal_regions is not None:
+        for index, region in enumerate(choreography.vocal_regions):
+            if not isinstance(region, tuple) or len(region) != 2:
+                raise ChoreographyError(f"Choreography vocal_regions[{index}] must be a pair")
+            require_int(region[0], f"vocal_regions[{index}][0]")
+            require_int(region[1], f"vocal_regions[{index}][1]")
+
+
 def check_choreography(
     preview: ET.Element, choreography: Choreography, rule_set: RuleSet
 ) -> RuleReport:
     """Run every built-in rule and requirement; never modifies the choreography."""
+    _validate_choreography_numeric_fields(choreography)
     display = display_from_preview(preview)
     results: list[RuleResult] = []
     for rule_id, check in _BUILT_IN.items():
