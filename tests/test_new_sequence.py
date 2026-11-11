@@ -277,7 +277,7 @@ def test_cli_pulse_rejects_non_finite_duration(
     preview_path = _preview_file(tmp_path, _synthetic_preview(tmp_path))
     code = main([
         "pulse", "--preview", str(preview_path), "--bpm", "120",
-        "--duration-seconds", duration, "--music-filename", "song.mp3",
+        f"--duration-seconds={duration}", "--music-filename", "song.mp3",
         "--output", str(tmp_path / "invalid.loredit"),
         "--timeline-output", str(tmp_path / "invalid.timeline.json"),
     ])
