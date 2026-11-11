@@ -419,3 +419,64 @@ def load_rule_set(profiles: tuple[str | Path, ...] = ()) -> RuleSet:
                base=False)
         sources.append(path.name)
     return RuleSet(tuple(sources), rules, tuple(requirements))
+
+
+def parse_requirements(raw: Any, source: str) -> tuple[Requirement, ...]:
+    """Validate a list of requirement mappings exactly as a profile would."""
+    if not isinstance(raw, list):
+        raise RuleProfileError(f"{source}: requirements must be a list")
+    found: list[Requirement] = []
+    taken: set[str] = set()
+    for index, item in enumerate(raw):
+        requirement = _requirement(item, index, source)
+        if requirement.requirement_id in taken:
+            raise RuleProfileError(
+                f"{source}: requirement id {requirement.requirement_id!r} is already used"
+            )
+        taken.add(requirement.requirement_id)
+        found.append(requirement)
+    return tuple(found)
+
+
+def selector_mapping(selector: Selector) -> dict[str, Any]:
+    if selector.all:
+        return {"all": True}
+    if selector.role is not None:
+        return {"role": selector.role}
+    if selector.group is not None:
+        return {"group": selector.group}
+    return {"names": list(selector.names)}
+
+
+def requirement_mapping(requirement: Requirement) -> dict[str, Any]:
+    """The profile form of a requirement, ready to save as YAML."""
+    data: dict[str, Any] = {
+        "id": requirement.requirement_id,
+        "type": requirement.type,
+        "props": selector_mapping(requirement.props),
+    }
+    data.update(copy.deepcopy(requirement.params))
+    if requirement.severity != "error":
+        data["severity"] = requirement.severity
+    if requirement.note:
+        data["note"] = requirement.note
+    return data
+
+
+def requirements_profile_text(requirements: tuple[Requirement, ...], name: str) -> str:
+    """A complete rule profile holding only these requirements."""
+    header = (
+        "# Display requirements saved by `lor-sequence-builder requirements`.\n"
+        "# Edit freely, or run the command again to change them. Keep this file on\n"
+        "# your own computer; it describes your display.\n"
+    )
+    body = yaml.safe_dump(
+        {
+            "schema_version": PROFILE_SCHEMA_VERSION,
+            "name": name,
+            "requirements": [requirement_mapping(r) for r in requirements],
+        },
+        sort_keys=False,
+        allow_unicode=True,
+    )
+    return header + body

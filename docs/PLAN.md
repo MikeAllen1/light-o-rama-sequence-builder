@@ -123,7 +123,7 @@ Identify each prop from the preview alone: role (arch, mini tree, mega tree, sta
 **Done when:** classifications match the known answers on all fictional displays; low-confidence and unknown props are flagged with reasons; renaming props never switches a prop to a different role; color capability and sequencing support agree with the sequence builder; the preview is never modified; the owner runs `analyze-preview` on a preview of their choice and agrees the conclusions are useful.
 
 ### Phase 6 — Rules engine
-**Status: Built; in review.**
+**Status: Complete. Merged 2026-11-11 (#34) on the owner's instruction.**
 
 Build universal defaults and user profile layering.
 
@@ -133,9 +133,16 @@ Build universal defaults and user profile layering.
 
 **Not yet verified in S6:** fade (`startIntensity`/`endIntensity`), `TWINKLE` and `SHIMMER` effects written by `build-from-timeline`. These attributes were observed in native sequences, but no sequence written by this tool with them has been opened in S6 yet. The `pulse` harness keeps its own Phase 3 validation and does not use the rules engine.
 
-**Next (Phase 6b, owner request 2026-11-11):** an optional "any specific requirements?" step before building. Plain-English requirements are translated by an AI model when an API key is configured, with guided questions from the preview as the offline fallback; either way the user confirms the result, which becomes requirements in this profile format. Requirements are remembered per display in a local profile next to the preview, never committed, with an option to start fresh.
+### Phase 6b — "Any specific requirements?"
+**Status: Built; in review.**
 
-**Done when:** rules/default.yaml and two example profiles exist; schemas and merge behavior are validated; deliberately bad Timelines are rejected with readable rule/prop/channel/timestamp errors; invalid Timelines cannot reach writer.
+Owner request (2026-11-11): an optional step before building where a person can write in their requirements. Owner chose both input styles and remembered requirements.
+
+**Delivered:** `requirements_intake.py` and the `requirements` command. Plain-English text is translated by a language model when `ANTHROPIC_API_KEY` is set (model from `LOR_REQUIREMENTS_MODEL`), after telling the person what is sent and asking to continue. Without a key, with `--guided`, or when sending is declined, guided questions are built from what the preview contains. Every translated or answered requirement is validated exactly like a hand-written profile and checked against the display's props; the person sees how each was understood, what could not be expressed, and what was left out, and nothing is saved until they confirm. Confirmed requirements are saved as `<preview>.requirements.yaml` next to the preview (git-ignored), and `check-timeline`, `build-from-timeline` and `list-rules --preview` layer it on automatically (`--ignore-saved-requirements` to skip; `build-from-timeline --ask-requirements` asks first). Later runs offer keep, add, or start fresh.
+
+**Verified by tests:** guided questions only for props the display has; translation request contents and answer parsing with a fake transport (no network in tests); validation, confirmation, decline and fallback paths; remembering, extending and clearing; builds picking up saved requirements.
+
+**Not verified:** a live call to the translation service. It needs the owner's API key and is optional.
 
 ### Phase 7 — Planner v1
 Build section-aware choreography with basic effects.

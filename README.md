@@ -2,7 +2,7 @@
 
 A display-independent command-line tool for building native Light-O-Rama S6 sequences from music and a required `.lorprev` display preview.
 
-**Project status:** Phases 0 through 5 are complete and merged; Phase 6 (rules) is in review. Phase 4 audio analysis runs on librosa and is accepted for songs in 4; swung and rubato recordings are a known limitation. Intelligent choreography remains future work. See [docs/PLAN.md](docs/PLAN.md) for the authoritative status.
+**Project status:** Phases 0 through 6 are complete and merged; Phase 6b (the requirements step) is in review. Phase 4 audio analysis runs on librosa and is accepted for songs in 4; swung and rubato recordings are a known limitation. Intelligent choreography remains future work. See [docs/PLAN.md](docs/PLAN.md) for the authoritative status.
 
 ## Product workflow
 
@@ -68,7 +68,10 @@ Reads the preview only (never modifies it) and lists each prop as confident, nee
 
 Every choreography Timeline is checked against built-in rules (no overlapping effects, movements that finish, falls that go down, a face outline whenever a mouth is on, and more) plus any requirements you add in your own rule profile. A Timeline with rule errors is never written to a sequence.
 
+Before building, tell it what you want in your own words (or answer a few questions about your display). Confirmed requirements are saved next to the preview and used by every later build:
+
 ```powershell
+uv run lor-sequence-builder requirements .\display.lorprev
 uv run lor-sequence-builder list-rules --rules .\my-display.yaml
 uv run lor-sequence-builder check-timeline .\display.lorprev .\plan.json --rules .\my-display.yaml
 uv run lor-sequence-builder build-from-timeline --preview .\display.lorprev --timeline .\plan.json --music-filename "Song.mp3" --output .\song.loredit --report .\song.rules.json
