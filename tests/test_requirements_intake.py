@@ -182,10 +182,10 @@ def test_fresh_intake_does_not_resurrect_valid_saved_requirements(
     preview = _preview(tmp_path, classic_yard())
     sidecar = saved_requirements_path(preview)
     sidecar.write_text(
-        "schema_version: rules-1.0\\n"
-        "requirements:\\n"
-        "  - type: never_use\\n"
-        "    props: {names: [Santa]}\\n",
+        "schema_version: rules-1.0\n"
+        "requirements:\n"
+        "  - type: never_use\n"
+        "    props: {names: [Santa]}\n",
         encoding="utf-8",
     )
     script = Script({
