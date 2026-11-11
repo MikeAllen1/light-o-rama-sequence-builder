@@ -40,7 +40,7 @@ from lor_sequence_builder.classifier import (
     classify_preview,
     prop_center,
 )
-from lor_sequence_builder.new_sequence import channel_layout_problem
+from lor_sequence_builder.channel_mapping import channel_layout_problem
 from lor_sequence_builder.rules.profile import (
     RULE_SPECS,
     Requirement,
