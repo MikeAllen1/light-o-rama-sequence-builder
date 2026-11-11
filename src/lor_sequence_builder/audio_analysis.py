@@ -244,9 +244,17 @@ def _hard_stops(
     threshold = max(1e-5, max(rms, default=0.0) * 0.025)
     required_frames = max(1, round(minimum_silence_seconds / FRAME_SECONDS))
     stops: list[dict[str, Any]] = []
-    index = 1
+    # An entirely silent file has no transition to report. For a non-silent
+    # track, however, leading silence is a valid candidate and must not be
+    # skipped merely because there is no preceding loud frame.
+    if max(rms, default=0.0) <= 1e-5:
+        return stops
+    index = 0
     while index < len(rms):
-        if rms[index] <= threshold and rms[index - 1] > threshold:
+        is_silence_start = rms[index] <= threshold and (
+            index == 0 or rms[index - 1] > threshold
+        )
+        if is_silence_start:
             end = index
             while end < len(rms) and rms[end] <= threshold:
                 end += 1
@@ -255,7 +263,11 @@ def _hard_stops(
                     "time": round(index * FRAME_SECONDS, 3),
                     "silence_duration": round((end - index) * FRAME_SECONDS, 3),
                     "confidence": 0.8,
-                    "method": "sustained_near_silence_relative_to_track_peak",
+                    "method": (
+                        "leading_near_silence_relative_to_track_peak"
+                        if index == 0
+                        else "sustained_near_silence_relative_to_track_peak"
+                    ),
                 })
             index = end
         else:
