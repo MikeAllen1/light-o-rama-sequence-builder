@@ -275,8 +275,13 @@ class ApiTranslator:
                               "read") from exc
         if not isinstance(requirements, list) or not isinstance(not_supported, list):
             raise IntakeError("The translation service sent an answer this tool cannot read")
+        if any(not isinstance(item, dict) for item in requirements):
+            raise IntakeError(
+                "The translation service returned a malformed requirement; "
+                "no requirement was silently discarded. Please retry or use guided questions."
+            )
         return Translation(
-            [r for r in requirements if isinstance(r, dict)],
+            requirements,
             [str(item) for item in not_supported],
         )
 
@@ -438,8 +443,11 @@ def gather_requirements(
     guided: bool = False,
 ) -> tuple[Requirement, ...]:
     """Run the intake conversation and return the requirements to use for this build."""
-    saved = load_saved_requirements(preview_path)
+    # A fresh start must not parse or validate the saved sidecar: that is the
+    # state the caller explicitly asked to bypass (including malformed YAML).
+    saved = () if fresh else load_saved_requirements(preview_path)
     existing = () if fresh else saved
+    fresh_start = fresh
     if existing:
         _show(say, f"Saved requirements for this display ({len(existing)}):", existing)
         choice = ask("[K]eep them, [a]dd more, or start [f]resh? ").strip().lower()[:1]
@@ -447,8 +455,17 @@ def gather_requirements(
             return existing
         if choice == "f":
             existing = ()
+            fresh_start = True
 
     def finish(result: tuple[Requirement, ...]) -> tuple[Requirement, ...]:
+        if fresh_start:
+            if not result:
+                # Completing a fresh intake with no accepted requirements must
+                # clear the old sidecar too; otherwise the next build resurrects it.
+                saved_requirements_path(preview_path).unlink(missing_ok=True)
+                if saved:
+                    say("Saved requirements cleared for this fresh start.")
+            return result
         if result or not saved or existing:
             return result if result else existing
         if _yes(ask("Remove your saved requirements too? [y/N] ")):

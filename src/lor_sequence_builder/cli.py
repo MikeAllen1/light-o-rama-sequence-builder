@@ -9,6 +9,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from lor_sequence_builder.artifacts import write_new_text_atomically
 from lor_sequence_builder.audio_analysis import AudioAnalysisError, analyze_audio
 from lor_sequence_builder.choreography import ChoreographyError, load_choreography
 from lor_sequence_builder.classifier import (
@@ -173,6 +174,18 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _write_cli_json_report(
+    path: str | Path, payload: dict[str, object], error_type: type[ValueError]
+) -> None:
+    destination = Path(path)
+    try:
+        write_new_text_atomically(destination, json.dumps(payload, indent=2) + "\n")
+    except FileExistsError as exc:
+        raise error_type(f"Report already exists: {destination}") from exc
+    except OSError as exc:
+        raise error_type(f"Cannot write report atomically: {destination}") from exc
+
+
 def _check_timeline(
     preview: str, timeline: str, rules: list[str], report_path: str | None, ignore_saved: bool
 ) -> int:
@@ -184,8 +197,7 @@ def _check_timeline(
     )
     print(report.format_text())
     if report_path is not None:
-        with Path(report_path).open("x", encoding="utf-8") as stream:
-            stream.write(json.dumps(report.to_dict(), indent=2) + "\n")
+        _write_cli_json_report(report_path, report.to_dict(), RuleProfileError)
         print(f"Report: {report_path}")
     return 0 if report.ok else 1
 
@@ -403,6 +415,17 @@ def _analyze_preview(preview_path: str, report_path: str | None) -> int:
     model = read_lorprev(preview_path)
     if report_path is not None and Path(report_path).exists():
         raise ClassificationError(f"Report already exists: {report_path}")
+    invalid_groups = [
+        item for item in model.unsupported_constructs
+        if item.kind in {"prop group identity", "prop group member"}
+    ]
+    if invalid_groups:
+        details = "; ".join(
+            f"{item.source.locator}: {item.detail}" for item in invalid_groups
+        )
+        raise ClassificationError(
+            f"Preview has invalid PropGroup identity or membership; cannot classify: {details}"
+        )
     results = classify_preview(preview_element(model))
     order = {"confident": 0, "review": 1, "unknown": 2}
     print(f"Props: {len(results)}")
@@ -430,8 +453,7 @@ def _analyze_preview(preview_path: str, report_path: str | None) -> int:
     print("\nTo correct a conclusion, fix the prop in the S6 Preview Editor and run this again.")
     if report_path is not None:
         report = classification_report(results, Path(preview_path).name)
-        with Path(report_path).open("x", encoding="utf-8") as stream:
-            stream.write(json.dumps(report, indent=2) + "\n")
+        _write_cli_json_report(report_path, report, ClassificationError)
         print(f"Report: {report_path}")
     return 0
 
