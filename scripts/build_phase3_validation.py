@@ -9,6 +9,7 @@ import json
 import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
+import uuid
 from pathlib import Path
 
 from lor_sequence_builder.loredit import (
