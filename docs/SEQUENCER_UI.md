@@ -100,7 +100,13 @@ Run with:
 uv run lor-sequence-ui
 ```
 
-The server binds to `127.0.0.1` only. The browser sends selected audio to a bounded local endpoint; the server runs the existing FFmpeg/librosa pipeline in a temporary directory and deletes the upload and outputs afterward. No audio is sent to a remote service. The original selected audio and LOREDIT remain read-only; an edited sequence is checked by a second bounded local endpoint (`/api/export`, same-origin only, 50 MiB) and nothing is kept on disk.
+The server binds to `127.0.0.1` only. The browser sends selected audio to bounded local endpoints; FFmpeg/librosa analysis and waveform processing run on the user's computer. No audio or preview is sent to a remote service. The original selected audio and LOREDIT remain read-only; an edited sequence is checked by a same-origin local endpoint and downloaded as a new file.
+
+### Guided new-show workflow
+
+The browser can also create a show from a `.lorprev` preview, selected audio, and structured or plain-English requirements. Preview, audio, analysis, generated sequence, picture, and rule report are held in a per-show temporary session. At most four sessions are retained. A session becomes invalid after two hours without activity; its temporary folder is removed on the next session cleanup or server shutdown. Only the latest generated result is retained in a session, so repeated generation does not accumulate output files.
+
+Structured requirements are validated locally and remembered in the user's local application cache. If plain-English requirement translation is configured, only that text and the required preview-derived context are sent to the configured Anthropic API; audio files are not sent. Generation and rule checking remain local. A failed rule check returns its report to the browser rather than presenting an unusable sequence as a successful result.
 
 The browser parser rejects DTD/entity declarations and enforces the 50 MiB, 100,000-element, and 256-level bounds used by the sequence reader. Only S6 v15 sequences are supported.
 
