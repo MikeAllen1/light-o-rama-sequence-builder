@@ -213,6 +213,34 @@ def test_cli_exposes_audio_analysis_command(capsys: pytest.CaptureFixture[str]) 
     assert "min-bpm" in help_text
 
 
+def test_cli_reports_reduced_beat_grid_confidence(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from lor_sequence_builder import cli
+
+    report = {
+        "audio": {"duration_seconds": 8.0},
+        "analysis": {
+            "tempo": {"bpm": 120.0, "confidence": 0.9},
+            "beats": [{"confidence": 0.2}, {"confidence": 0.4}],
+            "downbeats": [],
+            "onsets": [],
+            "section_candidates": [],
+            "hard_stops": [],
+        },
+    }
+    monkeypatch.setattr(cli, "analyze_audio", lambda *args, **kwargs: report)
+
+    result = cli.main([
+        "analyze-audio", "song.wav", "--output-json", "song.json", "--plot", "song.svg"
+    ])
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert "Estimated tempo: 120.0 BPM (confidence 0.9)" in output
+    assert "Beat grid confidence: 0.3000" in output
+
+
 def test_silence_does_not_fabricate_a_tempo(tmp_path: Path) -> None:
     audio = tmp_path / "silence.wav"
     with wave.open(str(audio), "wb") as output:
