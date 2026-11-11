@@ -834,6 +834,8 @@ BASE_ROLES = frozenset({"star", "outline", "singing_face"})
 LEADS = {LOW: 2, MID: 2, HIGH: 3}
 # The centerpiece keeps playing through mid and loud parts instead of taking turns.
 CENTERPIECE_ROLES = frozenset({"mega_tree"})
+# The final fade-out lasts at most this long (centiseconds).
+CLOSING_LENGTH = 400
 # Parts that happen once and never repeat their look.
 ONE_OFF_LABELS = frozenset({"intro", "outro", "finale"})
 # Signature flashes: at most one crash flash per this many centiseconds, each at
@@ -1282,8 +1284,10 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
         if window is last_window and si == len(sections) - 1:
             final_bar = max((d for d in window.downbeats if d > start), default=None)
             if final_bar is not None and end - final_bar >= 100:
-                closing = final_bar
-                end = final_bar
+                # A long ringing tail after the last bar keeps playing until the
+                # last few seconds, so the whole display is not on for long.
+                closing = max(final_bar, end - CLOSING_LENGTH)
+                end = closing
         # A repeated part plays as its first occurrence did (same colors and looks).
         body = _Window(section_first[si], start, end,
                        tuple(b for b in window.beats if start <= b < end),

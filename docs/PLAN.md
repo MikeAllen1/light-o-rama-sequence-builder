@@ -197,7 +197,7 @@ Build motifs, call-and-response, signature moments, and richer dynamics.
 - **Signature moments:** cymbal crashes in mid and loud parts (at most one every 4 seconds) and the first beat back after a hard stop flash every prop in use, cutting into holds but never into a chase or fill step, so movements still finish.
 - **Different songs, different shows:** the song's own shape picks where the handoffs start; the same song always gives the same show.
 - The plan summary lists these moments, a note counts them, and the plan picture marks them (✶ flash, ↗ build-up, ↻ repeat, ⇄ call and response).
-- Fixed along the way: after an accent, phrases now stay on the song's four-bar grid instead of shifting one bar later.
+- Fixed along the way: after an accent, phrases now stay on the song's four-bar grid instead of shifting one bar later; the final fade lasts at most 4 seconds, so a long ringing tail no longer leaves the whole display on (this cleared a not-everything-at-once warning on one owner song).
 
 **Verified by tests:** a second verse repeats the first; the last chorus uses more lead props than the first; bars trade between left and right in a mid part; brightness rises before a louder part; crashes too close together or in a quiet part are skipped and a return from a stop flashes; two songs on one display share under 30% of their effect starts; every fictional display and 25 random song shapes still pass every rule. On the owner's display and songs (checked locally, not committed), every song plans and passes the rules, with two to six phrases of call and response, one to three build-ups and one to eight crash flashes per freshly analyzed song, and about the same share of lit channels as before (roughly a quarter).
 
