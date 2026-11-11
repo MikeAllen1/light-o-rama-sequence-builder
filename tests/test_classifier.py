@@ -328,6 +328,34 @@ def test_cli_analyze_preview_rejects_invalid_prop_identities(
     assert not report.exists()
 
 
+
+@pytest.mark.parametrize("problem", ["missing_group_id", "duplicate_group_id", "unknown_member"])
+def test_cli_analyze_preview_rejects_invalid_group_structure(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], problem: str
+) -> None:
+    root = classic_yard().element()
+    groups = root.findall("PropGroup")
+    assert groups
+    if problem == "missing_group_id":
+        groups[0].attrib.pop("id", None)
+    elif problem == "duplicate_group_id":
+        assert len(groups) > 1
+        groups[1].set("id", groups[0].get("id", ""))
+    else:
+        member = groups[0].find("member")
+        assert member is not None
+        member.set("id", "not-a-preview-prop")
+
+    preview = tmp_path / f"{problem}.lorprev"
+    ET.ElementTree(root).write(preview, encoding="utf-8", xml_declaration=True)
+    report = tmp_path / f"{problem}.json"
+
+    assert main(["analyze-preview", str(preview), "--report", str(report)]) == 2
+    error = capsys.readouterr().err
+    assert "invalid PropGroup identity or membership" in error
+    assert not report.exists()
+
+
 def test_cli_analyze_preview_requires_a_real_preview(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
