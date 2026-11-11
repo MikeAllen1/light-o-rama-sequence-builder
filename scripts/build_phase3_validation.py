@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import tempfile
-import xml.etree.ElementTree as ET
 import sys
+import tempfile
+import zipfile
+import xml.etree.ElementTree as ET
+from pathlib import Path
 
 from defusedxml import ElementTree as SafeET
-import zipfile
-from pathlib import Path
 
 from lor_sequence_builder.loredit import read_loredit
 from lor_sequence_builder.pulse import build_pulse_sequence
