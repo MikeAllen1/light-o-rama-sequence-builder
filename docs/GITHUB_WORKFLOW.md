@@ -19,7 +19,7 @@ Before merge, verify all of the following:
 1. The PR targets `master` and is based on the current branch head.
 2. The full diff has been reviewed for correctness, scope, secrets, private paths/metadata, copyrighted media, and generated noise.
 3. The acceptance criteria are met; tests cover normal behavior and failure cases.
-4. Required CI is green on the latest PR commit: pytest, Ruff, strict mypy, dependency audit, and CodeQL.
+4. Required CI is green on the latest PR commit: the `Tests, lint, types, and dependency audit` job and `CodeQL / Analyze Python and Actions` job.
 5. All review conversations are resolved or explicitly dispositioned.
 6. Documentation and `docs/PLAN.md` reflect the actual result.
 7. The project owner explicitly approves the phase gate. CI passing or automated review does not count as owner approval.
@@ -33,7 +33,7 @@ Configure these in GitHub Settings → Rules → Rulesets (or Branches → Branc
 
 - Target branch: `master`.
 - Require a pull request before merging.
-- Require the Tests workflow check (the job name is currently `Tests, lint, types, and dependency audit`).
+- Require the Tests workflow check: `Tests, lint, types, and dependency audit` (the job check name, not a non-existent `Tests / test`).
 - Require CodeQL analysis to complete successfully.
 - Require branches to be up to date before merging.
 - Require all review conversations to be resolved.
@@ -55,8 +55,9 @@ Dependabot PRs are not exempt from review. Check the upstream release notes, exa
 - CodeQL runs on pushes/PRs to `master` and weekly.
 - Third-party GitHub Actions are pinned to full commit SHAs; checkout credentials are not persisted.
 - Dependabot is enabled for Python dependencies and GitHub Actions.
-- The repository rulesets API currently returns an empty list. The connected GitHub integration cannot read branch-protection settings (403), so actual branch protection on `master` is **not verified**. The recommended settings above are therefore guidance, not a claim that GitHub is enforcing them.
-- An unrelated Dependabot PR (#3, setup-python update) is currently open and should be reviewed separately; it is not part of Phase 1.
+- The repository rulesets API returned no rulesets; branch-protection settings could not be read through the connected GitHub integration. Actual protection on `master` is **not verified**.
+- Repository history shows the written process was not consistently followed: implementation commits were pushed directly to `master`, merge commits were used despite the linear-history policy, and stale branches remained. These are historical facts, not claims that this PR caused them. The policy below applies prospectively; enforcing it requires GitHub settings.
+- The initial Phase 4 baseline had already reached `master` outside a PR, contrary to the documented phase-sized PR rule. This follow-up is being kept on PR #12.
 
 ## Phase gate rule
 

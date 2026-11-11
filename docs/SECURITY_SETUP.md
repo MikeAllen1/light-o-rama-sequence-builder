@@ -5,8 +5,8 @@ This document separates security controls committed to the repository from GitHu
 ## Configured in the repository
 
 - **Dependabot version updates:** `.github/dependabot.yml` checks Python dependencies and GitHub Actions weekly and opens update pull requests.
-- **Automated tests and dependency audit:** `.github/workflows/tests.yml` runs tests, Ruff, and `pip-audit`. The workflow has read-only repository permissions and disables persisted checkout credentials.
-- **CodeQL:** `.github/workflows/codeql.yml` runs Python code scanning on pushes and pull requests to `master`, plus a weekly scheduled scan. The analysis job receives only the permissions needed to publish code-scanning results.
+- **Automated tests and dependency audit:** `.github/workflows/tests.yml` runs tests, Ruff, strict mypy, and `pip-audit`. The workflow has read-only repository permissions and disables persisted checkout credentials.
+- **CodeQL:** `.github/workflows/codeql.yml` runs Python and GitHub Actions code scanning on pushes and pull requests to `master`, plus a weekly scheduled scan. The analysis job receives only the permissions needed to publish code-scanning results.
 - **Security policy:** `SECURITY.md` explains responsible vulnerability reporting and safe handling of user files.
 - **Local-file exclusions:** `.gitignore` excludes local secrets, private keys, audio, and Light-O-Rama sequence files. This is a guardrail, not a substitute for checking staged files.
 
@@ -30,11 +30,12 @@ CodeQL is configured as a workflow in this repository. After its first successfu
 Open **Settings → Rules → Rulesets** and create an active branch ruleset targeting `master`. Recommended protections for this project:
 
 - Require a pull request before changes merge to `master`.
-- Require the **Tests / test** status check.
+- Require the **Tests / Tests, lint, types, and dependency audit** status check (confirm the exact displayed name after a successful run).
 - Require the **CodeQL / Analyze Python** status check after it has appeared successfully.
 - Block force pushes.
 - Block branch deletion.
 - Require conversation resolution if review comments are used.
+- Require linear history if you want to prevent future merge commits; this cannot retroactively rewrite existing history.
 
 For a solo-maintained repository, one approval is not useful unless another trusted reviewer is available. Do not require an approval count that would prevent you from merging your own work. Status checks and blocking force-pushes/deletion still provide value.
 
@@ -42,6 +43,7 @@ For a solo-maintained repository, one approval is not useful unless another trus
 
 - Keep original `.LOREDIT`, `.LMS`, and `.LAS` files, audio tracks, and unredacted display previews out of the public repository.
 - Inspect `git status` and `git diff --cached` before committing. Ignored files can still be force-added.
+- Scan decoded/expanded fixtures as well as their transport wrappers; secret scanners do not inspect opaque compressed or base64 payloads reliably.
 - If a credential is ever committed, revoke or rotate it immediately. Deleting the file in a later commit does not make the exposed credential safe.
 - Use synthetic or sanitized XML fixtures for tests. Remove names, GUIDs, machine paths, media references, and other private details.
 - Do not put real credentials in issues, pull requests, logs, screenshots, or example configuration files.
