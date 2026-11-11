@@ -197,13 +197,23 @@ def test_sequence_prop_may_reference_native_preview_group_id(
 
 
 
-def test_committed_xml_fixtures_have_no_private_paths_or_background_files() -> None:
-    fixture_dir = Path(__file__).parent / "fixtures"
+def test_repository_contains_only_explicitly_synthetic_lor_xml() -> None:
+    repository_root = Path(__file__).resolve().parents[1]
+    fixture_dir = repository_root / "tests" / "fixtures"
     assert not list(fixture_dir.glob("*.gz"))
     assert not list(fixture_dir.glob("*.b64"))
-    for source in sorted(fixture_dir.iterdir()):
-        if source.suffix.lower() not in {".loredit", ".lorprev"}:
-            continue
+
+    lor_files = [
+        path
+        for path in repository_root.rglob("*")
+        if path.is_file() and path.suffix.lower() in {".loredit", ".lorprev"}
+    ]
+    assert all(
+        path.parent == fixture_dir and path.name.startswith("synthetic_")
+        for path in lor_files
+    ), lor_files
+
+    for source in lor_files:
         content = source.read_text(encoding="utf-8")
         assert re.search(r"C:\\Users|/Users/", content, re.IGNORECASE) is None, source.name
         assert re.search(
