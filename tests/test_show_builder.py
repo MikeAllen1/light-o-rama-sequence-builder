@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from collections.abc import Iterator
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -174,3 +175,114 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
     document = read_loredit(target)
     assert document.root.attrib["musicFilename"] == "beat.wav"
     assert effect_timing_problems(document) == []
+
+
+def test_session_expiration_is_enforced_when_a_token_is_used(tmp_path: Path) -> None:
+    sessions = show_builder.ShowSessions()
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    token = sessions.start(preview, "yard.lorprev")["token"]
+    session = sessions.get(token)
+    folder = session.path
+    session.last_used = time.monotonic() - show_builder.SESSION_SECONDS - 1
+    with pytest.raises(show_builder.ShowBuildError, match="expired"):
+        sessions.get(token)
+    assert not folder.exists()
+
+
+def test_session_cleanup_waits_for_an_active_operation(tmp_path: Path) -> None:
+    sessions = show_builder.ShowSessions()
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    token = sessions.start(preview, "yard.lorprev")["token"]
+    session = sessions.get(token)
+    folder = session.path
+    session.lock.acquire()
+    started = threading.Event()
+    finished = threading.Event()
+
+    def close_sessions() -> None:
+        started.set()
+        sessions.close()
+        finished.set()
+
+    worker = threading.Thread(target=close_sessions)
+    worker.start()
+    assert started.wait(timeout=2)
+    time.sleep(0.05)
+    assert not finished.is_set() and folder.exists()
+    session.lock.release()
+    worker.join(timeout=2)
+    assert finished.is_set() and not folder.exists()
+
+
+def test_failed_audio_replacement_preserves_the_previous_analysis(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sessions = show_builder.ShowSessions()
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    token = sessions.start(preview, "yard.lorprev")["token"]
+    session = sessions.get(token)
+    old_folder = session.path / "audio-old"
+    old_folder.mkdir()
+    old_audio = old_folder / "song.wav"
+    old_analysis = old_folder / "song.analysis.json"
+    old_audio.write_bytes(b"previous audio")
+    old_analysis.write_text('{"previous": true}', encoding="utf-8")
+    session.audio_path = old_audio
+    session.analysis_path = old_analysis
+    session.audio_name = "previous.wav"
+
+    def fail_analysis(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise RuntimeError("synthetic analysis failure")
+
+    monkeypatch.setattr(show_builder, "analyze_audio", fail_analysis)
+    with pytest.raises(RuntimeError, match="synthetic analysis failure"):
+        sessions.add_audio(token, b"replacement", ".wav", "wav", "new.wav", 4,
+                           request_id=1)
+    assert session.audio_path == old_audio and session.analysis_path == old_analysis
+    assert old_audio.read_bytes() == b"previous audio"
+    assert old_analysis.read_text(encoding="utf-8") == '{"previous": true}'
+    assert not list(session.path.glob("audio-*"))[1:]  # failed staging folder was removed
+    sessions.close()
+
+
+def test_stale_audio_requests_cannot_replace_a_newer_selection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sessions = show_builder.ShowSessions()
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    token = sessions.start(preview, "yard.lorprev")["token"]
+
+    def fake_analysis(audio: Path, analysis: Path, plot: Path, **kwargs: Any) -> dict[str, Any]:
+        analysis.write_text('{"fake": true}', encoding="utf-8")
+        return {"audio": audio.name}
+
+    monkeypatch.setattr(show_builder, "analyze_audio", fake_analysis)
+    newest = sessions.add_audio(token, b"new", ".wav", "wav", "new.wav", 4, request_id=2)
+    stale = sessions.add_audio(token, b"old", ".wav", "wav", "old.wav", 4, request_id=1)
+    session = sessions.get(token)
+    assert newest == {"audio": "song.wav"}
+    assert stale == {"stale": True}
+    assert session.audio_path is not None and session.audio_path.read_bytes() == b"new"
+    sessions.close()
+
+
+def test_generation_rejects_string_booleans(tmp_path: Path) -> None:
+    sessions = show_builder.ShowSessions()
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    token = sessions.start(preview, "yard.lorprev")["token"]
+    with pytest.raises(show_builder.ShowBuildError, match="JSON boolean"):
+        sessions.generate(token, {"sing": "false"})
+    sessions.close()
+
+
+def test_stale_requirement_updates_cannot_overwrite_a_newer_submission(
+    tmp_path: Path,
+) -> None:
+    sessions = show_builder.ShowSessions()
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    token = sessions.start(preview, "yard.lorprev")["token"]
+    newest = sessions.set_requirements(token, {"requirements": []}, request_id=2)
+    stale = sessions.set_requirements(token, {"requirements": []}, request_id=1)
+    assert newest["requirements"] == []
+    assert stale == {"stale": True}
+    sessions.close()

@@ -156,15 +156,34 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
                 if meter not in {"3", "4"}:
                     self.send_error(400, "beats_per_bar must be 3 or 4")
                     return
+                try:
+                    request_id = int(query.get("request_id", ["0"])[0])
+                except ValueError:
+                    self.send_error(400, "request_id must be a positive integer")
+                    return
+                if request_id < 1:
+                    self.send_error(400, "request_id must be a positive integer")
+                    return
                 report = SHOWS.add_audio(token, payload, suffix, INPUT_DEMUXERS[suffix],
-                                         query.get("name", ["song"])[0][:200], int(meter))
-                self._send_json(200, {"report": report})
+                                         query.get("name", ["song"])[0][:200], int(meter),
+                                         request_id=request_id)
+                self._send_json(200, {"stale": True} if report.get("stale") else
+                                {"report": report})
             else:
                 body = self._read_json()
                 if body is None:
                     return
                 if path == "/api/show/requirements":
-                    self._send_json(200, SHOWS.set_requirements(token, body))
+                    try:
+                        request_id = int(query.get("request_id", ["0"])[0])
+                    except ValueError:
+                        self.send_error(400, "request_id must be a positive integer")
+                        return
+                    if request_id < 1:
+                        self.send_error(400, "request_id must be a positive integer")
+                        return
+                    result = SHOWS.set_requirements(token, body, request_id=request_id)
+                    self._send_json(200, result)
                 else:
                     self._send_json(200, SHOWS.generate(token, body))
         except (ShowBuildError, AudioAnalysisError, ValueError, RuntimeError) as exc:

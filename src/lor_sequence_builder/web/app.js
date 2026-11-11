@@ -3031,7 +3031,7 @@
   };
 
   const show = { token: null, summary: null, audioFile: null, analysis: null, raw: [],
-    result: null };
+    result: null, audioRequestId: 0, audioPending: false, requirementsPending: false, requirementsRequestId: 0 };
 
   function showMessage(id, text, kind) {
     const element = $(id);
@@ -3067,7 +3067,7 @@
     $("showSongLabel").classList.toggle("disabled", !show.token);
     $("addRequirement").disabled = !show.token;
     $("translateRequirements").disabled = !show.token || !show.summary.can_translate;
-    $("generateShow").disabled = !(show.token && show.analysis);
+    $("generateShow").disabled = !(show.token && show.analysis && !show.audioPending && !show.requirementsPending);
   }
 
   async function chooseDisplay(file) {
@@ -3080,7 +3080,14 @@
       show.token = summary.token;
       show.summary = summary;
       show.analysis = null;
+      show.audioFile = null;
+      show.audioRequestId = 0;
+      show.audioPending = false;
+      show.requirementsPending = false;
+      show.requirementsRequestId = 0;
       show.result = null;
+      $("openGenerated").disabled = true;
+      $("pictureGenerated").disabled = true;
       const kinds = summary.kinds.map((kind) => kind.count + " " + kind.label).join(", ");
       const skipped = summary.props.filter((prop) => !prop.sequenceable);
       showMessage("displayStatus", summary.display + ": " + (kinds || "nothing it can sequence") +
@@ -3106,16 +3113,23 @@
 
   async function chooseSong(file) {
     if (!file || !show.token) return;
-    show.audioFile = file;
-    show.analysis = null;
+    const requestId = ++show.audioRequestId;
+    show.audioPending = true;
+    show.result = null;
+    $("openGenerated").disabled = true;
+    $("pictureGenerated").disabled = true;
     $("musicFilename").value = file.name;
     showMessage("songStatus", "Analyzing " + file.name + " on this computer…");
     setStepEnabled();
     try {
-      if (file.size > 200 * 1024 * 1024) throw new Error("Audio must be 200 MiB or smaller.");
+      if (file.size <= 0 || file.size > 200 * 1024 * 1024) {
+        throw new Error("Audio must be non-empty and 200 MiB or smaller.");
+      }
       const payload = await postShow("/api/show/audio?token=" + encodeURIComponent(show.token) +
-        "&beats_per_bar=" + $("meterSelect").value + "&name=" + encodeURIComponent(file.name),
-      file, "application/octet-stream");
+        "&beats_per_bar=" + $("meterSelect").value + "&request_id=" + requestId +
+        "&name=" + encodeURIComponent(file.name), file, "application/octet-stream");
+      if (requestId !== show.audioRequestId || payload.stale) return;
+      show.audioFile = file;
       show.analysis = payload.report;
       const analysis = payload.report.analysis;
       const tempo = analysis.tempo && analysis.tempo.bpm != null ? analysis.tempo.bpm + " BPM"
@@ -3124,9 +3138,16 @@
         ", about " + tempo + ", " + analysis.section_candidates.length + " section changes.",
         "good");
     } catch (error) {
-      showMessage("songStatus", error.message || String(error), "error");
+      if (requestId === show.audioRequestId) {
+        show.analysis = null;
+        showMessage("songStatus", error.message || String(error), "error");
+      }
+    } finally {
+      if (requestId === show.audioRequestId) {
+        show.audioPending = false;
+        setStepEnabled();
+      }
     }
-    setStepEnabled();
   }
 
   function option(value, text) {
@@ -3175,14 +3196,29 @@
   }
 
   async function sendRequirements(raw, text) {
+    const requestId = ++show.requirementsRequestId;
+    show.requirementsPending = true;
+    setStepEnabled();
     try {
       const result = await postShow("/api/show/requirements?token=" +
-        encodeURIComponent(show.token), JSON.stringify(text ? { requirements: raw, text }
-        : { requirements: raw }), "application/json");
+        encodeURIComponent(show.token) + "&request_id=" + requestId,
+        JSON.stringify(text ? { requirements: raw, text } : { requirements: raw }),
+        "application/json");
+      if (requestId !== show.requirementsRequestId || result.stale) return;
       show.raw = result.raw;
+      show.result = null;
+      $("openGenerated").disabled = true;
+      $("pictureGenerated").disabled = true;
       renderRequirements(result.requirements, result.problems);
     } catch (error) {
-      showMessage("requirementStatus", error.message || String(error), "error");
+      if (requestId === show.requirementsRequestId) {
+        showMessage("requirementStatus", error.message || String(error), "error");
+      }
+    } finally {
+      if (requestId === show.requirementsRequestId) {
+        show.requirementsPending = false;
+        setStepEnabled();
+      }
     }
   }
 
@@ -3241,19 +3277,28 @@
       const result = await postShow("/api/show/generate?token=" + encodeURIComponent(show.token),
         JSON.stringify({ music_filename: $("musicFilename").value, sing: singing }),
         "application/json");
-      show.result = result;
-      const parts = result.sections.map((section) => section.label + " (" + section.level + ")");
-      showMessage("generateStatus", (result.rules_ok ? "Every rule passed. " :
-        "Some rules did not pass; see the report. ") + result.used.length + " props used. Parts: " +
-        parts.join(", ") + "." + (result.skipped.length ? " Left out: " + result.skipped
-        .map((item) => item.name + " (" + item.reason + ")").join("; ") + "." : ""), "good");
-      $("showNotes").replaceChildren(...result.notes.map((note) => {
+      if (!result.rules_ok) {
+        show.result = null;
+        $("openGenerated").disabled = true;
+        $("pictureGenerated").disabled = true;
+        $("showNotes").replaceChildren();
+        showMessage("generateStatus", result.report || "The plan did not pass the required rules.",
+          "error");
+      } else {
+        show.result = result;
+        const parts = result.sections.map((section) => section.label + " (" + section.level + ")");
+        showMessage("generateStatus", "Every rule passed. " + result.used.length +
+          " props used. Parts: " + parts.join(", ") + "." + (result.skipped.length
+          ? " Left out: " + result.skipped.map((item) => item.name + " (" + item.reason + ")")
+            .join("; ") + "." : ""), "good");
+        $("showNotes").replaceChildren(...result.notes.map((note) => {
         const item = document.createElement("li");
         item.textContent = note;
         return item;
       }));
-      $("openGenerated").disabled = false;
-      $("pictureGenerated").disabled = false;
+        $("openGenerated").disabled = false;
+        $("pictureGenerated").disabled = false;
+      }
     } catch (error) {
       showMessage("generateStatus", error.message || String(error), "error");
     }
@@ -3299,6 +3344,16 @@
       if (text) sendRequirements(show.raw, text);
     });
     $("generateShow").addEventListener("click", generateShow);
+    $("musicFilename").addEventListener("input", () => {
+      show.result = null;
+      $("openGenerated").disabled = true;
+      $("pictureGenerated").disabled = true;
+    });
+    $("singFaces").addEventListener("change", () => {
+      show.result = null;
+      $("openGenerated").disabled = true;
+      $("pictureGenerated").disabled = true;
+    });
     $("openGenerated").addEventListener("click", openGenerated);
     $("pictureGenerated").addEventListener("click", openPicture);
     for (const [value, text] of Object.entries(REQUIREMENT_KINDS)) {

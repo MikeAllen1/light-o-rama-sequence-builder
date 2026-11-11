@@ -25,6 +25,7 @@ import hashlib
 import json
 import os
 import secrets
+import shutil
 import tempfile
 import threading
 import time
@@ -51,6 +52,7 @@ from lor_sequence_builder.rules import (
 )
 from lor_sequence_builder.rules.engine import Display
 from lor_sequence_builder.rules.profile import requirement_mapping
+from lor_sequence_builder.sequence_writer import RulesFailedError
 from lor_sequence_builder.vocal_separation import (
     model_folder,
     separate_vocals,
@@ -75,9 +77,13 @@ class _Session:
     display_key: str
     display_name: str
     created: float = field(default_factory=time.monotonic)
+    last_used: float = field(default_factory=time.monotonic)
     analysis_path: Path | None = None
     audio_path: Path | None = None
     audio_name: str = ""
+    audio_revision: int = 0
+    requirements_revision: int = 0
+    generated_dir: Path | None = None
     requirements: tuple[Requirement, ...] = ()
     lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -123,16 +129,19 @@ class ShowSessions:
     def _expire(self) -> None:
         now = time.monotonic()
         for token, session in list(self._sessions.items()):
-            if now - session.created > SESSION_SECONDS:
+            if now - session.last_used > SESSION_SECONDS:
                 self._drop(token)
         while len(self._sessions) >= MAX_SESSIONS:
-            oldest = min(self._sessions.values(), key=lambda s: s.created)
+            oldest = min(self._sessions.values(), key=lambda s: s.last_used)
             self._drop(oldest.token)
 
     def _drop(self, token: str) -> None:
-        session = self._sessions.pop(token, None)
+        session = self._sessions.get(token)
         if session is not None:
-            session.folder.cleanup()
+            # Serialize cleanup with every operation that can read/write the folder.
+            with session.lock:
+                self._sessions.pop(token, None)
+                session.folder.cleanup()
 
     def close(self) -> None:
         with self._lock:
@@ -142,9 +151,13 @@ class ShowSessions:
     def get(self, token: str) -> _Session:
         with self._lock:
             session = self._sessions.get(token)
-        if session is None:
-            raise ShowBuildError("This show was not found or has expired; start again")
-        return session
+            if session is not None and time.monotonic() - session.last_used > SESSION_SECONDS:
+                self._drop(token)
+                session = None
+            if session is None:
+                raise ShowBuildError("This show was not found or has expired; start again")
+            session.last_used = time.monotonic()
+            return session
 
     # -- 1. preview
 
@@ -207,48 +220,70 @@ class ShowSessions:
     # -- 2. song
 
     def add_audio(self, token: str, payload: bytes, suffix: str, demuxer: str,
-                  file_name: str, beats_per_bar: int) -> dict[str, Any]:
+                  file_name: str, beats_per_bar: int,
+                  request_id: int | None = None) -> dict[str, Any]:
         session = self.get(token)
         with session.lock:
-            audio = session.path / f"song{suffix}"
-            audio.write_bytes(payload)
-            analysis = session.path / "song.analysis.json"
-            analysis.unlink(missing_ok=True)
-            (session.path / "song.analysis.svg").unlink(missing_ok=True)
-            report = analyze_audio(audio, analysis, session.path / "song.analysis.svg",
-                                   beats_per_bar=beats_per_bar, input_demuxer=demuxer)
+            revision = session.audio_revision + 1 if request_id is None else request_id
+            if revision <= session.audio_revision:
+                return {"stale": True}
+            session.audio_revision = revision
+            staging = session.path / ("audio-" + secrets.token_hex(6))
+            staging.mkdir()
+            audio = staging / f"song{suffix}"
+            analysis = staging / "song.analysis.json"
+            try:
+                audio.write_bytes(payload)
+                report = analyze_audio(
+                    audio, analysis, staging / "song.analysis.svg",
+                    beats_per_bar=beats_per_bar, input_demuxer=demuxer,
+                )
+            except BaseException:
+                shutil.rmtree(staging, ignore_errors=True)
+                raise
+            old_audio = session.audio_path
             session.audio_path = audio
             session.analysis_path = analysis
             session.audio_name = Path(file_name).name or audio.name
+            if old_audio is not None and old_audio.parent != session.path:
+                shutil.rmtree(old_audio.parent, ignore_errors=True)
         return report
 
     # -- 3. requirements
 
-    def set_requirements(self, token: str, body: dict[str, Any]) -> dict[str, Any]:
+    def set_requirements(
+        self, token: str, body: dict[str, Any], request_id: int | None = None
+    ) -> dict[str, Any]:
         session = self.get(token)
-        raw = body.get("requirements", [])
-        text = body.get("text")
-        if not isinstance(raw, list) or len(raw) > MAX_REQUIREMENTS or not all(
-                isinstance(item, dict) for item in raw):
-            raise ShowBuildError("Requirements must be a list of up to 50 items")
-        problems: list[str] = []
-        if isinstance(text, str) and text.strip():
-            translator = translator_from_environment()
-            if translator is None:
-                raise ShowBuildError("Plain-English requirements need a translator (set "
-                                     "ANTHROPIC_API_KEY before starting the workspace); "
-                                     "use the form instead")
-            translation = translator.translate(text.strip()[:4000], session.display)
-            raw = [*raw, *translation.requirements]
-            problems.extend(f"Not supported: {item}" for item in translation.not_supported)
-        draft = validate_draft(raw, session.display)
-        problems.extend(draft.problems)
         with session.lock:
+            revision = session.requirements_revision + 1 if request_id is None else request_id
+            if revision <= session.requirements_revision:
+                return {"stale": True}
+            session.requirements_revision = revision
+            raw = body.get("requirements", [])
+            text = body.get("text")
+            if not isinstance(raw, list) or len(raw) > MAX_REQUIREMENTS or not all(
+                    isinstance(item, dict) for item in raw):
+                raise ShowBuildError("Requirements must be a list of up to 50 items")
+            problems: list[str] = []
+            if isinstance(text, str) and text.strip():
+                if len(text) > 4000:
+                    raise ShowBuildError("Plain-English requirements must be 4,000 characters or fewer")
+                translator = translator_from_environment()
+                if translator is None:
+                    raise ShowBuildError("Plain-English requirements need a translator (set "
+                                         "ANTHROPIC_API_KEY before starting the workspace); "
+                                         "use the form instead")
+                translation = translator.translate(text.strip(), session.display)
+                raw = [*raw, *translation.requirements]
+                problems.extend(f"Not supported: {item}" for item in translation.not_supported)
+            draft = validate_draft(raw, session.display)
+            problems.extend(draft.problems)
             session.requirements = draft.requirements
             self._remember(session)
-        return {"requirements": [describe_requirement(r) for r in draft.requirements],
-                "raw": [_raw(r) for r in draft.requirements],
-                "problems": problems}
+            return {"requirements": [describe_requirement(r) for r in draft.requirements],
+                    "raw": [_raw(r) for r in draft.requirements],
+                    "problems": problems}
 
     def _remember(self, session: _Session) -> None:
         folder = requirements_folder()
@@ -272,52 +307,77 @@ class ShowSessions:
     def generate(self, token: str, body: dict[str, Any]) -> dict[str, Any]:
         session = self.get(token)
         music = body.get("music_filename")
-        sing = bool(body.get("sing", False))
+        sing_value = body.get("sing", False)
+        if not isinstance(sing_value, bool):
+            raise ShowBuildError("'sing' must be a JSON boolean")
+        sing = sing_value
         with session.lock:
             if session.analysis_path is None or session.audio_path is None:
                 raise ShowBuildError("Add the song before generating")
             if not isinstance(music, str) or not music.strip() or len(music) > 260:
                 music = session.audio_name
-            run = session.path / secrets.token_hex(4)
+            run = session.path / ("run-" + secrets.token_hex(6))
             run.mkdir()
-            profile = run / "requirements.yaml"
-            profiles: tuple[Path, ...] = ()
-            if session.requirements:
-                profile.write_text(requirements_profile_text(session.requirements, "Requirements"),
-                                   encoding="utf-8", newline="\n")
-                profiles = (profile,)
-            rule_set = load_rule_set(profiles)
-            vocals: Path | None = None
-            note = None
-            if display_has_mouths(session.display, rule_set):
-                if sing and separation_available():
-                    vocals = separate_vocals(session.audio_path, run / "vocals.wav")
-                elif sing:
-                    note = ("Singing faces need the vocals add-on (uv sync --extra vocals); "
-                            "the mouths stay still in this show.")
-            stem = Path(session.audio_name).stem or "show"
-            output = run / f"{stem} (generated).loredit"
-            show = generate_show(session.preview_path, output, rule_set,
-                                 analysis_path=session.analysis_path,
-                                 music_filename=music.strip(), vocals_path=vocals,
-                                 separate=False)
-            plan = show.plan
-            return {
-                "file_name": output.name,
-                "sequence": show.sequence_path.read_text(encoding="utf-8"),
-                "picture": show.picture_path.read_text(encoding="utf-8"),
-                "report": show.report.format_text(),
-                "rules_ok": show.report.ok,
-                "sections": [{"label": s.label, "level": LEVEL_NAMES[s.level],
-                              "start": s.start_centisecond, "end": s.end_centisecond}
-                             for s in plan.sections],
-                "used": list(plan.used_props),
-                "skipped": [{"name": s.name, "reason": s.reason} for s in plan.skipped_props],
-                "notes": [*plan.notes, *([note] if note else []),
-                          *([show.vocals_note] if show.vocals_note and not note else [])],
-                "moments": [{"kind": k, "centisecond": t} for k, t in plan.moments],
-                "requirements": [describe_requirement(r) for r in session.requirements],
-            }
+            try:
+                profile = run / "requirements.yaml"
+                profiles: tuple[Path, ...] = ()
+                if session.requirements:
+                    profile.write_text(requirements_profile_text(session.requirements, "Requirements"),
+                                       encoding="utf-8", newline="\n")
+                    profiles = (profile,)
+                rule_set = load_rule_set(profiles)
+                vocals: Path | None = None
+                note = None
+                if display_has_mouths(session.display, rule_set):
+                    if sing and separation_available():
+                        vocals = separate_vocals(session.audio_path, run / "vocals.wav")
+                    elif sing:
+                        note = ("Singing faces need the vocals add-on (uv sync --extra vocals); "
+                                "the mouths stay still in this show.")
+                stem = Path(session.audio_name).stem or "show"
+                output = run / f"{stem} (generated).loredit"
+                try:
+                    show = generate_show(session.preview_path, output, rule_set,
+                                         analysis_path=session.analysis_path,
+                                         music_filename=music.strip(), vocals_path=vocals,
+                                         separate=False)
+                except RulesFailedError as failed:
+                    if session.generated_dir is not None:
+                        shutil.rmtree(session.generated_dir, ignore_errors=True)
+                    session.generated_dir = run
+                    picture = run / f"{stem} (generated).plan.svg"
+                    return {
+                        "rules_ok": False, "file_name": output.name, "sequence": None,
+                        "picture": picture.read_text(encoding="utf-8") if picture.is_file() else "",
+                        "report": failed.report.format_text(), "sections": [], "used": [],
+                        "skipped": [], "notes": [], "moments": [],
+                        "requirements": [describe_requirement(r) for r in session.requirements],
+                    }
+                if session.generated_dir is not None:
+                    shutil.rmtree(session.generated_dir, ignore_errors=True)
+                session.generated_dir = run
+                plan = show.plan
+                return {
+                    "file_name": output.name,
+                    "sequence": show.sequence_path.read_text(encoding="utf-8"),
+                    "picture": show.picture_path.read_text(encoding="utf-8"),
+                    "report": show.report.format_text(),
+                    "rules_ok": show.report.ok,
+                    "sections": [{"label": s.label, "level": LEVEL_NAMES[s.level],
+                                  "start": s.start_centisecond, "end": s.end_centisecond}
+                                 for s in plan.sections],
+                    "used": list(plan.used_props),
+                    "skipped": [{"name": s.name, "reason": s.reason}
+                                for s in plan.skipped_props],
+                    "notes": [*plan.notes, *([note] if note else []),
+                              *([show.vocals_note] if show.vocals_note and not note else [])],
+                    "moments": [{"kind": k, "centisecond": t} for k, t in plan.moments],
+                    "requirements": [describe_requirement(r) for r in session.requirements],
+                }
+            except BaseException:
+                if session.generated_dir != run:
+                    shutil.rmtree(run, ignore_errors=True)
+                raise
 
 
 def _raw(requirement: Requirement) -> dict[str, Any]:
