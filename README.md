@@ -1,8 +1,8 @@
 # Light-O-Rama Sequence Builder
 
-A display-independent command-line tool for building native Light-O-Rama S6 sequences from music and a required `.lorprev` display preview.
+A display-independent Light-O-Rama S6 sequence builder with a Python CLI and a browser-based local sequencing workspace. The browser workspace is being developed now; desktop packaging is deliberately deferred until the end.
 
-**Project status:** Phases 0 through 6b are complete and merged. Phase 7 (the first full show planner) is built and waiting for an owner playback check in S6. Phase 4 audio analysis runs on librosa and is accepted for songs in 4. Phase 8 (singing faces) is built and waiting for an owner check. See [docs/PLAN.md](docs/PLAN.md) for the authoritative status.
+**Project status:** Phases 0 through 8 are merged; the owner playback gates for Phase 7 (planner) and Phase 8 (singing faces) remain open. Phase 11A adds the browser-first sequencing workspace; it is not a desktop app. Desktop packaging remains a final-stage deliverable. See [docs/PLAN.md](docs/PLAN.md) for the authoritative status.
 
 ## Product workflow
 
@@ -64,6 +64,20 @@ uv run lor-sequence-builder analyze-preview .\display.lorprev --report .\display
 
 Reads the preview only (never modifies it) and lists each prop as confident, needs review, or unknown, with its role, row position, direction, color capability, and whether v1 can sequence its channels. Evidence comes from the S6 shape type and parameters, geometry, channel count and type, groups and their order, links to master props, and the string start location. When the S6 shape type is specific (Arch, Star, Tree...), it wins over the name; when a prop is drawn as plain lines, its name decides and the prop is flagged for review. To correct a conclusion, fix the prop in the S6 Preview Editor and run the command again.
 
+## Browser sequencing workspace
+
+Start the local browser-based sequencing interface:
+
+```powershell
+uv run lor-sequence-ui
+```
+
+The server binds only to `127.0.0.1`. Open a native S6 v15 `.loredit` file and its matching audio. The workspace builds tracks from the sequence's actual props, channels, embedded prop groups, timing grids, and effects; the waveform is decoded from the selected audio. When served by this command, the selected audio is sent only to the local Python analysis endpoint and held in a temporary directory while the existing librosa analyzer runs. The source audio and sequence are not modified or retained by the server.
+
+The first delivery is a read-only reference workspace: it supports synchronized navigation, playback, musical marker visualization, track expansion/collapse, and effect inspection. Editing and writing existing sequences are subsequent work. Optional saved audio-analysis JSON and `vocals-1.0` JSON can be loaded. Vocal regions and syllable candidates are heuristic; the current vocal format does not recognize words or provide lyrics.
+
+This is a browser application, not a desktop wrapper. Do not install Electron, Tauri, or another desktop framework during the sequencing-workspace phases.
+
 ## Build a show
 
 ```powershell
@@ -76,6 +90,18 @@ Before building, it asks whether you have any specific requirements (skipped whe
 - `Song.plan.svg`: a picture of the whole show, one lane per prop, that opens in any browser or on a phone.
 - `Song.timeline.json`, `Song.plan.json`, `Song.rules.json`: every decision, the section plan with props used and left out, and the rule report.
 - `Song.analysis.json` and `Song.analysis.svg`: the music analysis. Pass `--analysis` instead of `--audio` to reuse one.
+
+### Lyrics for the workspace
+
+The browser workspace can show timed lyrics under the waveform:
+
+```powershell
+uv run lor-sequence-builder lyrics --import .\Song.lrc --output .\Song.lyrics.json
+uv sync --locked --extra lyrics   # optional, once: offline speech recognition
+uv run lor-sequence-builder lyrics --audio .\Song.vocals.wav --output .\Song.lyrics.json
+```
+
+Imported LRC, SRT or VTT lyrics are your own text. Transcribed lyrics are always marked unverified, because speech recognition mishears sung words; a vocals-only track gives the best timing. Nothing is sent anywhere.
 
 ### Singing faces
 
@@ -165,7 +191,7 @@ uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --
 ## Repository structure
 
 ```text
-src/lor_sequence_builder/  Python package and CLI
+src/lor_sequence_builder/  Python package, CLI, and browser workspace assets
 tests/                     Unit tests and synthetic fixtures
 docs/                      Architecture, format evidence, and phased plan
 .github/workflows/         CI and CodeQL workflows
@@ -181,6 +207,6 @@ LICENSE                    MIT license
 - V1 does not support pixel/RGB props. Unsupported props must be reported, not faked or silently omitted.
 - Source audio, previews, and sequence files are read-only. Generated output must be a new file.
 - Never commit original or sanitized show files, private previews, copyrighted audio, local machine paths, or secrets. Tests use fictional, hand-authored or runtime-generated synthetic fixtures only.
-- No GUI, controller upload, live playback, or editing existing sequences in v1.
+- No desktop wrapper or packaging yet; desktop delivery is deferred until the final stage. The browser workspace is local-only. Controller upload and live hardware playback remain out of scope. The first browser workspace is read-only; editing existing sequences is a later phase.
 
 This is an independent project and is not affiliated with or endorsed by Light-O-Rama.

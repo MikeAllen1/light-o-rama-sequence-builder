@@ -839,6 +839,32 @@ def test_ffmpeg_normalization_restricts_protocol_and_demuxer(
     assert decode[decode.index("-f") + 1] == "wav"
 
 
+def test_ffmpeg_normalization_accepts_explicit_allowlisted_demuxer_without_extension(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    from lor_sequence_builder import audio_analysis
+
+    calls: list[list[str]] = []
+    monkeypatch.setattr(shutil, "which", lambda _: "ffmpeg")
+
+    def fake_run(command: list[str], **_: object) -> SimpleNamespace:
+        calls.append(command)
+        if "-version" in command:
+            return SimpleNamespace(returncode=0, stdout="ffmpeg version test", stderr="")
+        Path(command[-1]).write_bytes(b"\\0" * 44)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    audio_analysis._normalize(
+        tmp_path / "selected-audio.input",
+        tmp_path / "normalized.wav",
+        input_demuxer="mp3",
+    )
+    assert calls[1][calls[1].index("-f") + 1] == "mp3"
+
+
 def test_ffmpeg_normalization_rejects_unknown_demuxer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

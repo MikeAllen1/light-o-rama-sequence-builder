@@ -21,6 +21,7 @@ from lor_sequence_builder.evaluation import EvaluationError, evaluate
 from lor_sequence_builder.generate import generate_show
 from lor_sequence_builder.loredit import LoreditError, read_loredit, write_loredit
 from lor_sequence_builder.lorprev import LorprevError, read_lorprev
+from lor_sequence_builder.lyrics import LyricsError
 from lor_sequence_builder.planner import LEVEL_NAMES, PlanningError
 from lor_sequence_builder.pulse import PulseGenerationError, build_pulse_sequence, preview_element
 from lor_sequence_builder.requirements_intake import (
@@ -206,6 +207,18 @@ def _build_parser() -> argparse.ArgumentParser:
                         help="always ask about specific requirements first")
     asking.add_argument("--no-ask", action="store_true",
                         help="never ask; use saved requirements only")
+    lyrics = commands.add_parser(
+        "lyrics",
+        help="make timed lyrics for the workspace: import LRC/SRT/VTT or transcribe offline",
+    )
+    lyric_source = lyrics.add_mutually_exclusive_group(required=True)
+    lyric_source.add_argument("--import", dest="import_file",
+                              help="LRC, SRT or VTT file with timed lyric lines")
+    lyric_source.add_argument("--audio", help="song or vocals-only audio to transcribe "
+                              "(needs the lyrics add-on; every word is unverified)")
+    lyrics.add_argument("--output", required=True, help="new lyrics JSON path")
+    lyrics.add_argument("--model", default="base.en",
+                        help="speech model for transcription (default: base.en)")
     intake = commands.add_parser(
         "requirements",
         help="tell the builder your specific requirements for a display, and save them",
@@ -440,6 +453,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _list_rules(options.rules, options.preview)
         if options.command == "generate":
             return _generate(options)
+        if options.command == "lyrics":
+            from lor_sequence_builder.lyrics import import_lyrics, transcribe_lyrics, write_lyrics
+
+            if options.import_file:
+                lyric_document = import_lyrics(options.import_file)
+            else:
+                print("Transcribing offline; words are unverified until you review them.")
+                lyric_document = transcribe_lyrics(options.audio, options.model)
+            lyrics_path = write_lyrics(lyric_document, options.output)
+            print(f"Lyric lines: {len(lyric_document['lines'])} ({lyric_document['source']})")
+            print(f"Lyrics: {lyrics_path}")
+            return 0
         if options.command == "requirements":
             _run_intake(options.preview, options.fresh, options.guided)
             return 0
@@ -506,6 +531,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ClassificationError,
         EvaluationError,
         IntakeError,
+        LyricsError,
         PlanningError,
         SeparationError,
         VocalAnalysisError,

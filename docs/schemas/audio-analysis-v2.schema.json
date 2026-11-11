@@ -396,6 +396,34 @@
           "items": {
             "$ref": "#/$defs/timedEvent"
           }
+        },
+        "crashes": {
+          "type": "array",
+          "description": "Cymbal crash candidates: high-frequency hits that keep ringing. Optional, heuristic.",
+          "items": {
+            "$ref": "#/$defs/timedEvent"
+          }
+        },
+        "tempo_curve": {
+          "type": "array",
+          "description": "Smoothed local tempo once per second, folded to the song tempo's octave. Optional.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "time",
+              "bpm"
+            ],
+            "properties": {
+              "time": {
+                "$ref": "#/$defs/time"
+              },
+              "bpm": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          }
         }
       }
     }
