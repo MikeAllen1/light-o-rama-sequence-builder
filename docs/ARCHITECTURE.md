@@ -421,3 +421,12 @@ docs/
 ```
 
 No phase-specific implementation is considered complete merely because a scaffold command or CI check succeeds. The LOR format remains the first implementation risk and is addressed only after Phase 0 is merged and approved.
+
+
+## Phase 4 implementation boundary
+
+The initial Phase 4 analyzer is implemented in `audio_analysis.py` and exposed as `analyze-audio`. FFmpeg is an external runtime requirement and normalizes the first audio stream to mono 11.025 kHz signed 16-bit PCM. Inputs are limited to 200 MiB and 30 minutes; clips shorter than two seconds are rejected. The pipeline uses the Python standard library only after normalization, avoiding a heavyweight machine-learning dependency at this stage.
+
+The versioned JSON keeps tempo, beats, downbeats, onsets, RMS energy, phrase candidates, section candidates, and hard-stop candidates as separate fields. Tempo uses autocorrelation over positive frame-energy flux; downbeats are provisional beat-one/every-fourth-beat assumptions; phrase candidates are fixed 16-beat groupings; section candidates are energy-change points without verse/chorus labels; hard stops are sustained near-silence candidates. These are deliberately conservative estimates, not semantic music understanding. The SVG diagnostic overlays energy, beat positions, onsets, and stop candidates.
+
+The current baseline is useful for validating signal extraction and exposing timing hypotheses, but it is not yet sufficient to drive professional choreography. Phase 4 acceptance still requires broader synthetic coverage, manual inspection of debug plots, confidence calibration, and CI. It does not perform prop classification, planning, vocal separation, or syllable detection.
