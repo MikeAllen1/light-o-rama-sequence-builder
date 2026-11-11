@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from defusedxml import ElementTree as ET
+import xml.etree.ElementTree as ET
+
+from defusedxml.ElementTree import parse as safe_parse
 import pytest
 
 import lor_sequence_builder.lorprev as lorprev_module
@@ -330,7 +332,7 @@ def test_synthetic_revision_56_preview_parses_native_prop_group(
 ) -> None:
     template = write_synthetic_loredit(tmp_path / "synthetic-template.loredit")
     source = tmp_path / "synthetic-revision-56.lorprev"
-    preview = ET.parse(template).getroot().find("PreviewClass")
+    preview = safe_parse(template).getroot().find("PreviewClass")
     assert preview is not None
     ET.ElementTree(preview).write(source, encoding="utf-8", xml_declaration=True)
 
