@@ -46,12 +46,14 @@ jobs:
       - name: Resolve dev dependency lock for handoff
         run: uv lock
 
-      - name: Export generated lock for handoff
+      - name: Preserve generated lockfile for repository lock update
         if: matrix.python-version == '3.12'
-        run: |
-          echo 'LOCKFILE_BEGIN'
-          cat uv.lock
-          echo 'LOCKFILE_END'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: generated-dev-uv-lock
+          path: uv.lock
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Sync locked project environment
         run: uv sync --locked --group dev
