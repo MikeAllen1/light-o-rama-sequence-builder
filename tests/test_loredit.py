@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.fixture_builders import write_synthetic_loredit
+
 from lor_sequence_builder.loredit import (
     LoreditError,
     UnsupportedLoreditVersionError,
@@ -15,14 +17,9 @@ from lor_sequence_builder.loredit import (
     write_loredit,
 )
 
-FIXTURE_XML = Path(__file__).parent / "fixtures" / "basic_show.loredit"
-
-
 @pytest.fixture
 def fixture_path(tmp_path: Path) -> Path:
-    fixture = tmp_path / "basic_show.loredit"
-    shutil.copyfile(FIXTURE_XML, fixture)
-    return fixture
+    return write_synthetic_loredit(tmp_path / "synthetic-show.loredit")
 
 
 def test_fixture_has_expected_observed_structure(fixture_path: Path) -> None:
