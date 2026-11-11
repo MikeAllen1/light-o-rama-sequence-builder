@@ -15,7 +15,6 @@ from lor_sequence_builder.lorprev import (
 )
 from tests.fixture_builders import write_synthetic_loredit
 
-
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
