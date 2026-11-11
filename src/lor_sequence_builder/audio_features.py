@@ -46,7 +46,10 @@ def _energy_curve(rms: list[float]) -> list[dict[str, Any]]:
         if chunk:
             result.append({
                 "time": round(start * FRAME_SECONDS, 2),
-                "rms": round(math.sqrt(math.fsum(value * value for value in chunk) / len(chunk)), 6),
+                "rms": round(
+                    math.sqrt(math.fsum(value * value for value in chunk) / len(chunk)),
+                    6,
+                ),
                 "method": "root_mean_square_amplitude",
             })
     return result
@@ -105,7 +108,10 @@ def _phrase_boundaries(
             "time": round(time, 3),
             "kind": "estimated_16_beat_phrase",
             "confidence": 0.35,
-            "basis": "fixed 16-beat grouping from estimated tempo; not semantic section recognition",
+            "basis": (
+                "fixed 16-beat grouping from estimated tempo; "
+                "not semantic section recognition"
+            ),
             "method": "estimated_global_tempo_grid",
         })
         index += 1
