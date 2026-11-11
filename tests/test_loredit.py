@@ -14,7 +14,6 @@ from lor_sequence_builder.loredit import (
     semantic_xml,
     write_loredit,
 )
-
 from tests.fixture_builders import write_synthetic_loredit
 
 
