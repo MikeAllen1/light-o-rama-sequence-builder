@@ -1,7 +1,7 @@
 # Architecture
 
-**Status:** Phase 0 scaffold in progress; target architecture and contracts documented below  
-**Project:** LOR Auto-Sequencer  
+**Status:** Phase 2 — standalone LORPREV parser in progress; later-stage contracts are planned below  
+**Project:** Light-O-Rama Sequence Builder  
 **V1 interface:** Command line  
 **Target output:** Native Light-O-Rama S6 `.loredit` sequence  
 **Required display input:** Light-O-Rama `.lorprev` preview
@@ -21,7 +21,7 @@ The original audio, preview, prop map, and any reference sequence are read-only 
 
 - The display preview input is **`.lorprev`** and is mandatory for both `analyze` and `generate`.
 - The generated sequence output is **`.loredit`**, intended to open in the configured target LOR S6 version.
-- The supplied `LOR_2026_Final.lorprev` is a real display preview and is the first preview-format reference fixture.
+- The committed standalone preview golden fixture is a sanitized fictional export confirmed to originate from Light-O-Rama S6. Its internal `Revision="1"` marker is the parser compatibility evidence; the exact minor S6 application build is optional provenance and was not recorded. The private owner preview is not committed.
 - The supplied Merry Christmas `.loredit` is an example sequence from the user's actual setup and is a sequence-format reference associated with that setup.
 - The user's display does **not** use pixel props. RGB/pixel support is therefore a declared V1 limitation, not something to fake or infer. If a preview contains a channel/prop type the current writer cannot safely represent, the tool must report it and must not silently drop it or claim full support.
 - V1 is CLI-only. GUI, controller upload, live playback, and editing existing sequences are out of scope.
@@ -110,7 +110,7 @@ Every stage has typed Pydantic inputs and outputs. A stage may use the public mo
 
 **Outputs:** `RawDisplayModel` and `RawPropModel[]`.
 
-**Known reference:** The supplied preview has a `PreviewClass` root and preview revision `58`, with 51 `PropClass` entries. This observation is a fixture fact, not a declaration that all revision-58 files share identical optional fields. The parser must be driven by fixtures and explicit version handling.
+**Known standalone reference:** The sanitized S6-exported `.lorprev` golden fixture has a `PreviewClass` root, internal `Revision="1"`, and 51 `PropClass` entries. A separate synthetic fixture covers Revision 0. These standalone preview revision markers are not the same thing as the `.loredit` `saveFileVersion` or the S6 application build. Parser support is based on observed standalone preview revisions and fixtures.
 
 ### 5.3 `prop_classifier`
 
