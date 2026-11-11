@@ -135,6 +135,23 @@ def test_plain_english_is_translated_validated_and_confirmed(tmp_path: Path) -> 
     assert load_rule_set((saved,)).sources == ("default.yaml", "yard.requirements.yaml")
 
 
+
+def test_fresh_requirements_bypass_malformed_saved_sidecar(tmp_path: Path) -> None:
+    preview = _preview(tmp_path, classic_yard())
+    sidecar = saved_requirements_path(preview)
+    sidecar.write_text("schema_version: rules-1.0\\nrequirements: [broken\\n", encoding="utf-8")
+    translator = FakeTranslator(Translation([
+        {"type": "never_use", "props": {"names": ["Santa"]}},
+    ]))
+    script = Script({"Describe them": "never use Santa", "Use these?": "y"})
+    result = gather_requirements(
+        preview, _display(classic_yard()), script.ask, script.say,
+        translator, fresh=True,
+    )
+    assert [item.type for item in result] == ["never_use"]
+    assert [item.type for item in load_saved_requirements(preview)] == ["never_use"]
+
+
 def test_nothing_is_saved_without_confirmation(tmp_path: Path) -> None:
     preview = _preview(tmp_path, classic_yard())
     translator = FakeTranslator(Translation(
