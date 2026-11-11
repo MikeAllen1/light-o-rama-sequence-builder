@@ -575,7 +575,7 @@ def _movements_complete(ctx: _Context) -> str | None:
                     "partway", prop_id=pid, centisecond=m.start_centisecond)
         reached = [firsts[pid] for pid in m.prop_ids if pid in firsts]
         for index, (before, after) in enumerate(itertools.pairwise(reached)):
-            if after < before:
+            if after <= before:
                 pid = [p for p in m.prop_ids if p in firsts][index + 1]
                 ctx.add(f"The {m.kind} {m.movement_id!r} reaches this prop before the one "
                         "listed ahead of it", prop_id=pid, centisecond=after)
@@ -679,7 +679,7 @@ def _falls_go_down(ctx: _Context) -> str | None:
         order = [firsts[i] for i in sorted(firsts)]
         if prop.direction == "bottom_to_top":
             order.reverse()
-        if any(b < a for a, b in itertools.pairwise(order)):
+        if any(b <= a for a, b in itertools.pairwise(order)):
             ctx.add(f"Fall {m.movement_id!r} lights this prop's segments from the bottom up",
                     prop_id=prop.prop_id, centisecond=m.start_centisecond)
     return None

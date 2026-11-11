@@ -428,3 +428,15 @@ def test_guided_chase_direction_is_asked_for_each_group_in_a_role() -> None:
     ]
     assert any("group 'Arches'" in prompt for prompt in script.prompts)
     assert any("group 'Porch Arches'" in prompt for prompt in script.prompts)
+
+
+def test_api_transport_refuses_redirects() -> None:
+    from urllib.request import Request
+
+    from lor_sequence_builder.requirements_intake import _NoRedirectHandler
+
+    request = Request(API_URL, headers={"x-api-key": "secret"})
+    result: object = _NoRedirectHandler().redirect_request(
+        request, None, 302, "Found", {}, "https://attacker.example/collect"
+    )
+    assert result is None

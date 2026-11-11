@@ -1239,6 +1239,7 @@
       state.sequence = parseSequence(doc, name);
       const declaration = xmlText.replace(/^\uFEFF/, "").match(/^<\?xml[^?]*\?>/);
       state.sequence.source = {
+        originalXml: xmlText,
         bom: Boolean(bom),
         crlf: xmlText.slice(0, 65536).includes("\r\n"),
         declaration: declaration ? declaration[0] : '<?xml version="1.0" encoding="utf-8"?>',
@@ -1257,20 +1258,49 @@
       refreshTimeline();
   }
 
+  async function probeAudioMetadata(file) {
+    const url = URL.createObjectURL(file);
+    const probe = document.createElement("audio");
+    probe.preload = "metadata";
+    try {
+      const duration = await new Promise((resolve, reject) => {
+        probe.onloadedmetadata = () => resolve(probe.duration);
+        probe.onerror = () => reject(new Error("The browser could not read audio metadata."));
+        probe.src = url;
+        probe.load();
+      });
+      if (!Number.isFinite(duration) || duration < 2 || duration > 1800) {
+        throw new Error("Audio duration must be between 2 seconds and 30 minutes.");
+      }
+      const estimatedBytes = duration * 48000 * 2 * Float32Array.BYTES_PER_ELEMENT;
+      if (estimatedBytes > 512 * 1024 * 1024) {
+        throw new Error("Decoded audio would exceed the 512 MiB waveform memory budget.");
+      }
+      return duration;
+    } finally {
+      probe.pause();
+      probe.removeAttribute("src");
+      probe.load();
+      URL.revokeObjectURL(url);
+    }
+  }
+
   async function decodeWaveform(file, requestId) {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) throw new Error("This browser does not support Web Audio waveform decoding.");
+    await probeAudioMetadata(file);
+    if (requestId !== state.audioRequestId) return null;
     const context = new AudioContextClass();
     try {
-      const audioBytes = await file.arrayBuffer();
-      const prefix = new Uint8Array(audioBytes, 0, Math.min(4, audioBytes.byteLength));
+      const prefix = new Uint8Array(await file.slice(0, 4).arrayBuffer());
       const hasId3 = prefix.length >= 3 && prefix[0] === 73 && prefix[1] === 68 && prefix[2] === 51;
       const hasMpegSync = prefix.length >= 2 && prefix[0] === 255 && (prefix[1] & 224) === 224;
       const mislabeledMp3 = file.name.toLowerCase().endsWith(".mp4") && (hasId3 || hasMpegSync);
       const playbackSource = mislabeledMp3
-        ? new Blob([audioBytes], { type: "audio/mpeg" })
+        ? file.slice(0, file.size, "audio/mpeg")
         : file;
-      const buffer = await context.decodeAudioData(audioBytes.slice(0));
+      const audioBytes = await file.arrayBuffer();
+      const buffer = await context.decodeAudioData(audioBytes);
       if (requestId !== state.audioRequestId) return null;
       if (buffer.duration < 2 || buffer.duration > 1800) {
         throw new Error("Audio duration must be between 2 seconds and 30 minutes.");
@@ -1361,6 +1391,10 @@
     state.waveformPeaks = null;
     state.analysis = null;
     state.vocals = null;
+    state.lyrics = null;
+    state.reviewDirty = false;
+    state.reviewLoaded = false;
+    state.reviewSelection = null;
     if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
     state.audioUrl = null;
     audio.pause();
@@ -1546,7 +1580,8 @@
           !Number.isFinite(start) || typeof end !== "number" || !Number.isFinite(end) ||
           start < 0 || end <= start || end > 1801 ||
           (line.words != null && !Array.isArray(line.words)) ||
-          (line.words && line.words.length > 1000)) {
+          (line.words && line.words.length > 1000) ||
+          (line.verified != null && typeof line.verified !== "boolean")) {
         throw new Error("Lyrics contain an invalid line.");
       }
       for (const word of line.words || []) {
@@ -1673,20 +1708,22 @@
   function checkChannel(channel, effects) {
     const before = new Set(channel.effects);
     const limit = state.sequence.durationCs;
-    for (let index = 0; index < effects.length; index++) {
-      const effect = effects[index];
+    const active = [];
+    for (const effect of effects) {
       if (!before.has(effect)) {
         if (effect.start < 0) return "an effect would start before the song";
         if (effect.end <= effect.start) return "an effect would have no length";
         if (effect.end > limit) return "an effect would run past the end of the sequence";
       }
-      // Overlaps already in the source (S6 sometimes saves exact duplicates) are
-      // left alone; an edit may not create a new one.
-      const previous = index ? effects[index - 1] : null;
-      if (previous && previous.end > effect.start &&
-          !(before.has(previous) && before.has(effect))) {
+      // Compare with every active interval so nested source overlaps cannot hide
+      // a newly introduced overlap.
+      for (let index = active.length - 1; index >= 0; index--) {
+        if (active[index].end <= effect.start) active.splice(index, 1);
+      }
+      if (active.some((previous) => !(before.has(previous) && before.has(effect)))) {
         return "effects would overlap on " + channelName(channel);
       }
+      active.push(effect);
     }
     return null;
   }
@@ -2480,7 +2517,8 @@
     let result = {};
     try {
       response = await fetch("/api/export", {
-        method: "POST", headers: { "Content-Type": "application/xml" }, body: text
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ original: sequence.source.originalXml, edited: text })
       });
       result = await response.json().catch(() => ({}));
     } catch (error) {

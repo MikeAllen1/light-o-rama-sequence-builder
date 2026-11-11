@@ -224,9 +224,14 @@ def test_export_check_refuses_overlaps_and_foreign_requests(workspace: str) -> N
     from urllib.error import HTTPError
     from urllib.request import Request, urlopen
 
-    def post(body: bytes, **headers: str) -> tuple[int, dict[str, Any]]:
-        request = Request(workspace + "api/export", data=body, method="POST",
-                          headers={"Content-Type": "application/xml", **headers})
+    def post(body: bytes, *, original: bytes | None = None,
+             headers: dict[str, str] | None = None) -> tuple[int, dict[str, Any]]:
+        request_body = json.dumps({
+            "original": (original if original is not None else sequence_text().encode()).decode(),
+            "edited": body.decode(),
+        }).encode()
+        request = Request(workspace + "api/export", data=request_body, method="POST",
+                          headers={"Content-Type": "application/json", **(headers or {})})
         try:
             with urlopen(request, timeout=5) as response:
                 return response.status, json.loads(response.read())
@@ -239,6 +244,8 @@ def test_export_check_refuses_overlaps_and_foreign_requests(workspace: str) -> N
 
     good = sequence_text().encode("utf-8")
     assert post(good) == (200, {"ok": True, "channels": 5, "effects": 10})
+    source_with_overlap = good.replace(b'startCentisecond="700"', b'startCentisecond="550"')
+    assert post(source_with_overlap, original=source_with_overlap)[0] == 200
     overlapping = good.replace(b'startCentisecond="700"', b'startCentisecond="550"')
     status, result = post(overlapping)
     assert status == 422 and "Bush channel 1: effects overlap at 550 cs" in result["error"]
@@ -252,5 +259,5 @@ def test_export_check_refuses_overlaps_and_foreign_requests(workspace: str) -> N
     assert duplicated != good
     assert post(duplicated)[0] == 200
     assert post(b"<not-a-sequence/>")[0] == 422
-    assert post(good, Origin="http://attacker.example")[0] == 403
-    assert post(good, **{"Content-Type": "text/plain"})[0] == 415
+    assert post(good, headers={"Origin": "http://attacker.example"})[0] == 403
+    assert post(good, headers={"Content-Type": "text/plain"})[0] == 415

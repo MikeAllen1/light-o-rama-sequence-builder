@@ -6,10 +6,11 @@ unknown elements and attributes are retained rather than interpreted or rebuilt.
 
 from __future__ import annotations
 
-import itertools
+import heapq
 import os
 import tempfile
 import xml.etree.ElementTree as ET
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -165,19 +166,37 @@ def _validate_sequence_prop_references(root: ET.Element) -> None:
         )
 
 
-def effect_timing_problems(document: LoreditDocument, limit: int = 20) -> list[str]:
-    """Return timing problems in the sequence's effects (empty when all are valid).
+def effect_timing_problems(
+    document: LoreditDocument, limit: int = 20, original: LoreditDocument | None = None
+) -> list[str]:
+    """Check effect timing, permitting overlaps that were already in the source.
 
-    Each effect must have whole-number centisecond times, a start before its end,
-    and lie within the sequence (S6 tolerates one second past the end). Effects on
-    one channel must not overlap. An exact duplicate (same start and end) is not
-    counted: S6 itself saves those in some sequences and plays them normally.
+    A new or changed effect may not overlap any other effect. Existing overlapping
+    effects are retained because S6 files can legitimately contain them.
     """
     total = document.total_centiseconds
     problems: list[str] = []
+    original_channels: dict[tuple[str, int], list[tuple[int, int]]] = {}
+    if original is not None:
+        original_props = original.root.find("SequenceProps")
+        for source_prop in [] if original_props is None else original_props.findall("SeqProp"):
+            prop_id = source_prop.attrib.get("id", "")
+            for channel_index, source_channel in enumerate(source_prop.findall("channel")):
+                source_spans: list[tuple[int, int]] = []
+                for effect in source_channel.findall("effect"):
+                    try:
+                        source_spans.append((
+                            int(effect.attrib["startCentisecond"]),
+                            int(effect.attrib["endCentisecond"]),
+                        ))
+                    except (KeyError, ValueError):
+                        continue
+                original_channels[(prop_id, channel_index)] = source_spans
+
     sequence_props = document.root.find("SequenceProps")
     for prop in [] if sequence_props is None else sequence_props.findall("SeqProp"):
         name = prop.attrib.get("name") or prop.attrib.get("id", "?")
+        prop_id = prop.attrib.get("id", "")
         for index, channel in enumerate(prop.findall("channel")):
             spans: list[tuple[int, int]] = []
             for effect in channel.findall("effect"):
@@ -191,12 +210,37 @@ def effect_timing_problems(document: LoreditDocument, limit: int = 20) -> list[s
                     problems.append(
                         f"{name} channel {index + 1}: effect {start}-{end} cs is out of range")
                 spans.append((start, end))
-            spans.sort()
-            for earlier, later in itertools.pairwise(spans):
-                start = later[0]
-                if start < earlier[1] and later != earlier:
+
+            available_original = Counter(original_channels.get((prop_id, index), []))
+            active: list[tuple[int, int, bool]] = []
+            active_count = 0
+            active_changed = 0
+            active_spans: Counter[tuple[int, int]] = Counter()
+            changed_spans: Counter[tuple[int, int]] = Counter()
+            for start, end in sorted(spans):
+                while active and active[0][0] <= start:
+                    prior_end, prior_start, changed = heapq.heappop(active)
+                    prior_span = (prior_start, prior_end)
+                    active_count -= 1
+                    active_changed -= int(changed)
+                    active_spans[prior_span] -= 1
+                    changed_spans[prior_span] -= int(changed)
+                is_original = available_original[(start, end)] > 0
+                if is_original:
+                    available_original[(start, end)] -= 1
+                span = (start, end)
+                other_active = active_count - active_spans[span]
+                other_changed = active_changed - changed_spans[span]
+                # Exact duplicates are preserved by S6 and are not overlaps.
+                if other_active and (not is_original or other_changed):
                     problems.append(
                         f"{name} channel {index + 1}: effects overlap at {start} cs")
+                changed = not is_original
+                heapq.heappush(active, (end, start, changed))
+                active_count += 1
+                active_changed += int(changed)
+                active_spans[span] += 1
+                changed_spans[span] += int(changed)
             if len(problems) >= limit:
                 return problems[:limit]
     return problems

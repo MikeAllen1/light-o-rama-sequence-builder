@@ -19,13 +19,14 @@ lyric recognition. The report says so.
 from __future__ import annotations
 
 import json
-import os
+import math
 from pathlib import Path
 from typing import Any
 
 import librosa
 import numpy as np
 
+from lor_sequence_builder.artifacts import write_new_text_atomically
 from lor_sequence_builder.audio_analysis import SAMPLE_RATE, AudioAnalysisError, decode_audio
 
 VOCALS_SCHEMA_VERSION = "vocals-1.0"
@@ -155,25 +156,52 @@ def analyze_vocals(vocal_path: str | Path, json_output: str | Path, source: str)
         ],
         **events,
     }
-    output.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with output.open("x", encoding="utf-8", newline="\n") as stream:
-            stream.write(json.dumps(report, indent=2) + "\n")
-            stream.flush()
-            os.fsync(stream.fileno())
+        write_new_text_atomically(output, json.dumps(report, indent=2) + "\n")
     except OSError as exc:
         raise VocalAnalysisError(f"Cannot write vocal analysis: {output}") from exc
     return report
 
 
+MAX_VOCALS_JSON_BYTES = 5 * 1024 * 1024
+MAX_VOCAL_EVENTS = 100_000
+
+
 def load_vocals(path: str | Path) -> dict[str, Any]:
+    source = Path(path)
     try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        if source.stat().st_size > MAX_VOCALS_JSON_BYTES:
+            raise VocalAnalysisError("Vocal analysis JSON exceeds the 5 MiB limit")
+        data = json.loads(source.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, ValueError) as exc:
         raise VocalAnalysisError(f"Cannot read vocal analysis: {path}") from exc
     if not isinstance(data, dict) or data.get("schema_version") != VOCALS_SCHEMA_VERSION:
         raise VocalAnalysisError(f"Unsupported vocal analysis; expected {VOCALS_SCHEMA_VERSION}")
+    duration = data.get("duration_seconds")
+    if (isinstance(duration, bool) or not isinstance(duration, int | float)
+            or not math.isfinite(float(duration)) or not 0 < float(duration) <= 1800):
+        raise VocalAnalysisError("Vocal analysis has an invalid duration_seconds value")
     for key in ("regions", "syllables"):
-        if not isinstance(data.get(key), list):
-            raise VocalAnalysisError(f"Vocal analysis field {key!r} must be a list")
+        events = data.get(key)
+        if not isinstance(events, list) or len(events) > MAX_VOCAL_EVENTS:
+            raise VocalAnalysisError(
+                f"Vocal analysis field {key!r} must be a list of at most "
+                f"{MAX_VOCAL_EVENTS} events"
+            )
+        for event in events:
+            if not isinstance(event, dict):
+                raise VocalAnalysisError(f"Vocal analysis field {key!r} contains a non-object")
+            start, end = event.get("start"), event.get("end")
+            if (isinstance(start, bool) or isinstance(end, bool)
+                    or not isinstance(start, int | float) or not isinstance(end, int | float)
+                    or not math.isfinite(float(start)) or not math.isfinite(float(end))
+                    or start < 0 or end <= start or end > float(duration) + 1):
+                raise VocalAnalysisError(
+                    f"Vocal analysis field {key!r} contains invalid event boundaries"
+                )
+            if key == "syllables":
+                strength = event.get("strength")
+                if (isinstance(strength, bool) or not isinstance(strength, int | float)
+                        or not math.isfinite(float(strength)) or not 0 <= strength <= 1):
+                    raise VocalAnalysisError("Vocal syllable strength must be between 0 and 1")
     return data
