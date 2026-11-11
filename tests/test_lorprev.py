@@ -91,6 +91,7 @@ def test_synthetic_revision_one_preview_preserves_full_prop_model(tmp_path: Path
         )
         shape_name = (
             "Star" if index == 14 else
+            "Icicles" if index == 15 else
             "Tree 180" if index == 17 else
             "Arch" if index >= 49 else
             "Lines-Unconnected" if index % 2 == 0 else
