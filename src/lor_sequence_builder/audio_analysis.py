@@ -20,7 +20,7 @@ from array import array
 from pathlib import Path
 from typing import Any
 
-ANALYSIS_SCHEMA_VERSION = "1.0"
+ANALYSIS_SCHEMA_VERSION = "1.1"
 SAMPLE_RATE = 11_025
 FRAME_SAMPLES = round(SAMPLE_RATE * 0.05)
 FRAME_SECONDS = FRAME_SAMPLES / SAMPLE_RATE
@@ -443,6 +443,13 @@ def analyze_audio(
         stops = _hard_stops(rms, minimum_stop_silence)
         phrases = _phrase_boundaries(duration, bpm, phase, lag)
         sections = _section_candidates(energy)
+        beat_grid_confidence = tempo_confidence * phase_confidence
+        if not beat_times:
+            beat_grid_status = "unavailable"
+        elif beat_grid_confidence < 0.2:
+            beat_grid_status = "ambiguous"
+        else:
+            beat_grid_status = "provisional"
         report: dict[str, Any] = {
             "schema_version": ANALYSIS_SCHEMA_VERSION,
             "audio": {
@@ -473,6 +480,7 @@ def analyze_audio(
                 "limitations": [
                     "Tempo is a single global estimate; tempo changes are not modeled.",
                     "Strong repeating accents, syncopation, and subdivisions can create half-time or double-time ambiguity; tempo confidence is heuristic.",
+                    "Beat-grid status is provisional only: unavailable means no grid was produced; ambiguous means tempo-confidence multiplied by phase-confidence is below 0.20; provisional does not mean musically verified.",
                     "Beat phase is selected from repeating onset energy; competing beat/offbeat phases reduce beat confidence and cannot be resolved reliably without musical context.",
                     "Downbeats assume the first detected beat is beat one and group every four beats.",
                     "Phrase boundaries are fixed 16-beat candidates, not semantic phrase detection.",
@@ -480,6 +488,7 @@ def analyze_audio(
                     "Onsets are spectral-unaware positive energy-flux peaks and may miss soft or overlapping events.",
                     "Hard stops are sustained near-silence candidates and may include intentional pauses.",
                 ],
+                "beat_grid_status": beat_grid_status,
                 "tempo": {
                     "bpm": bpm,
                     "confidence": tempo_confidence,
