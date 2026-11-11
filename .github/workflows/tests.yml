@@ -24,7 +24,7 @@ jobs:
           persist-credentials: false
 
       - name: Ensure FFmpeg is available
-        run: choco install ffmpeg --yes --no-progress
+        run: choco install ffmpeg --version=9.0.2 --yes --no-progress
 
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
@@ -51,14 +51,22 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Ensure FFmpeg is available
+      - name: Install pinned FFmpeg 9.0.2
         run: |
-          if command -v ffmpeg >/dev/null 2>&1; then
-            ffmpeg -version
-          else
-            sudo apt-get update
-            sudo apt-get install --yes ffmpeg
-          fi
+          set -euo pipefail
+          archive="$RUNNER_TEMP/ffmpeg-linux64-lgpl.tar.xz"
+          install_dir="$RUNNER_TEMP/ffmpeg"
+          curl --fail --location --silent --show-error \
+            "https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-11-09-12-42/ffmpeg-n9.0.2-48-gd4070a14ce-linux64-lgpl-9.0.tar.xz" \
+            --output "$archive"
+          echo "f95f189668268b8ec2c8acce6ea034cf36f93ba99a09f2654d0cfbd89c5c0ebd  $archive" | sha256sum --check -
+          mkdir -p "$install_dir"
+          tar -xJf "$archive" --strip-components=1 -C "$install_dir"
+          ffmpeg_bin="$(find "$install_dir" -type f -name ffmpeg -print -quit)"
+          test -n "$ffmpeg_bin"
+          chmod +x "$ffmpeg_bin"
+          echo "$(dirname "$ffmpeg_bin")" >> "$GITHUB_PATH"
+          "$ffmpeg_bin" -version
 
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
