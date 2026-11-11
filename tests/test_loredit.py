@@ -12,6 +12,7 @@ from lor_sequence_builder.loredit import (
     UnsupportedLoreditVersionError,
     read_loredit,
     semantic_xml,
+    strip_local_preview_background_references,
     write_loredit,
 )
 
@@ -43,6 +44,22 @@ def test_fixture_has_expected_observed_structure(fixture_path: Path) -> None:
         for effect in document.root.findall("./SequenceProps/SeqProp/channel/effect")
     }
     assert {"INTENSITY", "TWINKLE", "SHIMMER"}.issubset(effect_types)
+
+
+def test_preview_background_sanitizer_removes_workstation_local_image_paths(
+    fixture_path: Path,
+) -> None:
+    tree = ET.parse(fixture_path)
+    scene = tree.getroot().find("./PreviewClass/Scene")
+    assert scene is not None
+    scene.set("BackgroundFile", r"C:\Users\private\Documents\house.jpg")
+    scene.set("BackgroundImage", r"D:\private\display.png")
+
+    removed = strip_local_preview_background_references(tree.getroot())
+
+    assert removed == 2
+    assert "BackgroundFile" not in scene.attrib
+    assert "BackgroundImage" not in scene.attrib
 
 
 def test_semantic_round_trip_preserves_unknown_sequence_content(
