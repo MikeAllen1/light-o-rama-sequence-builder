@@ -107,7 +107,14 @@ def _estimate_tempo(
     # so confidence falls to zero when that competing phase reaches 10% of the
     # winning phase instead of confidently selecting the louder accent.
     phase_confidence = max(0.0, min(1.0, 1.0 - alternate_ratio / 0.10))
-    return round(bpm, 2), round(confidence, 4), refined_lag, phase, round(phase_confidence, 4), tempo_candidates
+    return (
+        round(bpm, 2),
+        round(confidence, 4),
+        refined_lag,
+        phase,
+        round(phase_confidence, 4),
+        tempo_candidates,
+    )
 
 
 def _beat_grid_status(
