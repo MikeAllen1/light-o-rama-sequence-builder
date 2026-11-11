@@ -21,3 +21,27 @@ def test_cli_help_exits_successfully(capsys: pytest.CaptureFixture[str]) -> None
 
     assert exc_info.value.code == 0
     assert "usage:" in capsys.readouterr().out.lower()
+
+
+
+def test_inspect_preview_reports_lor_controller_addresses(
+    tmp_path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    preview = tmp_path / "controller-layout.lorprev"
+    preview.write_text(
+        '<PreviewClass Revision="1">'
+        '<PropClass id="a" DeviceType="LOR" ChannelGrid="Regular,01,01,01,0,White" />'
+        '<PropClass id="b" DeviceType="LOR" ChannelGrid="Regular,01,02,01,0,White" />'
+        '<PropClass id="c" DeviceType="LOR" ChannelGrid="Aux A,02,01,01,0,White" />'
+        '<PropClass id="d" DeviceType="DMX" ChannelGrid="12,301" />'
+        '</PreviewClass>',
+        encoding="utf-8",
+    )
+
+    assert main(["inspect-preview", str(preview)]) == 0
+    output = capsys.readouterr().out
+    assert "LOR controller addresses: 2" in output
+    assert "  Regular / 01" in output
+    assert "  Aux A / 02" in output
+    assert "DMX universes: 1" in output
+    assert "  12" in output
