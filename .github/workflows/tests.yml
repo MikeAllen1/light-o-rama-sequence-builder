@@ -43,11 +43,24 @@ jobs:
         with:
           version: "0.10.0"
 
+      - name: Resolve dev dependency lock for handoff
+        run: uv lock
+
+      - name: Resolve dev dependency lock for handoff
+        run: uv lock
+
+      - name: Export generated lock for handoff
+        if: matrix.python-version == '3.12'
+        run: |
+          echo 'LOCKFILE_BEGIN'
+          cat uv.lock
+          echo 'LOCKFILE_END'
+
       - name: Sync locked project environment
-        run: uv sync --locked
+        run: uv sync --locked --group dev --group dev
 
       - name: Run tests
-        run: uv run --no-sync --with-requirements requirements-dev.txt python -m pytest
+        run: uv run --no-sync python -m pytest
 
   quality:
     name: Tests, lint, types, and dependency audit (Python ${{ matrix.python-version }})
@@ -96,16 +109,16 @@ jobs:
         run: uv sync --locked
 
       - name: Run tests with branch coverage
-        run: uv run --no-sync --with-requirements requirements-dev.txt coverage run --branch --source=lor_sequence_builder -m pytest
+        run: uv run --no-sync coverage run --branch --source=lor_sequence_builder -m pytest
 
       - name: Report coverage
-        run: uv run --no-sync --with-requirements requirements-dev.txt coverage report --show-missing
+        run: uv run --no-sync coverage report --show-missing
 
       - name: Check lint
-        run: uv run --no-sync --with-requirements requirements-dev.txt ruff check .
+        run: uv run --no-sync ruff check .
 
       - name: Check types (strict)
-        run: uv run --no-sync --with-requirements requirements-dev.txt mypy --strict src tests
+        run: uv run --no-sync mypy --strict src tests
 
       - name: Prepare dependency audit input
         run: mkdir -p dist
@@ -113,7 +126,7 @@ jobs:
       - name: Export locked production dependencies
         run: uv export --locked --no-dev --no-emit-project --format requirements-txt --output-file dist/requirements-production.txt
       - name: Audit production dependencies
-        run: uv tool run --from pip-audit==2.10.1 pip-audit -r dist/requirements-production.txt
+        run: uv run --no-sync pip-audit -r dist/requirements-production.txt
 
       - name: Validate Phase 3 package build
         run: uv run --no-sync python scripts/build_phase3_validation.py --output dist/Phase3-S6-Validation.zip
