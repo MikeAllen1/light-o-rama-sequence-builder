@@ -5,10 +5,11 @@ from __future__ import annotations
 import hashlib
 import math
 import tempfile
-from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
-from defusedxml import ElementTree as ET
 from dataclasses import dataclass
+from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
 from pathlib import Path
+
+from defusedxml import ElementTree as ET
 
 from lor_sequence_builder.file_publish import publish_new_files, write_new_file
 from lor_sequence_builder.loredit import (
