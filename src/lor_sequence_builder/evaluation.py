@@ -100,16 +100,16 @@ def read_timing_grid(sequence_path: str | Path, grid_name: str) -> list[float]:
             raw = timing.attrib.get("centisecond", "")
             try:
                 centisecond = int(raw)
-                if not 0 <= centisecond <= document.total_centiseconds:
-                    raise EvaluationError(
-                        f"Timing grid {grid_name!r} has centisecond {centisecond} "
-                        f"outside sequence duration 0-{document.total_centiseconds}"
-                    )
-                marks.append(centisecond / 100.0)
             except ValueError as exc:
                 raise EvaluationError(
                     f"Timing grid {grid_name!r} has a non-integer centisecond {raw!r}"
                 ) from exc
+            if not 0 <= centisecond <= document.total_centiseconds:
+                raise EvaluationError(
+                    f"Timing grid {grid_name!r} has centisecond {centisecond} "
+                    f"outside sequence duration 0-{document.total_centiseconds}"
+                )
+            marks.append(centisecond / 100.0)
         return sorted(set(marks))
     available = sorted(
         grid.attrib.get("name", "")
