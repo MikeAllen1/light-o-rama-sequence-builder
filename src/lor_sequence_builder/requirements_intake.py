@@ -48,6 +48,10 @@ API_URL = "https://api.anthropic.com/v1/messages"
 MAX_TEXT_CHARACTERS = 4000
 MAX_RESPONSE_BYTES = 1024 * 1024
 SAVED_SUFFIX = ".requirements.yaml"
+_NO_KEY_MESSAGE = (
+    "Plain-English requirements need an API key (ANTHROPIC_API_KEY). "
+    "Let's use a few questions instead."
+)
 
 _ROLE_WORDS = {
     "arch": "arches",
@@ -454,8 +458,7 @@ def gather_requirements(
                 return finish(())
             raw, not_supported = guided_requirements(display, ask, say), []
         elif translator is None:
-            say(f"Plain-English requirements need an API key ({API_KEY_VARIABLE}). "
-                "Let's use a few questions instead.")
+            say(_NO_KEY_MESSAGE)
             raw, not_supported = guided_requirements(display, ask, say), []
         else:
             if len(text) > MAX_TEXT_CHARACTERS:
