@@ -443,3 +443,27 @@ def test_tempo_estimator_handles_a_range_of_common_tempos(
         (right - left) == pytest.approx(60.0 / estimated, abs=0.08)
         for left, right in itertools.pairwise(beat_times)
     )
+
+
+
+def test_analysis_does_not_publish_json_when_plot_generation_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import lor_sequence_builder.audio_analysis as audio_analysis
+
+    audio = tmp_path / "atomic.wav"
+    json_path = tmp_path / "atomic.json"
+    plot_path = tmp_path / "atomic.svg"
+    _click_track(audio)
+
+    def fail_plot(*args: object, **kwargs: object) -> None:
+        raise OSError("simulated SVG write failure")
+
+    monkeypatch.setattr(audio_analysis, "_svg_plot", fail_plot)
+
+    with pytest.raises(AudioAnalysisError, match="simulated SVG write failure"):
+        analyze_audio(audio, json_path, plot_path)
+
+    assert not json_path.exists()
+    assert not plot_path.exists()
+    assert not list(tmp_path.glob(".atomic.*.tmp"))
