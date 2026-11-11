@@ -209,7 +209,7 @@ The exact `.loredit` schema is not to be inferred from memory. The supplied real
 - Limit the initial supported set to `DeviceType=LOR` with `TraditionalType=Single Color` or `Multicolor_string_1_ch`, complete LOR ChannelGrid addresses, and existing native channel records in the matching template.
 - Exclude unsupported prop/device types explicitly in Timeline JSON. If a prop inside the supported type boundary lacks a complete ChannelGrid or native channel mapping, fail before writing.
 - Use existing native `channel` row/col/color coordinates from the template as channel identities. Do not derive or invent these coordinates from ChannelGrid rows.
-- Generate deterministic integer-centisecond beat positions from an explicitly supplied integer BPM (30–300); no audio analysis or tempo inference occurs in this phase.
+- Generate deterministic integer-centisecond beat positions from an explicitly supplied integer BPM (30–300); no audio analysis or tempo inference occurs in this phase. Bound allocation to 50,000 beats and 250,000 events before event materialization.
 - Replace prior effects in the in-memory template copy with short `INTENSITY` pulses at each beat for every supported native channel.
 - Validate Timeline prop/channel references and event bounds before serialization; re-read the generated LOREDIT before publishing outputs.
 - Write a versioned Timeline JSON with SHA-256 fingerprints of the validated parsed XML trees, BPM, beat positions, supported/excluded props, and event references.
