@@ -26,7 +26,8 @@
     collapsedGroups: new Set(),
     collapsedProps: new Set(),
     selectedEffect: null,
-    animationFrame: 0
+    animationFrame: 0,
+    audioRequestId: 0
   };
 
   const audio = $("audioPlayer");
@@ -795,7 +796,7 @@
     }
   }
 
-  async function decodeWaveform(file) {
+  async function decodeWaveform(file, requestId) {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) throw new Error("This browser does not support Web Audio waveform decoding.");
     const context = new AudioContextClass();
@@ -809,6 +810,7 @@
         ? new Blob([audioBytes], { type: "audio/mpeg" })
         : file;
       const buffer = await context.decodeAudioData(audioBytes.slice(0));
+      if (requestId !== state.audioRequestId) return null;
       if (buffer.duration < 2 || buffer.duration > 1800) {
         throw new Error("Audio duration must be between 2 seconds and 30 minutes.");
       }
@@ -841,7 +843,7 @@
     if (message) setBanner(message + " Check that the selected recording matches this sequence.", "warn");
   }
 
-  async function analyzeSelectedAudio(file) {
+  async function analyzeSelectedAudio(file, requestId = ++state.audioRequestId) {
     if (!file) return;
     const meter = $("meterSelect").value;
     setBanner("Analyzing the selected audio locally: tempo, beats, downbeats, transients, sections, and pauses…");
@@ -855,6 +857,7 @@
         body: file
       });
       const payload = await response.json();
+      if (requestId !== state.audioRequestId) return;
       if (!response.ok) throw new Error(payload.error || "Local analysis failed.");
       state.analysis = payload.report;
       renderSequenceStats();
@@ -871,8 +874,9 @@
         " section candidates. Estimates remain editable/reviewable." + warning +
         (mismatch ? " " + mismatch : ""), mismatch ? "warn" : "good");
     } catch (error) {
+      if (requestId !== state.audioRequestId) return;
       const mismatch = durationMismatchMessage();
-      setBanner("Waveform loaded. Automatic analysis unavailable: " +
+      setBanner("Waveform loaded. Automatic analysis unavailable: "
         (error.message || String(error)) + " Start the workspace with lor-sequence-ui to enable local analysis, or load a saved analysis JSON." +
         (mismatch ? " " + mismatch : ""), "warn");
     }
@@ -880,6 +884,7 @@
 
   async function loadAudio(file) {
     if (!file) return;
+    const requestId = ++state.audioRequestId;
     if (file.size <= 0 || file.size > MAX_AUDIO_BYTES) {
       setBanner("Audio must be non-empty and no larger than 200 MiB.", "error");
       return;
@@ -903,11 +908,13 @@
       refreshTimeline();
     }
     try {
-      const duration = await decodeWaveform(file);
+      const duration = await decodeWaveform(file, requestId);
+      if (requestId !== state.audioRequestId || duration == null) return;
       setBanner("Waveform decoded from the selected audio (" + formatTime(duration) +
         "). Starting local musical analysis…", "good");
-      await analyzeSelectedAudio(file);
+      await analyzeSelectedAudio(file, requestId);
     } catch (error) {
+      if (requestId !== state.audioRequestId) return;
       state.audioFile = null;
       state.audioBuffer = null;
       state.waveformPeaks = null;
@@ -917,6 +924,7 @@
 
   async function loadAnalysis(file) {
     if (!file) return;
+    state.audioRequestId += 1;
     try {
       if (file.size > MAX_JSON_BYTES) throw new Error("Analysis JSON exceeds the 5 MiB input limit.");
       const data = JSON.parse(await file.text());
