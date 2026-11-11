@@ -38,6 +38,7 @@ class RawElement:
     attributes: dict[str, SourceValue]
     children: tuple[RawElement, ...]
     text: str | None
+    tail: str | None
     locator: str
 
 
@@ -102,6 +103,7 @@ def _raw_element(element: ET.Element, source: str, locator: str) -> RawElement:
         attributes=attributes,
         children=tuple(children),
         text=element.text,
+        tail=element.tail,
         locator=locator,
     )
 
