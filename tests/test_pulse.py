@@ -331,3 +331,25 @@ def test_preview_template_channel_declarations_must_match(
         )
     assert not (tmp_path / "channel-mismatch.loredit").exists()
     assert not (tmp_path / "channel-mismatch.json").exists()
+
+
+def test_display_with_no_supported_props_fails_before_output(
+    tmp_path: Path, matching_inputs: tuple[Path, Path]
+) -> None:
+    preview, template = matching_inputs
+    preview_tree = ET.parse(preview)
+    template_tree = ET.parse(template)
+    for root in (preview_tree.getroot(), template_tree.getroot()):
+        preview_class = root if root.tag == "PreviewClass" else root.find("PreviewClass")
+        assert preview_class is not None
+        for prop in preview_class.findall("PropClass"):
+            prop.set("TraditionalType", "Unsupported Fixture Type")
+    preview_tree.write(preview, encoding="utf-8", xml_declaration=True)
+    template_tree.write(template, encoding="utf-8", xml_declaration=True)
+
+    output = tmp_path / "unsupported-only.loredit"
+    timeline = tmp_path / "unsupported-only.json"
+    with pytest.raises(PulseGenerationError, match="No props qualify"):
+        build_pulse_sequence(preview, template, output, timeline, bpm=120)
+    assert not output.exists()
+    assert not timeline.exists()
