@@ -252,6 +252,7 @@ def _generate(options: argparse.Namespace) -> int:
     print(f"Sequence: {show.sequence_path}")
     print(f"Timeline: {show.timeline_path}")
     print(f"Plan: {show.plan_path}")
+    print(f"Plan picture: {show.picture_path}")
     print(f"Rule report: {show.report_path}")
     if show.analysis_path is not None:
         print(f"Analysis: {show.analysis_path}")
