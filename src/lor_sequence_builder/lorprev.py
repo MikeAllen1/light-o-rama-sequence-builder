@@ -197,7 +197,11 @@ def read_lorprev(path: str | Path) -> PropModel:
                     )
             else:
                 depth -= 1
-        root = iterator.root
+        # defusedxml's iterator type does not expose its runtime root attribute
+        # in the published stubs. Reparse the already-bounded bytes securely.
+        root = SafeET.fromstring(
+            content, forbid_dtd=True, forbid_entities=True, forbid_external=True
+        )
     except LorprevError:
         raise
     except (ET.ParseError, DefusedXmlException) as exc:
