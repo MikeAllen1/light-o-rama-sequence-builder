@@ -27,7 +27,9 @@
     collapsedProps: new Set(),
     selectedEffect: null,
     animationFrame: 0,
-    audioRequestId: 0
+    audioRequestId: 0,
+    sequenceRequestId: 0,
+    vocalRequestId: 0
   };
 
   const audio = $("audioPlayer");
@@ -775,9 +777,12 @@
 
   async function loadSequence(file) {
     if (!file) return;
+    const requestId = ++state.sequenceRequestId;
     try {
       if (file.size > MAX_XML_BYTES) throw new Error("Sequence exceeds the 50 MiB input limit.");
-      const doc = parseXmlDocument(await file.text());
+      const xmlText = await file.text();
+      if (requestId !== state.sequenceRequestId) return;
+      const doc = parseXmlDocument(xmlText);
       state.sequence = parseSequence(doc, file.name);
       state.collapsedGroups.clear();
       state.collapsedProps.clear();
@@ -792,6 +797,7 @@
         " effects. Source sequence remains read-only.", "good");
       if (state.audioBuffer) compareDurations();
     } catch (error) {
+      if (requestId !== state.sequenceRequestId) return;
       setBanner(error.message || String(error), "error");
     }
   }
@@ -924,10 +930,12 @@
 
   async function loadAnalysis(file) {
     if (!file) return;
-    state.audioRequestId += 1;
+    const requestId = ++state.audioRequestId;
     try {
       if (file.size > MAX_JSON_BYTES) throw new Error("Analysis JSON exceeds the 5 MiB input limit.");
-      const data = JSON.parse(await file.text());
+      const analysisText = await file.text();
+      if (requestId !== state.audioRequestId) return;
+      const data = JSON.parse(analysisText);
       if (!data || typeof data !== "object") throw new Error("Analysis JSON must contain an object.");
       const analysis = data.analysis;
       const requiredArrays = ["beats", "downbeats", "onsets", "energy",
@@ -959,15 +967,19 @@
         "\nLimitations: " + data.analysis.limitations.join(" ");
       setBanner("Loaded saved analysis. Beat, downbeat, onset, section, and silence markers are labeled as estimates.", "good");
     } catch (error) {
+      if (requestId !== state.audioRequestId) return;
       setBanner(error.message || String(error), "error");
     }
   }
 
   async function loadVocals(file) {
     if (!file) return;
+    const requestId = ++state.vocalRequestId;
     try {
       if (file.size > MAX_JSON_BYTES) throw new Error("Vocal JSON exceeds the 5 MiB input limit.");
-      const data = JSON.parse(await file.text());
+      const vocalsText = await file.text();
+      if (requestId !== state.vocalRequestId) return;
+      const data = JSON.parse(vocalsText);
       if (!data || typeof data !== "object") throw new Error("Vocal JSON must contain an object.");
       const duration = Number(data.duration_seconds);
       if (data.schema_version !== "vocals-1.0" || !Number.isFinite(duration) ||
@@ -993,6 +1005,7 @@
       $("analysisBanner").title = data.method + "\nLimitations: " + data.limitations.join(" ");
       setBanner("Loaded vocal regions and syllable candidates. This analysis is heuristic and does not identify words or lyrics.", "good");
     } catch (error) {
+      if (requestId !== state.vocalRequestId) return;
       setBanner(error.message || String(error), "error");
     }
   }
