@@ -67,6 +67,21 @@ def test_pulse_pipeline_writes_native_sequence_and_versioned_timeline(
     assert len(timeline["template_xml_sha256"]) == 64
     assert timeline["beat_positions_centiseconds"][:4] == [0, 50, 100, 150]
     assert len(timeline["events"]) == result.event_count
+    channel_refs = {
+        (event["channel"]["prop_id"], event["channel"]["channel_index"])
+        for event in timeline["events"]
+    }
+    event_refs = {
+        (event["beat_index"], event["channel"]["prop_id"], event["channel"]["channel_index"])
+        for event in timeline["events"]
+    }
+    assert len(event_refs) == len(timeline["events"])
+    assert len(timeline["events"]) == len(timeline["beat_positions_centiseconds"]) * len(channel_refs)
+    assert all(
+        event["start_centisecond"]
+        == timeline["beat_positions_centiseconds"][event["beat_index"]]
+        for event in timeline["events"]
+    )
     assert len(timeline["supported_prop_ids"]) == result.supported_prop_count
     assert len(timeline["excluded_props"]) == result.excluded_prop_count
 
@@ -262,3 +277,14 @@ def test_timeline_lists_unsupported_props_with_reasons(
     timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
     assert timeline["excluded_props"]
     assert all(item["prop_id"] and item["reason"] for item in timeline["excluded_props"])
+
+
+def test_non_integer_bpm_is_rejected(
+    tmp_path: Path, matching_inputs: tuple[Path, Path]
+) -> None:
+    preview, template = matching_inputs
+    with pytest.raises(PulseGenerationError, match="BPM must be an integer"):
+        build_pulse_sequence(
+            preview, template, tmp_path / "fractional.loredit",
+            tmp_path / "fractional.json", bpm=120.5  # type: ignore[arg-type]
+        )
