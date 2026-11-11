@@ -43,7 +43,7 @@ jobs:
         run: uv sync --locked
 
       - name: Run tests
-        run: uv run --no-sync --with pytest==9.2.0 python -m pytest
+        run: uv run --no-sync --with-requirements requirements-dev.txt python -m pytest
 
   quality:
     name: Tests, lint, types, and dependency audit
@@ -80,16 +80,18 @@ jobs:
         run: uv sync --locked
 
       - name: Run tests
-        run: uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 python -m pytest
+        run: uv run --no-sync --with-requirements requirements-dev.txt python -m pytest
 
       - name: Check lint
-        run: uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 ruff check .
+        run: uv run --no-sync --with-requirements requirements-dev.txt ruff check .
 
       - name: Check types (strict)
-        run: uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 mypy --strict src tests
+        run: uv run --no-sync --with-requirements requirements-dev.txt mypy --strict src tests
 
       - name: Audit installed dependencies
-        run: uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 --with setuptools==84.1.0 pip-audit --skip-editable
+        run: uv export --locked --no-dev --format requirements-txt --output-file dist/requirements-production.txt
+      - name: Audit production dependencies
+        run: uv tool run --from pip-audit==2.10.1 pip-audit -r dist/requirements-production.txt
 
       - name: Validate Phase 3 package build
         run: uv run --no-sync python scripts/build_phase3_validation.py --output dist/Phase3-S6-Validation.zip
