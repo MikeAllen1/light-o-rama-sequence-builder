@@ -77,7 +77,7 @@ generate
                        report + verification
 ```
 
-Current internal stage models use frozen dataclasses with explicit validation. Pydantic is reserved for strict validation of user-edited configuration such as rules profiles when those inputs are implemented. A stage may use the public models of another stage, but it must not reach into that stage's implementation internals. Stage orchestration belongs in the application/CLI layer.
+Current internal stage models use frozen dataclasses with explicit validation. User-edited rule profiles are validated by explicit code that rejects unknown keys, wrong types and out-of-range values. A stage may use the public models of another stage, but it must not reach into that stage's implementation internals. Stage orchestration belongs in the application/CLI layer.
 
 ## 5. Stage responsibilities and contracts
 
@@ -165,7 +165,7 @@ Current internal stage models use frozen dataclasses with explicit validation. P
 **Inputs:** Timeline, display/prop model, active rules profile.
 
 **Responsibilities:**
-- Load YAML profiles with `yaml.safe_load`.
+- Load YAML profiles with a safe loader that rejects duplicate keys.
 - Validate every Timeline command against known preview-derived channels and prop mappings.
 - Enforce universal and user-specific constraints.
 - Return structured violations with rule ID/name, severity, prop/channel, timestamp or time range, and explanation.
@@ -231,7 +231,7 @@ This is a temporary engineering harness, not the final user workflow. It require
 
 ## 6. Domain models and artifact contracts
 
-Use frozen dataclasses with explicit validation for current internal stage models. Use Pydantic for public user-edited configuration boundaries such as rules profiles when implemented. Initial model families:
+Use frozen dataclasses with explicit validation for current internal stage models. Rule profiles, the first user-edited configuration, are validated by explicit code rather than Pydantic. Initial model families:
 
 - `InputManifest`: paths, file metadata, hashes, detected formats, configured target version, and resource limits.
 - `RawDisplayModel`, `RawPropModel`, `RawChannelModel`, `RawControllerModel`: faithful preview-derived structures and source identifiers.
@@ -261,12 +261,13 @@ Use frozen dataclasses with explicit validation for current internal stage model
 ## 7. Rules profile configuration
 
 Files:
-- `rules/default.yaml`: universal rules and default tunables.
+- `src/lor_sequence_builder/rules/default.yaml`: universal rules and default tunables, shipped inside the package.
 - `examples/rules-sample-a.yaml` and `examples/rules-sample-b.yaml`: illustrative user profiles, clearly labeled examples and not tied to any specific real display.
 
 CLI selection:
 - Default profile is always loaded.
-- `--rules my-display.yaml` layers a user profile over defaults.
+- `--rules my-display.yaml` layers a user profile over defaults; repeat it to stack profiles, later wins.
+- Profiles are validated by explicit code (not Pydantic): see docs/RULES.md for every key.
 - Merge behavior is explicit: rule IDs override by ID; tunables use documented key-level overrides; invalid/unknown keys fail validation.
 - The effective merged profile is recorded in the report for reproducibility.
 
@@ -320,7 +321,7 @@ Any other unsupported channel or effect type follows the same explicit-report-an
 - Parse XML with `defusedxml`; no external entities.
 - Enforce file-size, XML nesting-depth, XML element-count, audio-duration, decompression, and processing limits. The Phase 2 preview parser currently applies a 20 MiB file limit, 256-level nesting limit, and 100,000-element limit.
 - Validate extension and content/magic bytes; extension alone is not trusted.
-- Load YAML only with `safe_load`, then validate against strict Pydantic schemas.
+- Load YAML only with a safe loader (no object construction, duplicate keys rejected), then validate every key strictly.
 - Invoke FFmpeg with argument arrays, no shell, controlled environment, timeouts, and bounded output paths.
 - Treat names, metadata, and paths inside input files as untrusted; never use them directly as output paths or shell arguments.
 - Never commit audio files; tests use short synthetic tones.

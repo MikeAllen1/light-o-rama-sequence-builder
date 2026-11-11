@@ -238,7 +238,7 @@ def test_classifier_rejects_non_finite_shape_parameters(value: str) -> None:
 def test_figure_detection_uses_spatial_index_instead_of_all_pairs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import lor_sequence_builder.classifier as classifier
+    from lor_sequence_builder import classifier
 
     props: list[ET.Element] = []
     geometries: dict[str, classifier._Geometry | None] = {}
