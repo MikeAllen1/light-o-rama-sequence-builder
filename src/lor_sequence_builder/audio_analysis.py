@@ -20,7 +20,7 @@ from array import array
 from pathlib import Path
 from typing import Any
 
-ANALYSIS_SCHEMA_VERSION = "1.1"
+ANALYSIS_SCHEMA_VERSION = "1.2"
 SAMPLE_RATE = 11_025
 FRAME_SAMPLES = round(SAMPLE_RATE * 0.05)
 FRAME_SECONDS = FRAME_SAMPLES / SAMPLE_RATE
@@ -149,9 +149,9 @@ def _detect_onsets(flux: list[float]) -> list[dict[str, Any]]:
 
 def _estimate_tempo(
     flux: list[float], min_bpm: int, max_bpm: int
-) -> tuple[float | None, float, float | None, int | None, float]:
+) -> tuple[float | None, float, float | None, int | None, float, list[dict[str, float]]]:
     if len(flux) < 40:
-        return None, 0.0, None, None, 0.0
+        return None, 0.0, None, None, 0.0, []
     # Autocorrelation of onset strength; frame spacing is 50 ms.
     mean = math.fsum(flux) / len(flux)
     centered = [value - mean for value in flux]
@@ -167,10 +167,10 @@ def _estimate_tempo(
         score /= max(1, overlap)
         candidates.append((score, lag))
     if not candidates:
-        return None, 0.0, None, None, 0.0
+        return None, 0.0, None, None, 0.0, []
     best_score = max(score for score, _ in candidates)
     if best_score <= 1e-12:
-        return None, 0.0, None, None, 0.0
+        return None, 0.0, None, None, 0.0, []
     # Autocorrelation has octave/subdivision aliases: the strongest peak can
     # represent a slower metrical level (for example, half-time). Prefer the
     # shortest local peak retaining a substantial share of the strongest
@@ -184,6 +184,16 @@ def _estimate_tempo(
         and score >= best_score * 0.50
     ]
     best_lag = min(local_peaks) if local_peaks else max(candidates)[1]
+    # Keep distinct periodicity peaks visible: autocorrelation alone cannot
+    # determine which metrical level a listener would count as the beat.
+    ranked_peaks = sorted(local_peaks, key=lambda lag: scores_by_lag[lag], reverse=True)
+    tempo_candidates = [
+        {
+            "bpm": round(60.0 / (candidate_lag * FRAME_SECONDS), 2),
+            "relative_score": round(max(0.0, scores_by_lag[candidate_lag]) / best_score, 4),
+        }
+        for candidate_lag in ranked_peaks[:6]
+    ]
     # Parabolic interpolation around the discrete correlation peak reduces
     # BPM quantization error for tempos whose beat period is not an integer
     # number of 50 ms analysis frames.
@@ -227,7 +237,7 @@ def _estimate_tempo(
         max(0.0, min(1.0, (winning_score - alternate_score) / (winning_score + 1e-12)))
         if winning_score > 1e-12 else 0.0
     )
-    return round(bpm, 2), round(confidence, 4), refined_lag, phase, round(phase_confidence, 4)
+    return round(bpm, 2), round(confidence, 4), refined_lag, phase, round(phase_confidence, 4), tempo_candidates
 
 
 def _beat_grid_status(
@@ -432,7 +442,7 @@ def analyze_audio(
             ffmpeg_version = _normalize(source, normalized)
             rms, flux, duration = _read_features(normalized)
         onsets = _detect_onsets(flux)
-        bpm, tempo_confidence, lag, phase, phase_confidence = _estimate_tempo(
+        bpm, tempo_confidence, lag, phase, phase_confidence, tempo_candidates = _estimate_tempo(
             flux, min_bpm, max_bpm
         )
         beat_times: list[float] = []
@@ -485,7 +495,7 @@ def analyze_audio(
                 "provenance": "All timestamps are relative to the decoded audio stream start; frame features use 551-sample windows at 11025 Hz.",
                 "limitations": [
                     "Tempo is a single global estimate; tempo changes are not modeled.",
-                    "Strong repeating accents, syncopation, and subdivisions can create half-time or double-time ambiguity; tempo confidence is heuristic.",
+                    "Strong repeating accents, syncopation, and subdivisions can create half-time or double-time ambiguity; candidate peaks are exposed but not musically ranked.",
                     "Beat-grid status is provisional only: unavailable means no grid was produced; ambiguous means tempo-confidence multiplied by phase-confidence is below 0.20; provisional does not mean musically verified.",
                     "Beat phase is selected from repeating onset energy; competing beat/offbeat phases reduce beat confidence and cannot be resolved reliably without musical context.",
                     "Downbeats assume the first detected beat is beat one and group every four beats.",
