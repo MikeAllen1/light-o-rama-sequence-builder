@@ -15,7 +15,7 @@ from lor_sequence_builder.classifier import (
     classify_preview,
 )
 from lor_sequence_builder.cli import main
-from lor_sequence_builder.new_sequence import channel_layout_problem
+from lor_sequence_builder.channel_mapping import channel_layout_problem
 from tests.display_builders import (
     ALL_DISPLAYS,
     DisplayBuilder,
