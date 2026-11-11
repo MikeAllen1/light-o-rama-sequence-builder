@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import io
 import xml.etree.ElementTree as ET
+from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from pathlib import Path
 
 from defusedxml import ElementTree as SafeET
@@ -35,11 +37,17 @@ class RawElement:
     """Loss-preserving representation of one source XML element."""
 
     tag: str
-    attributes: dict[str, SourceValue]
+    attributes: Mapping[str, SourceValue]
     children: tuple[RawElement, ...]
     text: str | None
     tail: str | None
     locator: str
+
+    def __post_init__(self) -> None:
+        # frozen=True protects attribute rebinding, not a caller-owned dict.
+        # Copy before wrapping so neither the source dict nor this view can mutate
+        # the parsed, loss-preserving document after validation.
+        object.__setattr__(self, "attributes", MappingProxyType(dict(self.attributes)))
 
 
 @dataclass(frozen=True, slots=True)
