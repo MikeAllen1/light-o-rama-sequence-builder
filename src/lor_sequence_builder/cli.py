@@ -116,7 +116,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         output = write_loredit(document, options.output)
         print(f"Wrote: {output}")
         return 0
-    except (LoreditError, LorprevError, PulseGenerationError) as exc:
+    except (LoreditError, LorprevError, PulseGenerationError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
