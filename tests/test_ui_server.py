@@ -12,6 +12,7 @@ from lor_sequence_builder.ui_server import (
     _WEB_ROOT,
     SequencerRequestHandler,
     _looks_like_mp3,
+    _safe_audio_suffix,
 )
 
 
@@ -101,3 +102,14 @@ def test_mp3_signature_detection_handles_id3_and_mpeg_frames() -> None:
     assert _looks_like_mp3(bytes([73, 68, 51, 3, 0, 0]))
     assert _looks_like_mp3(bytes([255, 251, 180, 64]))
     assert not _looks_like_mp3(bytes([0, 0, 0, 24]) + b"ftypmp42")
+
+
+
+def test_audio_filename_extension_maps_to_fixed_allowlisted_suffix() -> None:
+    assert _safe_audio_suffix("../../outside/song.mp3", b"audio") == (".mp3", None)
+    assert _safe_audio_suffix("intro.mp4", bytes([73, 68, 51, 3])) == (
+        ".mp3",
+        "The selected file is named .mp4 but contains an MP3 audio stream. "
+        "It was analyzed as MP3; the original file was not changed.",
+    )
+    assert _safe_audio_suffix("payload.exe", b"audio") == (None, None)

@@ -30,6 +30,56 @@ def _looks_like_mp3(data: bytes) -> bool:
     )
 
 
+def _safe_audio_suffix(filename: str, payload: bytes) -> tuple[str | None, str | None]:
+    """Map an untrusted filename extension to a fixed, allowlisted suffix."""
+    warning: str | None = None
+    match Path(filename).suffix.lower():
+        case ".wav":
+            suffix = ".wav"
+        case ".mp3":
+            suffix = ".mp3"
+        case ".aac":
+            suffix = ".aac"
+        case ".flac":
+            suffix = ".flac"
+        case ".ogg":
+            suffix = ".ogg"
+        case ".opus":
+            suffix = ".opus"
+        case ".wma":
+            suffix = ".wma"
+        case ".aif":
+            suffix = ".aif"
+        case ".aiff":
+            suffix = ".aiff"
+        case ".m4a":
+            suffix = ".m4a"
+        case ".m4b":
+            suffix = ".m4b"
+        case ".mp4":
+            if _looks_like_mp3(payload):
+                suffix = ".mp3"
+                warning = (
+                    "The selected file is named .mp4 but contains an MP3 audio stream. "
+                    "It was analyzed as MP3; the original file was not changed."
+                )
+            else:
+                suffix = ".mp4"
+        case ".mka":
+            suffix = ".mka"
+        case ".mkv":
+            suffix = ".mkv"
+        case ".webm":
+            suffix = ".webm"
+        case ".ape":
+            suffix = ".ape"
+        case ".wv":
+            suffix = ".wv"
+        case _:
+            return None, None
+    return suffix, warning
+
+
 class SequencerRequestHandler(SimpleHTTPRequestHandler):
     """Serve only packaged UI assets and accept bounded audio uploads for local analysis."""
 
@@ -91,15 +141,8 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
             return
 
         supplied_name = unquote(self.headers.get("X-Audio-Filename", "audio.mp3"))
-        suffix = Path(supplied_name).suffix.lower()
-        warning: str | None = None
-        if suffix == ".mp4" and _looks_like_mp3(payload):
-            suffix = ".mp3"
-            warning = (
-                "The selected file is named .mp4 but contains an MP3 audio stream. "
-                "It was analyzed as MP3; the original file was not changed."
-            )
-        if suffix not in INPUT_DEMUXERS:
+        suffix, warning = _safe_audio_suffix(supplied_name, payload)
+        if suffix is None or suffix not in INPUT_DEMUXERS:
             self.send_error(415, "Unsupported audio file extension")
             return
 
