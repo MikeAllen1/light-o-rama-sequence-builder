@@ -221,14 +221,19 @@
     return rows;
   }
 
+  function timingGridMarks(grid) {
+    if (grid.kind === "fixed" && grid.spacing > 0 && state.sequence) {
+      const count = Math.min(50000,
+        Math.floor(state.sequence.durationCs / grid.spacing) + 1);
+      return Array.from({ length: count }, (_, index) => index * grid.spacing);
+    }
+    return grid.marks;
+  }
+
   function buildLanes() {
     const lanes = [];
     for (const grid of state.sequence ? state.sequence.timingGrids : []) {
-      let marks = grid.marks;
-      if (grid.kind === "fixed" && grid.spacing > 0) {
-        const count = Math.min(50000, Math.floor(state.sequence.durationCs / grid.spacing) + 1);
-        marks = Array.from({ length: count }, (_, index) => index * grid.spacing);
-      }
+      const marks = timingGridMarks(grid);
       if (marks.length) lanes.push({
         label: grid.name,
         source: "LOREDIT",
@@ -397,7 +402,7 @@
     const bars = state.sequence.timingGrids.find((grid) => /^bars?$/i.test(grid.name));
     if (bars) {
       ctx.fillStyle = "#b59ce9";
-      bars.marks.forEach((cs, index) => {
+      timingGridMarks(bars).forEach((cs, index) => {
         const x = (cs / 100) * pps;
         ctx.fillRect(x, 15, 1, RULER_HEIGHT - 15);
         if (pps >= 16 && index % 1 === 0) ctx.fillText(String(index + 1), x + 3, 27);
@@ -589,7 +594,7 @@
     const bars = state.sequence.timingGrids.find((grid) => /^bars?$/i.test(grid.name));
     if (bars) {
       ctx.strokeStyle = "rgba(176, 140, 230, .23)";
-      bars.marks.forEach((cs) => {
+      timingGridMarks(bars).forEach((cs) => {
         const x = (cs / 100) * pps;
         ctx.beginPath();
         ctx.moveTo(Math.floor(x) + .5, 0);
