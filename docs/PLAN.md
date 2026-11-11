@@ -1,8 +1,8 @@
 # Implementation Plan
 
-**Status:** Phases 0–3 complete and merged. The Phase 4 audio-analysis baseline is merged; its real-song review and confidence-calibration acceptance work remains open.  
-**Current phase:** 4 acceptance review  
-**Next phase:** 5 — prop classification (blocked until Phase 4 acceptance is complete and the owner approves).
+**Status:** Phases 0–3 complete and merged. Phase 4 baseline failed real-song review; the librosa rework is in review.  
+**Current phase:** 4 rework and owner acceptance  
+**Next phase:** 4b, the scratch-built sequence writer (blocked until Phase 4 is accepted and the owner approves), then 5, prop classification.
 
 ## Product objective and fixed requirements
 
@@ -29,7 +29,7 @@ These differ from the original stack proposal. They are intentional and accepted
 
 - **Models:** frozen `dataclasses` are used for stage models instead of Pydantic. Pydantic remains the expected choice for user-edited inputs (`props.yaml`, rules profiles) where schema validation and error messages matter; adopt it in the phase that first parses those files.
 - **CLI:** `argparse` is used instead of Typer. Acceptable for v1; revisit only if CLI complexity grows.
-- **Audio:** the Phase 4 baseline uses the Python standard library after FFmpeg normalization, with no librosa dependency. This keeps installation and the dependency surface small, but it cannot provide semantic section labels, tempo-change tracking, or vocal analysis. Phase 8 (and possibly section work in Phase 7) will require heavier dependencies such as librosa and Demucs; adding them must be recorded here.
+- **Audio (reversed 2026-11-11):** the stdlib-only baseline was replaced by librosa after real-song review showed its beat placement was near chance (about 30% of beats within 70 ms of the owner's grids). librosa analyzes FFmpeg-decoded samples only; FFmpeg remains the only decoder. Demucs or similar is still expected for Phase 8 vocals and must be recorded here when added.
 
 ## Open decisions (owner input required before the phase that depends on them)
 
@@ -82,9 +82,23 @@ Delivered: bounded FFmpeg normalization; deterministic RMS/positive-energy-flux/
 
 Final-head CI: Tests workflow run `42956005759` passed both Linux (pytest, Ruff, strict mypy, pip-audit) and Windows compatibility jobs. Phase 3 Validation Package run `42956005713` passed. CodeQL run `42956005698` passed. The final hard-stop timestamp test uses a tolerance consistent with the 551-sample frame duration (~49.977 ms), rather than asserting a mathematically exact 3.000-second frame boundary.
 
-**Remaining acceptance:** owner review of diagnostic plots against contrasting real songs (fast/percussive, slower, and a song with tempo or arrangement changes), recording tempo/phase alignment, false/missed candidates, and whether confidence communicates uncertainty usefully. Confidence values remain heuristic and uncalibrated; do not treat them as probabilities or use them as the sole basis for choreography. No real-song review is claimed complete. Phase 5 remains blocked until this human review is complete and the owner explicitly approves moving forward.
+**Superseded by the rework below.** Original remaining acceptance: owner review of diagnostic plots against contrasting real songs (fast/percussive, slower, and a song with tempo or arrangement changes), recording tempo/phase alignment, false/missed candidates, and whether confidence communicates uncertainty usefully. Confidence values remain heuristic and uncalibrated; do not treat them as probabilities or use them as the sole basis for choreography. No real-song review is claimed complete. Phase 5 remains blocked until this human review is complete and the owner explicitly approves moving forward.
 
-**Done when:** Analysis JSON and a debug plot are generated; plot is reviewed against real songs; synthetic tests cover known tempo/events/energy/sections/stops; uncertainty and limitations are explicit; confidence behavior is reviewed; CI is green; owner approves Phase 5.
+**Real-song review (2026-11-11), baseline:** scored with the owner's hand-placed timing grids. Merry Christmas (113 BPM): tempo correct, beats 30%, bars 1%, sections 1 of 11. Curse of the Ice Queen (162 BPM): tempo 4% low, beats 34%, bars 11%, sections 2 of 13. Underneath the Tree (~161 BPM, no grid): tempo reported 98.6, wrong. Chance level for beats is about 26%. Result: **failed**.
+
+**Rework (branch `phase-4/librosa-rework`):** librosa beat tracking with transient-supported beats and regression tempo; downbeats from beat-synchronous harmonic change with a no-evidence fallback; structural section candidates from self-similarity plus loudness change at bar starts; `evaluate-analysis` command scoring analyses against grids in the owner's own sequences; schema v2.0. Rework results on the same songs:
+
+| Song | Tempo | Beats F | Bars F (as detected) | Sections recall |
+|---|---|---|---|---|
+| Merry Christmas | 112.4 (grid 113.2) | 0.96 | 0.01; 0.92 if shifted one beat later | 0.27 |
+| Curse of the Ice Queen | 161.5 (grid 162.2) | 0.97 | 0.00; 0.97 if shifted one beat later | 0.46 |
+| Underneath the Tree | 161.5 | no grid | no grid | no grid |
+
+**Open question (owner):** on both gridded songs, the strongest harmonic change sits exactly one beat before the owner's bar marks, for the entire song. A synthetic song with chords changing on the bar line is detected correctly, so either both songs anticipate their chord changes by a beat or the bar grids sit one beat after the musical "one." The owner must check specific timestamps in the Sequencer. If the grids are offset, the rework passes as is; if the music anticipates, the downbeat rule needs a style-aware adjustment and more songs before acceptance.
+
+Owner songs and sequences used for review are kept local and never committed.
+
+**Done when:** on at least three contrasting owner songs with trusted grids, beats F ≥ 0.85 and bars F ≥ 0.85 via `evaluate-analysis`; section recall is reported; synthetic tests cover tempo, beats, downbeats, sections, stops, and the schema contract; CI is green; owner approves moving to Phase 4b.
 
 ### Phase 4b — Scratch-built sequence writer
 Build a native S6 v15 `.loredit` from a parsed `.lorprev` alone, with no template sequence: sequence metadata, embedded preview, one `SeqProp` and native channel record per supported preview channel, timing grid, duration, and audio reference. Replace the Phase 3 template requirement in `pulse` with this writer.
