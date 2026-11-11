@@ -195,6 +195,30 @@ def test_unknown_top_level_construct_is_preserved_and_reported(tmp_path: Path) -
     assert model.unrecognized_top_level[0].attributes["id"].value == "future"
 
 
+def test_unrecognized_nested_controller_and_group_elements_are_reported_with_provenance(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "nested-unknown-structures.lorprev"
+    source.write_text(
+        '<PreviewClass Revision="1"><PropClass id="p">'
+        '<ControllerClass id="controller-1" Name="Synthetic Controller">'
+        '<NetworkGroup id="group-1" Name="Synthetic Group" />'
+        '</ControllerClass></PropClass></PreviewClass>',
+        encoding="utf-8",
+    )
+
+    model = read_lorprev(source)
+    assert [node.tag for node in model.unrecognized_elements] == [
+        "ControllerClass", "NetworkGroup"
+    ]
+    controller, group = model.unrecognized_elements
+    assert controller.attributes["id"].value == "controller-1"
+    assert controller.attributes["id"].file == str(source)
+    assert controller.attributes["id"].locator.endswith("/@id")
+    assert group.attributes["Name"].value == "Synthetic Group"
+    assert group.locator.endswith("/NetworkGroup[0]")
+
+
 def test_raw_element_preserves_mixed_text_and_child_tail(tmp_path: Path) -> None:
     source = tmp_path / "mixed-content.lorprev"
     source.write_text(
