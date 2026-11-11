@@ -29,6 +29,8 @@ import shutil
 import tempfile
 import threading
 import time
+from contextlib import contextmanager
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -159,6 +161,27 @@ class ShowSessions:
             session.last_used = time.monotonic()
             return session
 
+    @contextmanager
+    def locked(self, token: str) -> Iterator[_Session]:
+        """Acquire a session lease before releasing the manager lock.
+
+        This closes the lookup-to-lock race: eviction cannot remove the folder
+        after a request looks up its session but before it begins using it.
+        """
+        with self._lock:
+            session = self._sessions.get(token)
+            if session is not None and time.monotonic() - session.last_used > SESSION_SECONDS:
+                self._drop(token)
+                session = None
+            if session is None:
+                raise ShowBuildError("This show was not found or has expired; start again")
+            session.lock.acquire()
+            session.last_used = time.monotonic()
+        try:
+            yield session
+        finally:
+            session.lock.release()
+
     # -- 1. preview
 
     def start(self, payload: bytes, file_name: str) -> dict[str, Any]:
@@ -222,8 +245,7 @@ class ShowSessions:
     def add_audio(self, token: str, payload: bytes, suffix: str, demuxer: str,
                   file_name: str, beats_per_bar: int,
                   request_id: int | None = None) -> dict[str, Any]:
-        session = self.get(token)
-        with session.lock:
+        with self.locked(token) as session:
             revision = session.audio_revision + 1 if request_id is None else request_id
             if revision <= session.audio_revision:
                 return {"stale": True}
@@ -254,8 +276,7 @@ class ShowSessions:
     def set_requirements(
         self, token: str, body: dict[str, Any], request_id: int | None = None
     ) -> dict[str, Any]:
-        session = self.get(token)
-        with session.lock:
+        with self.locked(token) as session:
             revision = session.requirements_revision + 1 if request_id is None else request_id
             if revision <= session.requirements_revision:
                 return {"stale": True}
@@ -305,13 +326,12 @@ class ShowSessions:
     # -- 4. generate
 
     def generate(self, token: str, body: dict[str, Any]) -> dict[str, Any]:
-        session = self.get(token)
         music = body.get("music_filename")
         sing_value = body.get("sing", False)
         if not isinstance(sing_value, bool):
             raise ShowBuildError("'sing' must be a JSON boolean")
         sing = sing_value
-        with session.lock:
+        with self.locked(token) as session:
             if session.analysis_path is None or session.audio_path is None:
                 raise ShowBuildError("Add the song before generating")
             if not isinstance(music, str) or not music.strip() or len(music) > 260:
