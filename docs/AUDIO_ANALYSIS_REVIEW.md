@@ -18,7 +18,7 @@ If you know the approximate tempo, narrow the search range to reduce tempo alias
 uv run lor-sequence-builder analyze-audio .\song.mp3 --output-json .\song.analysis.json --plot .\song.analysis.svg --min-bpm 100 --max-bpm 150
 ```
 
-The command creates a machine-readable JSON report and an SVG diagnostic plot. Open the SVG in a browser or image viewer and compare its timeline with the source song in an audio player.
+The command creates a machine-readable JSON report and an SVG diagnostic plot. Open the SVG in a browser or image viewer and compare its timeline with the source song in an audio player. Both artifacts are staged before publication; the command refuses to overwrite existing outputs and cleans up the JSON if the plot cannot be published.
 
 ## Read the plot
 
