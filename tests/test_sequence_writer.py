@@ -275,3 +275,24 @@ def test_failed_native_build_report_is_truthful_and_same_attempt_can_retry(
     assert succeeded["ok"] is True
     assert succeeded["build_status"] == "success"
     assert succeeded["sequence_written"] is True
+
+
+def test_timeline_writer_reports_excluded_preview_props(tmp_path: Path) -> None:
+    display = classic_yard()
+    display.add(
+        "Unverified DMX Prop", "unknown", shape="Square", channels=1,
+        device="DMX",
+    )
+    preview = _preview(tmp_path, display)
+    result = build_from_timeline(
+        preview, _good(display), load_rule_set(), "song.mp3",
+        tmp_path / "with-exclusion.loredit", tmp_path / "with-exclusion.json",
+    )
+
+    assert len(result.excluded_props) == 1
+    assert result.excluded_props[0].name == "Unverified DMX Prop"
+    report = json.loads(result.report_path.read_text(encoding="utf-8"))
+    assert report["ok"] is True
+    assert report["build_status"] == "success"
+    assert report["excluded_props"][0]["name"] == "Unverified DMX Prop"
+    assert "no verified native channel layout" in report["excluded_props"][0]["reason"]
