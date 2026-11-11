@@ -5,7 +5,7 @@ import json
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -784,6 +784,44 @@ def test_direct_movement_with_non_integer_time_fails_validation() -> None:
 
     assert not report.ok
     assert any("start and end times must be integers" in item for item in findings)
+
+
+
+@pytest.mark.parametrize(
+    ("duration", "field"),
+    [("1200", "duration_centiseconds"), (True, "duration_centiseconds")],
+)
+def test_direct_choreography_rejects_invalid_duration_types(
+    duration: object, field: str
+) -> None:
+    display = classic_yard()
+    timeline = Choreography(
+        duration_centiseconds=cast(Any, duration),
+        effects=(),
+    )
+    with pytest.raises(ChoreographyError, match=field):
+        _check(display, timeline)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("channel_index", True),
+        ("start_centisecond", "0"),
+        ("end_centisecond", "100"),
+        ("start_intensity", "high"),
+        ("end_intensity", False),
+    ],
+)
+def test_direct_effect_rejects_invalid_numeric_field_types(
+    field: str, value: object
+) -> None:
+    display = classic_yard()
+    effect = Effect(_ids(display)["Arch 1"], 0, 0, 100)
+    effect = dataclasses.replace(effect, **{field: cast(Any, value)})
+    timeline = Choreography(duration_centiseconds=SONG, effects=(effect,))
+    with pytest.raises(ChoreographyError, match=field):
+        _check(display, timeline)
 
 
 def test_duplicate_group_names_union_members_for_name_selectors() -> None:
