@@ -9,7 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from lor_sequence_builder.audio_analysis import AudioAnalysisError, analyze_audio, _drop_unsupported_beats
+from lor_sequence_builder.audio_analysis import (
+    AudioAnalysisError,
+    _drop_unsupported_beats,
+    analyze_audio,
+)
 from lor_sequence_builder.cli import main
 
 
@@ -814,6 +818,7 @@ def test_ffmpeg_normalization_restricts_protocol_and_demuxer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from types import SimpleNamespace
+
     from lor_sequence_builder import audio_analysis
 
     calls: list[list[str]] = []
