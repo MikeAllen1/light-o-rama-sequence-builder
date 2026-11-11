@@ -231,7 +231,7 @@ def test_analysis_refuses_to_overwrite_outputs(tmp_path: Path) -> None:
 
 
 def test_analysis_rejects_invalid_audio(tmp_path: Path) -> None:
-    audio = tmp_path / "not-audio.bin"
+    audio = tmp_path / "not-audio.mp3"
     audio.write_bytes(b"not audio")
     with pytest.raises(AudioAnalysisError, match="FFmpeg could not decode"):
         analyze_audio(audio, tmp_path / "out.json", tmp_path / "out.svg")
@@ -611,29 +611,27 @@ def test_concurrent_plot_creation_does_not_leave_partial_json(
     plot_path = tmp_path / "race.svg"
     _click_track(audio)
 
-    import os
+    from lor_sequence_builder import file_publish
 
-    real_link = os.link
-    link_calls = 0
+    real_write = file_publish.write_new_file
+    write_calls = 0
 
-    def create_competing_plot(source: str | Path, destination: str | Path) -> None:
-        nonlocal link_calls
-        link_calls += 1
-        if link_calls == 2:
+    def create_competing_plot(destination: Path, writer: object) -> Path:
+        nonlocal write_calls
+        write_calls += 1
+        if write_calls == 2:
             Path(destination).write_text("another process won", encoding="utf-8")
-            raise FileExistsError("simulated concurrent output creation")
-        real_link(source, destination)
+        return real_write(destination, writer)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(os, "link", create_competing_plot)
+    monkeypatch.setattr(file_publish, "write_new_file", create_competing_plot)
 
     with pytest.raises(AudioAnalysisError, match="overwrite"):
         analyze_audio(audio, json_path, plot_path)
 
-    assert link_calls == 2
+    assert write_calls == 2
     assert not json_path.exists()
     assert plot_path.read_text(encoding="utf-8") == "another process won"
     assert not list(tmp_path.glob(".race.*.tmp"))
-
 
 
 def test_snapshot_hash_matches_exact_copied_input(tmp_path: Path) -> None:
