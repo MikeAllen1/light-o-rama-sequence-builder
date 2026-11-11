@@ -12,6 +12,17 @@ on:
       - "tests/fixtures/s6_revision_56_independent_template.loredit.gz.b64"
       - "pyproject.toml"
       - "uv.lock"
+  pull_request:
+    branches:
+      - master
+    paths:
+      - ".github/workflows/phase3-validation-package.yml"
+      - "scripts/build_phase3_validation.py"
+      - "src/lor_sequence_builder/**"
+      - "tests/fixtures/s6_revision_58_independent.lorprev.gz.b64"
+      - "tests/fixtures/s6_revision_56_independent_template.loredit.gz.b64"
+      - "pyproject.toml"
+      - "uv.lock"
   workflow_dispatch:
 
 permissions:
