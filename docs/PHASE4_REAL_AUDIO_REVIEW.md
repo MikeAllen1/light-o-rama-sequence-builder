@@ -15,18 +15,26 @@ The current implementation was reproduced against the supplied audio using the s
 
 BPM values are the repository algorithm's global estimates. Beat confidence is the product of its tempo confidence and phase confidence. Onset count is the number of positive frame-energy-flux local peaks, not a count of musical beats or drum hits.
 
-| Track | Duration | Estimated BPM | Tempo confidence | Beat confidence | Onset candidates | Section candidates | Hard-stop candidates |
-|---|---:|---:|---:|---:|---:|---:|---|
-| Christmas Vacation Intro | 48.6s | 170.69 | 0.6409 | 0.1314 | 99 | 25s | 47.08s |
-| Under the Christmas Tree | 230.7s | 98.63 | 0.5523 | 0.0479 | 720 | 5s, 176s, 218s, 226s | 224.75s |
-| It's the Most Wonderful Time | 152.6s | 200.09 | 0.6033 | 0.0821 | 524 | 150s | 148.28s |
-| Siberian Sleigh Ride | 188.5s | 170.03 | 0.4474 | 0.0282 | 832 | 3s | 185.42s |
-| Last Christmas | 208.3s | 118.21 | 0.6319 | 0.0075 | 797 | 205s | 205.56s |
-| Jingle Bells | 161.9s | 121.15 | 0.4600 | 0.0321 | 576 | 160s | 156.73s |
-| Christmas Time Is Here | 165.8s | 200.09 | 0.5607 | 0.0260 | 132 | None | 162.23s |
-| Deck the Halls | 96.0s | 200.09 | 0.5337 | 0.0108 | 431 | None | 93.01s |
-| Frosty the Snowman | 142.7s | 149.64 | 0.4468 | 0.0648 | 386 | None | 140.74s |
-| You're a Mean One, Mr. Grinch | 151.5s | 159.22 | 0.5479 | 0.0003 | 340 | 107s, 144s | 105.25s, 106.45s, 150.38s |
+| Track | Duration | Estimated BPM | Tempo confidence | Phase confidence | Beat confidence | Onset candidates | Section candidates | Hard-stop candidates |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| Christmas Vacation Intro | 48.6s | 170.69 | 0.6409 | 0.2051 | 0.1314 | 99 | 24.99s | 47.08s |
+| Under the Christmas Tree | 230.7s | 98.63 | 0.5523 | 0.0868 | 0.0479 | 720 | 5.00s, 175.92s, 217.90s, 225.90s | 224.75s |
+| It's the Most Wonderful Time | 152.6s | 200.09* | 0.1000 | 0.1361 | 0.0136 | 524 | 149.93s | 148.28s |
+| Siberian Sleigh Ride | 188.5s | 170.03 | 0.4474 | 0.0630 | 0.0282 | 832 | 3.00s | 185.42s |
+| Last Christmas | 208.3s | 118.21 | 0.6319 | 0.0119 | 0.0075 | 797 | 204.91s | 205.56s |
+| Jingle Bells | 161.9s | 121.15 | 0.4600 | 0.0699 | 0.0322 | 576 | 159.93s | 156.73s |
+| Christmas Time Is Here | 165.8s | 200.09* | 0.1000 | 0.0463 | 0.0046 | 132 | None | 162.23s |
+| Deck the Halls | 96.0s | 200.09* | 0.1000 | 0.0203 | 0.0020 | 431 | None | 93.01s |
+| Frosty the Snowman | 142.7s | 149.64 | 0.4468 | 0.1451 | 0.0648 | 386 | None | 140.74s |
+| You're a Mean One, Mr. Grinch | 151.5s | 159.22 | 0.5479 | 0.0006 | 0.0003 | 340 | 106.95s, 143.93s | 105.25s, 106.45s, 150.38s |
+
+*200.09 BPM is pinned near the configured 200 BPM ceiling; the current analyzer correctly caps tempo confidence at 0.10 for these three tracks. Treat these as boundary-censored estimates, not accepted tempos.*
+
+## Revalidation against the mounted source audio
+
+Reprocessed all ten original user-provided audio streams on 2026-11-10 using FFmpeg normalization and a source-equivalent reproduction of the current branch's deterministic analysis functions. The inputs were the original MP3/MP4 files available in the working session; no audio was committed to the repository. Durations and the derived metrics above were recalculated from those files. This was not an invocation of the installed project CLI, so it is recorded as a source-equivalent reproduction rather than a packaged-CLI integration test.
+
+The re-run corrected a stale value in the earlier baseline table: the three 200.09 BPM boundary estimates now show the 0.10 confidence cap implemented in the current source. Phase confidence is shown separately so the extremely weak beat-grid support is visible rather than hidden inside the product.
 
 ## Findings
 
