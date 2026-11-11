@@ -2,7 +2,7 @@
 
 A display-independent command-line tool for building native Light-O-Rama S6 sequences from music and a required `.lorprev` display preview.
 
-**Project status:** Phases 0–3 are complete and merged. Phase 4 audio analysis has been reworked on librosa after the first baseline failed real-song review; owner acceptance is open. Prop classification, rules, and intelligent choreography remain future work. See [docs/PLAN.md](docs/PLAN.md) for the authoritative status.
+**Project status:** Phases 0 through 4 are complete and merged. Phase 4 audio analysis runs on librosa and is accepted for songs in 4; swung and rubato recordings are a known limitation. Prop classification, rules, and intelligent choreography remain future work. See [docs/PLAN.md](docs/PLAN.md) for the authoritative status.
 
 ## Product workflow
 
@@ -56,7 +56,7 @@ The LOREDIT reader currently accepts only `saveFileVersion="15"`, the version re
 
 The preview is the authoritative display map. For LOR props, each `ChannelGrid` row exposes network, Unit ID, and the circuit value present in that row; for DMX props, universe and channel are exposed. These are address fields only: remaining fields are retained verbatim and are not yet semantically interpreted. The original row and source locator are retained. The parser enforces a 20 MiB input limit, 256-level XML nesting limit, and 100,000-element limit, and reports missing or duplicate prop IDs rather than treating them as reliable identities. `PropGroup` and `member` records are parsed into typed group/member models, including prop ID references, arrangement, orientation, top, and left values. The repository's current fixture set is synthetic; larger preview examples are generated at test time.
 
-## Phase 4 audio analysis (rework under review)
+## Phase 4 audio analysis
 
 Install FFmpeg and ensure `ffmpeg` is available on PATH. FFmpeg decodes any supported audio format to mono 22.05 kHz signed 16-bit PCM; librosa then analyzes the decoded samples (it never opens files itself). The command writes a versioned JSON report plus an SVG diagnostic plot:
 
