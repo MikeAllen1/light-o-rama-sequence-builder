@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from lor_sequence_builder.artifacts import write_new_text_atomically
-from lor_sequence_builder.choreography import Choreography, Effect
+from lor_sequence_builder.choreography import Choreography, ChoreographyError, Effect
 from lor_sequence_builder.loredit import LoreditError, read_loredit, write_loredit
 from lor_sequence_builder.lorprev import read_lorprev
 from lor_sequence_builder.new_sequence import (
@@ -210,7 +210,10 @@ def build_from_timeline(
             + "; ".join(item.detail for item in malformed_lor_assignments[:5])
         )
     preview = preview_element(preview_model)
-    report = check_choreography(preview, choreography, rule_set)
+    try:
+        report = check_choreography(preview, choreography, rule_set)
+    except ChoreographyError as exc:
+        raise SequenceWriteError(f"Invalid choreography data: {exc}") from exc
     if not report.ok:
         _write_build_report(
             report_output, report, output, status="failed", sequence_written=False,
