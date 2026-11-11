@@ -45,6 +45,8 @@ def _build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("audio", help="input audio file supported by FFmpeg")
     analyze.add_argument("--output-json", required=True, help="new versioned analysis JSON path")
     analyze.add_argument("--plot", required=True, help="new SVG diagnostic plot path")
+    analyze.add_argument("--min-bpm", type=int, default=60, help="minimum tempo to search (default: 60)")
+    analyze.add_argument("--max-bpm", type=int, default=200, help="maximum tempo to search (default: 200)")
     return parser
 
 
@@ -60,7 +62,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     try:
         if options.command == "analyze-audio":
-            report = analyze_audio(options.audio, options.output_json, options.plot)
+            report = analyze_audio(
+                options.audio,
+                options.output_json,
+                options.plot,
+                min_bpm=options.min_bpm,
+                max_bpm=options.max_bpm,
+            )
             analysis = report["analysis"]
             tempo = analysis["tempo"]
             print(f"Analysis: {options.output_json}")
