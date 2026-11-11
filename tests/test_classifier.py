@@ -339,8 +339,12 @@ def test_cli_analyze_preview_rejects_invalid_group_structure(
     if problem == "missing_group_id":
         groups[0].attrib.pop("id", None)
     elif problem == "duplicate_group_id":
-        assert len(groups) > 1
-        groups[1].set("id", groups[0].get("id", ""))
+        duplicate = ET.SubElement(
+            root, "PropGroup", {"id": groups[0].get("id", ""), "Name": "Duplicate group"}
+        )
+        ET.SubElement(
+            duplicate, "member", {"id": root.findall("PropClass")[0].get("id", "")}
+        )
     else:
         member = groups[0].find("member")
         assert member is not None
