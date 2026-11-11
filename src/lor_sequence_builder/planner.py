@@ -19,14 +19,24 @@ The plan reads the song the way a person sequencing by hand would:
    never used, kept-on props hold, quiet sections are respected, colors and
    brightness are limited, and chases run the required way.
 
-Singing-face mouths are never animated here; that needs vocal analysis
-(Phase 8). Everything is deterministic: the same inputs give the same plan.
+5. Arrange the show like a song (Planner v2): a part that repeats (a second
+   chorus) repeats its look, and a later repeat of a loud part lifts with one
+   more lead; in mid-energy parts two groups trade bars, call and response;
+   the last phrase before a louder part builds up in brightness; crashes and
+   returns from a hard stop are signature moments that flash the whole
+   display. The song's own shape picks where the handoffs start, so two
+   songs give two different shows.
+
+Singing faces follow vocal analysis when it is given (Phase 8). Everything is
+deterministic: the same inputs give the same plan.
 """
 
 from __future__ import annotations
 
 import itertools
+import math
 import re
+import zlib
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
@@ -77,6 +87,8 @@ class Plan:
     used_props: tuple[str, ...]
     skipped_props: tuple[SkippedProp, ...]
     notes: tuple[str, ...]
+    # Signature moments and arrangement choices, for the report: (kind, centisecond).
+    moments: tuple[tuple[str, int], ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -91,6 +103,7 @@ class Plan:
             "notes": list(self.notes),
             "effects": len(self.choreography.effects),
             "movements": len(self.choreography.movements),
+            "moments": [{"kind": kind, "centisecond": time} for kind, time in self.moments],
         }
 
 
@@ -202,6 +215,21 @@ def _sections(music: _Music) -> list[PlannedSection]:
         length = spans[i][1] - spans[i][0]
         relative[i] = (elapsed + length / 2) / total
         elapsed += length
+    # Sections equally loud share one rank (the middle of their run), so a song
+    # with an even level is not split into quiet, mid and loud by order alone.
+    tolerance = 0.01 * max(raw, default=0.0)
+    runs: list[list[int]] = []
+    for i in order:
+        if runs and raw[i] - raw[runs[-1][0]] <= tolerance:
+            runs[-1].append(i)
+        else:
+            runs.append([i])
+    for run in runs:
+        if len(run) > 1:
+            weight = sum(spans[j][1] - spans[j][0] for j in run)
+            shared = sum(relative[j] * (spans[j][1] - spans[j][0]) for j in run) / weight
+            for j in run:
+                relative[j] = shared
     levels = [LOW if r < 1 / 3 else MID if r < 2 / 3 else HIGH for r in relative]
     if len(spans) == 1:
         levels = [MID]
@@ -234,6 +262,9 @@ class _Window:
     beats: tuple[int, ...]
     downbeats: tuple[int, ...]
     accent: bool
+    # Beats of the section's window before this one starts: patterns that alternate
+    # beat by beat keep the same footing however the window was cut.
+    offset: int = 0
 
 
 def _windows(music: _Music, sections: list[PlannedSection]) -> list[_Window]:
@@ -353,9 +384,10 @@ class _Row:
 def _rows(display: Display, usable: set[str]) -> tuple[list[_Row], list[str]]:
     keyed: dict[tuple[str, str], list[DisplayProp]] = defaultdict(list)
     for prop in display.props.values():
-        # Parts of a singing face share a group but are never chased like a row.
+        # Parts of a singing face share a group but are never chased like a row, and
+        # snowflakes fall down their columns instead of chasing across the yard.
         if (prop.prop_id in usable and prop.position_in_row is not None
-                and prop.row_id is not None and prop.role != "singing_face"):
+                and prop.row_id is not None and prop.role not in {"singing_face", "snowflake"}):
             keyed[(prop.role, prop.row_id)].append(prop)
     rows: list[_Row] = []
     in_rows: set[str] = set()
@@ -378,6 +410,41 @@ def _rows(display: Display, usable: set[str]) -> tuple[list[_Row], list[str]]:
         in_rows.update(p.prop_id for p in ordered)
     singles = [pid for pid in display.props if pid in usable and pid not in in_rows]
     return rows, singles
+
+
+def _columns(display: Display, usable: set[str]) -> list[tuple[str, ...]]:
+    """Snowflakes stacked one above another, each column listed top to bottom.
+
+    Columns come from the preview: snowflakes whose horizontal positions are much
+    closer together than the snowflakes are to each other overall. A column needs
+    at least two snowflakes at different heights.
+    """
+    flakes = [p for p in display.props.values()
+              if p.prop_id in usable and p.role == "snowflake" and p.center is not None]
+    if len(flakes) < 2:
+        return []
+
+    def xy(prop: DisplayProp) -> tuple[float, float]:
+        assert prop.center is not None
+        return prop.center
+
+    nearest = sorted(
+        min(math.dist(xy(a), xy(b)) for b in flakes if b is not a) for a in flakes)
+    gap = 0.35 * nearest[len(nearest) // 2]
+    flakes.sort(key=lambda p: xy(p)[0])
+    groups: list[list[DisplayProp]] = [[flakes[0]]]
+    for prop in flakes[1:]:
+        if xy(prop)[0] - xy(groups[-1][-1])[0] <= gap:
+            groups[-1].append(prop)
+        else:
+            groups.append([prop])
+    columns = []
+    for group in groups:
+        ordered = sorted(group, key=lambda p: -xy(p)[1])
+        heights = [xy(p)[1] for p in ordered]
+        if len(ordered) >= 2 and all(a - b >= 0.5 * gap for a, b in itertools.pairwise(heights)):
+            columns.append(tuple(p.prop_id for p in ordered))
+    return sorted(columns, key=lambda c: xy(display.props[c[0]])[0])
 
 
 # ---------------------------------------------------------------- building effects
@@ -415,6 +482,83 @@ class _Canvas:
         return True
 
 
+def _at(effect: Effect, time: int) -> int:
+    """A fade's intensity at a time inside it."""
+    span = effect.end_centisecond - effect.start_centisecond
+    if effect.kind != "fade" or span <= 0:
+        return effect.start_intensity
+    share = (time - effect.start_centisecond) / span
+    return round(effect.start_intensity + (effect.end_intensity - effect.start_intensity) * share)
+
+
+def _piece(effect: Effect, start: int, end: int) -> Effect:
+    return Effect(effect.prop_id, effect.channel_index, start, end, effect.kind,
+                  _at(effect, start), _at(effect, end), effect.color, effect.movement_id)
+
+
+def _punch(canvas: _Canvas, prop_id: str, channel: int, start: int, end: int,
+           color: str | None) -> bool:
+    """Flash over whatever this channel is doing, cutting a gap for it.
+
+    Steps of a chase or fill are never cut: a movement must finish as planned.
+    """
+    key = (prop_id, channel)
+    current = canvas.effects[key]
+    overlapping = [e for e in current
+                   if e.start_centisecond < end and start < e.end_centisecond]
+    if any(e.movement_id is not None for e in overlapping):
+        return False
+    cap = canvas.caps.get(prop_id, 100)
+    if cap <= 0:
+        return False
+    kept = [e for e in current if e not in overlapping]
+    for e in overlapping:
+        if e.start_centisecond < start:
+            kept.append(_piece(e, e.start_centisecond, start))
+        if end < e.end_centisecond:
+            kept.append(_piece(e, end, e.end_centisecond))
+    kept.append(Effect(prop_id, channel, start, end, "fade", cap, 0, color, None))
+    canvas.effects[key] = sorted(kept, key=lambda e: e.start_centisecond)
+    return True
+
+
+def _swell(canvas: _Canvas, start: int, end: int, low: float = 0.5,
+           exclude: set[str] | None = None) -> None:
+    """Scale brightness from ``low`` at ``start`` up to full at ``end``: a build-up."""
+    span = max(1, end - start)
+
+    def factor(time: int) -> float:
+        return low + (1 - low) * min(1.0, max(0.0, (time - start) / span))
+
+    for key, effects in canvas.effects.items():
+        if exclude and key[0] in exclude:
+            continue
+        out: list[Effect] = []
+        for e in effects:
+            if e.end_centisecond <= start or e.start_centisecond >= end:
+                out.append(e)
+                continue
+            pieces = []
+            a, b = max(start, e.start_centisecond), min(end, e.end_centisecond)
+            if e.start_centisecond < a:
+                pieces.append(_piece(e, e.start_centisecond, a))
+            middle = _piece(e, a, b)
+            first = max(1, round(middle.start_intensity * factor(a))) \
+                if middle.start_intensity else 0
+            last = max(1, round(middle.end_intensity * factor(b))) if middle.end_intensity else 0
+            kind = middle.kind
+            if kind == "on" and first != last:
+                kind = "fade"
+            if kind in {"twinkle", "shimmer"}:
+                last = first
+            pieces.append(Effect(e.prop_id, e.channel_index, a, b, kind, first, last,
+                                 e.color, e.movement_id))
+            if b < e.end_centisecond:
+                pieces.append(_piece(e, b, e.end_centisecond))
+            out.extend(pieces)
+        canvas.effects[key] = out
+
+
 def _beat_length(window: _Window, index: int) -> int:
     beats = window.beats
     if index + 1 < len(beats):
@@ -444,6 +588,9 @@ class _Planner:
     # two is what keeps a show from feeling all-flash or all-fade.
     soft: bool = True
     turns: dict[frozenset[str], int] = field(default_factory=dict)
+    # Snowflakes stacked in columns, each listed top to bottom; they fall.
+    columns: list[tuple[str, ...]] = field(default_factory=list)
+    fall_turn: int = 0
 
     def channels(self, pid: str, section_index: int) -> list[int]:
         """Channels to light: all of them, or one color at a time for per-color props."""
@@ -503,7 +650,9 @@ class _Planner:
     # -- row looks
 
     def chase(self, row: _Row, props: list[str], window: _Window, every: int,
-              intensity: int) -> bool:
+              intensity: int, hold: int = 1) -> bool:
+        """One prop per beat (or every other beat) across the row. ``hold`` keeps each
+        prop lit for that many steps, so in loud parts the chase is fuller."""
         try:
             order, direction = self.direction_for(_Row(row.role, tuple(props), row.direction),
                                                   "chase")
@@ -511,7 +660,8 @@ class _Planner:
             return False
         beats = window.beats
         n = len(order)
-        index = 0
+        # Start where a full cycle would have started had the window begun earlier.
+        index = (-window.offset) % (n * every)
         placed = False
         while index + (n - 1) * every < len(beats):
             steps = [index + i * every for i in range(n)]
@@ -522,7 +672,7 @@ class _Planner:
             movement_id = self.movement("chase", order, direction, start, end)
             wipe = _sweep_for(direction)
             for pid, step in zip(order, steps, strict=True):
-                length = _beat_length(window, step) * every
+                length = _beat_length(window, step) * every * hold
                 stop = min(beats[step] + length, end)
                 # Each step flares and decays, leaving a short tail behind the chase.
                 self.light(pid, window.section_index, beats[step], stop,
@@ -551,13 +701,13 @@ class _Planner:
             placed = True
         return placed
 
-    def alternate(self, props: list[str], window: _Window) -> None:
+    def alternate(self, props: list[str], window: _Window, intensity: int = 90) -> None:
         for b, beat in enumerate(window.beats):
             for i, pid in enumerate(props):
-                if i % 2 == b % 2:
+                if i % 2 == (b + window.offset) % 2:
                     self.light(pid, window.section_index, beat,
                                beat + _beat_length(window, b), "fade" if self.soft else "on",
-                               90, TAIL)
+                               intensity, TAIL)
 
     def pulse(self, pid: str, window: _Window, marks: str = "beats", intensity: int = 100,
               per_beat: int = 1) -> None:
@@ -578,6 +728,44 @@ class _Planner:
     def steady(self, pid: str, window: _Window, intensity: int, kind: str = "on") -> None:
         self.light(pid, window.section_index, window.start, window.end, kind, intensity)
 
+    def fall(self, members: list[str], section_index: int, start: int, intensity: int,
+             limit: int) -> bool:
+        """Light a column of snowflakes from the top down: each holds, then fades out.
+
+        The whole fall is placed or none of it, so the movement always finishes.
+        """
+        spans = []
+        for i, pid in enumerate(members):
+            on = start + i * FALL_STEP
+            spans.append((pid, on, on + FALL_HOLD, on + FALL_HOLD + FALL_DECAY))
+        end = spans[-1][3]
+        if end > limit:
+            return False
+        for pid, on, _, off in spans:
+            for channel in self.channels(pid, section_index):
+                if not self.canvas._free((pid, channel), on, off):
+                    return False
+        movement = (self.movement("fall", tuple(members), "top_to_bottom", start, end)
+                    if len(members) > 1 else None)
+        for pid, on, held, off in spans:
+            self.light(pid, section_index, on, held, "on", intensity, movement=movement)
+            self.light(pid, section_index, held, off, "fade", intensity, 0, movement=movement)
+        return True
+
+    def falls(self, window: _Window, columns: list[list[str]], times: list[int],
+              intensity: int, reverse: bool = False) -> None:
+        """One column falls at each time; the columns take turns across the yard and back."""
+        if not columns:
+            return
+        order = list(range(len(columns)))
+        if reverse:
+            order.reverse()
+        cycle = order + order[-2:0:-1] if len(order) > 2 else order
+        for time in times:
+            column = columns[cycle[self.fall_turn % len(cycle)]]
+            if self.fall(column, window.section_index, time, intensity, window.end):
+                self.fall_turn += 1
+
     def rotate(self, pid: str, window: _Window, intensity: int, per_beat: int,
                reverse: bool = False) -> None:
         """Step through a multi-segment prop's channels in order, like a spinning tree."""
@@ -592,7 +780,7 @@ class _Planner:
         times.append(window.end)
         width = 2 if count >= 4 else 1
         for k in range(len(times) - 1):
-            channel = allowed[k % count]
+            channel = allowed[(k + window.offset * per_beat) % count]
             end = times[min(k + width, len(times) - 1)]
             self.canvas.put(pid, channel, times[k], end, "on", intensity,
                             color=self.color(pid, channel))
@@ -602,8 +790,14 @@ class _CannotHonor(Exception):
     pass
 
 
-# A multi-segment prop's segments start this far apart (centiseconds) in a wipe.
-SWEEP_STEP = 8
+# A multi-segment prop's segments start this far apart (centiseconds) in a wipe;
+# hand-made shows wipe an arch quickly, so the hit still lands on the beat.
+SWEEP_STEP = 4
+# A falling column: each snowflake starts this long after the one above it,
+# holds, then fades out (centiseconds).
+FALL_STEP = 12
+FALL_HOLD = 20
+FALL_DECAY = 25
 # Chase steps and alternating hits fade to this level rather than cutting off.
 TAIL = 20
 
@@ -614,13 +808,20 @@ def _sweep_for(direction: str) -> str:
 
 def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[str],
           active: set[str], variant: int, flip: bool) -> None:
-    """One phrase of one section: what each kind of prop does at this energy level.
+    """One phrase of one section: each kind of prop plays its own part.
 
-    ``variant`` alternates between phrases so a long section keeps changing;
-    ``flip`` spins multi-segment props the other way.
+    Every kind of prop is tied to one musical element for the whole song, so a
+    viewer can tell what it is listening to: arches chase on the beat, mini trees
+    trade beats, snowflakes fall (on high hits when there are any, otherwise on the
+    beat), a mega tree spins with the beat's subdivisions, outlines and the star
+    are the base, decorations pulse on the beat. Energy changes how dense and
+    bright a part is, never which part a prop plays. ``variant`` is kept only for
+    callers; ``flip`` turns spins and chases the other way.
     """
+    del variant
     level = planner.sections[window.section_index].level
     planner.soft = level != MID
+    gentle = {LOW: 60, MID: 90, HIGH: 100}[level]
 
     for row in rows:
         members = [pid for pid in row.props if pid in active]
@@ -630,90 +831,61 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
             singles = [*singles, members[0]]
             continue
         moved = True
-        if level == LOW and row.role != "arch":
-            # Quiet parts still answer every beat, gently.
-            for pid in members:
-                planner.pulse(pid, window, intensity=60)
+        if row.role == "arch":
+            # One arch per beat, across the row; half time when quiet.
+            moved = planner.chase(row, members, window, every=2 if level == LOW else 1,
+                                  intensity=gentle, hold=2 if level == HIGH else 1)
         elif row.role == "mini_tree":
-            if level == MID and variant == 0 or level == HIGH and variant == 1:
-                planner.alternate(members, window)
-            elif level == MID:
-                moved = planner.chase(row, members, window, every=1, intensity=90)
-            elif level == HIGH:
+            if level == HIGH:
                 for pid in members:
                     planner.pulse(pid, window, per_beat=2)
-        elif row.role == "arch":
-            if level == LOW and variant == 0:
-                moved = planner.chase(row, members, window, every=1, intensity=70)
-            elif level == LOW:
-                for pid in members:
-                    planner.pulse(pid, window, intensity=60)
-            elif level == MID and variant == 0 or level == HIGH and variant == 1:
-                moved = planner.chase(row, members, window, every=1, intensity=100)
-            elif level == MID:
-                planner.alternate(members, window)
             else:
-                moved = planner.fill(row, members, window)
-        elif level == MID and variant == 0:
-            moved = planner.chase(row, members, window, every=1, intensity=100)
-        elif level == MID:
-            planner.alternate(members, window)
-        elif variant == 0:
-            moved = planner.fill(row, members, window)
+                planner.alternate(members, window, gentle)
         else:
-            for pid in members:
-                planner.pulse(pid, window)
+            moved = planner.chase(row, members, window, every=2 if level == LOW else 1,
+                                  intensity=gentle)
         if not moved:
             for pid in members:
-                planner.steady(pid, window, 60 if level == LOW else 90)
+                planner.pulse(pid, window, intensity=gentle)
 
+    columns = [[p for p in column if p in active] for column in planner.columns]
+    in_columns = {p for column in planner.columns for p in column}
     for pid in singles:
-        if pid not in active:
+        if pid not in active or pid in in_columns:
             continue
         prop = planner.display.props[pid]
         channels = len(planner.constraints.channels[pid])
         multi = channels >= 3 and prop.color_kind != "color_per_channel"
         if prop.role == "mega_tree" or (multi and prop.role in {"icicles", "outline"}):
-            if level == HIGH and variant == 1:
-                planner.pulse(pid, window)
-            else:
-                planner.rotate(pid, window, 60 if level == LOW else 100,
-                               {LOW: 1, MID: 2, HIGH: 4}[level], reverse=flip)
+            planner.rotate(pid, window, 60 if level == LOW else 100,
+                           {LOW: 1, MID: 2, HIGH: 4}[level], reverse=flip)
         elif prop.role == "star":
             planner.steady(pid, window, 100, "twinkle" if level == HIGH else "on")
-        elif prop.role in {"mini_tree", "icicles"}:
-            # A tree or icicle line on its own (not in a row) pulses with the music.
-            if level == LOW:
-                planner.pulse(pid, window, intensity=60)
-            elif level == MID:
-                planner.pulse(pid, window, "beats" if variant == 0 else "bars", 90)
-            else:
-                planner.pulse(pid, window, per_beat=2 if variant == 0 else 1)
-        elif prop.role == "snowflake":
-            if level == LOW:
-                planner.pulse(pid, window, intensity=60)
-            elif level == MID and variant == 0:
-                planner.pulse(pid, window, "bars")
-            elif level == MID or level == HIGH and variant == 1:
-                planner.pulse(pid, window, intensity=70 if level == MID else 100)
-            elif level == HIGH:
-                planner.steady(pid, window, 100, "twinkle")
         elif prop.role == "outline":
-            if level == HIGH and variant == 0:
-                planner.pulse(pid, window)
+            # Outlines are the quiet base the rest of the show plays against; in loud
+            # parts they mark each bar.
+            if level == HIGH:
+                planner.pulse(pid, window, "bars")
             else:
-                # Outlines are the quiet base the rest of the show plays against.
                 planner.steady(pid, window, {LOW: 30, MID: 50, HIGH: 70}[level])
         elif prop.role == "singing_face":
             if level >= MID:
                 planner.steady(pid, window, 100)
-        elif prop.role == "decor":
-            if level == HIGH and variant == 0:
-                planner.pulse(pid, window, "bars")
-            else:
-                planner.pulse(pid, window, intensity={LOW: 60, MID: 90, HIGH: 100}[level])
+        elif prop.role == "snowflake":
+            # A snowflake on its own (not part of a falling column) twinkles.
+            planner.steady(pid, window, {LOW: 40, MID: 60, HIGH: 100}[level], "twinkle")
         else:
-            planner.pulse(pid, window, intensity={LOW: 50, MID: 70, HIGH: 90}[level])
+            planner.pulse(pid, window, intensity={LOW: 60, MID: 90, HIGH: 100}[level]
+                          if prop.role != "unknown" else {LOW: 50, MID: 70, HIGH: 90}[level])
+    columns = [c for c in columns if c]
+    if columns:
+        if level == LOW:
+            times = [a for a, _ in _bars(window)]
+        elif level == MID:
+            times = list(window.beats[(window.offset % 2)::2])
+        else:
+            times = list(window.beats)
+        planner.falls(window, columns, times, gentle, reverse=flip)
 
 
 
@@ -726,10 +898,19 @@ BASE_ROLES = frozenset({"star", "outline", "singing_face"})
 LEADS = {LOW: 2, MID: 2, HIGH: 3}
 # The centerpiece keeps playing through mid and loud parts instead of taking turns.
 CENTERPIECE_ROLES = frozenset({"mega_tree"})
+# The final fade-out lasts at most this long (centiseconds).
+CLOSING_LENGTH = 400
+# Parts that happen once and never repeat their look.
+ONE_OFF_LABELS = frozenset({"intro", "outro", "finale"})
+# Signature flashes: at most one crash flash per this many centiseconds, each at
+# most this long.
+CRASH_SPACING = 400
+FLASH_LENGTH = 60
 # Sparkle on high-pitched hits (tambourine, sleigh bells) where there is at least
 # this many per beat.
 SPARKLE_DENSITY = 0.5
-SPARKLE_LENGTH = 12
+SPARKLE_LENGTH = 30
+SPARKLE_SPACING = 40
 
 
 @dataclass(frozen=True, slots=True)
@@ -763,18 +944,25 @@ def _groups(display: Display, rows: list[_Row], singles: list[str]) -> list[_Gro
     return sorted(groups, key=lambda g: (g.x, g.role))
 
 
-def _leads(groups: list[_Group], turn: int, level: int, everything: bool,
-           skip: _Group | None) -> set[str]:
+def _lead_groups(groups: list[_Group], turn: int, level: int, everything: bool,
+                 skip: _Group | None, extra: int = 0) -> list[_Group]:
     candidates = [g for g in groups if g is not skip
                   and (g.role not in CENTERPIECE_ROLES or level == LOW)]
     if not candidates:
-        return set()
+        return []
     if everything:
-        return {p for g in candidates for p in g.props}
-    count = min(len(candidates), LEADS[level])
+        return candidates
+    count = min(len(candidates), LEADS[level] + extra)
     start = turn % len(candidates)
     chosen = [candidates[(start + i) % len(candidates)] for i in range(count)]
-    return {p for g in chosen for p in g.props}
+    # Left to right, so a call comes from the left and the answer from the right.
+    return sorted(chosen, key=lambda g: (g.x, g.role))
+
+
+def _leads(groups: list[_Group], turn: int, level: int, everything: bool,
+           skip: _Group | None, extra: int = 0) -> set[str]:
+    return {p for g in _lead_groups(groups, turn, level, everything, skip, extra)
+            for p in g.props}
 
 
 def _sparkle_group(groups: list[_Group]) -> _Group | None:
@@ -790,8 +978,26 @@ def _hits_in(hits: list[int], window: _Window) -> list[int]:
 
 
 def _sparkle(planner: _Planner, window: _Window, props: list[str], hits: list[int]) -> None:
-    """Flash a few of the sparkle props on each high-pitched hit."""
+    """Answer high-pitched hits: snowflake columns fall on them, taking turns, while
+    other snowflakes twinkle; without columns, sparkle props flash a few at a time
+    and fade."""
     if not props:
+        return
+    columns = [[p for p in column if p in props] for column in planner.columns]
+    columns = [c for c in columns if c]
+    if columns:
+        # One fall per hit, but never closer together than a column takes to start
+        # falling, so each fall reads.
+        spaced: list[int] = []
+        for hit in hits:
+            if not spaced or hit - spaced[-1] >= SPARKLE_SPACING:
+                spaced.append(hit)
+        level = planner.sections[window.section_index].level
+        planner.falls(window, columns, spaced, {LOW: 60, MID: 85, HIGH: 100}[level])
+        # Snowflakes that are not part of a column glitter under the falls.
+        for pid in props:
+            if not any(pid in c for c in columns):
+                planner.steady(pid, window, 60, "twinkle")
         return
     share = max(1, len(props) // 3)
     for index, hit in enumerate(hits):
@@ -806,7 +1012,9 @@ def _sparkle(planner: _Planner, window: _Window, props: list[str], hits: list[in
 BARS_PER_PHRASE = 4
 def _phrases(window: _Window) -> list[_Window]:
     """Four-bar phrases counted from the first bar start; short leftovers join a neighbor."""
-    marks = [d for d in window.downbeats if window.start <= d < window.end]
+    # Bars are counted from the window's first bar even when its body starts a beat
+    # later (after an accent), so phrases stay on the song's four-bar grid.
+    marks = [d for d in window.downbeats if d < window.end]
     cuts = [window.start]
     # A pickup before the first bar belongs to the first phrase.
     for index in range(BARS_PER_PHRASE, len(marks), BARS_PER_PHRASE):
@@ -818,10 +1026,28 @@ def _phrases(window: _Window) -> list[_Window]:
         del cuts[-2]
     phrases = []
     for a, b in itertools.pairwise(cuts):
+        before = sum(1 for t in window.beats if t < a)
         phrases.append(_Window(window.section_index, a, b,
                                tuple(t for t in window.beats if a <= t < b),
-                               tuple(t for t in window.downbeats if a <= t < b), False))
+                               tuple(t for t in window.downbeats if a <= t < b), False,
+                               window.offset + before))
     return phrases
+
+
+def _same_part(first: PlannedSection, later: PlannedSection, music: _Music) -> bool:
+    """Whether a later section is a return of an earlier one with the same label.
+
+    A name from the music review is trusted. A guessed label (from loudness) only
+    counts when both parts are at least two phrases long and about the same length,
+    the way a second verse or chorus usually is.
+    """
+    if first.start_centisecond in music.labels or later.start_centisecond in music.labels:
+        return True
+    a = first.end_centisecond - first.start_centisecond
+    b = later.end_centisecond - later.start_centisecond
+    bars = [y - x for x, y in itertools.pairwise(music.downbeats)]
+    bar = sorted(bars)[len(bars) // 2] if bars else 200
+    return min(a, b) >= 2 * BARS_PER_PHRASE * bar and abs(a - b) <= 0.25 * max(a, b)
 
 
 def _accent(planner: _Planner, window: _Window, active: set[str]) -> int:
@@ -1078,52 +1304,177 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
                          "sings but their mouths do not move.")
     rows, singles = _rows(display, usable - singing)
     groups = _groups(display, rows, singles)
+    planner.columns = _columns(display, usable - singing)
     base = {p for p in usable - singing if display.props[p].role in BASE_ROLES}
     sparkle = _sparkle_group(groups)
     hits = _times(analysis, "high_hits")
-    turn = 0
-    last_window = windows[-1] if windows else None
-    for window in windows:
-        section = sections[window.section_index]
-        label = section.label.lower()
-        active = {
+    # The song's own shape decides where the handoffs start, so two songs on the
+    # same display do not open the same way. Still deterministic.
+    shape = f"{music.duration}:{len(music.beats)}:" + ",".join(
+        f"{s.start_centisecond}/{s.level}" for s in sections)
+    turn = zlib.crc32(shape.encode("utf-8")) % max(1, len(groups))
+    moments: list[tuple[str, int]] = []
+    # Motifs: a part that comes back (a second chorus) repeats its first look.
+    keys = [(s.label.lower(), s.level) for s in sections]
+    last_of = {key: index for index, key in enumerate(keys)}
+    motif_turn: dict[tuple[str, int], int] = {}
+    motif_flip: dict[tuple[str, int], int] = {}
+    motif_first: dict[tuple[str, int], int] = {}
+    section_first: dict[int, int] = {}
+    section_turn: dict[int, int] = {}
+    section_phrase: dict[int, int] = defaultdict(int)
+    section_extra: dict[int, int] = {}
+    section_flip: dict[int, int] = {}
+
+    def active_in(window: _Window) -> set[str]:
+        label = sections[window.section_index].label.lower()
+        return {
             pid for pid in usable - singing
             if label not in constraints.quiet.get(pid, set())
             and not any(a < window.end and window.start < b
                         for a, b in keep_spans.get(pid, []))
         }
-        upcoming = _leads(groups, turn, section.level, label == "finale", None)
+
+    last_window = windows[-1] if windows else None
+    for window in windows:
+        section = sections[window.section_index]
+        label = section.label.lower()
+        si = window.section_index
+        if si not in section_turn:
+            # Each part starts its chases and falls the same way, so a part that
+            # returns looks the same; within a part they alternate as before.
+            planner.fall_turn = 0
+            planner.turns = {}
+            key = keys[si]
+            if key in motif_turn and label not in ONE_OFF_LABELS and _same_part(
+                    sections[motif_first[key]], section, music):
+                section_turn[si] = motif_turn[key]
+                section_flip[si] = motif_flip[key]
+                section_first[si] = motif_first[key]
+                section_extra[si] = 1 if section.level == HIGH and last_of[key] == si else 0
+                moments.append(("repeat", section.start_centisecond))
+            else:
+                section_turn[si] = turn
+                section_flip[si] = si % 2
+                section_first[si] = si
+                motif_first.setdefault(key, si)
+                section_extra[si] = 0
+                motif_turn.setdefault(key, turn)
+                motif_flip.setdefault(key, si % 2)
+        active = active_in(window)
+        upcoming = _leads(groups, section_turn[si] + section_phrase[si], section.level,
+                          label == "finale", None, section_extra[si])
         start = _accent(planner, window, {p for p in active if p in base or p in upcoming})
+        if start > window.start:
+            moments.append(("lift", window.start))
         end = window.end
         closing: int | None = None
-        if window is last_window and window.section_index == len(sections) - 1:
+        if window is last_window and si == len(sections) - 1:
             final_bar = max((d for d in window.downbeats if d > start), default=None)
             if final_bar is not None and end - final_bar >= 100:
-                closing = final_bar
-                end = final_bar
-        body = _Window(window.section_index, start, end,
+                # A long ringing tail after the last bar keeps playing until the
+                # last few seconds, so the whole display is not on for long.
+                closing = max(final_bar, end - CLOSING_LENGTH)
+                end = closing
+        # A repeated part plays as its first occurrence did (same colors and looks).
+        body = _Window(section_first[si], start, end,
                        tuple(b for b in window.beats if start <= b < end),
-                       tuple(d for d in window.downbeats if start <= d < end), False)
+                       tuple(d for d in window.downbeats if d < end), False,
+                       sum(1 for b in window.beats if b < start))
         everything = label == "finale"
-        for index, phrase in enumerate(_phrases(body)):
+        for phrase in _phrases(body):
+            k = section_phrase[si]
+            section_phrase[si] += 1
+            turn += 1
             beats_here = max(1, len(phrase.beats))
             phrase_hits = _hits_in(hits, phrase)
             sparkling = sparkle is not None and len(phrase_hits) / beats_here >= SPARKLE_DENSITY
-            leads = _leads(groups, turn, section.level, everything,
-                           sparkle if sparkling else None)
-            turn += 1
+            lead_groups = _lead_groups(groups, section_turn[si] + k, section.level, everything,
+                                       sparkle if sparkling else None, section_extra[si])
             centerpiece = {p for g in groups if g.role in CENTERPIECE_ROLES
                            and section.level >= MID for p in g.props}
-            phrase_active = {p for p in active if p in base or p in leads or p in centerpiece}
-            _look(planner, phrase, rows, singles, phrase_active, variant=index % 2,
-                  flip=(window.section_index + index) % 2 == 1)
+            steady_part = {p for p in active if p in base or p in centerpiece}
+            variant = k % 2
+            flip = (section_flip[si] + k) % 2 == 1
+            bars = _bars(phrase)
+            if (section.level == MID and not everything and variant == 1
+                    and len(lead_groups) >= 2 and len(bars) >= 2):
+                # Call and response: the left half of the leads plays a bar, the
+                # right half answers the next.
+                half = len(lead_groups) // 2
+                sides = [{p for g in lead_groups[:half] for p in g.props},
+                         {p for g in lead_groups[half:] for p in g.props}]
+                for j, (a, b) in enumerate(bars):
+                    b = min(b, phrase.end) if j < len(bars) - 1 else phrase.end
+                    a = phrase.start if j == 0 else a
+                    bar = _Window(phrase.section_index, a, b,
+                                  tuple(t for t in phrase.beats if a <= t < b),
+                                  tuple(t for t in phrase.downbeats if a <= t < b), False,
+                                  phrase.offset + sum(1 for t in phrase.beats if t < a))
+                    _look(planner, bar, rows, singles,
+                          steady_part | (sides[j % 2] & active), variant=1, flip=flip)
+                moments.append(("call_and_response", phrase.start))
+            else:
+                leads = {p for g in lead_groups for p in g.props}
+                _look(planner, phrase, rows, singles, steady_part | (leads & active),
+                      variant=variant, flip=flip)
             if sparkling and sparkle is not None:
                 _sparkle(planner, phrase, [p for p in sparkle.props if p in active],
                          phrase_hits)
         if closing is not None:
             # The song's last bar: everything still in use fades out together.
             for pid in sorted(active):
-                planner.light(pid, window.section_index, closing, window.end, "fade", 100, 0)
+                planner.light(pid, si, closing, window.end, "fade", 100, 0)
+
+    held = set(keep_spans) | singing
+    # Build-ups: the last phrase before a louder part rises from half brightness.
+    for index, section in enumerate(sections[:-1]):
+        if sections[index + 1].level <= section.level:
+            continue
+        bars_in = [d for d in music.downbeats
+                   if section.start_centisecond <= d < section.end_centisecond]
+        if len(bars_in) < BARS_PER_PHRASE + 1:
+            continue
+        rise = bars_in[-BARS_PER_PHRASE]
+        _swell(canvas, rise, section.end_centisecond, exclude=held)
+        moments.append(("build", rise))
+
+    # Signature moments flash everything in use for a moment: cymbal crashes in
+    # mid and loud parts, and the first beat back after a hard stop.
+    stop_ends = {end for _, end in music.stops}
+    flashes: list[tuple[str, int, _Window]] = []
+    for crash in _times(analysis, "crashes"):
+        home = next((w for w in windows if w.start + 25 <= crash < w.end - 10), None)
+        if home is None or sections[home.section_index].level < MID:
+            continue
+        if flashes and crash - flashes[-1][1] < CRASH_SPACING:
+            continue
+        flashes.append(("crash", crash, home))
+    for window in windows:
+        if window.start in stop_ends and not window.accent and window.beats:
+            flashes.append(("return", window.start, window))
+    beat_gaps = [b - a for a, b in itertools.pairwise(music.beats)]
+    beat = sorted(beat_gaps)[len(beat_gaps) // 2] if beat_gaps else 50
+    for kind, time, window in sorted(flashes, key=lambda f: f[1]):
+        stop = min(window.end, time + min(FLASH_LENGTH, max(10, beat)))
+        flashed = 0
+        for pid in sorted(active_in(window)):
+            for channel in planner.channels(pid, window.section_index):
+                flashed += _punch(canvas, pid, channel, time, stop, planner.color(pid, channel))
+        if flashed:
+            moments.append((kind, time))
+    if moments:
+        counts: dict[str, int] = defaultdict(int)
+        for kind, _ in moments:
+            counts[kind] += 1
+        names = {"repeat": "repeated part(s) reuse their first look",
+                 "lift": "louder part(s) open with an accent",
+                 "call_and_response": "phrase(s) of call and response",
+                 "build": "build-up(s) before a louder part",
+                 "crash": "crash(es) flash the display",
+                 "return": "return(s) from a stop flash the display"}
+        notes.append("Arrangement: " + "; ".join(
+            f"{counts[kind]} {names[kind]}" for kind in names if counts[kind]) + ".")
 
     effects = tuple(sorted(
         (e for items in canvas.effects.values() for e in _joined(items)),
@@ -1155,5 +1506,6 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
             key=lambda s: s.name,
         )),
         notes=tuple(notes),
+        moments=tuple(sorted(moments, key=lambda m: (m[1], m[0]))),
     )
 

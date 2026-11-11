@@ -28,6 +28,15 @@ _KIND_COLOR = {"on": "#ffb627", "fade": "#ffb627", "twinkle": "#7cc4ff", "shimme
 _SECTION_FILL = {0: "#1d2433", 1: "#25304a", 2: "#33304f"}
 
 
+_MOMENT_MARK = {
+    "crash": ("✶", "#ffe066"),
+    "return": ("✶", "#ff9f6b"),
+    "build": ("↗", "#9be38a"),
+    "repeat": ("↻", "#8ab4ff"),
+    "call_and_response": ("⇄", "#d7a6ff"),
+}
+
+
 def plan_svg(plan: Plan, display: Display, title: str = "Planned show") -> str:
     timeline = plan.choreography
     duration = max(1, timeline.duration_centiseconds)
@@ -72,6 +81,14 @@ def plan_svg(plan: Plan, display: Display, title: str = "Planned show") -> str:
             f'<text x="{x1 + 4:.1f}" y="44" fill="#c9d2e3">{escape(section.label)} '
             f'<tspan fill="#8893a8">{LEVEL_NAMES[section.level]}</tspan></text>'
         )
+    # Arrangement moments along the top: flashes, build-ups, repeats, call and response.
+    for kind, time in plan.moments:
+        mark = _MOMENT_MARK.get(kind)
+        if mark is None:
+            continue
+        symbol, color = mark
+        parts.append(f'<text x="{x(time):.1f}" y="58" fill="{color}" text-anchor="middle">'
+                     f'<title>{escape(kind.replace("_", " "))}</title>{symbol}</text>')
     for stop in timeline.hard_stops_centiseconds:
         parts.append(f'<line x1="{x(stop):.1f}" x2="{x(stop):.1f}" y1="30" '
                      f'y2="{total_height - 22:.0f}" stroke="#ff5d5d" stroke-width="1.5"/>')

@@ -1,8 +1,7 @@
 # Implementation Plan
 
-**Status:** Phases 0 through 6b are complete. Phase 7 planner code is merged, with the owner S6 playback gate still pending. Phase 8 vocal analysis remains in PR #44. Phase 11A browser workspace is owner-authorized and in progress on a separate branch.
-**Current phase:** Phase 11A — Browser-first professional sequencing workspace (Issue #47; branch `ui/browser-sequencer-foundation`).
-**Parallel engine status:** Phase 8 remains in PR #44, still based on `phase-7/planner-v1`; do not assume its real-vocal or owner playback gates are complete.
+**Status:** Phases 0 through 6b are complete. Phase 7 (planner v1) and Phase 8 (vocals) are merged with their owner playback gates pending. Phase 11A (browser workspace, PR #48) and Phase 11B (editing and music review, PRs #50 and #51) are merged; the owner's visual acceptance on real sequences is pending. Phase 9 (planner v2) is in progress.
+**Current phase:** Phase 9 — Planner v2 (motifs, call and response, signature moments, dynamics).
 **Delivery boundary:** The browser is the development interface. Desktop packaging remains deferred until the final stage.
 
 ## Product objective and fixed requirements
@@ -188,6 +187,23 @@ Build vocal separation, vocal regions, syllable onsets, and singing-face choreog
 Build motifs, call-and-response, signature moments, and richer dynamics.
 
 **Done when:** Two different songs produce noticeably different shows; fixed inputs/config produce deterministic planning; owner confirms arrangements are distinct and coherent.
+
+**Status: Built; owner gate pending.**
+
+**Delivered:** the planner now arranges a show like a song.
+- **Motifs:** a part that comes back repeats its first look: the same groups lead in the same order, with the same colors, chase directions and beat footing. A name from the music review is trusted; a guessed label only counts when both parts are at least two phrases long and within 25% of each other's length. The last return of a loud part lifts with one more lead group.
+- **Call and response:** in mid-energy parts, every other phrase splits its lead groups left and right; the left plays a bar and the right answers the next.
+- **Dynamics:** the last phrase before a louder part builds from half brightness to full (kept-on props and singing faces excepted). Sections that are equally loud (within 1%) now share one energy level instead of being ranked by order.
+- **Signature moments:** cymbal crashes in mid and loud parts (at most one every 4 seconds) and the first beat back after a hard stop flash every prop in use, cutting into holds but never into a chase or fill step, so movements still finish.
+- **Different songs, different shows:** the song's own shape picks where the handoffs start; the same song always gives the same show.
+- The plan summary lists these moments, a note counts them, and the plan picture marks them (✶ flash, ↗ build-up, ↻ repeat, ⇄ call and response).
+- **Owner feedback on round 3 (2026-11-11), "significantly better than the one earlier today", with three problems, all fixed:**
+  - *Snowflakes flashing on and off looked wrong.* The owner's own shows drop each column of falling snowflakes from the top down, every flake holding briefly and then fading, one column at a time, with loose snowflakes twinkling underneath. The planner now finds snowflake columns in the preview (flakes stacked at almost the same horizontal position) and plays them as `fall` movements (12 cs apart, 20 cs hold, 25 cs fade), the columns taking turns across the yard and back. High-pitched hits drive the falls when there are enough of them; otherwise they fall on the beat (every bar when quiet, every other beat in mid parts, every beat when loud). Snowflakes are no longer chased sideways as rows.
+  - *One arch pulsed on the beat while the other three chased.* A train drawn over that arch made the classifier treat the two as one figure and drop the arch from its row. Look-alike props now join their row even when something overlaps them; only props stacked on top of each other (a face's mouth shapes) are kept out.
+  - *Props should be tied to specific beats.* Each kind of prop now plays one part for the whole song instead of switching pattern from phrase to phrase: arches chase one arch per beat (every other beat when quiet, each arch held two beats when loud), mini trees trade beats (eighth-note pulses when loud), snowflake columns fall, a mega tree spins on the beat's subdivisions, decorations pulse on the beat, outlines and the star stay the base (outlines mark each bar when loud). Energy changes density and brightness, not the part. Arch segment wipes are faster (4 cs apart) so the hit lands on the beat, and chases and falls restart the same way at the start of each part, so a returning part matches.
+- Fixed along the way: after an accent, phrases now stay on the song's four-bar grid instead of shifting one bar later; the final fade lasts at most 4 seconds, so a long ringing tail no longer leaves the whole display on (this cleared a not-everything-at-once warning on one owner song).
+
+**Verified by tests:** a second verse repeats the first; the last chorus uses more lead props than the first; bars trade between left and right in a mid part; brightness rises before a louder part; crashes too close together or in a quiet part are skipped and a return from a stop flashes; two songs on one display share under 30% of their effect starts; every fictional display and 25 random song shapes still pass every rule. On the owner's display and songs (checked locally, not committed), every song plans and passes the rules, with two to six phrases of call and response, one to three build-ups and one to eight crash flashes per freshly analyzed song, and about the same share of lit channels as before (roughly a quarter).
 
 ### Phase 10 — Polish
 Build reports, docs, Python package distribution, example profiles, and installation workflow. Desktop wrapping and desktop packaging are not part of this phase; they are final delivery work after the browser sequencing and editing workflows are complete.

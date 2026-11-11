@@ -12,10 +12,11 @@ This roadmap follows the authoritative phase order and acceptance gates in [PLAN
 - [x] Phase 6 — Rules engine and user-profile layering
 - [x] Phase 6b — Optional "any specific requirements?" step, remembered per display
 - [ ] Phase 7 — Section-aware choreography planner v1; code merged in PR #39, owner S6 playback gate pending
-- [ ] Phase 8 — Vocal separation, syllable timing, and singing-face choreography; PR #44 open, real-vocal and owner playback gates pending
-- [ ] Phase 9 — Planner v2 (motifs, call-and-response, signature moments, dynamics)
+- [ ] Phase 8 — Vocal separation, syllable timing, and singing-face choreography; merged in PR #44, owner playback gate pending
+- [ ] Phase 9 — Planner v2 (motifs, call-and-response, signature moments, dynamics); built, owner gate pending
 - [ ] Phase 10 — Reporting, Python packaging, documentation, and installation polish
-- [ ] Phase 11A — Browser-first sequencing workspace (Issue #47; desktop packaging deferred)
+- [ ] Phase 11A — Browser-first sequencing workspace (Issue #47); merged in PR #48, owner visual acceptance pending
+- [x] Phase 11B — Effect editing, checked export, and music review with a tempo map (Issue #49); merged in PRs #50 and #51
 - [ ] Final delivery — Desktop wrapper and packaging, only after browser sequencing and editing are accepted
 
 A phase is complete only when its issue acceptance criteria, automated checks, required owner verification, PR merge, and explicit approval are all satisfied. See [PLAN.md](PLAN.md) for the full scope and handoff log.
