@@ -182,8 +182,18 @@ def _sections(music: _Music) -> list[PlannedSection]:
         return sum(values) / len(values) if values else 0.0
 
     raw = [loudness(a, b) for a, b in spans]
-    low, high = min(raw), max(raw)
-    relative = [(v - low) / (high - low) if high > low else 0.5 for v in raw]
+    # Rank sections against each other, weighted by length: the quietest third of the
+    # song is low energy, the loudest third high. Mastered songs differ only a little
+    # in loudness from section to section, so a scale from quietest to loudest would
+    # call almost everything loud.
+    total = sum(b - a for a, b in spans) or 1
+    order = sorted(range(len(spans)), key=lambda i: raw[i])
+    relative = [0.0] * len(spans)
+    elapsed = 0
+    for i in order:
+        length = spans[i][1] - spans[i][0]
+        relative[i] = (elapsed + length / 2) / total
+        elapsed += length
     levels = [LOW if r < 1 / 3 else MID if r < 2 / 3 else HIGH for r in relative]
     if len(spans) == 1:
         levels = [MID]
@@ -662,6 +672,14 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
                                {LOW: 1, MID: 2, HIGH: 4}[level], reverse=flip)
         elif prop.role == "star":
             planner.steady(pid, window, 100, "twinkle" if level == HIGH else "on")
+        elif prop.role in {"mini_tree", "icicles"}:
+            # A tree or icicle line on its own (not in a row) pulses with the music.
+            if level == LOW:
+                planner.steady(pid, window, 50)
+            elif level == MID:
+                planner.pulse(pid, window, "beats" if variant == 0 else "bars", 90)
+            else:
+                planner.pulse(pid, window, per_beat=2 if variant == 0 else 1)
         elif prop.role == "snowflake":
             if level == MID and variant == 0:
                 planner.pulse(pid, window, "bars")

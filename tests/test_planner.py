@@ -109,7 +109,7 @@ def test_every_fictional_display_gets_a_plan_that_passes_the_rules(
 def test_sections_follow_the_song_energy() -> None:
     plan, report = _plan(classic_yard())
     assert [(s.label, s.level) for s in plan.sections] == [
-        ("intro", LOW), ("verse", LOW), ("chorus", HIGH), ("outro", MID),
+        ("intro", LOW), ("verse", MID), ("chorus", HIGH), ("outro", MID),
     ]
     assert [s.start_centisecond for s in plan.sections] == [0, 1600, 3200, 4800]
     # Louder sections light more of the display than quiet ones.
@@ -124,8 +124,8 @@ def test_sections_follow_the_song_energy() -> None:
 
 
 def test_section_labels_reflect_their_place_and_energy() -> None:
-    analysis = synthetic_analysis(sections=((0.0, 0.1), (12.0, 0.9), (30.0, 0.2),
-                                            (45.0, 0.95)))
+    analysis = synthetic_analysis(sections=((0.0, 0.1), (10.0, 0.9), (20.0, 0.2),
+                                            (50.0, 0.95)))
     plan, _ = _plan(classic_yard(), analysis)
     assert [s.label for s in plan.sections] == ["intro", "chorus", "verse", "finale"]
 
@@ -275,7 +275,8 @@ def test_cli_generate_from_audio(tmp_path: Path, capsys: pytest.CaptureFixture[s
 def test_long_sections_change_look_from_phrase_to_phrase() -> None:
     display = classic_yard()
     ids = _ids(display)
-    analysis = synthetic_analysis(duration=64.0, sections=((0.0, 0.1), (8.0, 0.9)))
+    analysis = synthetic_analysis(duration=64.0,
+                                  sections=((0.0, 0.1), (8.0, 0.95), (40.0, 0.3)))
     plan, report = _plan(display, analysis)
     assert report.ok
     arches = {ids[f"Arch {i}"] for i in range(1, 5)}
