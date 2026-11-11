@@ -423,10 +423,13 @@ def test_geometry_mismatch_between_independent_preview_and_template_is_rejected(
 ) -> None:
     preview, template = independent_inputs(tmp_path)
     tree = ET.parse(preview)
-    shape = tree.getroot().find(".//PropClass/shape")
-    assert shape is not None
-    # The sanitized fixture intentionally has no coordinate points. Add one
-    # to the standalone preview only so the preview/template geometry differs.
+    prop = tree.getroot().find(".//PropClass")
+    assert prop is not None
+    # The fixture intentionally contains no geometry. Add a synthetic shape
+    # and point to the standalone preview only so preview/template differ.
+    shape = prop.find("shape")
+    if shape is None:
+        shape = ET.SubElement(prop, "shape", {"ShapeName": "Synthetic Geometry"})
     ET.SubElement(shape, "point", {"x": "0.01", "y": "0.01"})
     tree.write(preview, encoding="utf-8", xml_declaration=True)
 
