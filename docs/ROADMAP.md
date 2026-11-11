@@ -6,8 +6,9 @@ This is a short phase index. [PLAN.md](PLAN.md) is the authoritative implementat
 - [x] Phase 1 — Native S6 LOREDIT v15 reader/writer
 - [x] Phase 2 — LORPREV parser, prop groups, channel-address provenance, and parser hardening
 - [x] Phase 3 — Fixed-tempo Timeline walking skeleton; owner confirmed native output opens and renders in S6
-- [ ] Phase 4 — Audio analysis and real-song acceptance; PR #12 remains open/draft and unmerged
-- [ ] Phase 5 — Prop classifier and editable `props.yaml`
+- [ ] Phase 4 — Audio analysis and real-song acceptance; baseline merged, review/security follow-ups remain on PR #12
+- [ ] Phase 4.5 — Native blank S6 v15 sequence creation from `.lorprev` without a `.loredit` template (Issue #13)
+- [ ] Phase 5 — Prop classifier and editable `props.yaml` (requires multiple genuinely different preview fixtures)
 - [ ] Phase 6 — Rules engine and user-profile layering
 - [ ] Phase 7 — Section-aware choreography planner v1
 - [ ] Phase 8 — Vocal separation, syllable timing, and singing-face choreography
