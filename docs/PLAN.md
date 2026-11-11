@@ -11,7 +11,7 @@ Build a display-independent CLI that accepts audio plus a required Light-O-Rama 
 - Preview is mandatory for analyze and generate. Missing, unreadable, malformed, unsupported-version, or zero-prop previews fail clearly.
 - Props, controllers, and channels must originate from the preview or reviewed user prop map. Never invent or silently reassign them.
 - Classification combines prop type, shape, grouping, position, channel count, color, and name hints; never names alone.
-- Initial channel support: single-color AC/DC and multi-color single-circuit.
+- Product target includes legacy AC/DC single-color and LOR multi-color/single-circuit props. Phase 3 is intentionally narrower: it generates only verified `DeviceType=LOR` mappings for `Single Color`, `Multicolor_string_1_ch`, and `Channel_per_color`. AC/DC remains parseable but excluded until its native S6 channel mapping is independently verified; see the Phase 3 boundary in ARCHITECTURE.md.
 - RGB/pixel is outside v1 because the user's display does not use pixels. Detect and report unsupported pixel props; never silently drop or fake support.
 - Physical overrides in props.yaml win over inferred preview interpretation but cannot create channel identities.
 - Rules are configuration; invalid Timelines fail with readable rule, prop/channel, and timestamp details.
