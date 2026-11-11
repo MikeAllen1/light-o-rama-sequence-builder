@@ -241,6 +241,20 @@ def test_cli_reports_reduced_beat_grid_confidence(
     assert "Beat grid confidence: 0.3000" in output
 
 
+def test_hard_stop_detection_includes_leading_silence_but_not_silent_files() -> None:
+    from lor_sequence_builder.audio_analysis import _hard_stops
+
+    leading_silence = [0.0] * 20 + [0.2] * 40 + [0.0] * 20
+    stops = _hard_stops(leading_silence)
+
+    assert len(stops) == 2
+    assert stops[0]["time"] == 0.0
+    assert stops[0]["method"] == "leading_near_silence_relative_to_track_peak"
+    assert stops[0]["silence_duration"] == pytest.approx(1.0)
+    assert stops[1]["time"] == pytest.approx(3.0)
+    assert _hard_stops([0.0] * 100) == []
+
+
 def test_silence_does_not_fabricate_a_tempo(tmp_path: Path) -> None:
     audio = tmp_path / "silence.wav"
     with wave.open(str(audio), "wb") as output:
