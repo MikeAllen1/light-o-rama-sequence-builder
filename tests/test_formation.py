@@ -9,13 +9,13 @@ import random
 import pytest
 
 from lor_sequence_builder.formation import formation
-from lor_sequence_builder.rules.engine import Display, DisplayProp
 from lor_sequence_builder.planner import plan_show
 from lor_sequence_builder.rules import (
     check_choreography,
     display_from_preview,
     load_rule_set,
 )
+from lor_sequence_builder.rules.engine import Display, DisplayProp
 from tests.display_builders import DisplayBuilder
 from tests.test_planner import synthetic_analysis
 
