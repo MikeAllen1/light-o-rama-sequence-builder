@@ -2,7 +2,7 @@
 
 A display-independent command-line tool for building native Light-O-Rama S6 sequences from music and a required `.lorprev` display preview.
 
-**Project status:** Phases 1–3 are complete and merged. Phase 3's generated native sequence opens in S6 and its fixture preview/events render. Phase 4 real-audio validation and security follow-ups are in progress on PR #12. Prop classification, rules, and intelligent choreography remain future work.
+**Project status:** Phases 0–3 are complete and merged. The Phase 4 audio-analysis baseline is merged; real-song acceptance and security follow-ups are in progress on PR #12. Phase 4.5 (Issue #13) will remove the template requirement by building a blank native S6 v15 sequence directly from the preview. Prop classification, rules, and intelligent choreography remain future work.
 
 ## Product workflow
 
@@ -10,9 +10,9 @@ The planned workflow is:
 
 1. `analyze` — inspect the audio and required `.lorprev`, then produce a human-reviewable `props.yaml`.
 2. Review and correct the prop map.
-3. `generate` — create a new native S6 `.loredit`, a Timeline JSON file, and a report.
+3. `generate` — create a new native S6 `.loredit` directly from the preview and reviewed prop map, plus Timeline JSON and a report. A matching `.loredit` template is not required; an existing sequence may be used only as an optional reference/import source.
 
-The implementation is deliberately staged. The native S6 read/write path and fixed-tempo sequence-generation path are established. Phase 4 adds audio feature analysis; intelligent choreography comes later.
+The implementation is deliberately staged. Native S6 reading/round-trip writing and the fixed-tempo Phase 3 harness are established. The Phase 3 `pulse` command still uses a matching template as a temporary engineering constraint; Phase 4.5 removes that constraint from the product generation path. Phase 4 adds audio feature analysis; intelligent choreography comes later.
 
 See [docs/PLAN.md](docs/PLAN.md) for the phase order, acceptance criteria, and handoff log. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the intended system boundaries and data contracts. For the simple Phase 3 S6 playback check, follow [docs/PHASE3_VALIDATION.md](docs/PHASE3_VALIDATION.md); it provides a one-download ZIP generated automatically by GitHub Actions.
 
@@ -116,7 +116,7 @@ SECURITY.md                Security policy
 
 - The `.lorprev` preview will be mandatory for both analysis and generation.
 - Props, channels, and controller identities must come from the preview or an explicitly reviewed prop map; never invent or silently reassign them.
-- The user's display does not use pixel props. Pixel/RGB choreography is outside v1 and unsupported props must be reported, not faked or silently omitted.
+- V1 does not support pixel/RGB choreography. Unsupported props must be reported, not faked or silently omitted.
 - Source audio, previews, and sequence files are read-only. Generated output must be a new file.
 - Never commit user-owned show files, private previews, copyrighted audio, local machine paths, or secrets. Tests generate synthetic sequences and previews at runtime.
 - No GUI, controller upload, live playback, or editing existing sequences in v1.
