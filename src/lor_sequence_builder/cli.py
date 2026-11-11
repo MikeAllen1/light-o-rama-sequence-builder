@@ -76,6 +76,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"Duration: {report['audio']['duration_seconds']} seconds")
             print(f"Estimated tempo: {tempo['bpm']} BPM (confidence {tempo['confidence']})")
             print(f"Beats: {len(analysis['beats'])}")
+            beat_events = analysis["beats"]
+            if beat_events:
+                mean_beat_confidence = sum(
+                    event["confidence"] for event in beat_events
+                ) / len(beat_events)
+                print(f"Beat grid confidence: {mean_beat_confidence:.4f}")
+            else:
+                print("Beat grid confidence: unavailable (no beat grid)")
             print(f"Downbeats: {len(analysis['downbeats'])}")
             print(f"Onsets: {len(analysis['onsets'])}")
             print(f"Section candidates: {len(analysis['section_candidates'])}")
