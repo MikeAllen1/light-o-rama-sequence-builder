@@ -531,7 +531,10 @@
       ctx.stroke();
       const color = colors[lane.kind] || "#8096a6";
       if (lane.kind === "energy") {
-        const maximum = Math.max(0.000001, ...lane.events.map((event) => Number(event.rms) || 0));
+        const maximum = lane.events.reduce(
+          (value, event) => Math.max(value, Number(event.rms) || 0),
+          0.000001
+        );
         ctx.strokeStyle = color;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
@@ -560,7 +563,10 @@
         laneEvents = Array.from(strongestByPixel.values());
       }
       const onsetMaximum = lane.kind === "onsets"
-        ? Math.max(0.000001, ...laneEvents.map((event) => Number(event.strength) || 0))
+        ? laneEvents.reduce(
+          (value, event) => Math.max(value, Number(event.strength) || 0),
+          0.000001
+        )
         : 1;
       for (const event of laneEvents) {
         const time = event.time != null ? Number(event.time) : Number(event.start);
