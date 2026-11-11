@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 from collections.abc import Callable, Sequence
+import contextlib
 from pathlib import Path
 from typing import BinaryIO
 
@@ -37,8 +38,6 @@ def publish_new_files(files: Sequence[tuple[Path, Path]]) -> None:
             published.append(destination)
     except BaseException:
         for destination in reversed(published):
-            try:
+            with contextlib.suppress(OSError):
                 destination.unlink(missing_ok=True)
-            except OSError:
-                pass
         raise
