@@ -92,8 +92,11 @@ jobs:
       - name: Sync locked project environment
         run: uv sync --locked
 
-      - name: Run tests
-        run: uv run --no-sync --with-requirements requirements-dev.txt python -m pytest
+      - name: Run tests with branch coverage
+        run: uv run --no-sync --with-requirements requirements-dev.txt coverage run --branch --source=lor_sequence_builder -m pytest
+
+      - name: Report coverage
+        run: uv run --no-sync --with-requirements requirements-dev.txt coverage report --show-missing
 
       - name: Check lint
         run: uv run --no-sync --with-requirements requirements-dev.txt ruff check .
