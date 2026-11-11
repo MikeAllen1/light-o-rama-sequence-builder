@@ -170,13 +170,15 @@ def _estimate_tempo(
     best_score = max(score for score, _ in candidates)
     if best_score <= 1e-12:
         return None, 0.0, None, None
-    # Autocorrelation can favor every second or third beat (for example,
-    # 60 BPM for a 180 BPM pulse train). Prefer a faster periodic candidate
-    # when its score is within 10% of the strongest candidate. This is a
-    # deliberate alias-resolution heuristic, not meter detection.
+    # Frame quantization can make the true beat lag score materially lower
+    # than a multiple of that lag (for example, a 180 BPM pulse train can
+    # correlate most strongly at 60 BPM). Prefer the shortest periodic
+    # candidate retaining at least half the strongest correlation. This is
+    # an alias-resolution heuristic, not meter detection; real music still
+    # requires listening-based validation.
     best_lag = min(
         lag for score, lag in candidates
-        if score >= best_score * 0.90
+        if score >= best_score * 0.50
     )
     positive = [score for score, _ in candidates if score > 0]
     mean_score = math.fsum(positive) / len(positive) if positive else 0.0
