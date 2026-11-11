@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import base64
-import gzip
+import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -132,10 +131,9 @@ def test_s6_exported_revision_one_golden_fixture_preserves_all_source_data(
     tmp_path: Path,
 ) -> None:
     # The committed fixture is a gzip transport wrapper around the sanitized S6 XML export.
-    fixture = FIXTURES / "s6_revision_1_export.lorprev.gz"
+    fixture = FIXTURES / "s6_revision_1_export.lorprev"
     source = tmp_path / "s6_revision_1_export.lorprev"
-    compressed = base64.b64decode(fixture.read_bytes(), validate=True)
-    source.write_bytes(gzip.decompress(compressed))
+    shutil.copyfile(fixture, source)
 
     model = read_lorprev(source)
     assert model.revision.value == "1"
@@ -382,10 +380,9 @@ def test_preview_size_limit_is_enforced_while_reading(tmp_path: Path) -> None:
 def test_owner_supplied_s6_revision_56_preview_parses_native_prop_group(
     tmp_path: Path,
 ) -> None:
-    fixture = FIXTURES / "s6_revision_56_group_export.lorprev.gz.b64"
+    fixture = FIXTURES / "s6_revision_56_group_export.lorprev"
     source = tmp_path / "s6_revision_56_group_export.lorprev"
-    compressed = base64.b64decode(fixture.read_bytes(), validate=True)
-    source.write_bytes(gzip.decompress(compressed))
+    shutil.copyfile(fixture, source)
 
     model = read_lorprev(source)
     assert model.revision.value == "56"
@@ -394,7 +391,7 @@ def test_owner_supplied_s6_revision_56_preview_parses_native_prop_group(
 
     group = model.groups[0]
     assert group.group_id is not None
-    assert group.group_id.value == "661c4882-d019-4894-8812-d8ca520d3659"
+    assert group.group_id.value == "00000000-0000-4000-8000-000000000037"
     assert group.name is not None and group.name.value == "Fixture Group 01"
     assert group.arrangement is not None and group.arrangement.value == "Preview"
     assert len(group.members) == 5

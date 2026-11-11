@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import gzip
+import re
 import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -15,14 +15,13 @@ from lor_sequence_builder.loredit import (
     write_loredit,
 )
 
-FIXTURE_GZIP = Path(__file__).parent / "fixtures" / "basic_show.loredit.gz"
+FIXTURE_XML = Path(__file__).parent / "fixtures" / "basic_show.loredit"
 
 
 @pytest.fixture
 def fixture_path(tmp_path: Path) -> Path:
     fixture = tmp_path / "basic_show.loredit"
-    with gzip.open(FIXTURE_GZIP, "rb") as source, fixture.open("wb") as target:
-        shutil.copyfileobj(source, target)
+    shutil.copyfile(FIXTURE_XML, fixture)
     return fixture
 
 
@@ -198,3 +197,16 @@ def test_sequence_prop_may_reference_native_preview_group_id(
 
     document = read_loredit(source)
     assert document.root.find(f"./SequenceProps/SeqProp[@id='{group_id}']") is not None
+
+
+
+def test_committed_xml_fixtures_have_no_private_paths_or_background_files() -> None:
+    fixture_dir = Path(__file__).parent / "fixtures"
+    for source in sorted(fixture_dir.iterdir()):
+        if source.suffix.lower() not in {".loredit", ".lorprev"}:
+            continue
+        content = source.read_text(encoding="utf-8")
+        assert re.search(r"C:\\Users|/Users/", content, re.IGNORECASE) is None, source.name
+        assert re.search(
+            r"\\bBackground[A-Za-z0-9_]*File\\s*=", content, re.IGNORECASE
+        ) is None, source.name

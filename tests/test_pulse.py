@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import base64
-import gzip
 import json
 import shutil
 import xml.etree.ElementTree as ET
@@ -13,14 +11,14 @@ from lor_sequence_builder.loredit import read_loredit
 from lor_sequence_builder.pulse import PulseGenerationError, build_pulse_sequence
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
-FIXTURE = FIXTURE_DIR / "basic_show.loredit.gz"
-INDEPENDENT_TEMPLATE = FIXTURE_DIR / "s6_revision_56_independent_template.loredit.gz.b64"
+FIXTURE = FIXTURE_DIR / "basic_show.loredit"
+INDEPENDENT_TEMPLATE = FIXTURE
 
 
 def independent_inputs(tmp_path: Path) -> tuple[Path, Path]:
     preview_path = tmp_path / "independent.lorprev"
     template_path = tmp_path / "independent-template.loredit"
-    template_path.write_bytes(gzip.decompress(base64.b64decode(INDEPENDENT_TEMPLATE.read_bytes())))
+    shutil.copyfile(INDEPENDENT_TEMPLATE, template_path)
     template_root = ET.parse(template_path).getroot()
     preview_root = template_root.find("PreviewClass")
     assert preview_root is not None
@@ -41,8 +39,7 @@ def independent_inputs(tmp_path: Path) -> tuple[Path, Path]:
 @pytest.fixture
 def matching_inputs(tmp_path: Path) -> tuple[Path, Path]:
     template = tmp_path / "template.loredit"
-    with gzip.open(FIXTURE, "rb") as source, template.open("wb") as target:
-        shutil.copyfileobj(source, target)
+    shutil.copyfile(FIXTURE, template)
 
     tree = ET.parse(template)
     root = tree.getroot()

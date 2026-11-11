@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import argparse
-import base64
-import gzip
 import json
+import shutil
 import tempfile
 import uuid
 import xml.etree.ElementTree as ET
@@ -19,7 +18,7 @@ from lor_sequence_builder.pulse import build_pulse_sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures"
-TEMPLATE_FIXTURE = FIXTURES / "s6_revision_56_independent_template.loredit.gz.b64"
+TEMPLATE_FIXTURE = FIXTURES / "basic_show.loredit"
 
 PACKAGE_README = """PHASE 3 LIGHT-O-RAMA S6 TEST
 
@@ -36,12 +35,6 @@ native S6 file compatibility and sequence-preview animation only. It does
 not address or activate your real controllers or validate your house's
 physical channel mapping. Do not use this sample as a live-show sequence.
 """
-
-
-def _decode_fixture(source: Path, destination: Path) -> None:
-    """Decode the repository's base64-wrapped gzip fixture without modifying it."""
-    encoded = source.read_text(encoding="ascii")
-    destination.write_bytes(gzip.decompress(base64.b64decode(encoded, validate=True)))
 
 
 def _strip_local_background_references(template: Path) -> None:
@@ -89,7 +82,7 @@ def build_package(destination: Path) -> None:
         sequence = work / "Phase3-Test.loredit"
         timeline_path = work / "Phase3-Test.timeline.json"
 
-        _decode_fixture(TEMPLATE_FIXTURE, template)
+        shutil.copyfile(TEMPLATE_FIXTURE, template)
         _strip_local_background_references(template)
         template_root = SafeET.parse(
             template, forbid_dtd=True, forbid_entities=True, forbid_external=True

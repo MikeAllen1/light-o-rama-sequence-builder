@@ -1,18 +1,11 @@
-# LORPREV fixture notes
+# Sanitized XML fixtures
 
-- `default_empty.lorprev` is a generic zero-prop S6 export retained only as a negative test for the required zero-prop failure.
-- `synthetic_display.lorprev` is a small fictional Revision 0 fixture used to test basic element and provenance preservation.
-- The exact Light-O-Rama S6 application build used for the Revision 1 export was not recorded. This is optional provenance, not an acceptance blocker; parser compatibility is keyed to the file's internal Revision marker.
-- Human import verification: complete. On 2026-11-10, the owner opened the sanitized Revision 1 `.lorprev` fixture supplied for S6 import and confirmed that it loads successfully. This verifies the sanitized preview is accepted by S6.
-- `s6_revision_1_export.lorprev.gz` is a base64-encoded gzip transport copy of the owner's fictional standalone `.lorprev` exported by Light-O-Rama S6. Tests decode it to the original XML before parsing. The XML fixture is sanitized by replacing the preview/scene/prop IDs and display/scene names with synthetic values; its 51 props, channel-grid values, shapes, geometry, and other structural source values are retained.
-- The Revision 1 S6 export contains 51 props, one scene, one empty `PropViews`, 1,900 geometry points, 46 square props, 5 hexagon props, six shape names, and eight `Channel_per_color` props. It has no standalone controller objects or group elements. Controller channel assignments are nevertheless present on props in `ChannelGrid`; these are not a separate `ControllerClass` requirement.
-- `default_empty.lorprev` remains a negative zero-prop test. The runtime-generated Revision 1 test remains supplemental synthetic coverage, not the primary golden fixture.
-- Revision 0, Revision 1, Revision 56, and Revision 58 are covered by fixtures. The independent integration pair deliberately uses standalone Revision 58 with an embedded Revision 56 PreviewClass; other revisions fail explicitly.
-- `s6_revision_56_group_export.lorprev.gz.b64` is a base64-encoded gzip transport copy of the `PreviewClass` embedded in the existing `fixture_candidate.loredit` source file. It is a synthetic/fictional S6 fixture with 51 props, one native `PropGroup`, and five native `member` references. Its internal PreviewClass revision is 56 (from S6 6.6.0.12). The extracted PreviewClass is preserved as-is; it is not a fabricated group example.
-- The Revision 56 group is named `Fixture Group 01`, uses `Arrangement="Preview"`, and references Fixture Props 011, 010, 009, 008, and 007 in source order. Each member includes `orientation`, `top`, and `left` attributes. The parser now exposes these typed references and values while retaining the complete RawElement and per-attribute provenance.
-- `ChannelGrid` is split into semicolon-delimited rows. LOR rows expose network, Unit ID, and circuit; DMX rows expose universe and channel. All remaining fields and the complete original value remain available as raw fields with source provenance. The LOR network + Unit ID identify the controller address used by the prop; the circuit identifies the output channel. Geometry `<point>` x/y attributes are exposed as typed coordinate values with individual provenance. `MasterPropId` remains a raw source reference.
+The committed `.loredit` and `.lorprev` fixtures are plain XML so reviewers, diffs,
+secret scanning, and CI can inspect the actual content. Fixture names, identifiers,
+and media/background references are synthetic or removed. No audio, personal
+sequences, local workstation paths, or background image files belong here.
 
-
-- `s6_revision_56_independent_template.loredit.gz.b64` is the independent native v15 sequence fixture. The package builder and tests derive its standalone PreviewClass from the embedded preview after removing workstation-local background-image paths. The fixture retains 51 prop identities, one five-member PropGroup, 49 SeqProps, and 81 native channels. Identifiers, display names, controller unit IDs, and geometry coordinates are anonymized; shape/point structure, ChannelGrid-to-native-channel ordering, group membership, and per-color channel coordinates are retained.
-- The independent pair establishes the verified Phase 3 LOR channel mapping patterns: row 0 with sequential native columns for Single Color/Multicolor_string_1_ch, and row 0/column 0 with sequential native color coordinates for Channel_per_color. ChannelGrid entry count matches native channel count for mapped props. AC/DC is recognized by the parser but not included in this v15 support claim.
-- The actual source files remain in the owner's Library and are not committed to the public repository; only the anonymized fixture derivatives are committed.
+The large Revision 1 and Revision 56 exports are retained as readable XML rather
+than opaque base64/gzip wrappers. The compact native sequence fixture keeps
+representative effects for semantic round-trip tests; the independent preview
+is extracted from the same template for integration tests.
