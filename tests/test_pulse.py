@@ -47,6 +47,11 @@ def matching_inputs(tmp_path: Path) -> tuple[Path, Path]:
     for prop in list(preview.findall("PropClass")):
         if prop.get("id") not in sequence_ids:
             preview.remove(prop)
+    # Keep one explicit unsupported declaration so report/CLI exclusion paths
+    # remain covered after Channel_per_color gains verified support.
+    first_prop = preview.find("PropClass")
+    assert first_prop is not None
+    first_prop.set("TraditionalType", "Unsupported Fixture Type")
     tree.write(template, encoding="utf-8", xml_declaration=True)
     preview_path = tmp_path / "display.lorprev"
     ET.ElementTree(preview).write(preview_path, encoding="utf-8", xml_declaration=True)
