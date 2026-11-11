@@ -210,6 +210,21 @@ def test_raw_element_preserves_mixed_text_and_child_tail(tmp_path: Path) -> None
     assert prop.children[0].tail == "after"
 
 
+def test_excessive_xml_nesting_fails_with_actionable_error(tmp_path: Path) -> None:
+    source = tmp_path / "deeply-nested.lorprev"
+    depth = 300
+    source.write_text(
+        '<PreviewClass Revision="1"><PropClass id="p">'
+        + "<nested>" * depth
+        + "</nested>" * depth
+        + "</PropClass></PreviewClass>",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(LorprevError, match="nesting exceeds the maximum depth"):
+        read_lorprev(source)
+
+
 def test_owner_supplied_default_preview_is_rejected_as_zero_prop_fixture() -> None:
     with pytest.raises(LorprevError, match="zero PropClass"):
         read_lorprev(FIXTURES / "default_empty.lorprev")
