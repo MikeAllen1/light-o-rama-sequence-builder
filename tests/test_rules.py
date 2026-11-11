@@ -711,7 +711,6 @@ def test_duplicate_movement_ids_are_reported() -> None:
                for item in findings)
 
 
-
 def test_direct_choreography_objects_reject_unknown_effect_and_movement_values() -> None:
     display = classic_yard()
     invalid_effect = Choreography(
