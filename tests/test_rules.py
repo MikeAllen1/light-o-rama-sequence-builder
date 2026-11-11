@@ -769,6 +769,23 @@ def test_direct_movement_with_no_props_fails_without_crashing() -> None:
                for item in findings)
 
 
+
+def test_direct_movement_with_non_integer_time_fails_validation() -> None:
+    display = classic_yard()
+    timeline = Choreography(
+        duration_centiseconds=SONG,
+        effects=(),
+        movements=(Movement("bad-time", "chase", (_ids(display)["Arch 1"],),
+                            "left_to_right", True, 100),),
+    )
+
+    report = _check(display, timeline)
+    _, findings = _result(report, "effects_well_formed")
+
+    assert not report.ok
+    assert any("start and end times must be integers" in item for item in findings)
+
+
 def test_duplicate_group_names_union_members_for_name_selectors() -> None:
     builder = classic_yard()
     root = builder.element()
