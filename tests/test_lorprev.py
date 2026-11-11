@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+import lor_sequence_builder.lorprev as lorprev_module
+
 from lor_sequence_builder.lorprev import (
     MAX_LORPREV_BYTES,
     LorprevError,
@@ -464,4 +466,52 @@ def test_invalid_or_unsafe_previews_fail(content: bytes, tmp_path: Path) -> None
     source = tmp_path / "invalid.lorprev"
     source.write_bytes(content)
     with pytest.raises(LorprevError):
+        read_lorprev(source)
+
+
+def test_missing_prop_id_is_reported_without_discarding_prop(tmp_path: Path) -> None:
+    source = tmp_path / "missing-prop-id.lorprev"
+    source.write_text(
+        '<PreviewClass Revision="1"><PropClass Name="No ID" />'
+        '</PreviewClass>',
+        encoding="utf-8",
+    )
+
+    model = read_lorprev(source)
+    assert len(model.props) == 1
+    assert [item.kind for item in model.unsupported_constructs] == ["prop identity"]
+    assert model.unsupported_constructs[0].source.locator.endswith("/@id")
+    assert "missing a non-empty id" in model.unsupported_constructs[0].detail
+
+
+def test_duplicate_prop_ids_are_reported_without_discarding_source_props(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "duplicate-prop-id.lorprev"
+    source.write_text(
+        '<PreviewClass Revision="1"><PropClass id="duplicate" Name="First" />'
+        '<PropClass id="duplicate" Name="Second" /></PreviewClass>',
+        encoding="utf-8",
+    )
+
+    model = read_lorprev(source)
+    assert len(model.props) == 2
+    assert [prop.attributes["Name"].value for prop in model.props] == ["First", "Second"]
+    assert [item.kind for item in model.unsupported_constructs] == ["prop identity"]
+    assert model.unsupported_constructs[0].source.value == "duplicate"
+    assert model.unsupported_constructs[0].source.locator.endswith("/@id")
+
+
+def test_xml_element_count_limit_is_enforced_during_parse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "too-many-elements.lorprev"
+    monkeypatch.setattr(lorprev_module, "MAX_LORPREV_ELEMENTS", 5)
+    source.write_text(
+        '<PreviewClass Revision="1"><PropClass id="p" />'
+        '<Unknown /><Unknown /><Unknown /><Unknown /></PreviewClass>',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(LorprevError, match="maximum element count of 5"):
         read_lorprev(source)
