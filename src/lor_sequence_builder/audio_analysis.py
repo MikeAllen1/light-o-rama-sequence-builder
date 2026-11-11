@@ -42,12 +42,21 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _normalize(path: Path, output: Path) -> None:
+def _normalize(path: Path, output: Path) -> str:
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
         raise AudioAnalysisError(
             "FFmpeg is required for audio decoding; install FFmpeg and ensure it is on PATH"
         )
+    try:
+        version_result = subprocess.run(
+            [ffmpeg, "-version"], check=False, capture_output=True, text=True, timeout=10
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise AudioAnalysisError("Could not determine the installed FFmpeg version") from exc
+    if version_result.returncode != 0 or not version_result.stdout:
+        raise AudioAnalysisError("Could not determine the installed FFmpeg version")
+    ffmpeg_version = version_result.stdout.splitlines()[0].strip()
     command = [
         ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
         "-i", str(path), "-t", str(MAX_DURATION_SECONDS + 1), "-map", "0:a:0", "-vn", "-ac", "1",
@@ -63,6 +72,7 @@ def _normalize(path: Path, output: Path) -> None:
     if completed.returncode != 0:
         detail = completed.stderr.strip()[-500:]
         raise AudioAnalysisError(f"FFmpeg could not decode the audio: {detail}")
+    return ffmpeg_version
 
 
 def _read_features(wav_path: Path) -> tuple[list[float], list[float], float]:
@@ -130,6 +140,7 @@ def _detect_onsets(flux: list[float]) -> list[dict[str, float]]:
                 "time": round(index * FRAME_SECONDS, 3),
                 "strength": round(value, 8),
                 "confidence": round(min(1.0, value / maximum), 4),
+                "method": "local_peak_in_positive_frame_energy_flux",
             })
     return peaks
 
@@ -187,6 +198,7 @@ def _energy_curve(rms: list[float]) -> list[dict[str, float]]:
             result.append({
                 "time": round(start * FRAME_SECONDS, 2),
                 "rms": round(math.sqrt(math.fsum(value * value for value in chunk) / len(chunk)), 6),
+                "method": "root_mean_square_amplitude",
             })
     return result
 
@@ -208,6 +220,7 @@ def _hard_stops(
                     "time": round(index * FRAME_SECONDS, 3),
                     "silence_duration": round((end - index) * FRAME_SECONDS, 3),
                     "confidence": 0.8,
+                    "method": "sustained_near_silence_relative_to_track_peak",
                 })
             index = end
         else:
@@ -232,6 +245,7 @@ def _phrase_boundaries(
             "kind": "estimated_16_beat_phrase",
             "confidence": 0.35,
             "basis": "fixed 16-beat grouping from estimated tempo; not semantic section recognition",
+            "method": "estimated_global_tempo_grid",
         })
         index += 1
         time = first_beat + index * phrase_seconds
@@ -267,6 +281,7 @@ def _section_candidates(energy: list[dict[str, float]]) -> list[dict[str, Any]]:
                 "relative_change": round(change, 4),
                 "confidence": round(min(0.75, 0.35 + change * 0.25), 3),
                 "label": None,
+                "method": "relative_change_in_rolling_rms_energy",
             })
     return result
 
@@ -339,7 +354,7 @@ def analyze_audio(
         plot_path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="lor-audio-") as directory:
             normalized = Path(directory) / "normalized.wav"
-            _normalize(source, normalized)
+            ffmpeg_version = _normalize(source, normalized)
             rms, flux, duration = _read_features(normalized)
         onsets = _detect_onsets(flux)
         bpm, tempo_confidence, lag, phase = _estimate_tempo(flux, min_bpm, max_bpm)
@@ -371,6 +386,11 @@ def analyze_audio(
                 "channels": 1,
                 "sample_format": "signed 16-bit PCM",
             },
+            "tool_versions": {
+                "analyzer_schema": ANALYSIS_SCHEMA_VERSION,
+                "ffmpeg": ffmpeg_version,
+                "python": __import__("platform").python_version(),
+            },
             "configuration": {
                 "frame_seconds": FRAME_SECONDS,
                 "minimum_bpm": min_bpm,
@@ -382,6 +402,7 @@ def analyze_audio(
             },
             "analysis": {
                 "method": "FFmpeg normalization + deterministic RMS/positive-energy-flux/autocorrelation",
+                "provenance": "All timestamps are relative to the decoded audio stream start; frame features use 551-sample windows at 11025 Hz.",
                 "limitations": [
                     "Tempo is a single global estimate; tempo changes are not modeled.",
                     "Downbeats assume the first detected beat is beat one and group every four beats.",
@@ -395,9 +416,16 @@ def analyze_audio(
                     "confidence": tempo_confidence,
                     "method": "onset-envelope autocorrelation",
                 },
-                "beats": [{"time": value, "confidence": tempo_confidence} for value in beat_times],
-                "downbeats": [{"time": value, "confidence": round(tempo_confidence * 0.7, 4)}
-                              for value in downbeats],
+                "beats": [
+                    {"time": value, "confidence": tempo_confidence,
+                     "method": "global_onset_envelope_autocorrelation_grid"}
+                    for value in beat_times
+                ],
+                "downbeats": [
+                    {"time": value, "confidence": round(tempo_confidence * 0.7, 4),
+                     "method": "provisional_first_beat_plus_four_beat_meter_assumption"}
+                    for value in downbeats
+                ],
                 "onsets": onsets,
                 "energy": energy,
                 "phrase_boundaries": phrases,
