@@ -171,19 +171,34 @@ def _estimate_tempo(
     if best_score <= 1e-12:
         return None, 0.0, None, None
     # Frame quantization can make the true beat lag score materially lower
-    # than a multiple of that lag (for example, a 180 BPM pulse train can
-    # correlate most strongly at 60 BPM). Prefer the shortest periodic
-    # candidate retaining at least half the strongest correlation. This is
-    # an alias-resolution heuristic, not meter detection; real music still
-    # requires listening-based validation.
-    best_lag = min(
+    # than a multiple of that lag. Restrict alias selection to local peaks,
+    # then prefer the shortest peak retaining half the strongest correlation.
+    # This remains a heuristic, not meter detection.
+    scores_by_lag = {lag: score for score, lag in candidates}
+    local_peaks = [
         lag for score, lag in candidates
-        if score >= best_score * 0.50
-    )
+        if score >= scores_by_lag.get(lag - 1, float("-inf"))
+        and score >= scores_by_lag.get(lag + 1, float("-inf"))
+        and score >= best_score * 0.50
+    ]
+    best_lag = min(local_peaks) if local_peaks else max(candidates)[1]
+    # Parabolic interpolation around the discrete correlation peak reduces
+    # BPM quantization error for tempos whose beat period is not an integer
+    # number of 50 ms analysis frames.
+    left_score = scores_by_lag.get(best_lag - 1)
+    center_score = scores_by_lag.get(best_lag)
+    right_score = scores_by_lag.get(best_lag + 1)
+    refined_lag = float(best_lag)
+    if left_score is not None and right_score is not None and center_score is not None:
+        denominator = left_score - 2.0 * center_score + right_score
+        if denominator < -1e-12:
+            offset = 0.5 * (left_score - right_score) / denominator
+            if abs(offset) <= 0.5:
+                refined_lag += offset
     positive = [score for score, _ in candidates if score > 0]
     mean_score = math.fsum(positive) / len(positive) if positive else 0.0
     confidence = max(0.0, min(1.0, (best_score - mean_score) / (abs(best_score) + 1e-12)))
-    bpm = 60.0 / (best_lag * FRAME_SECONDS)
+    bpm = 60.0 / (refined_lag * FRAME_SECONDS)
     # Phase maximizes onset strength sampled at the candidate beat period.
     period = best_lag
     phase_scores = [
