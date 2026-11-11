@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 from lor_sequence_builder.audio_analysis import AudioAnalysisError, analyze_audio
+from lor_sequence_builder.classifier import (
+    ClassificationError,
+    classification_report,
+    classify_preview,
+)
 from lor_sequence_builder.evaluation import EvaluationError, evaluate
 from lor_sequence_builder.loredit import LoreditError, read_loredit, write_loredit
 from lor_sequence_builder.lorprev import LorprevError, read_lorprev
@@ -69,6 +76,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=4,
         help="beats per bar for downbeats: 4 for most songs, 3 for waltz time (default: 4)",
     )
+    classify = commands.add_parser(
+        "analyze-preview",
+        help="identify each prop in a display preview (arches, trees, faces, ...) with evidence",
+    )
+    classify.add_argument("preview", help="input .lorprev file (read only)")
+    classify.add_argument("--report", help="optional new JSON report path with full evidence")
     score = commands.add_parser(
         "evaluate-analysis",
         help="score an analysis JSON against hand-placed timing grids in a sequence",
@@ -190,6 +203,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"Unsupported constructs: {len(model.unsupported_constructs)}")
             print(f"Unrecognized elements (all levels): {len(model.unrecognized_elements)}")
             return 0
+        if options.command == "analyze-preview":
+            return _analyze_preview(options.preview, options.report)
         if options.command == "evaluate-analysis":
             results = evaluate(
                 options.analysis,
@@ -218,6 +233,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     except (
         AudioAnalysisError,
+        ClassificationError,
         EvaluationError,
         LoreditError,
         LorprevError,
@@ -230,3 +246,42 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def _analyze_preview(preview_path: str, report_path: str | None) -> int:
+    from lor_sequence_builder.pulse import preview_element
+
+    model = read_lorprev(preview_path)
+    if report_path is not None and Path(report_path).exists():
+        raise ClassificationError(f"Report already exists: {report_path}")
+    results = classify_preview(preview_element(model))
+    order = {"confident": 0, "review": 1, "unknown": 2}
+    print(f"Props: {len(results)}")
+    for status in ("confident", "review", "unknown"):
+        group = [r for r in results if r.status == status]
+        if not group:
+            continue
+        print(f"\n{status.upper()} ({len(group)})")
+        for item in sorted(group, key=lambda r: (order[r.status], r.role, r.position_in_row or 0, r.name)):
+            role = item.role.replace("_", " ")
+            extras = []
+            if item.position_in_row is not None:
+                where = f"in group {item.group!r}" if item.group else "in a row"
+                extras.append(f"#{item.position_in_row} of {item.row_size} {where}")
+            if item.direction not in {"not applicable", "unknown"}:
+                extras.append(item.direction.replace("_", " "))
+            if not item.color_capability.can_show_single_color and item.color_capability.kind == "combined_colors":
+                extras.append("combined colors")
+            if item.sequencing_support != "supported":
+                extras.append(item.sequencing_support)
+            suffix = f" [{'; '.join(extras)}]" if extras else ""
+            print(f"  {item.name}: {role} ({item.confidence:.2f}){suffix}")
+            for note in item.review_notes:
+                print(f"      - {note}")
+    print("\nTo correct a conclusion, fix the prop in the S6 Preview Editor and run this again.")
+    if report_path is not None:
+        report = classification_report(results, Path(preview_path).name)
+        with Path(report_path).open("x", encoding="utf-8") as stream:
+            stream.write(json.dumps(report, indent=2) + "\n")
+        print(f"Report: {report_path}")
+    return 0

@@ -6,14 +6,14 @@
 
 ## Product objective and fixed requirements
 
-Build a display-independent CLI that accepts audio plus a required Light-O-Rama .lorprev preview and produces a new native S6 .loredit sequence. The user workflow remains analyze → review/edit props.yaml → generate. Timeline JSON is the single source of truth and is saved beside the output.
+Build a display-independent CLI that accepts audio plus a required Light-O-Rama .lorprev preview and produces a new native S6 .loredit sequence. The user workflow is analyze the preview → review the report and fix anything wrong in the S6 Preview Editor → generate. Timeline JSON is the single source of truth and is saved beside the output.
 
 - Preview is mandatory for analyze and generate. Missing, unreadable, malformed, unsupported-version, or zero-prop previews fail clearly.
-- Props, controllers, and channels must originate from the preview or reviewed user prop map. Never invent or silently reassign them.
+- Props, controllers, and channels must originate from the preview. Never invent or silently reassign them.
 - Classification combines prop type, shape, grouping, position, channel count, color, and name hints; never names alone.
 - Product target includes legacy AC/DC single-color and LOR multi-color/single-circuit props. Phase 3 is intentionally narrower: it generates only verified `DeviceType=LOR` mappings for `Single Color`, `Multicolor_string_1_ch`, and `Channel_per_color`. AC/DC remains parseable but excluded until its native S6 channel mapping is independently verified; see the Phase 3 boundary in ARCHITECTURE.md.
 - RGB/pixel is outside v1. Detect and report unsupported pixel props; never silently drop or fake support.
-- Physical overrides in props.yaml win over inferred preview interpretation but cannot create channel identities.
+- The preview is the only display input (owner decision, 2026-11-11). There is no separate prop map: the tool reads the preview the way a person would, and corrections are made in the S6 Preview Editor.
 - Rules are configuration; invalid Timelines fail with readable rule, prop/channel, and timestamp details.
 - Never modify/overwrite inputs. Output is a new file.
 - V1 excludes GUI, controller upload, live playback, and editing existing sequences.
@@ -27,13 +27,13 @@ Build a display-independent CLI that accepts audio plus a required Light-O-Rama 
 
 These differ from the original stack proposal. They are intentional and accepted unless the owner reopens them:
 
-- **Models:** frozen `dataclasses` are used for stage models instead of Pydantic. Pydantic remains the expected choice for user-edited inputs (`props.yaml`, rules profiles) where schema validation and error messages matter; adopt it in the phase that first parses those files.
+- **Models:** frozen `dataclasses` are used for stage models instead of Pydantic. Pydantic remains the expected choice for user-edited inputs (rules profiles) where schema validation and error messages matter; adopt it in the phase that first parses those files.
 - **CLI:** `argparse` is used instead of Typer. Acceptable for v1; revisit only if CLI complexity grows.
 - **Audio (reversed 2026-11-11):** the stdlib-only baseline was replaced by librosa after real-song review showed its beat placement was near chance. librosa analyzes FFmpeg-decoded samples only; FFmpeg remains the only decoder. Demucs or similar is still expected for Phase 8 vocals and must be recorded here when added.
 
 ## Open decisions (owner input required before the phase that depends on them)
 
-1. **Sequence creation without a template (resolved 2026-11-11).** Owner chose to build sequences from scratch: `generate` takes audio, preview, and props.yaml only, and the tool creates a new native sequence itself. A template is not a required input. This becomes Phase 4b, scheduled after Phase 4 acceptance and before Phase 5 because it is the largest remaining format unknown.
+1. **Sequence creation without a template (resolved 2026-11-11).** Owner chose to build sequences from scratch: `generate` takes audio and preview only, and the tool creates a new native sequence itself. A template is not a required input. This becomes Phase 4b, scheduled after Phase 4 acceptance and before Phase 5 because it is the largest remaining format unknown.
 2. **Preview Revision (resolved 2026-11-11).** Owner clarified that `PreviewClass/@Revision` is an edit counter incremented on each save, not a format version. The parser's revision allowlist (which rejected any preview not at revision 0, 1, 56, or 58) was removed; the value is now optional metadata. Compatibility is judged by structure. Do not reintroduce revision-based gating.
 3. **Fixture diversity before Phase 5.** Current committed fixtures are synthetic and intentionally limited. Classifier golden tests need 2 to 3 previews from materially different displays (different size, messy naming, legacy AC/DC) before Phase 5 can claim display independence. Any additional owner-provided examples must remain local; do not commit original or sanitized owner show material.
 4. **License.** An MIT `LICENSE` was added in the docs-cleanup PR as a proposed default. The owner should confirm or replace it before merge.
@@ -110,9 +110,17 @@ Build a native S6 v15 `.loredit` from a parsed `.lorprev` alone, with no templat
 **Done when:** A scratch-built sequence for every committed fixture preview is semantically equal to its S6-created reference fixture (props, channel coordinates, addresses, timing, metadata); unsupported props are enumerated, never silently dropped; `pulse` works with only a preview, audio duration or explicit duration, and BPM; the template path is removed or explicitly deprecated; inputs are never modified; the owner opens a scratch-built sequence in S6, confirms it loads, the preview renders, and events appear. Mandatory human gate.
 
 ### Phase 5 — Classifier
-Build prop roles, orientation/direction, segment order, color capability, analyze command, and editable props.yaml.
+**Status: Complete. Owner confirmed on 2026-11-11 that the conclusions on a real display match how they read it.**
 
-**Done when:** Expected classifications match golden results on all fixtures; low-confidence and unknown classifications are flagged; names alone cannot determine classification; overrides win without changing channel identity; stale prop maps are rejected or explicitly migrated.
+Identify each prop from the preview alone: role (arch, mini tree, mega tree, star, singing face, icicles, outline, snowflake, or unknown), confidence with evidence, row position, direction, segment order, color capability, and whether v1 can sequence its channels. `analyze-preview` prints the conclusions and a review list and can write a JSON report. There is no prop map file (owner decision, 2026-11-11): the preview is the only input, and corrections are made in the S6 Preview Editor.
+
+**Evidence:** S6 shape type and parameters (`Parm1` is the segment or strand count), geometry (center and size for parametric shapes, bounding box, arcs, closed outlines, long flat runs), channel count and `TraditionalType`, `StartLocation`, `PropGroup` membership and order, look-alike props side by side, small props drawn on top of each other as one figure (a face built from parts), and `MasterPropId` links.
+
+**Name rule (owner decision, 2026-11-11):** when the S6 shape type is specific (Arch, Star, Tree, Icicles, snowflake) or there is real structural evidence, the name is only a tiebreaker. When the shape type is generic (plain lines) and nothing structural says otherwise, the name decides, flagged for review. A first real-display check showed most props are drawn as plain lines, so names are the only usable evidence for them.
+
+**Fixtures:** five wholly fictional displays generated in `tests/display_builders.py` (classic yard, roofline house, misleading names, unsupported hardware, line-drawn yard), each with known roles. The owner's own display was analyzed locally at the owner's request; nothing from it is committed.
+
+**Done when:** classifications match the known answers on all fictional displays; low-confidence and unknown props are flagged with reasons; renaming props never switches a prop to a different role; color capability and sequencing support agree with the sequence builder; the preview is never modified; the owner runs `analyze-preview` on a preview of their choice and agrees the conclusions are useful.
 
 ### Phase 6 — Rules engine
 Build universal defaults and user profile layering.

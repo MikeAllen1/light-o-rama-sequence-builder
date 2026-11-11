@@ -12,10 +12,10 @@ LOR Auto-Sequencer accepts an audio file and the display's required `.lorprev` f
 
 The workflow has two explicit commands:
 
-1. `analyze` reads and validates the audio and preview, extracts the display model, classifies its props, and writes a human-editable `props.yaml`.
-2. The user reviews and may correct `props.yaml`. `generate` reads the same required inputs and reviewed map, analyzes the music, plans choreography, validates the resulting Timeline, and writes a new `.loredit` file plus the Timeline JSON and a report.
+1. `analyze-preview` reads the required preview, classifies its props, and reports each conclusion with its evidence and a review list.
+2. The user reviews the report and corrects anything wrong in the S6 Preview Editor itself (owner decision, 2026-11-11: the preview is the only display input; there is no separate prop map). `generate` reads the audio and preview, classifies the props the same way, analyzes the music, plans choreography, validates the resulting Timeline, and writes a new `.loredit` file plus the Timeline JSON and a report.
 
-The original audio, preview, prop map, and any reference sequence are read-only inputs. Output paths must be new paths; the tool must refuse to overwrite an input or an existing output unless a future explicit and separately approved policy says otherwise. V1 does not edit existing sequences.
+The original audio, preview, and any reference sequence are read-only inputs. Output paths must be new paths; the tool must refuse to overwrite an input or an existing output unless a future explicit and separately approved policy says otherwise. V1 does not edit existing sequences.
 
 ## 2. Confirmed project decisions
 
@@ -28,10 +28,10 @@ The original audio, preview, prop map, and any reference sequence are read-only 
 
 ## 3. Design principles
 
-1. **Preview is authoritative for the display.** Every emitted prop, controller, channel, and channel assignment must trace to the parsed preview or an explicit user prop-map override that corrects physical interpretation. No generated or guessed channels.
+1. **Preview is authoritative for the display.** Every emitted prop, controller, channel, and channel assignment must trace to the parsed preview, which is the only display input. Physical corrections are made in the preview itself. No generated or guessed channels.
 2. **No preview, no sequence.** Missing, unreadable, malformed, unsupported-version, oversized, or zero-prop previews are fatal errors with actionable messages.
 3. **Names are evidence, not identity.** Classification combines prop type, shape, grouping, position, channel count, color capability, and name hints. Names alone never determine a role.
-4. **Unknowns remain visible.** Unknown roles, unsupported channel types, uncertain orientation, and low-confidence classifications are surfaced in `props.yaml` and the final report.
+4. **Unknowns remain visible.** Unknown roles, unsupported channel types, uncertain orientation, and low-confidence classifications are surfaced in the classification report and the final generation report.
 5. **Music drives the arrangement.** Choreography is planned around song structure, phrasing, dynamics, instrumentation, vocals, transitions, and intentional contrast—not just beat flashes.
 6. **One intermediate truth.** The Timeline JSON is the sole choreography representation consumed by validation and serialization.
 7. **Rules are configuration.** Universal rules ship in `rules/default.yaml`; user profiles layer on top without modifying application code.
@@ -42,25 +42,23 @@ The original audio, preview, prop map, and any reference sequence are read-only 
 ## 4. High-level data flow
 
 ```text
-analyze
-  audio + required .lorprev
-       |
-     ingest
+analyze-preview
+  required .lorprev
        |
   preview_parser ----> RawDisplay / RawProp models
        |
-  prop_classifier ---> Classified props + confidence
+  prop_classifier ---> classified props + confidence + evidence
        |
-  props.yaml <-------- human review / physical overrides
+  report  ----------> human review; corrections made in the S6 Preview Editor
 
 generate
-  audio + required .lorprev + reviewed props.yaml
+  audio + required .lorprev
        |
      ingest
        |--------------------------|
   preview_parser             audio_analysis
        |                          |
-  prop_classifier <--- reviewed overrides
+  prop_classifier                 |
        |                          |
        |                    musical features
        |                          |
@@ -79,7 +77,7 @@ generate
                        report + verification
 ```
 
-Current internal stage models use frozen dataclasses with explicit validation. Pydantic is reserved for strict validation of user-edited configuration such as `props.yaml` and rules profiles when those inputs are implemented. A stage may use the public models of another stage, but it must not reach into that stage's implementation internals. Stage orchestration belongs in the application/CLI layer.
+Current internal stage models use frozen dataclasses with explicit validation. Pydantic is reserved for strict validation of user-edited configuration such as rules profiles when those inputs are implemented. A stage may use the public models of another stage, but it must not reach into that stage's implementation internals. Stage orchestration belongs in the application/CLI layer.
 
 ## 5. Stage responsibilities and contracts
 
@@ -118,20 +116,19 @@ Current internal stage models use frozen dataclasses with explicit validation. P
 
 ### 5.3 `prop_classifier`
 
-**Input:** Raw preview models and optional existing user prop map.
+**Input:** the parsed preview only.
 
 **Responsibilities:**
-- Infer roles such as arch, mini tree, mega tree, singing face, snowflake, outline, matrix, and star.
-- Use a weighted/evidence-based combination of prop type, shape, geometry, grouping, position, channel count, color capability, and name hints. No name-only classification.
-- Infer orientation/direction and segment order only where preview evidence supports it.
-- Determine color capability, including single-color AC/DC channels and multi-color channels on one circuit.
-- Assign an explainable confidence score and retain evidence/reasons for each inference.
-- Mark low-confidence, ambiguous, and unsupported props for review. Unknown is a valid classification outcome.
-- Never manufacture a channel, controller, prop, or assignment.
+- Infer roles: arch, mini tree, mega tree, star, singing face, icicles, outline, snowflake, or unknown. Unknown is a valid outcome.
+- Combine evidence the way a person reads a preview: S6 shape type and parameters (`Parm1` is the segment or strand count; parametric shapes store center and size in `OffsetX`/`OffsetY`/`ScaleX`/`ScaleY`), geometry (arcs, closed outlines, long flat runs), channel count and `TraditionalType`, `PropGroup` membership and order, matching repeated props ordered left to right, and `MasterPropId` links.
+- Names: when the shape type is specific or structural evidence exists, the name is a tiebreaker (0.25). When the shape type is generic (plain lines) and nothing structural contradicts it, the name decides (0.55), flagged for review.
+- Small props drawn on top of each other form a figure; a figure with a clear face part (mouth, mustache) is a singing face, and linked parts drawn on it join it. Rows require look-alike props at a similar size and height, and only count when their members end up the same role.
+- Direction comes from `StartLocation` and is reported only for props that chase; otherwise it is unknown or not applicable. Segment order is the `ChannelGrid` order.
+- Color capability follows `TraditionalType`: single color, combined colors on one circuit (no color can be shown alone), or one color per channel. Sequencing support uses the same check as the sequence builder.
+- Every conclusion carries its evidence and review notes; close calls, weak evidence, and unsupported hardware are flagged for review.
+- Never modify the preview or manufacture a channel, controller, prop, or assignment.
 
-**Output:** Classified prop models and editable `props.yaml`.
-
-The YAML must preserve stable preview identifiers and distinguish inferred values from user overrides. It must include at least role, orientation/direction, segment order, color capability, confidence, classification evidence, review status, and override fields. Physical corrections (for example, wrong colors or reversed segment order) override inferred preview interpretation. Overrides may correct interpretation, but cannot silently create new physical channels or change channel identity.
+**Output:** `PropClassification` records and a JSON report.
 
 ### 5.4 `audio_analysis`
 
@@ -150,12 +147,12 @@ The YAML must preserve stable preview identifiers and distinguish inferred value
 
 ### 5.5 `planner`
 
-**Inputs:** Classified display/props, musical features, reviewed prop map, active rules/tunables.
+**Inputs:** Classified display/props, musical features, active rules/tunables.
 
 **Responsibilities:**
 - Identify musical sections and phrases and assign choreography roles by section.
 - Plan purposeful contrast, repetition with variation, transitions, accents, holds, fades, coordinated groups, and selective prop activation.
-- Respect each prop's role, orientation, direction, segment order, color capability, and physical overrides.
+- Respect each prop's role, direction, segment order, row position, and color capability as read from the preview.
 - Use singing faces only in detected vocal regions and align mouth events to syllable onsets when available.
 - Stop motion at hard musical stops and resolve multi-segment movements.
 - Avoid activating every prop simultaneously; create dynamic contrast across sections.
@@ -234,11 +231,11 @@ This is a temporary engineering harness, not the final user workflow. It require
 
 ## 6. Domain models and artifact contracts
 
-Use frozen dataclasses with explicit validation for current internal stage models. Use Pydantic for public user-edited configuration boundaries such as `props.yaml` and rules profiles when implemented. Initial model families:
+Use frozen dataclasses with explicit validation for current internal stage models. Use Pydantic for public user-edited configuration boundaries such as rules profiles when implemented. Initial model families:
 
 - `InputManifest`: paths, file metadata, hashes, detected formats, configured target version, and resource limits.
 - `RawDisplayModel`, `RawPropModel`, `RawChannelModel`, `RawControllerModel`: faithful preview-derived structures and source identifiers.
-- `ClassifiedPropModel`: inferred role, orientation, segment order, color capability, confidence, evidence, review status, and overrides.
+- `PropClassification`: inferred role, confidence, evidence, review status and notes, row position, direction, segment order, color capability, sequencing support, and master link.
 - `AudioAnalysisModel`: tempo, beats, downbeats, onsets, sections, energy curve, hard stops, vocal regions, and syllable events.
 - `RuleProfile`: versioned rule IDs, constraints, and tunables.
 - `Timeline`: versioned timebase, source references, musical sections, and channel/prop events. Phase 3 serializes an immutable dataclass Timeline with schema version, source fingerprints, fixed BPM, centisecond beat positions, supported/excluded props, and native channel references.
@@ -253,13 +250,12 @@ Use frozen dataclasses with explicit validation for current internal stage model
 - Timeline JSON is saved next to the generated sequence.
 - Invalid or unresolvable references are rejected before serialization.
 
-### `props.yaml` requirements
+### Classification report requirements
 
-- Human-editable, documented, versioned YAML.
-- Stable preview IDs are the identity keys; names are labels, not keys.
-- Clearly separate inferred values, confidence/evidence, review flags, and user overrides.
-- Explicitly represent unknown/unsupported types.
-- Validate all references against the current preview before generation.
+- Versioned JSON; stable preview prop IDs are the identity keys and names are labels.
+- Every conclusion carries its evidence (role, weight, reason) and any review notes.
+- Unknown and unsupported props are listed explicitly, never omitted.
+- The report is an output for review, not an input. Corrections are made in the preview.
 - Reject stale or mismatched maps when preview identity/fingerprint does not match, unless the user explicitly re-runs analysis or approves a documented migration.
 
 ## 7. Rules profile configuration
@@ -279,15 +275,11 @@ CLI selection:
 Proposed command shape:
 
 ```text
-lor-auto-sequencer analyze \
-  --audio song.mp3 \
-  --preview display.lorprev \
-  --props-out props.yaml
+lor-sequence-builder analyze-preview display.lorprev --report display.analysis.json
 
 lor-auto-sequencer generate \
   --audio song.mp3 \
   --preview display.lorprev \
-  --props props.yaml \
   --output generated.loredit \
   --timeline-output generated.timeline.json \
   --report generated.report.json \
@@ -295,7 +287,7 @@ lor-auto-sequencer generate \
   --rules my-display.yaml
 ```
 
-Names and option defaults are proposals pending approval. Both commands require a preview. `generate` also requires a valid reviewed prop map. The target LOR version is configurable; detection of preview revision and selection of target application version are separate concerns.
+Names and option defaults are proposals pending approval. Both commands require a preview, which is the only display input. The target LOR version is configurable; detection of preview revision and selection of target application version are separate concerns.
 
 ## 9. Compatibility and fixture policy
 
@@ -367,7 +359,7 @@ These are implementation questions, not permission to guess:
 - Which S6 application versions and LOREDIT `saveFileVersion` values will be officially supported?
 - Which exact `.loredit` elements/attributes are required for each supported channel/effect type?
 - How are timing grids, event boundaries, effect settings, and sequence references represented across supported versions?
-- Which preview properties encode physical segment order/orientation reliably, and which require user overrides?
+- Which preview properties encode physical segment order and orientation reliably beyond `StartLocation`?
 - Which common channel types/effects are not yet represented by any committed fixture?
 - What resource limits are appropriate for expected song lengths and preview sizes?
 
@@ -384,7 +376,7 @@ The delivery order is:
 2. `.lorprev` preview parser.
 3. Walking skeleton: fixed-tempo pulse Timeline through the writer, with owner playback verification in LOR.
 4. Audio analysis.
-5. Prop classifier and `analyze` / `props.yaml`.
+5. Prop classifier and `analyze-preview`.
 6. Rules engine.
 7. Section-aware planner v1, with owner playback verification.
 8. Vocal separation and syllable-level singing-face choreography, with owner playback verification.
