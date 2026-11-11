@@ -699,6 +699,7 @@ def test_duplicate_movement_ids_are_reported() -> None:
     display = classic_yard()
     timeline = Choreography(
         duration_centiseconds=SONG,
+        effects=(),
         movements=(
             Movement("duplicate", "chase", ("a",), "left_to_right", 0, 100),
             Movement("duplicate", "chase", ("b",), "left_to_right", 100, 200),
@@ -708,6 +709,50 @@ def test_duplicate_movement_ids_are_reported() -> None:
     _, findings = _result(report, "effects_well_formed")
     assert any("Movement id 'duplicate' is used more than once" in item
                for item in findings)
+
+
+
+def test_direct_choreography_objects_reject_unknown_effect_and_movement_values() -> None:
+    display = classic_yard()
+    invalid_effect = Choreography(
+        duration_centiseconds=SONG,
+        effects=(Effect(_ids(display)["Arch 1"], 0, 0, 100, kind="laser"),),
+    )
+    _, effect_findings = _result(_check(display, invalid_effect), "effects_well_formed")
+    assert any("Effect kind 'laser' is not supported" in item for item in effect_findings)
+
+    invalid_movement = Choreography(
+        duration_centiseconds=SONG,
+        effects=(),
+        movements=(Movement("bad", "teleport", (_ids(display)["Arch 1"],),
+                            "diagonal", 0, 100),),
+    )
+    _, movement_findings = _result(
+        _check(display, invalid_movement), "effects_well_formed"
+    )
+    assert any("unsupported kind 'teleport'" in item for item in movement_findings)
+    assert any("unsupported direction 'diagonal'" in item for item in movement_findings)
+
+
+def test_timeline_json_rejects_duplicate_object_keys_at_any_depth(tmp_path: Path) -> None:
+    path = tmp_path / "duplicate.json"
+    path.write_text(
+        '{"schema_version":"choreography-1.0","duration_centiseconds":100,'
+        '"effects":[{"prop_id":"a","channel_index":0,"start_centisecond":0,'
+        '"end_centisecond":10,"prop_id":"b"}]}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ChoreographyError, match="duplicate object key 'prop_id'"):
+        load_choreography(path)
+
+
+def test_profile_rejects_unhashable_yaml_mapping_keys(tmp_path: Path) -> None:
+    path = _profile(
+        tmp_path,
+        "schema_version: rules-1.0\\nrules:\\n  ? [not, a, scalar, key]\\n  : value\\n",
+    )
+    with pytest.raises(RuleProfileError, match="mapping keys must be scalar/hashable"):
+        load_rule_set((path,))
 
 
 def test_duplicate_group_names_union_members_for_name_selectors() -> None:
