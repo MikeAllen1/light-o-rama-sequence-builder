@@ -411,36 +411,47 @@
       ctx.fillText("Open the matching audio file to render its real waveform", 16, 25);
       return;
     }
-    const samples = state.audioBuffer.getChannelData(0);
     const sampleRate = state.audioBuffer.sampleRate;
-    ctx.fillStyle = "#397f9b";
-    ctx.strokeStyle = "#78bfd0";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    for (let x = 0; x < width; x++) {
-      const from = Math.floor((x / pps) * sampleRate);
-      if (from >= samples.length) break;
-      const to = Math.min(samples.length, Math.max(from + 1,
-        Math.floor(((x + 1) / pps) * sampleRate)));
-      let min = 1;
-      let max = -1;
-      for (let i = from; i < to; i++) {
-        const value = samples[i];
-        if (value < min) min = value;
-        if (value > max) max = value;
+    const channelCount = Math.max(1, Math.min(2, state.audioBuffer.numberOfChannels));
+    const channelHeight = WAVE_HEIGHT / channelCount;
+    for (let channelIndex = 0; channelIndex < channelCount; channelIndex++) {
+      const samples = state.audioBuffer.getChannelData(channelIndex);
+      const center = channelIndex * channelHeight + channelHeight / 2;
+      ctx.strokeStyle = channelIndex === 0 ? "#78bfd0" : "#5da8bd";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = 0; x < width; x++) {
+        const from = Math.floor((x / pps) * sampleRate);
+        if (from >= samples.length) break;
+        const to = Math.min(samples.length, Math.max(from + 1,
+          Math.floor(((x + 1) / pps) * sampleRate)));
+        let min = 1;
+        let max = -1;
+        for (let i = from; i < to; i++) {
+          const value = samples[i];
+          if (value < min) min = value;
+          if (value > max) max = value;
+        }
+        const y1 = center - max * (channelHeight * .43);
+        const y2 = center - min * (channelHeight * .43);
+        ctx.moveTo(x + .5, y1);
+        ctx.lineTo(x + .5, y2);
       }
-      const center = WAVE_HEIGHT / 2;
-      const y1 = center - max * (WAVE_HEIGHT * .43);
-      const y2 = center - min * (WAVE_HEIGHT * .43);
-      ctx.moveTo(x + .5, y1);
-      ctx.lineTo(x + .5, y2);
+      ctx.stroke();
     }
-    ctx.stroke();
+    if (channelCount === 2) {
+      ctx.strokeStyle = "#263b48";
+      ctx.beginPath();
+      ctx.moveTo(0, WAVE_HEIGHT / 2);
+      ctx.lineTo(width, WAVE_HEIGHT / 2);
+      ctx.stroke();
+    }
     ctx.fillStyle = "rgba(53, 132, 160, .08)";
     ctx.fillRect(0, 0, width, WAVE_HEIGHT);
     ctx.fillStyle = "#8bbdca";
     ctx.font = "9px Segoe UI, sans-serif";
-    ctx.fillText("AUDIO · " + formatTime(state.audioBuffer.duration), 10, WAVE_HEIGHT - 7);
+    ctx.fillText("AUDIO · " + formatTime(state.audioBuffer.duration) +
+      " · " + state.audioBuffer.numberOfChannels + " CH", 10, 12);
   }
 
   function drawMarkers(width, pps) {
