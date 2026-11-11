@@ -29,6 +29,7 @@ SUPPORTED_TRADITIONAL_TYPES = frozenset({"Single Color", "Multicolor_string_1_ch
 MAX_BPM = 300
 MIN_BPM = 30
 MAX_TIMELINE_EVENTS = 250_000
+MAX_TIMELINE_BEATS = 50_000
 
 
 class PulseGenerationError(ValueError):
@@ -77,6 +78,13 @@ def _attribute(element: ET.Element, name: str) -> str | None:
 
 
 def _beat_positions(duration: int, bpm: int) -> tuple[int, ...]:
+    # Bound beat-list allocation before iterating over untrusted template duration.
+    estimated_beats = (duration * bpm + 5999) // 6000
+    if estimated_beats > MAX_TIMELINE_BEATS:
+        raise PulseGenerationError(
+            f"Timeline would contain more than {MAX_TIMELINE_BEATS} beats; "
+            "sequence duration is too long for the walking skeleton"
+        )
     # Round rational beat positions to the nearest centisecond, half-up.
     positions: list[int] = []
     beat_index = 0
@@ -481,8 +489,6 @@ def build_pulse_sequence(
     except (LoreditError, OSError) as exc:
         if sequence_linked:
             output.unlink(missing_ok=True)
-        if isinstance(exc, PulseGenerationError):
-            raise
         raise PulseGenerationError(f"Could not safely publish generated artifacts: {exc}") from exc
     finally:
         sequence_temp.unlink(missing_ok=True)
