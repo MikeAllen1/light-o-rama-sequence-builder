@@ -165,9 +165,9 @@ def build_new_sequence(
         raise NewSequenceError("Preview contains zero PropClass entries")
     total_channel_entries = 0
     for prop in props:
-        grid = prop.attrib.get("ChannelGrid", "")
-        if grid:
-            entry_count = grid.count(";") + 1
+        channel_grid_value = prop.attrib.get("ChannelGrid", "")
+        if channel_grid_value:
+            entry_count = channel_grid_value.count(";") + 1
             if entry_count > MAX_CHANNEL_GRID_ENTRIES_PER_PROP:
                 raise NewSequenceError(
                     f"Prop ChannelGrid exceeds the {MAX_CHANNEL_GRID_ENTRIES_PER_PROP} entry limit"
