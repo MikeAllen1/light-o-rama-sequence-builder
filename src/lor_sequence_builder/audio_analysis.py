@@ -17,7 +17,6 @@ import tempfile
 import wave
 from array import array
 from pathlib import Path
-
 from typing import Any
 
 from lor_sequence_builder.audio_plot import _svg_plot
