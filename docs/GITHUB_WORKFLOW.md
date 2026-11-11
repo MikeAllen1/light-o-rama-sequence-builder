@@ -4,7 +4,7 @@ This repository uses one phase-sized issue, branch, and pull request at a time. 
 
 ## Branches and pull requests
 
-- `master` is the protected integration branch and should remain releasable.
+- `master` is intended to be the integration branch and should remain releasable. As of 2026-11-11, GitHub reports `protected: false`; the existing `Protect` ruleset is disabled. Do not assume the policy is enforced until the owner activates it.
 - Never push implementation commits directly to `master`.
 - Phase branches use `phase-N/short-description`; maintenance branches use a descriptive topic name; Dependabot branches are managed by Dependabot.
 - Open work-in-progress PRs as drafts. Mark ready for review only when the acceptance criteria, implementation, tests, and PR description are complete.
@@ -51,11 +51,11 @@ Dependabot PRs are not exempt from review. Check the upstream release notes, exa
 
 ## Current repository audit (2026-11-10)
 
-- Tests workflow runs on pushes and pull requests; it executes pytest, Ruff, strict mypy, and pip-audit.
+- Tests workflow runs on pushes to `master` and pull requests targeting `master`; it executes pytest, Ruff, strict mypy, and a production-dependency `pip-audit` scan. Developer tools are pinned in `requirements-dev.txt` but are not yet included in `uv.lock`.
 - CodeQL runs on pushes/PRs to `master` and weekly.
 - Third-party GitHub Actions are pinned to full commit SHAs; checkout credentials are not persisted.
 - Dependabot is enabled for Python dependencies and GitHub Actions.
-- The repository rulesets API returned no rulesets; branch-protection settings could not be read through the connected GitHub integration. Actual protection on `master` is **not verified**.
+- GitHub API verification on 2026-11-11 found an existing `Protect` ruleset with `enforcement: disabled`; `master` reports `protected: false` and no required status checks. Branch protection is **not active**.
 - Repository history shows the written process was not consistently followed: implementation commits were pushed directly to `master`, merge commits were used despite the linear-history policy, and stale branches remained. These are historical facts, not claims that this PR caused them. The policy below applies prospectively; enforcing it requires GitHub settings.
 - The initial Phase 4 baseline had already reached `master` outside a PR, contrary to the documented phase-sized PR rule. This follow-up is being kept on PR #12.
 
