@@ -171,6 +171,97 @@ def test_report_carries_every_conclusion_with_evidence() -> None:
     assert "Preview Editor" in str(report["how_to_correct"])
 
 
+@pytest.mark.parametrize(
+    "ids",
+    [
+        ("", "second"),
+        ("   ", "second"),
+        ("duplicate", "duplicate"),
+    ],
+)
+def test_classifier_rejects_missing_blank_and_duplicate_prop_ids(ids: tuple[str, str]) -> None:
+    root = classic_yard().element()
+    props = root.findall("PropClass")
+    props[0].set("id", ids[0])
+    props[1].set("id", ids[1])
+    with pytest.raises(ClassificationError, match="id"):
+        classify_preview(root)
+
+
+@pytest.mark.parametrize(
+    ("master_reference", "master_setup", "message"),
+    [
+        ("missing-master", None, "missing master"),
+        ("self", "self", "cannot reference itself"),
+        ("chain", "chain", "master chains and cycles"),
+        ("unsupported", "unsupported", "without a verified native channel layout"),
+    ],
+)
+def test_classifier_rejects_invalid_master_links(
+    master_reference: str, master_setup: str | None, message: str
+) -> None:
+    root = classic_yard().element()
+    props = root.findall("PropClass")
+    linked, master = props[1], props[0]
+    if master_setup == "self":
+        linked.set("MasterPropId", linked.get("id", ""))
+    elif master_setup == "chain":
+        master.set("MasterPropId", props[2].get("id", ""))
+        linked.set("MasterPropId", master.get("id", ""))
+    elif master_setup == "unsupported":
+        master.set("DeviceType", "DMX")
+        linked.set("MasterPropId", master.get("id", ""))
+    else:
+        linked.set("MasterPropId", master_reference)
+    with pytest.raises(ClassificationError, match=message):
+        classify_preview(root)
+
+
+def test_classifier_treats_whitespace_master_reference_as_unlinked() -> None:
+    root = classic_yard().element()
+    prop = root.findall("PropClass")[1]
+    prop.set("MasterPropId", " \\t\\n ")
+    result = next(item for item in classify_preview(root) if item.prop_id == prop.get("id"))
+    assert result.linked_to is None
+    assert result.sequencing_support == "supported"
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
+def test_classifier_rejects_non_finite_shape_parameters(value: str) -> None:
+    root = classic_yard().element()
+    mega_tree = next(p for p in root.findall("PropClass") if p.get("Name") == "Mega Tree")
+    mega_tree.set("Parm1", value)
+    with pytest.raises(ClassificationError, match="non-finite"):
+        classify_preview(root)
+
+
+def test_figure_detection_uses_spatial_index_instead_of_all_pairs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import lor_sequence_builder.classifier as classifier
+
+    props: list[ET.Element] = []
+    geometries: dict[str, classifier._Geometry] = {}
+    for index in range(2_000):
+        prop_id = f"p{index}"
+        props.append(ET.Element("PropClass", {"id": prop_id}))
+        geometries[prop_id] = classifier._Geometry(
+            center_x=float(index), center_y=0.0, width=0.1, height=0.1,
+            closed=False, arc_like=False,
+        )
+    calls = 0
+    original = classifier._overlap
+
+    def counted(left: classifier._Geometry, right: classifier._Geometry) -> float:
+        nonlocal calls
+        calls += 1
+        return original(left, right)
+
+    monkeypatch.setattr(classifier, "_overlap", counted)
+    assert classifier._figures(props, geometries) == {}
+    assert calls < 2_000
+
+
 def _write_preview(path: Path, display: DisplayBuilder) -> Path:
     ET.ElementTree(display.element()).write(path, encoding="utf-8", xml_declaration=True)
     return path
