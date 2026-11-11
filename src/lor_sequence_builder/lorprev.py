@@ -126,7 +126,6 @@ def _iter_raw_elements(element: RawElement, tag: str) -> tuple[RawElement, ...]:
     return tuple(matches)
 
 
-
 def _walk_raw_elements(element: RawElement) -> tuple[RawElement, ...]:
     """Return the element and all descendants in source order."""
     matches = [element]
@@ -139,21 +138,22 @@ def read_lorprev(path: str | Path) -> PropModel:
     """Read a standalone S6 preview for verified Revision 0 and Revision 1 formats."""
     source = Path(path)
     try:
-        size = source.stat().st_size
+        with source.open("rb") as preview_file:
+            content = preview_file.read(MAX_LORPREV_BYTES + 1)
     except OSError as exc:
         raise LorprevError(f"Cannot access LORPREV file: {source}") from exc
-    if size == 0:
+    if not content:
         raise LorprevError("LORPREV file is empty")
-    if size > MAX_LORPREV_BYTES:
+    if len(content) > MAX_LORPREV_BYTES:
         raise LorprevError(
             f"LORPREV file exceeds the {MAX_LORPREV_BYTES // (1024 * 1024)} MiB limit"
         )
 
     try:
-        root = SafeET.parse(
-            source, forbid_dtd=True, forbid_entities=True, forbid_external=True
-        ).getroot()
-    except (OSError, ET.ParseError, DefusedXmlException) as exc:
+        root = SafeET.fromstring(
+            content, forbid_dtd=True, forbid_entities=True, forbid_external=True
+        )
+    except (ET.ParseError, DefusedXmlException) as exc:
         raise LorprevError(f"Invalid or unsafe LORPREV XML: {source}") from exc
 
     if root is None or root.tag != "PreviewClass":
@@ -223,15 +223,24 @@ def read_lorprev(path: str | Path) -> PropModel:
                         raw_fields=tuple(entry.split(",")),
                     )
                 )
-        for point in _iter_raw_elements(prop, "point"):
-            x_value = point.attributes.get("x")
-            y_value = point.attributes.get("y")
-            if x_value is not None and y_value is not None:
+        # A point is geometry only when it is a direct child of an observed
+        # shape element. Do not interpret similarly named nodes in unknown
+        # nested structures as display geometry.
+        for shape in _iter_raw_elements(prop, "shape"):
+            for point in (child for child in shape.children if child.tag == "point"):
+                x_value = point.attributes.get("x")
+                y_value = point.attributes.get("y")
+                if x_value is None or y_value is None:
+                    raise LorprevError(
+                        f"Incomplete geometry point at {point.locator}: "
+                        "both x and y attributes are required"
+                    )
                 geometry_points.append(
                     GeometryPoint(x=x_value, y=y_value, locator=point.locator)
                 )
 
-    return PropModel(        source_file=str(source),
+    return PropModel(
+        source_file=str(source),
         revision=SourceValue(
             value=revision, file=str(source), locator="/PreviewClass/@Revision"
         ),
