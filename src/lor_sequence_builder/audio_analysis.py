@@ -95,7 +95,7 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _normalize(path: Path, output: Path) -> str:
+def _normalize(path: Path, output: Path, input_demuxer: str | None = None) -> str:
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
         raise AudioAnalysisError(
@@ -110,8 +110,8 @@ def _normalize(path: Path, output: Path) -> str:
     if version_result.returncode != 0 or not version_result.stdout:
         raise AudioAnalysisError("Could not determine the installed FFmpeg version")
     ffmpeg_version = version_result.stdout.splitlines()[0].strip()
-    demuxer = INPUT_DEMUXERS.get(path.suffix.lower())
-    if demuxer is None:
+    demuxer = input_demuxer or INPUT_DEMUXERS.get(path.suffix.lower())
+    if demuxer not in INPUT_DEMUXERS.values():
         supported = ", ".join(sorted(INPUT_DEMUXERS))
         raise AudioAnalysisError(
             f"Unsupported audio file extension {path.suffix!r}; supported extensions: {supported}"
@@ -617,8 +617,10 @@ def analyze_audio(
     min_bpm: int = MIN_BPM,
     max_bpm: int = MAX_BPM,
     beats_per_bar: int = 4,
+    input_demuxer: str | None = None,
 ) -> dict[str, Any]:
     """Analyze audio and write a versioned JSON report and an SVG diagnostic plot."""
+
     source = Path(audio_path)
     json_path = Path(json_output)
     plot_path = Path(plot_output)
@@ -627,6 +629,8 @@ def analyze_audio(
             raise AudioAnalysisError("Tempo bounds must satisfy 30 <= min BPM < max BPM <= 300")
         if beats_per_bar not in SUPPORTED_BEATS_PER_BAR:
             raise AudioAnalysisError("Beats per bar must be 3 or 4")
+        if input_demuxer is not None and input_demuxer not in INPUT_DEMUXERS.values():
+            raise AudioAnalysisError("Unsupported explicit audio container")
         if not source.is_file():
             raise AudioAnalysisError(f"Audio input is not a regular file: {source}")
         size = source.stat().st_size
@@ -641,7 +645,7 @@ def analyze_audio(
         plot_path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="lor-audio-") as directory:
             normalized = Path(directory) / "normalized.wav"
-            ffmpeg_version = _normalize(source, normalized)
+            ffmpeg_version = _normalize(source, normalized, input_demuxer)
             samples, duration = _read_samples(normalized)
 
         rms = _frame_rms(samples)

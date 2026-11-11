@@ -138,7 +138,7 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
         try:
             with tempfile.TemporaryDirectory(prefix="lor-sequencer-ui-") as directory:
                 folder = Path(directory)
-                audio_path = folder / ("selected-audio" + suffix)
+                audio_path = folder / "selected-audio.input"
                 json_path = folder / "analysis.json"
                 plot_path = folder / "analysis.svg"
                 audio_path.write_bytes(payload)
@@ -147,6 +147,7 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
                     json_path,
                     plot_path,
                     beats_per_bar=beats_per_bar,
+                    input_demuxer=INPUT_DEMUXERS[suffix],
                 )
             self._send_json(200, {"report": report, "warning": warning})
         except AudioAnalysisError as exc:
