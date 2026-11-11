@@ -7,6 +7,7 @@ import sys
 from collections.abc import Sequence
 
 from lor_sequence_builder.audio_analysis import AudioAnalysisError, analyze_audio
+from lor_sequence_builder.evaluation import EvaluationError, evaluate
 from lor_sequence_builder.loredit import LoreditError, read_loredit, write_loredit
 from lor_sequence_builder.lorprev import LorprevError, read_lorprev
 from lor_sequence_builder.pulse import PulseGenerationError, build_pulse_sequence
@@ -47,6 +48,22 @@ def _build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--plot", required=True, help="new SVG diagnostic plot path")
     analyze.add_argument("--min-bpm", type=int, default=60, help="minimum tempo to search (default: 60)")
     analyze.add_argument("--max-bpm", type=int, default=200, help="maximum tempo to search (default: 200)")
+    analyze.add_argument(
+        "--beats-per-bar",
+        type=int,
+        choices=(3, 4),
+        default=4,
+        help="beats per bar for downbeats: 4 for most songs, 3 for waltz time (default: 4)",
+    )
+    score = commands.add_parser(
+        "evaluate-analysis",
+        help="score an analysis JSON against hand-placed timing grids in a sequence",
+    )
+    score.add_argument("--analysis", required=True, help="analysis JSON from analyze-audio")
+    score.add_argument("--sequence", required=True, help="reference .loredit (read only)")
+    score.add_argument("--beats-grid", help="name of the free timing grid marking beats")
+    score.add_argument("--bars-grid", help="name of the free timing grid marking bar starts")
+    score.add_argument("--sections-grid", help="name of the free timing grid marking sections")
     return parser
 
 
@@ -68,6 +85,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 options.plot,
                 min_bpm=options.min_bpm,
                 max_bpm=options.max_bpm,
+                beats_per_bar=options.beats_per_bar,
             )
             analysis = report["analysis"]
             tempo = analysis["tempo"]
@@ -147,6 +165,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"Unsupported constructs: {len(model.unsupported_constructs)}")
             print(f"Unrecognized elements (all levels): {len(model.unrecognized_elements)}")
             return 0
+        if options.command == "evaluate-analysis":
+            results = evaluate(
+                options.analysis,
+                options.sequence,
+                beats_grid=options.beats_grid,
+                bars_grid=options.bars_grid,
+                sections_grid=options.sections_grid,
+            )
+            for name, score in results.items():
+                print(
+                    f"{name}: {score.hits}/{score.reference} reference marks matched "
+                    f"within {score.tolerance_seconds:g}s; {score.estimated} estimated; "
+                    f"precision {score.precision:.2f}, recall {score.recall:.2f}, "
+                    f"F-measure {score.f_measure:.2f}"
+                )
+            return 0
         document = read_loredit(options.sequence)
         if options.command == "inspect":
             print(f"Format: S6 LOREDIT v{document.save_file_version}")
@@ -157,7 +191,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         output = write_loredit(document, options.output)
         print(f"Wrote: {output}")
         return 0
-    except (AudioAnalysisError, LoreditError, LorprevError, PulseGenerationError, OSError) as exc:
+    except (
+        AudioAnalysisError,
+        EvaluationError,
+        LoreditError,
+        LorprevError,
+        PulseGenerationError,
+        OSError,
+    ) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
