@@ -161,3 +161,89 @@ def test_pulse_cli_builds_sequence_and_timeline(
     assert "Pulse events:" in captured
     assert output.exists()
     assert timeline.exists()
+
+
+def test_supported_prop_without_native_channel_mapping_fails_closed(
+    tmp_path: Path, matching_inputs: tuple[Path, Path]
+) -> None:
+    preview, template = matching_inputs
+    tree = ET.parse(preview)
+    preview_props = tree.getroot().findall("PropClass")
+    supported = next(
+        prop
+        for prop in preview_props
+        if prop.get("DeviceType") == "LOR"
+        and prop.get("TraditionalType") in {"Single Color", "Multicolor_string_1_ch"}
+    )
+    prop_id = supported.get("id")
+    assert prop_id is not None
+
+    sequence_tree = ET.parse(template)
+    sequence_props = sequence_tree.getroot().find("SequenceProps")
+    assert sequence_props is not None
+    sequence_prop = sequence_props.find(f"SeqProp[@id='{prop_id}']")
+    assert sequence_prop is not None
+    sequence_props.remove(sequence_prop)
+    sequence_tree.write(template, encoding="utf-8", xml_declaration=True)
+
+    with pytest.raises(PulseGenerationError, match=f"Supported prop {prop_id!r}"):
+        build_pulse_sequence(
+            preview, template, tmp_path / "missing-channel.loredit",
+            tmp_path / "missing-channel.json", bpm=120
+        )
+    assert not (tmp_path / "missing-channel.loredit").exists()
+    assert not (tmp_path / "missing-channel.json").exists()
+
+
+def test_supported_prop_with_incomplete_native_channel_fails_closed(
+    tmp_path: Path, matching_inputs: tuple[Path, Path]
+) -> None:
+    preview, template = matching_inputs
+    sequence_tree = ET.parse(template)
+    sequence_props = sequence_tree.getroot().find("SequenceProps")
+    assert sequence_props is not None
+    preview_tree = ET.parse(preview)
+    supported = next(
+        prop
+        for prop in preview_tree.getroot().findall("PropClass")
+        if prop.get("DeviceType") == "LOR"
+        and prop.get("TraditionalType") in {"Single Color", "Multicolor_string_1_ch"}
+    )
+    prop_id = supported.get("id")
+    assert prop_id is not None
+    sequence_prop = sequence_props.find(f"SeqProp[@id='{prop_id}']")
+    assert sequence_prop is not None
+    channel = sequence_prop.find("channel")
+    assert channel is not None
+    channel.attrib.pop("color", None)
+    sequence_tree.write(template, encoding="utf-8", xml_declaration=True)
+
+    with pytest.raises(PulseGenerationError, match="missing row, col, or color"):
+        build_pulse_sequence(
+            preview, template, tmp_path / "incomplete-channel.loredit",
+            tmp_path / "incomplete-channel.json", bpm=120
+        )
+
+
+def test_pulse_duration_cannot_exceed_beat_interval(
+    tmp_path: Path, matching_inputs: tuple[Path, Path]
+) -> None:
+    preview, template = matching_inputs
+    with pytest.raises(PulseGenerationError, match="must not exceed"):
+        build_pulse_sequence(
+            preview, template, tmp_path / "too-long.loredit",
+            tmp_path / "too-long.json", bpm=300, pulse_duration_centiseconds=21
+        )
+
+
+def test_timeline_lists_unsupported_props_with_reasons(
+    tmp_path: Path, matching_inputs: tuple[Path, Path]
+) -> None:
+    preview, template = matching_inputs
+    output = tmp_path / "unsupported-report.loredit"
+    timeline_path = tmp_path / "unsupported-report.json"
+    build_pulse_sequence(preview, template, output, timeline_path, bpm=120)
+
+    timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
+    assert timeline["excluded_props"]
+    assert all(item["prop_id"] and item["reason"] for item in timeline["excluded_props"])
