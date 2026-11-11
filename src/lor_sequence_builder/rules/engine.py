@@ -32,6 +32,7 @@ from lor_sequence_builder.choreography import (
     ChoreographyError,
     Effect,
     Movement,
+    Section,
     seconds,
 )
 from lor_sequence_builder.classifier import (
