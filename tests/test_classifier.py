@@ -220,7 +220,7 @@ def test_classifier_rejects_invalid_master_links(
 def test_classifier_treats_whitespace_master_reference_as_unlinked() -> None:
     root = classic_yard().element()
     prop = root.findall("PropClass")[1]
-    prop.set("MasterPropId", " \\t\\n ")
+    prop.set("MasterPropId", " \t\n ")
     result = next(item for item in classify_preview(root) if item.prop_id == prop.get("id"))
     assert result.linked_to is None
     assert result.sequencing_support == "supported"
@@ -241,7 +241,7 @@ def test_figure_detection_uses_spatial_index_instead_of_all_pairs(
     import lor_sequence_builder.classifier as classifier
 
     props: list[ET.Element] = []
-    geometries: dict[str, classifier._Geometry] = {}
+    geometries: dict[str, classifier._Geometry | None] = {}
     for index in range(2_000):
         prop_id = f"p{index}"
         props.append(ET.Element("PropClass", {"id": prop_id}))
@@ -283,6 +283,26 @@ def test_cli_analyze_preview_prints_and_writes_a_report(
     assert preview.read_bytes() == before
     assert main(["analyze-preview", str(preview), "--report", str(report)]) == 2
     assert "already exists" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("identity", ["missing", "duplicate"])
+def test_cli_analyze_preview_rejects_invalid_prop_identities(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], identity: str
+) -> None:
+    display = classic_yard()
+    root = display.element()
+    props = root.findall("PropClass")
+    if identity == "missing":
+        props[0].attrib.pop("id")
+    else:
+        props[1].set("id", props[0].get("id", ""))
+    preview = tmp_path / f"{identity}.lorprev"
+    ET.ElementTree(root).write(preview, encoding="utf-8", xml_declaration=True)
+    report = tmp_path / f"{identity}.json"
+
+    assert main(["analyze-preview", str(preview), "--report", str(report)]) == 2
+    assert "error:" in capsys.readouterr().err
+    assert not report.exists()
 
 
 def test_cli_analyze_preview_requires_a_real_preview(
