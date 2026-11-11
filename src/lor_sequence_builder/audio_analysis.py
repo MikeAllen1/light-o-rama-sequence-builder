@@ -508,7 +508,8 @@ def analyze_audio(
                 "tempo": {
                     "bpm": bpm,
                     "confidence": tempo_confidence,
-                    "method": "onset-envelope autocorrelation",
+                    "method": "onset-envelope autocorrelation with explicit periodicity candidates",
+                    "candidates": tempo_candidates,
                 },
                 "beats": [
                     {"time": value, "confidence": round(tempo_confidence * phase_confidence, 4),
