@@ -571,7 +571,7 @@ def test_pulse_excludes_pixel_string_types(
     candidate = next(
         prop for prop in preview_root.findall("PropClass")
         if prop.get("DeviceType") == "LOR"
-        and prop.get("TraditionalType") == "Single Color"
+        and prop.get("TraditionalType") == "Multicolor_string_1_ch"
     )
     prop_id = candidate.get("id")
     assert prop_id is not None
