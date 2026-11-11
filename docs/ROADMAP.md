@@ -8,7 +8,7 @@ This roadmap follows the authoritative phase order and acceptance gates in [PLAN
 - [x] Phase 3 — Fixed-tempo Timeline walking skeleton; merged; owner confirmed the generated sequence opens and renders in S6
 - [x] Phase 4: audio analysis; librosa rework accepted for songs in 4; swing and rubato are a known limitation
 - [x] Phase 4b: scratch-built native sequence writer (no template required); owner S6 open-test passed
-- [ ] Phase 5 — Prop classifier and editable `props.yaml`
+- [x] Phase 5: prop classifier and `analyze-preview` (preview is the only input); owner confirmed on a real display
 - [ ] Phase 6 — Rules engine and user-profile layering
 - [ ] Phase 7 — Section-aware choreography planner v1; owner playback gate
 - [ ] Phase 8 — Vocal separation, syllable timing, and singing-face choreography; owner playback gate
