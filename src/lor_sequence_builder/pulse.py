@@ -190,13 +190,13 @@ def _build_timeline(
 
     sequence_prop_nodes = sequence_props.findall("SeqProp")
     sequence_prop_map: dict[str, ET.Element] = {}
-    for sequence_prop in sequence_prop_nodes:
-        prop_id = _attribute(sequence_prop, "id")
+    for sequence_prop_node in sequence_prop_nodes:
+        prop_id = _attribute(sequence_prop_node, "id")
         if prop_id is None:
             raise PulseGenerationError("Template contains a SeqProp with a missing or blank id")
         if prop_id in sequence_prop_map:
             raise PulseGenerationError(f"Template contains duplicate SeqProp id {prop_id!r}")
-        sequence_prop_map[prop_id] = sequence_prop
+        sequence_prop_map[prop_id] = sequence_prop_node
 
     excluded: list[ExcludedProp] = []
     supported_prop_ids: list[str] = []
