@@ -19,14 +19,23 @@ The plan reads the song the way a person sequencing by hand would:
    never used, kept-on props hold, quiet sections are respected, colors and
    brightness are limited, and chases run the required way.
 
-Singing-face mouths are never animated here; that needs vocal analysis
-(Phase 8). Everything is deterministic: the same inputs give the same plan.
+5. Arrange the show like a song (Planner v2): a part that repeats (a second
+   chorus) repeats its look, and a later repeat of a loud part lifts with one
+   more lead; in mid-energy parts two groups trade bars, call and response;
+   the last phrase before a louder part builds up in brightness; crashes and
+   returns from a hard stop are signature moments that flash the whole
+   display. The song's own shape picks where the handoffs start, so two
+   songs give two different shows.
+
+Singing faces follow vocal analysis when it is given (Phase 8). Everything is
+deterministic: the same inputs give the same plan.
 """
 
 from __future__ import annotations
 
 import itertools
 import re
+import zlib
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
@@ -77,6 +86,8 @@ class Plan:
     used_props: tuple[str, ...]
     skipped_props: tuple[SkippedProp, ...]
     notes: tuple[str, ...]
+    # Signature moments and arrangement choices, for the report: (kind, centisecond).
+    moments: tuple[tuple[str, int], ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -91,6 +102,7 @@ class Plan:
             "notes": list(self.notes),
             "effects": len(self.choreography.effects),
             "movements": len(self.choreography.movements),
+            "moments": [{"kind": kind, "centisecond": time} for kind, time in self.moments],
         }
 
 
@@ -202,6 +214,21 @@ def _sections(music: _Music) -> list[PlannedSection]:
         length = spans[i][1] - spans[i][0]
         relative[i] = (elapsed + length / 2) / total
         elapsed += length
+    # Sections equally loud share one rank (the middle of their run), so a song
+    # with an even level is not split into quiet, mid and loud by order alone.
+    tolerance = 0.01 * max(raw, default=0.0)
+    runs: list[list[int]] = []
+    for i in order:
+        if runs and raw[i] - raw[runs[-1][0]] <= tolerance:
+            runs[-1].append(i)
+        else:
+            runs.append([i])
+    for run in runs:
+        if len(run) > 1:
+            weight = sum(spans[j][1] - spans[j][0] for j in run)
+            shared = sum(relative[j] * (spans[j][1] - spans[j][0]) for j in run) / weight
+            for j in run:
+                relative[j] = shared
     levels = [LOW if r < 1 / 3 else MID if r < 2 / 3 else HIGH for r in relative]
     if len(spans) == 1:
         levels = [MID]
@@ -234,6 +261,9 @@ class _Window:
     beats: tuple[int, ...]
     downbeats: tuple[int, ...]
     accent: bool
+    # Beats of the section's window before this one starts: patterns that alternate
+    # beat by beat keep the same footing however the window was cut.
+    offset: int = 0
 
 
 def _windows(music: _Music, sections: list[PlannedSection]) -> list[_Window]:
@@ -415,6 +445,83 @@ class _Canvas:
         return True
 
 
+def _at(effect: Effect, time: int) -> int:
+    """A fade's intensity at a time inside it."""
+    span = effect.end_centisecond - effect.start_centisecond
+    if effect.kind != "fade" or span <= 0:
+        return effect.start_intensity
+    share = (time - effect.start_centisecond) / span
+    return round(effect.start_intensity + (effect.end_intensity - effect.start_intensity) * share)
+
+
+def _piece(effect: Effect, start: int, end: int) -> Effect:
+    return Effect(effect.prop_id, effect.channel_index, start, end, effect.kind,
+                  _at(effect, start), _at(effect, end), effect.color, effect.movement_id)
+
+
+def _punch(canvas: _Canvas, prop_id: str, channel: int, start: int, end: int,
+           color: str | None) -> bool:
+    """Flash over whatever this channel is doing, cutting a gap for it.
+
+    Steps of a chase or fill are never cut: a movement must finish as planned.
+    """
+    key = (prop_id, channel)
+    current = canvas.effects[key]
+    overlapping = [e for e in current
+                   if e.start_centisecond < end and start < e.end_centisecond]
+    if any(e.movement_id is not None for e in overlapping):
+        return False
+    cap = canvas.caps.get(prop_id, 100)
+    if cap <= 0:
+        return False
+    kept = [e for e in current if e not in overlapping]
+    for e in overlapping:
+        if e.start_centisecond < start:
+            kept.append(_piece(e, e.start_centisecond, start))
+        if end < e.end_centisecond:
+            kept.append(_piece(e, end, e.end_centisecond))
+    kept.append(Effect(prop_id, channel, start, end, "fade", cap, 0, color, None))
+    canvas.effects[key] = sorted(kept, key=lambda e: e.start_centisecond)
+    return True
+
+
+def _swell(canvas: _Canvas, start: int, end: int, low: float = 0.5,
+           exclude: set[str] | None = None) -> None:
+    """Scale brightness from ``low`` at ``start`` up to full at ``end``: a build-up."""
+    span = max(1, end - start)
+
+    def factor(time: int) -> float:
+        return low + (1 - low) * min(1.0, max(0.0, (time - start) / span))
+
+    for key, effects in canvas.effects.items():
+        if exclude and key[0] in exclude:
+            continue
+        out: list[Effect] = []
+        for e in effects:
+            if e.end_centisecond <= start or e.start_centisecond >= end:
+                out.append(e)
+                continue
+            pieces = []
+            a, b = max(start, e.start_centisecond), min(end, e.end_centisecond)
+            if e.start_centisecond < a:
+                pieces.append(_piece(e, e.start_centisecond, a))
+            middle = _piece(e, a, b)
+            first = max(1, round(middle.start_intensity * factor(a))) \
+                if middle.start_intensity else 0
+            last = max(1, round(middle.end_intensity * factor(b))) if middle.end_intensity else 0
+            kind = middle.kind
+            if kind == "on" and first != last:
+                kind = "fade"
+            if kind in {"twinkle", "shimmer"}:
+                last = first
+            pieces.append(Effect(e.prop_id, e.channel_index, a, b, kind, first, last,
+                                 e.color, e.movement_id))
+            if b < e.end_centisecond:
+                pieces.append(_piece(e, b, e.end_centisecond))
+            out.extend(pieces)
+        canvas.effects[key] = out
+
+
 def _beat_length(window: _Window, index: int) -> int:
     beats = window.beats
     if index + 1 < len(beats):
@@ -511,7 +618,8 @@ class _Planner:
             return False
         beats = window.beats
         n = len(order)
-        index = 0
+        # Start where a full cycle would have started had the window begun earlier.
+        index = (-window.offset) % (n * every)
         placed = False
         while index + (n - 1) * every < len(beats):
             steps = [index + i * every for i in range(n)]
@@ -554,7 +662,7 @@ class _Planner:
     def alternate(self, props: list[str], window: _Window) -> None:
         for b, beat in enumerate(window.beats):
             for i, pid in enumerate(props):
-                if i % 2 == b % 2:
+                if i % 2 == (b + window.offset) % 2:
                     self.light(pid, window.section_index, beat,
                                beat + _beat_length(window, b), "fade" if self.soft else "on",
                                90, TAIL)
@@ -592,7 +700,7 @@ class _Planner:
         times.append(window.end)
         width = 2 if count >= 4 else 1
         for k in range(len(times) - 1):
-            channel = allowed[k % count]
+            channel = allowed[(k + window.offset * per_beat) % count]
             end = times[min(k + width, len(times) - 1)]
             self.canvas.put(pid, channel, times[k], end, "on", intensity,
                             color=self.color(pid, channel))
@@ -726,6 +834,12 @@ BASE_ROLES = frozenset({"star", "outline", "singing_face"})
 LEADS = {LOW: 2, MID: 2, HIGH: 3}
 # The centerpiece keeps playing through mid and loud parts instead of taking turns.
 CENTERPIECE_ROLES = frozenset({"mega_tree"})
+# Parts that happen once and never repeat their look.
+ONE_OFF_LABELS = frozenset({"intro", "outro", "finale"})
+# Signature flashes: at most one crash flash per this many centiseconds, each at
+# most this long.
+CRASH_SPACING = 400
+FLASH_LENGTH = 60
 # Sparkle on high-pitched hits (tambourine, sleigh bells) where there is at least
 # this many per beat.
 SPARKLE_DENSITY = 0.5
@@ -763,18 +877,25 @@ def _groups(display: Display, rows: list[_Row], singles: list[str]) -> list[_Gro
     return sorted(groups, key=lambda g: (g.x, g.role))
 
 
-def _leads(groups: list[_Group], turn: int, level: int, everything: bool,
-           skip: _Group | None) -> set[str]:
+def _lead_groups(groups: list[_Group], turn: int, level: int, everything: bool,
+                 skip: _Group | None, extra: int = 0) -> list[_Group]:
     candidates = [g for g in groups if g is not skip
                   and (g.role not in CENTERPIECE_ROLES or level == LOW)]
     if not candidates:
-        return set()
+        return []
     if everything:
-        return {p for g in candidates for p in g.props}
-    count = min(len(candidates), LEADS[level])
+        return candidates
+    count = min(len(candidates), LEADS[level] + extra)
     start = turn % len(candidates)
     chosen = [candidates[(start + i) % len(candidates)] for i in range(count)]
-    return {p for g in chosen for p in g.props}
+    # Left to right, so a call comes from the left and the answer from the right.
+    return sorted(chosen, key=lambda g: (g.x, g.role))
+
+
+def _leads(groups: list[_Group], turn: int, level: int, everything: bool,
+           skip: _Group | None, extra: int = 0) -> set[str]:
+    return {p for g in _lead_groups(groups, turn, level, everything, skip, extra)
+            for p in g.props}
 
 
 def _sparkle_group(groups: list[_Group]) -> _Group | None:
@@ -806,7 +927,9 @@ def _sparkle(planner: _Planner, window: _Window, props: list[str], hits: list[in
 BARS_PER_PHRASE = 4
 def _phrases(window: _Window) -> list[_Window]:
     """Four-bar phrases counted from the first bar start; short leftovers join a neighbor."""
-    marks = [d for d in window.downbeats if window.start <= d < window.end]
+    # Bars are counted from the window's first bar even when its body starts a beat
+    # later (after an accent), so phrases stay on the song's four-bar grid.
+    marks = [d for d in window.downbeats if d < window.end]
     cuts = [window.start]
     # A pickup before the first bar belongs to the first phrase.
     for index in range(BARS_PER_PHRASE, len(marks), BARS_PER_PHRASE):
@@ -818,10 +941,28 @@ def _phrases(window: _Window) -> list[_Window]:
         del cuts[-2]
     phrases = []
     for a, b in itertools.pairwise(cuts):
+        before = sum(1 for t in window.beats if t < a)
         phrases.append(_Window(window.section_index, a, b,
                                tuple(t for t in window.beats if a <= t < b),
-                               tuple(t for t in window.downbeats if a <= t < b), False))
+                               tuple(t for t in window.downbeats if a <= t < b), False,
+                               window.offset + before))
     return phrases
+
+
+def _same_part(first: PlannedSection, later: PlannedSection, music: _Music) -> bool:
+    """Whether a later section is a return of an earlier one with the same label.
+
+    A name from the music review is trusted. A guessed label (from loudness) only
+    counts when both parts are at least two phrases long and about the same length,
+    the way a second verse or chorus usually is.
+    """
+    if first.start_centisecond in music.labels or later.start_centisecond in music.labels:
+        return True
+    a = first.end_centisecond - first.start_centisecond
+    b = later.end_centisecond - later.start_centisecond
+    bars = [y - x for x, y in itertools.pairwise(music.downbeats)]
+    bar = sorted(bars)[len(bars) // 2] if bars else 200
+    return min(a, b) >= 2 * BARS_PER_PHRASE * bar and abs(a - b) <= 0.25 * max(a, b)
 
 
 def _accent(planner: _Planner, window: _Window, active: set[str]) -> int:
@@ -1081,49 +1222,167 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
     base = {p for p in usable - singing if display.props[p].role in BASE_ROLES}
     sparkle = _sparkle_group(groups)
     hits = _times(analysis, "high_hits")
-    turn = 0
-    last_window = windows[-1] if windows else None
-    for window in windows:
-        section = sections[window.section_index]
-        label = section.label.lower()
-        active = {
+    # The song's own shape decides where the handoffs start, so two songs on the
+    # same display do not open the same way. Still deterministic.
+    shape = f"{music.duration}:{len(music.beats)}:" + ",".join(
+        f"{s.start_centisecond}/{s.level}" for s in sections)
+    turn = zlib.crc32(shape.encode("utf-8")) % max(1, len(groups))
+    moments: list[tuple[str, int]] = []
+    # Motifs: a part that comes back (a second chorus) repeats its first look.
+    keys = [(s.label.lower(), s.level) for s in sections]
+    last_of = {key: index for index, key in enumerate(keys)}
+    motif_turn: dict[tuple[str, int], int] = {}
+    motif_flip: dict[tuple[str, int], int] = {}
+    motif_first: dict[tuple[str, int], int] = {}
+    section_first: dict[int, int] = {}
+    section_turn: dict[int, int] = {}
+    section_phrase: dict[int, int] = defaultdict(int)
+    section_extra: dict[int, int] = {}
+    section_flip: dict[int, int] = {}
+
+    def active_in(window: _Window) -> set[str]:
+        label = sections[window.section_index].label.lower()
+        return {
             pid for pid in usable - singing
             if label not in constraints.quiet.get(pid, set())
             and not any(a < window.end and window.start < b
                         for a, b in keep_spans.get(pid, []))
         }
-        upcoming = _leads(groups, turn, section.level, label == "finale", None)
+
+    last_window = windows[-1] if windows else None
+    for window in windows:
+        section = sections[window.section_index]
+        label = section.label.lower()
+        si = window.section_index
+        if si not in section_turn:
+            key = keys[si]
+            if key in motif_turn and label not in ONE_OFF_LABELS and _same_part(
+                    sections[motif_first[key]], section, music):
+                section_turn[si] = motif_turn[key]
+                section_flip[si] = motif_flip[key]
+                section_first[si] = motif_first[key]
+                section_extra[si] = 1 if section.level == HIGH and last_of[key] == si else 0
+                moments.append(("repeat", section.start_centisecond))
+            else:
+                section_turn[si] = turn
+                section_flip[si] = si % 2
+                section_first[si] = si
+                motif_first.setdefault(key, si)
+                section_extra[si] = 0
+                motif_turn.setdefault(key, turn)
+                motif_flip.setdefault(key, si % 2)
+        active = active_in(window)
+        upcoming = _leads(groups, section_turn[si] + section_phrase[si], section.level,
+                          label == "finale", None, section_extra[si])
         start = _accent(planner, window, {p for p in active if p in base or p in upcoming})
+        if start > window.start:
+            moments.append(("lift", window.start))
         end = window.end
         closing: int | None = None
-        if window is last_window and window.section_index == len(sections) - 1:
+        if window is last_window and si == len(sections) - 1:
             final_bar = max((d for d in window.downbeats if d > start), default=None)
             if final_bar is not None and end - final_bar >= 100:
                 closing = final_bar
                 end = final_bar
-        body = _Window(window.section_index, start, end,
+        # A repeated part plays as its first occurrence did (same colors and looks).
+        body = _Window(section_first[si], start, end,
                        tuple(b for b in window.beats if start <= b < end),
-                       tuple(d for d in window.downbeats if start <= d < end), False)
+                       tuple(d for d in window.downbeats if d < end), False,
+                       sum(1 for b in window.beats if b < start))
         everything = label == "finale"
-        for index, phrase in enumerate(_phrases(body)):
+        for phrase in _phrases(body):
+            k = section_phrase[si]
+            section_phrase[si] += 1
+            turn += 1
             beats_here = max(1, len(phrase.beats))
             phrase_hits = _hits_in(hits, phrase)
             sparkling = sparkle is not None and len(phrase_hits) / beats_here >= SPARKLE_DENSITY
-            leads = _leads(groups, turn, section.level, everything,
-                           sparkle if sparkling else None)
-            turn += 1
+            lead_groups = _lead_groups(groups, section_turn[si] + k, section.level, everything,
+                                       sparkle if sparkling else None, section_extra[si])
             centerpiece = {p for g in groups if g.role in CENTERPIECE_ROLES
                            and section.level >= MID for p in g.props}
-            phrase_active = {p for p in active if p in base or p in leads or p in centerpiece}
-            _look(planner, phrase, rows, singles, phrase_active, variant=index % 2,
-                  flip=(window.section_index + index) % 2 == 1)
+            steady_part = {p for p in active if p in base or p in centerpiece}
+            variant = k % 2
+            flip = (section_flip[si] + k) % 2 == 1
+            bars = _bars(phrase)
+            if (section.level == MID and not everything and variant == 1
+                    and len(lead_groups) >= 2 and len(bars) >= 2):
+                # Call and response: the left half of the leads plays a bar, the
+                # right half answers the next.
+                half = len(lead_groups) // 2
+                sides = [{p for g in lead_groups[:half] for p in g.props},
+                         {p for g in lead_groups[half:] for p in g.props}]
+                for j, (a, b) in enumerate(bars):
+                    b = min(b, phrase.end) if j < len(bars) - 1 else phrase.end
+                    a = phrase.start if j == 0 else a
+                    bar = _Window(phrase.section_index, a, b,
+                                  tuple(t for t in phrase.beats if a <= t < b),
+                                  tuple(t for t in phrase.downbeats if a <= t < b), False,
+                                  phrase.offset + sum(1 for t in phrase.beats if t < a))
+                    _look(planner, bar, rows, singles,
+                          steady_part | (sides[j % 2] & active), variant=1, flip=flip)
+                moments.append(("call_and_response", phrase.start))
+            else:
+                leads = {p for g in lead_groups for p in g.props}
+                _look(planner, phrase, rows, singles, steady_part | (leads & active),
+                      variant=variant, flip=flip)
             if sparkling and sparkle is not None:
                 _sparkle(planner, phrase, [p for p in sparkle.props if p in active],
                          phrase_hits)
         if closing is not None:
             # The song's last bar: everything still in use fades out together.
             for pid in sorted(active):
-                planner.light(pid, window.section_index, closing, window.end, "fade", 100, 0)
+                planner.light(pid, si, closing, window.end, "fade", 100, 0)
+
+    held = set(keep_spans) | singing
+    # Build-ups: the last phrase before a louder part rises from half brightness.
+    for index, section in enumerate(sections[:-1]):
+        if sections[index + 1].level <= section.level:
+            continue
+        bars_in = [d for d in music.downbeats
+                   if section.start_centisecond <= d < section.end_centisecond]
+        if len(bars_in) < BARS_PER_PHRASE + 1:
+            continue
+        rise = bars_in[-BARS_PER_PHRASE]
+        _swell(canvas, rise, section.end_centisecond, exclude=held)
+        moments.append(("build", rise))
+
+    # Signature moments flash everything in use for a moment: cymbal crashes in
+    # mid and loud parts, and the first beat back after a hard stop.
+    stop_ends = {end for _, end in music.stops}
+    flashes: list[tuple[str, int, _Window]] = []
+    for crash in _times(analysis, "crashes"):
+        home = next((w for w in windows if w.start + 25 <= crash < w.end - 10), None)
+        if home is None or sections[home.section_index].level < MID:
+            continue
+        if flashes and crash - flashes[-1][1] < CRASH_SPACING:
+            continue
+        flashes.append(("crash", crash, home))
+    for window in windows:
+        if window.start in stop_ends and not window.accent and window.beats:
+            flashes.append(("return", window.start, window))
+    beat_gaps = [b - a for a, b in itertools.pairwise(music.beats)]
+    beat = sorted(beat_gaps)[len(beat_gaps) // 2] if beat_gaps else 50
+    for kind, time, window in sorted(flashes, key=lambda f: f[1]):
+        stop = min(window.end, time + min(FLASH_LENGTH, max(10, beat)))
+        flashed = 0
+        for pid in sorted(active_in(window)):
+            for channel in planner.channels(pid, window.section_index):
+                flashed += _punch(canvas, pid, channel, time, stop, planner.color(pid, channel))
+        if flashed:
+            moments.append((kind, time))
+    if moments:
+        counts: dict[str, int] = defaultdict(int)
+        for kind, _ in moments:
+            counts[kind] += 1
+        names = {"repeat": "repeated part(s) reuse their first look",
+                 "lift": "louder part(s) open with an accent",
+                 "call_and_response": "phrase(s) of call and response",
+                 "build": "build-up(s) before a louder part",
+                 "crash": "crash(es) flash the display",
+                 "return": "return(s) from a stop flash the display"}
+        notes.append("Arrangement: " + "; ".join(
+            f"{counts[kind]} {names[kind]}" for kind in names if counts[kind]) + ".")
 
     effects = tuple(sorted(
         (e for items in canvas.effects.values() for e in _joined(items)),
@@ -1155,5 +1414,6 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
             key=lambda s: s.name,
         )),
         notes=tuple(notes),
+        moments=tuple(sorted(moments, key=lambda m: (m[1], m[0]))),
     )
 

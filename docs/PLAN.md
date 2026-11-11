@@ -1,8 +1,7 @@
 # Implementation Plan
 
-**Status:** Phases 0 through 6b are complete. Phase 7 planner code is merged, with the owner S6 playback gate still pending. Phase 8 vocal analysis remains in PR #44. Phase 11A browser workspace is owner-authorized and in progress on a separate branch.
-**Current phase:** Phase 11A — Browser-first professional sequencing workspace (Issue #47; branch `ui/browser-sequencer-foundation`).
-**Parallel engine status:** Phase 8 remains in PR #44, still based on `phase-7/planner-v1`; do not assume its real-vocal or owner playback gates are complete.
+**Status:** Phases 0 through 6b are complete. Phase 7 (planner v1) and Phase 8 (vocals) are merged with their owner playback gates pending. Phase 11A (browser workspace, PR #48) and Phase 11B (editing and music review, PRs #50 and #51) are merged; the owner's visual acceptance on real sequences is pending. Phase 9 (planner v2) is in progress.
+**Current phase:** Phase 9 — Planner v2 (motifs, call and response, signature moments, dynamics).
 **Delivery boundary:** The browser is the development interface. Desktop packaging remains deferred until the final stage.
 
 ## Product objective and fixed requirements
@@ -188,6 +187,19 @@ Build vocal separation, vocal regions, syllable onsets, and singing-face choreog
 Build motifs, call-and-response, signature moments, and richer dynamics.
 
 **Done when:** Two different songs produce noticeably different shows; fixed inputs/config produce deterministic planning; owner confirms arrangements are distinct and coherent.
+
+**Status: Built; owner gate pending.**
+
+**Delivered:** the planner now arranges a show like a song.
+- **Motifs:** a part that comes back repeats its first look: the same groups lead in the same order, with the same colors, chase directions and beat footing. A name from the music review is trusted; a guessed label only counts when both parts are at least two phrases long and within 25% of each other's length. The last return of a loud part lifts with one more lead group.
+- **Call and response:** in mid-energy parts, every other phrase splits its lead groups left and right; the left plays a bar and the right answers the next.
+- **Dynamics:** the last phrase before a louder part builds from half brightness to full (kept-on props and singing faces excepted). Sections that are equally loud (within 1%) now share one energy level instead of being ranked by order.
+- **Signature moments:** cymbal crashes in mid and loud parts (at most one every 4 seconds) and the first beat back after a hard stop flash every prop in use, cutting into holds but never into a chase or fill step, so movements still finish.
+- **Different songs, different shows:** the song's own shape picks where the handoffs start; the same song always gives the same show.
+- The plan summary lists these moments, a note counts them, and the plan picture marks them (✶ flash, ↗ build-up, ↻ repeat, ⇄ call and response).
+- Fixed along the way: after an accent, phrases now stay on the song's four-bar grid instead of shifting one bar later.
+
+**Verified by tests:** a second verse repeats the first; the last chorus uses more lead props than the first; bars trade between left and right in a mid part; brightness rises before a louder part; crashes too close together or in a quiet part are skipped and a return from a stop flashes; two songs on one display share under 30% of their effect starts; every fictional display and 25 random song shapes still pass every rule. On the owner's display and songs (checked locally, not committed), every song plans and passes the rules, with two to six phrases of call and response, one to three build-ups and one to eight crash flashes per freshly analyzed song, and about the same share of lit channels as before (roughly a quarter).
 
 ### Phase 10 — Polish
 Build reports, docs, Python package distribution, example profiles, and installation workflow. Desktop wrapping and desktop packaging are not part of this phase; they are final delivery work after the browser sequencing and editing workflows are complete.

@@ -492,3 +492,99 @@ def test_high_pitched_hits_make_the_sparkle_group_flash() -> None:
                                         for t in hits)]
     assert len(on_hits) >= 40
     assert all(e.end_centisecond - e.start_centisecond <= 12 for e in on_hits)
+
+
+# ---------------------------------------------------------------- Planner v2
+
+SONG_FORM = ((0.0, 0.1), (16.0, 0.5), (32.0, 0.9), (48.0, 0.5), (64.0, 0.9), (80.0, 0.1))
+
+
+def _roles_lit(plan: Plan, display: DisplayBuilder, start: int, end: int) -> set[str]:
+    props = display_from_preview(display.element()).props
+    return {props[e.prop_id].role for e in plan.choreography.effects
+            if e.start_centisecond < end and start < e.end_centisecond
+            and props[e.prop_id].role not in {"star", "outline", "mega_tree"}}
+
+
+def _shape(plan: Plan, start: int, end: int) -> set[tuple[Any, ...]]:
+    """Effects in a span, timed from its start, for comparing two parts."""
+    return {(e.prop_id, e.channel_index, e.start_centisecond - start, e.kind,
+             e.start_intensity, e.end_intensity)
+            for e in plan.choreography.effects
+            if start + 100 <= e.start_centisecond < end}
+
+
+def test_a_part_that_comes_back_repeats_its_look_and_the_last_chorus_lifts() -> None:
+    display = classic_yard()
+    plan, report = _plan(display, synthetic_analysis(duration=96.0, sections=SONG_FORM))
+    assert report.ok, report.format_text()
+    assert [s.label for s in plan.sections] == ["intro", "verse", "chorus", "verse", "chorus",
+                                                "outro"]
+    first, second = _shape(plan, 1600, 3200), _shape(plan, 4800, 6400)
+    assert len(first & second) >= 0.9 * len(first)  # the second verse repeats the first
+    assert ("repeat", 4800) in plan.moments and ("repeat", 6400) in plan.moments
+
+    # The last chorus brings in one more lead group than the first (on a display with
+    # more groups than a loud part normally uses).
+    yard = line_drawn_yard()
+    plan, report = _plan(yard, synthetic_analysis(duration=96.0, sections=SONG_FORM))
+    assert report.ok, report.format_text()
+
+    def lit(start: int, end: int) -> int:
+        return len({e.prop_id for e in plan.choreography.effects
+                    if start <= e.start_centisecond < end})
+
+    assert lit(6450, 7150) > lit(3250, 3950)
+
+
+def test_mid_parts_trade_bars_in_call_and_response() -> None:
+    display = classic_yard()
+    plan, report = _plan(display, synthetic_analysis(duration=96.0, sections=SONG_FORM))
+    assert report.ok, report.format_text()
+    assert ("call_and_response", 2400) in plan.moments
+    bars = [_roles_lit(plan, display, a + 20, a + 180) for a in range(2400, 3200, 200)]
+    assert bars[0] != bars[1] and bars[0] == bars[2] and bars[1] == bars[3]
+
+
+def test_the_phrase_before_a_louder_part_builds_up() -> None:
+    display = classic_yard()
+    plan, _ = _plan(display, synthetic_analysis(duration=96.0, sections=SONG_FORM))
+    assert ("build", 2400) in plan.moments
+
+    def brightness(start: int, end: int) -> float:
+        values = [max(e.start_intensity, e.end_intensity) for e in plan.choreography.effects
+                  if start <= e.start_centisecond < end]
+        return sum(values) / len(values)
+
+    assert brightness(2400, 2600) < 0.8 * brightness(3000, 3200)
+
+
+def test_crashes_and_returns_from_a_stop_flash_the_display() -> None:
+    display = classic_yard()
+    analysis = synthetic_analysis(duration=96.0, sections=SONG_FORM, stops=((56.0, 1.0),))
+    analysis["analysis"]["crashes"] = [{"time": t, "confidence": 0.8, "method": "test"}
+                                       for t in (40.5, 41.0, 70.25, 5.0)]
+    plan, report = _plan(display, analysis)
+    assert report.ok, report.format_text()
+    kinds = [m for m in plan.moments if m[0] in {"crash", "return"}]
+    # 41.0 is too close to 40.5, and 5.0 is in the quiet intro.
+    assert kinds == [("crash", 4050), ("return", 5700), ("crash", 7025)]
+    flashing = {e.prop_id for e in plan.choreography.effects
+                if e.start_centisecond == 4050 and e.kind == "fade" and e.end_intensity == 0}
+    assert len(flashing) >= 8
+    assert "crash(es) flash the display" in " ".join(plan.notes)
+    assert plan.to_dict()["moments"][0]["kind"]
+
+
+def test_two_songs_on_one_display_get_different_shows() -> None:
+    display = classic_yard()
+    one, _ = _plan(display, synthetic_analysis(duration=96.0, sections=SONG_FORM))
+    other, _ = _plan(display, synthetic_analysis(
+        duration=96.0, bpm=96.0,
+        sections=((0.0, 0.3), (12.0, 0.9), (40.0, 0.2), (60.0, 0.6), (76.0, 0.95))))
+    a = {(e.prop_id, e.start_centisecond) for e in one.choreography.effects}
+    b = {(e.prop_id, e.start_centisecond) for e in other.choreography.effects}
+    assert len(a & b) / len(a | b) < 0.3
+    # The same song twice is the same show.
+    again, _ = _plan(display, synthetic_analysis(duration=96.0, sections=SONG_FORM))
+    assert again.choreography == one.choreography
