@@ -2,7 +2,7 @@
 
 A display-independent command-line tool for building native Light-O-Rama S6 sequences from music and a required `.lorprev` display preview.
 
-**Project status:** Phase 1's native S6 LOREDIT reader/writer is complete. Phase 2 adds standalone `.lorprev` parsing for observed preview revisions 0 and 1. Audio analysis, prop classification, and choreography have not started.
+**Project status:** Phase 1's native S6 LOREDIT reader/writer is complete. Phase 2 parses standalone `.lorprev` files and embedded `PreviewClass` data for observed revisions 0, 1, and 56, including props, controller/channel assignments, and prop groups. Audio analysis, prop classification, and choreography have not started.
 
 ## Product workflow
 
@@ -52,7 +52,9 @@ Write a new round-trip copy (the destination must not already exist):
 uv run lor-sequence-builder roundtrip .\path\to\show.loredit .\output\roundtrip.loredit
 ```
 
-The LOREDIT reader currently accepts only `saveFileVersion="15"`, the version represented by the reviewed fixture. The standalone LORPREV parser currently supports internal `Revision` values `0` and `1`; this is separate from the LOREDIT save-file version. XML is parsed with `defusedxml`, with DTDs, entities, and external references forbidden. The writer preserves the parsed XML tree opaquely and atomically creates a new output without overwriting the input or an existing destination.\n\nThe preview is the authoritative display map. For LOR props, each `ChannelGrid` row is interpreted using the documented network, Unit ID, and circuit fields; for DMX props, the documented universe and channel fields are exposed. The complete original row and its source locator are retained. `LOR`, legacy `AC`/`DC`, `DMX`, and `Undetermined` are recognized device types. Group membership and arrangement still require a native S6-exported group fixture before semantic support can be claimed.
+The LOREDIT reader currently accepts only `saveFileVersion="15"`, the version represented by the reviewed fixture. The preview parser supports internal `Revision` values `0`, `1`, and `56`; these are distinct from the LOREDIT save-file version. XML is parsed with `defusedxml`, with DTDs, entities, and external references forbidden. The writer preserves the parsed XML tree opaquely and atomically creates a new output without overwriting the input or an existing destination.
+
+The preview is the authoritative display map. For LOR props, each `ChannelGrid` row is interpreted as network, Unit ID, and circuit; for DMX props, universe and channel are exposed. The original row and source locator are retained. `PropGroup` and `member` records are parsed into typed group/member models, including prop ID references, arrangement, orientation, top, and left values. The supplied Revision 56 fixture contains 51 props and one group with five members.
 
 ## Development checks
 
