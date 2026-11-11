@@ -46,16 +46,19 @@ def test_analyze_audio_detects_tempo_beats_onsets_and_hard_stop(tmp_path: Path) 
 
     analysis = report["analysis"]
     assert report["schema_version"] == "1.0"
+    assert report["configuration"]["frame_seconds"] == pytest.approx(551 / 11_025)
     assert report["audio"]["duration_seconds"] == pytest.approx(8.0, abs=0.1)
     assert analysis["tempo"]["bpm"] == pytest.approx(120.0, abs=3.0)
     assert len(analysis["beats"]) >= 10
     assert len(analysis["downbeats"]) >= 2
     assert len(analysis["onsets"]) >= 8
+    assert all(0.0 <= event["confidence"] <= 1.0 for event in analysis["onsets"])
     assert analysis["hard_stops"]
     assert analysis["hard_stops"][0]["time"] == pytest.approx(5.8, abs=0.2)
     assert analysis["energy"]
     assert analysis["phrase_boundaries"]
     assert report_path.is_file()
+    assert report_path.read_text(encoding="utf-8").startswith("{")
     assert plot_path.is_file()
     assert "<svg" in plot_path.read_text(encoding="utf-8")
 
