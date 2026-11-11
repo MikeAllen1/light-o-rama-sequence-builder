@@ -770,6 +770,29 @@ def test_profile_rejects_unhashable_yaml_mapping_keys(tmp_path: Path) -> None:
 
 
 
+
+def test_direct_choreography_rejects_malformed_numeric_fields_cleanly() -> None:
+    display = classic_yard()
+    with pytest.raises(ChoreographyError, match="duration_centiseconds must be an integer"):
+        _check(display, Choreography(duration_centiseconds=cast(int, "1200"), effects=()))
+
+    invalid_intensity = Choreography(
+        duration_centiseconds=SONG,
+        effects=(Effect(_ids(display)["Arch 1"], 0, 0, 100,
+                        start_intensity=cast(int, "high")),),
+    )
+    with pytest.raises(ChoreographyError, match=r"effects\\[0\\].start_intensity must be an integer"):
+        _check(display, invalid_intensity)
+
+    invalid_timestamp = Choreography(
+        duration_centiseconds=SONG,
+        effects=(Effect(_ids(display)["Arch 1"], 0,
+                        cast(int, "0"), 100),),
+    )
+    with pytest.raises(ChoreographyError, match=r"effects\\[0\\].start_centisecond must be an integer"):
+        _check(display, invalid_timestamp)
+
+
 def test_direct_movement_with_no_props_fails_without_crashing() -> None:
     display = classic_yard()
     timeline = Choreography(
