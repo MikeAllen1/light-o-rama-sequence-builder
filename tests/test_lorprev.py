@@ -19,6 +19,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 def test_synthetic_revision_zero_preview_preserves_geometry_and_provenance() -> None:
     model = read_lorprev(FIXTURES / "synthetic_display.lorprev")
+    assert model.revision is not None
     assert model.revision.value == "0"
     assert len(model.props) == 2
     assert model.props[0].attributes["Name"].value == "Test Roofline"
@@ -101,6 +102,7 @@ def test_synthetic_revision_one_preview_preserves_full_prop_model(tmp_path: Path
     ET.ElementTree(root).write(source, encoding="utf-8", xml_declaration=True)
 
     model = read_lorprev(source)
+    assert model.revision is not None
     assert model.revision.value == "1"
     assert len(model.props) == 51
     assert len(model.channel_grid_entries) == 69
@@ -336,6 +338,7 @@ def test_synthetic_revision_56_preview_parses_native_prop_group(
     ET.ElementTree(preview).write(source, encoding="utf-8", xml_declaration=True)
 
     model = read_lorprev(source)
+    assert model.revision is not None
     assert model.revision.value == "56"
     assert len(model.props) == 51
     assert len(model.groups) == 1
