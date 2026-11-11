@@ -170,7 +170,7 @@ def build_new_sequence(
                 f"Linked prop {prop_id!r} references another linked prop {master_id!r}; "
                 "master chains and cycles are not supported"
             )
-        master_reason = _exclusion_reason(master)
+        master_reason = channel_layout_problem(master)
         if master_reason is not None:
             raise NewSequenceError(
                 f"Linked prop {prop_id!r} references master {master_id!r} "
