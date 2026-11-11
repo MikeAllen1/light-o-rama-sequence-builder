@@ -15,6 +15,7 @@
     sequence: null,
     audioFile: null,
     audioBuffer: null,
+    waveformPeaks: null,
     audioUrl: null,
     analysis: null,
     vocals: null,
@@ -395,6 +396,34 @@
     }
   }
 
+  function buildWaveformPeaks(buffer) {
+    const bucketSize = 128;
+    const channelData = Array.from({ length: buffer.numberOfChannels }, (_, index) =>
+      buffer.getChannelData(index));
+    const bucketCount = Math.ceil(buffer.length / bucketSize);
+    const channels = channelData.map(() => ({
+      minimum: new Float32Array(bucketCount),
+      maximum: new Float32Array(bucketCount)
+    }));
+    for (let channel = 0; channel < channelData.length; channel++) {
+      const samples = channelData[channel];
+      for (let bucket = 0; bucket < bucketCount; bucket++) {
+        const start = bucket * bucketSize;
+        const end = Math.min(buffer.length, start + bucketSize);
+        let low = 1;
+        let high = -1;
+        for (let sample = start; sample < end; sample++) {
+          const value = samples[sample];
+          if (value < low) low = value;
+          if (value > high) high = value;
+        }
+        channels[channel].minimum[bucket] = low;
+        channels[channel].maximum[bucket] = high;
+      }
+    }
+    return { bucketSize, channels };
+  }
+
   function drawWaveform(width, pps) {
     const canvas = $("waveformCanvas");
     const ctx = setCanvasSize(canvas, width, WAVE_HEIGHT);
@@ -412,25 +441,29 @@
       return;
     }
     const sampleRate = state.audioBuffer.sampleRate;
-    const channelCount = Math.max(1, Math.min(2, state.audioBuffer.numberOfChannels));
+    const peaks = state.waveformPeaks;
+    if (!peaks) return;
+    const channelCount = peaks.channels.length;
     const channelHeight = WAVE_HEIGHT / channelCount;
     for (let channelIndex = 0; channelIndex < channelCount; channelIndex++) {
-      const samples = state.audioBuffer.getChannelData(channelIndex);
+      const channelPeaks = peaks.channels[channelIndex];
       const center = channelIndex * channelHeight + channelHeight / 2;
       ctx.strokeStyle = channelIndex === 0 ? "#78bfd0" : "#5da8bd";
       ctx.lineWidth = 1;
       ctx.beginPath();
       for (let x = 0; x < width; x++) {
         const from = Math.floor((x / pps) * sampleRate);
-        if (from >= samples.length) break;
-        const to = Math.min(samples.length, Math.max(from + 1,
+        if (from >= state.audioBuffer.length) break;
+        const to = Math.min(state.audioBuffer.length, Math.max(from + 1,
           Math.floor(((x + 1) / pps) * sampleRate)));
+        const firstBucket = Math.floor(from / peaks.bucketSize);
+        const lastBucket = Math.min(channelPeaks.minimum.length - 1,
+          Math.floor((to - 1) / peaks.bucketSize));
         let min = 1;
         let max = -1;
-        for (let i = from; i < to; i++) {
-          const value = samples[i];
-          if (value < min) min = value;
-          if (value > max) max = value;
+        for (let bucket = firstBucket; bucket <= lastBucket; bucket++) {
+          min = Math.min(min, channelPeaks.minimum[bucket]);
+          max = Math.max(max, channelPeaks.maximum[bucket]);
         }
         const y1 = center - max * (channelHeight * .43);
         const y2 = center - min * (channelHeight * .43);
@@ -704,6 +737,7 @@
         : file;
       const buffer = await context.decodeAudioData(audioBytes.slice(0));
       state.audioBuffer = buffer;
+      state.waveformPeaks = buildWaveformPeaks(buffer);
       if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
       state.audioUrl = URL.createObjectURL(playbackSource);
       audio.src = state.audioUrl;
@@ -763,6 +797,7 @@
     if (!file) return;
     state.audioFile = file;
     state.audioBuffer = null;
+    state.waveformPeaks = null;
     state.analysis = null;
     state.vocals = null;
     if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
