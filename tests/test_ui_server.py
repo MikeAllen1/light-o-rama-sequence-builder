@@ -12,7 +12,7 @@ from lor_sequence_builder.ui_server import (
     _WEB_ROOT,
     SequencerRequestHandler,
     _looks_like_mp3,
-    _safe_audio_suffix,
+    _detect_audio_suffix,
 )
 
 
@@ -71,7 +71,6 @@ def test_audio_analysis_endpoint_rejects_unsupported_extensions(local_server: st
         data=b"not-a-real-audio-file",
         headers={
             "Content-Type": "application/octet-stream",
-            "X-Audio-Filename": "payload.exe",
         },
         method="POST",
     )
@@ -104,11 +103,10 @@ def test_mp3_signature_detection_handles_id3_and_mpeg_frames() -> None:
     assert not _looks_like_mp3(bytes([0, 0, 0, 24]) + b"ftypmp42")
 
 
-def test_audio_filename_extension_maps_to_fixed_allowlisted_suffix() -> None:
-    assert _safe_audio_suffix("../../outside/song.mp3", b"audio") == (".mp3", None)
-    assert _safe_audio_suffix("intro.mp4", bytes([73, 68, 51, 3])) == (
-        ".mp3",
-        "The selected file is named .mp4 but contains an MP3 audio stream. "
-        "It was analyzed as MP3; the original file was not changed.",
-    )
-    assert _safe_audio_suffix("payload.exe", b"audio") == (None, None)
+def test_audio_container_detection_uses_content_not_client_filename() -> None:
+    assert _detect_audio_suffix(b"ID3" + bytes(20)) == ".mp3"
+    assert _detect_audio_suffix(b"RIFF" + bytes(4) + b"WAVE" + bytes(20)) == ".wav"
+    assert _detect_audio_suffix(b"fLaC" + bytes(20)) == ".flac"
+    assert _detect_audio_suffix(b"OggS" + bytes(20)) == ".ogg"
+    assert _detect_audio_suffix(bytes(4) + b"ftypM4A " + bytes(20)) == ".m4a"
+    assert _detect_audio_suffix(b"not-an-audio-container") is None

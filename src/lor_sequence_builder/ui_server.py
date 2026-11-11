@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, cast
-from urllib.parse import parse_qs, unquote, urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from lor_sequence_builder.audio_analysis import (
     INPUT_DEMUXERS,
@@ -24,60 +24,42 @@ _MAX_UPLOAD_BYTES = MAX_INPUT_BYTES
 
 
 def _looks_like_mp3(data: bytes) -> bool:
-    """Recognize common MP3 signatures so a mislabeled source can still be analyzed."""
+    """Recognize common MP3 signatures."""
     return data.startswith(b"ID3") or (
         len(data) >= 2 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0
     )
 
 
-def _safe_audio_suffix(filename: str, payload: bytes) -> tuple[str | None, str | None]:
-    """Map an untrusted filename extension to a fixed, allowlisted suffix."""
-    warning: str | None = None
-    match Path(filename).suffix.lower():
-        case ".wav":
-            suffix = ".wav"
-        case ".mp3":
-            suffix = ".mp3"
-        case ".aac":
-            suffix = ".aac"
-        case ".flac":
-            suffix = ".flac"
-        case ".ogg":
-            suffix = ".ogg"
-        case ".opus":
-            suffix = ".opus"
-        case ".wma":
-            suffix = ".wma"
-        case ".aif":
-            suffix = ".aif"
-        case ".aiff":
-            suffix = ".aiff"
-        case ".m4a":
-            suffix = ".m4a"
-        case ".m4b":
-            suffix = ".m4b"
-        case ".mp4":
-            if _looks_like_mp3(payload):
-                suffix = ".mp3"
-                warning = (
-                    "The selected file is named .mp4 but contains an MP3 audio stream. "
-                    "It was analyzed as MP3; the original file was not changed."
-                )
-            else:
-                suffix = ".mp4"
-        case ".mka":
-            suffix = ".mka"
-        case ".mkv":
-            suffix = ".mkv"
-        case ".webm":
-            suffix = ".webm"
-        case ".ape":
-            suffix = ".ape"
-        case ".wv":
-            suffix = ".wv"
-        case _:
-            return None, None
-    return suffix, warning
+def _detect_audio_suffix(payload: bytes) -> str | None:
+    """Identify a supported container from its bytes, never from a client filename."""
+    if payload.startswith(b"RIFF") and payload[8:12] == b"WAVE":
+        return ".wav"
+    if payload.startswith(b"fLaC"):
+        return ".flac"
+    if payload.startswith(b"OggS"):
+        return ".ogg"
+    if len(payload) >= 2 and payload[0] == 0xFF and (payload[1] & 0xF6) == 0xF0:
+        return ".aac"
+    if _looks_like_mp3(payload):
+        return ".mp3"
+    if payload.startswith(b"FORM") and payload[8:12] in {b"AIFF", b"AIFC"}:
+        return ".aiff"
+    if payload.startswith(b"\x1a\x45\xdf\xa3"):
+        return ".mkv"
+    if payload.startswith(b"\x30\x26\xb2\x75\x8e\x66\xcf\x11"):
+        return ".wma"
+    if payload.startswith(b"MAC "):
+        return ".ape"
+    if payload.startswith(b"wvpk"):
+        return ".wv"
+    if len(payload) >= 12 and payload[4:8] == b"ftyp":
+        brand = payload[8:12]
+        if brand == b"M4A ":
+            return ".m4a"
+        if brand == b"M4B ":
+            return ".m4b"
+        return ".mp4"
+    return None
 
 
 class SequencerRequestHandler(SimpleHTTPRequestHandler):
@@ -140,11 +122,11 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
             self.send_error(400, "Audio upload was incomplete")
             return
 
-        supplied_name = unquote(self.headers.get("X-Audio-Filename", "audio.mp3"))
-        suffix, warning = _safe_audio_suffix(supplied_name, payload)
+        suffix = _detect_audio_suffix(payload)
         if suffix is None or suffix not in INPUT_DEMUXERS:
-            self.send_error(415, "Unsupported audio file extension")
+            self.send_error(415, "Unsupported or unrecognized audio container")
             return
+        warning = None
 
         query = parse_qs(parsed.query)
         meter_values = query.get("beats_per_bar", ["4"])
