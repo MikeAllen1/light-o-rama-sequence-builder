@@ -6,7 +6,7 @@ The sequencing workspace is browser-based during development. It runs from a loc
 
 ## First release
 
-The first release is a read-only reference workspace. It opens a native S6 v15 `.loredit` and its matching audio, then renders:
+The workspace opens a native S6 v15 `.loredit` and its matching audio, then renders:
 
 - Native prop and channel tracks from `SequenceProps`.
 - Group hierarchy from embedded `PreviewClass/PropGroup/member` data.
@@ -27,6 +27,31 @@ The reference lanes are ordered like a DAW arrangement: lyrics and vocals direct
 
 The shared horizontal extent covers the longer of the sequence and selected audio, so neither the lighting sequence nor an audio tail is silently clipped when their durations differ. Audio analysis timestamps are seconds from the decoded audio start and are mapped onto the same horizontal time axis as the sequence's centisecond timestamps. Native timing grids and inferred audio-analysis events remain visually and semantically distinct.
 
+## Editing
+
+Effects can be edited in place; nothing is written until **Export edited copy**.
+
+| Action | How |
+| --- | --- |
+| Select / add to selection | Click an effect; Shift- or Ctrl-click adds or removes |
+| Move | Drag a selected effect; every selected effect moves together (in time) |
+| Trim | Drag an effect's start or end edge |
+| Create | Drag across an empty part of a channel row, or double-click it (one beat, or 0.5 s) |
+| Edit | Inspector: effect type (Intensity, Twinkle, Shimmer), level, fade from/to, exact start and end |
+| Delete, duplicate | Delete key; Ctrl+D places a copy right after the selection |
+| Copy, cut, paste | Ctrl+C, Ctrl+X, then click a time and Ctrl+V |
+| Nudge | Arrow keys: 0.01 s; with Shift, 0.10 s |
+| Undo / redo | Ctrl+Z; Ctrl+Y or Ctrl+Shift+Z (300 steps) |
+| Retime | Click a flag on the out-of-sync lane, then **Retime the lighting change to this moment**: the effects that start at the flagged change move onto the musical moment, and the effects that led into them end there |
+
+Moves, trims and new effects snap within 8 pixels to the targets ticked in the edit bar: native LOR grids, beats, bars, transients, high hits and crashes, vocal onsets, lyric words, and other effects' edges. Hold Alt to place freely.
+
+Every edit is checked before it is applied: effects may not overlap on a channel, have no length, start before the song or run past the end. A refused edit changes nothing and says why. Overlaps already in the source are left alone; S6 itself sometimes saves an exact duplicate of an effect.
+
+Export rebuilds only the channels that were edited (marked with an amber edge); every other byte of the file is kept as it was, including line endings and S6's ` />` spacing. The local server reads the result with the same safe reader used for every sequence (version, XML limits, prop references) and checks every effect's timing, then the browser downloads it as `<name> (edited).loredit`. The source file is never changed. Exporting without edits gives back a byte-identical file; this was confirmed on the owner's seven finished sequences, checked locally and not committed, along with deleting and duplicating effects in each.
+
+Effects of types other than Intensity, Twinkle and Shimmer keep their own settings; only their timing can be edited. Moving an effect to another channel is not supported yet.
+
 ## Local processing and safety
 
 Run with:
@@ -35,7 +60,7 @@ Run with:
 uv run lor-sequence-ui
 ```
 
-The server binds to `127.0.0.1` only. The browser sends selected audio to a bounded local endpoint; the server runs the existing FFmpeg/librosa pipeline in a temporary directory and deletes the upload and outputs afterward. No audio is sent to a remote service. The original selected audio and LOREDIT remain read-only.
+The server binds to `127.0.0.1` only. The browser sends selected audio to a bounded local endpoint; the server runs the existing FFmpeg/librosa pipeline in a temporary directory and deletes the upload and outputs afterward. No audio is sent to a remote service. The original selected audio and LOREDIT remain read-only; an edited sequence is checked by a second bounded local endpoint (`/api/export`, same-origin only, 50 MiB) and nothing is kept on disk.
 
 The browser parser rejects DTD/entity declarations and enforces the 50 MiB, 100,000-element, and 256-level bounds used by the sequence reader. Only S6 v15 sequences are supported.
 
@@ -50,7 +75,6 @@ The browser parser rejects DTD/entity declarations and enforces the 50 MiB, 100,
 
 ## Follow-on work
 
-1. Editing: select/move/resize effects, create effects, multi-select, undo/redo, snapping to reviewed musical events, and safe new-file export.
-2. Musical editing: manual vocal phrase and lyric markers, reviewed beat/bar grids, tempo/meter changes, transient/vocal snapping, and out-of-sync diagnostics.
-3. Professional workflow: reusable layouts, track visibility/mute, keyboard shortcuts, event inspector, and performance work on larger displays.
-4. Final delivery: desktop wrapper and packaging only after the browser sequencing and editing workflows are complete.
+1. Musical editing: manual vocal phrase and lyric markers, reviewed beat/bar grids, tempo/meter changes, transient/vocal snapping, and out-of-sync diagnostics.
+2. Professional workflow: reusable layouts, track visibility/mute, keyboard shortcuts, event inspector, and performance work on larger displays.
+3. Final delivery: desktop wrapper and packaging only after the browser sequencing and editing workflows are complete.

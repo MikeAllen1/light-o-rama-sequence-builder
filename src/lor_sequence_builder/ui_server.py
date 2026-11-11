@@ -18,6 +18,12 @@ from lor_sequence_builder.audio_analysis import (
     AudioAnalysisError,
     analyze_audio,
 )
+from lor_sequence_builder.loredit import (
+    MAX_LOREDIT_BYTES,
+    LoreditError,
+    effect_timing_problems,
+    read_loredit,
+)
 
 _WEB_ROOT = Path(__file__).with_name("web")
 _MAX_UPLOAD_BYTES = MAX_INPUT_BYTES
@@ -28,6 +34,29 @@ def _looks_like_mp3(data: bytes) -> bool:
     return data.startswith(b"ID3") or (
         len(data) >= 2 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0
     )
+
+
+def check_edited_sequence(payload: bytes) -> dict[str, Any]:
+    """Validate an edited sequence from the browser before it is downloaded.
+
+    The same safe reader used for every LOREDIT input checks the XML, the save-file
+    version and the prop references; then every effect's timing is checked. Nothing
+    is kept on disk.
+    """
+    with tempfile.TemporaryDirectory(prefix="lor-sequencer-export-") as directory:
+        path = Path(directory) / "edited.loredit"
+        path.write_bytes(payload)
+        document = read_loredit(path)
+    problems = effect_timing_problems(document)
+    if problems:
+        raise LoreditError("The edited sequence has timing problems: " + "; ".join(problems))
+    root = document.root
+    channels = root.findall("SequenceProps/SeqProp/channel")
+    return {
+        "ok": True,
+        "channels": len(channels),
+        "effects": sum(len(channel.findall("effect")) for channel in channels),
+    }
 
 
 def _detect_audio_suffix(payload: bytes) -> str | None:
@@ -83,28 +112,36 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def do_POST(self) -> None:
-        """Analyze a selected local audio file; the upload is never persisted."""
+        """Analyze a selected audio file or check an edited sequence; nothing is kept."""
         parsed = urlsplit(self.path)
-        if parsed.path != "/api/analyze":
+        if parsed.path not in {"/api/analyze", "/api/export"}:
             self.send_error(404)
             return
+        if not self._is_same_origin():
+            return
+        if parsed.path == "/api/export":
+            self._check_export()
+            return
+        self._analyze(parsed.query)
 
+    def _is_same_origin(self) -> bool:
         expected_host = "127.0.0.1:" + str(cast(ThreadingHTTPServer, self.server).server_port)
         request_host = self.headers.get("Host")
         if request_host != expected_host:
             self.send_error(403, "Requests must use the loopback workspace host")
-            return
+            return False
         origin = self.headers.get("Origin")
         if origin:
             origin_url = urlsplit(origin)
             if origin_url.scheme != "http" or origin_url.netloc != expected_host:
                 self.send_error(403, "Cross-origin requests are not accepted")
-                return
+                return False
+        return True
 
-        if self.headers.get_content_type() != "application/octet-stream":
-            self.send_error(415, "Expected application/octet-stream")
-            return
-
+    def _read_body(self, content_type: str, limit: int, what: str) -> bytes | None:
+        if self.headers.get_content_type() != content_type:
+            self.send_error(415, "Expected " + content_type)
+            return None
         raw_length = self.headers.get("Content-Length")
         try:
             length = int(raw_length) if raw_length is not None else -1
@@ -112,14 +149,30 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
             length = -1
         if length <= 0:
             self.send_error(400, "A non-empty Content-Length is required")
-            return
-        if length > _MAX_UPLOAD_BYTES:
-            self.send_error(413, "Audio exceeds the 200 MiB upload limit")
-            return
-
+            return None
+        if length > limit:
+            self.send_error(413, f"{what} exceeds the {limit // (1024 * 1024)} MiB upload limit")
+            return None
         payload = self.rfile.read(length)
         if len(payload) != length:
-            self.send_error(400, "Audio upload was incomplete")
+            self.send_error(400, f"{what} upload was incomplete")
+            return None
+        return payload
+
+    def _check_export(self) -> None:
+        payload = self._read_body("application/xml", MAX_LOREDIT_BYTES, "Sequence")
+        if payload is None:
+            return
+        try:
+            self._send_json(200, check_edited_sequence(payload))
+        except LoreditError as exc:
+            self._send_json(422, {"error": str(exc)})
+        except OSError:
+            self._send_json(500, {"error": "The edited sequence could not be checked"})
+
+    def _analyze(self, query_text: str) -> None:
+        payload = self._read_body("application/octet-stream", _MAX_UPLOAD_BYTES, "Audio")
+        if payload is None:
             return
 
         suffix = _detect_audio_suffix(payload)
@@ -128,7 +181,7 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
             return
         warning = None
 
-        query = parse_qs(parsed.query)
+        query = parse_qs(query_text)
         meter_values = query.get("beats_per_bar", ["4"])
         if meter_values[0] not in {"3", "4"}:
             self.send_error(400, "beats_per_bar must be 3 or 4")
