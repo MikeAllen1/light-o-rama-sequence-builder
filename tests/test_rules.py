@@ -9,6 +9,8 @@ from typing import Any
 
 import pytest
 
+import lor_sequence_builder.choreography as choreography_module
+
 from lor_sequence_builder.choreography import (
     Choreography,
     ChoreographyError,
@@ -19,7 +21,6 @@ from lor_sequence_builder.choreography import (
     load_choreography,
     parse_choreography,
 )
-import lor_sequence_builder.choreography as choreography_module
 
 from lor_sequence_builder.rules import (
     RULE_SPECS,
