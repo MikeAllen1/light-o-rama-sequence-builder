@@ -10,6 +10,7 @@ The first release is a read-only reference workspace. It opens a native S6 v15 `
 
 - Native prop and channel tracks from `SequenceProps`.
 - Group hierarchy from embedded `PreviewClass/PropGroup/member` data.
+- Channel-less sequence entries whose IDs match a native `PropGroup` are treated as group placeholders, not duplicate empty prop tracks; sequenced member props remain nested under the group.
 - Native effect intervals and settings from channel `effect` elements.
 - Native free timing grids and fixed grid spacing.
 - A waveform decoded from the selected audio file.
