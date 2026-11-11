@@ -368,3 +368,25 @@ def test_phrases_count_from_the_first_bar_and_absorb_short_leftovers() -> None:
     # after the last full phrase is folded in rather than left as a scrap.
     cuts = [(p.start, p.end) for p in _phrases(window)]
     assert cuts == [(0, 850), (850, 1700)]
+
+
+@pytest.mark.parametrize("seed", range(25))
+def test_any_song_shape_plans_without_breaking_a_rule(seed: int) -> None:
+    import random
+
+    rng = random.Random(seed)
+    duration = rng.choice([8.0, 12.0, 30.0, 95.0, 240.0])
+    starts = sorted({0.0, *(round(rng.uniform(0.5, duration - 0.5), 2)
+                            for _ in range(rng.randint(0, 10)))})
+    stops = tuple(sorted({(round(rng.uniform(1, duration - 1), 2), round(rng.uniform(0.3, 4), 2))
+                          for _ in range(rng.randint(0, 4))}))
+    analysis = synthetic_analysis(
+        duration=duration, bpm=rng.choice([50.0, 96.0, 120.0, 180.0, 210.0]),
+        sections=tuple((s, rng.random()) for s in starts), stops=stops,
+        beats=rng.random() > 0.1,
+    )
+    if rng.random() < 0.3:  # waltz time
+        analysis["analysis"]["downbeats"] = analysis["analysis"]["beats"][::3]
+    for make in ALL_DISPLAYS:
+        _, report = _plan(make(), analysis)
+        assert report.ok, f"{make.__name__}: {report.format_text()}"
