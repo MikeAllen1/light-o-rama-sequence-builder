@@ -185,6 +185,9 @@ See [GITHUB_WORKFLOW.md](GITHUB_WORKFLOW.md) for branch, PR, review, merge, and 
 
 ## Current progress log
 
+### Repository cleanup — 2026-11-11
+Owner decision: closed PR #12 unmerged (superseded by the librosa rework) and closed issues #8 and #13 as done. Retired the Phase 3 validation-package workflow, its build script, and its guide; the `pulse` harness itself remains. Stale branches are to be deleted by the owner.
+
 ### Phase 0 — Scaffold
 - Status: Complete and merged.
 - Issue: https://github.com/MikeAllen1/light-o-rama-sequence-builder/issues/4

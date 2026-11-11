@@ -14,7 +14,7 @@ The planned workflow is:
 
 The implementation is deliberately staged. The native S6 read/write path and fixed-tempo sequence-generation path are established. Phase 4 adds audio feature analysis; intelligent choreography comes later.
 
-See [docs/PLAN.md](docs/PLAN.md) for the phase order, acceptance criteria, and handoff log. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the intended system boundaries and data contracts. For the simple Phase 3 S6 playback check, follow [docs/PHASE3_VALIDATION.md](docs/PHASE3_VALIDATION.md); it provides a one-download ZIP generated automatically by GitHub Actions.
+See [docs/PLAN.md](docs/PLAN.md) for the phase order, acceptance criteria, and handoff log. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the intended system boundaries and data contracts.
 
 ## Requirements
 
