@@ -9,7 +9,7 @@ from pathlib import Path
 from defusedxml import ElementTree as SafeET
 from defusedxml.common import DefusedXmlException
 
-SUPPORTED_PREVIEW_REVISIONS = frozenset({"0", "1"})
+SUPPORTED_PREVIEW_REVISIONS = frozenset({"0", "1", "56"})
 MAX_LORPREV_BYTES = 20 * 1024 * 1024
 MAX_XML_DEPTH = 256
 
@@ -77,6 +77,28 @@ class GeometryPoint:
 
 
 @dataclass(frozen=True, slots=True)
+class PropGroupMemberModel:
+    """A group member reference and its source layout attributes."""
+
+    source: RawElement
+    prop_id: SourceValue | None
+    orientation: SourceValue | None
+    top: SourceValue | None
+    left: SourceValue | None
+
+
+@dataclass(frozen=True, slots=True)
+class PropGroupModel:
+    """A preview prop group with loss-preserving member references."""
+
+    source: RawElement
+    group_id: SourceValue | None
+    name: SourceValue | None
+    arrangement: SourceValue | None
+    members: tuple[PropGroupMemberModel, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class PropModel:
     """Raw display model; interpretation/classification is deliberately deferred."""
 
@@ -86,6 +108,7 @@ class PropModel:
     props: tuple[RawElement, ...]
     scenes: tuple[RawElement, ...]
     prop_views: tuple[RawElement, ...]
+    groups: tuple[PropGroupModel, ...]
     unrecognized_top_level: tuple[RawElement, ...]
     unrecognized_elements: tuple[RawElement, ...]
     unsupported_constructs: tuple[UnsupportedConstruct, ...]
@@ -131,7 +154,7 @@ def _walk_raw_elements(element: RawElement) -> tuple[RawElement, ...]:
 
 
 def read_lorprev(path: str | Path) -> PropModel:
-    """Read a standalone S6 preview for verified Revision 0 and Revision 1 formats."""
+    """Read a standalone S6 preview for verified Revision 0, 1, and 56 formats."""
     source = Path(path)
     try:
         with source.open("rb") as preview_file:
@@ -175,11 +198,12 @@ def read_lorprev(path: str | Path) -> PropModel:
     )
     scenes = tuple(child for child in display.children if child.tag == "Scene")
     prop_views = tuple(child for child in display.children if child.tag == "PropViews")
-    known = {"PropClass", "Scene", "PropViews"}
+    group_nodes = tuple(child for child in display.children if child.tag == "PropGroup")
+    known = {"PropClass", "Scene", "PropViews", "PropGroup"}
     unknown = tuple(child for child in display.children if child.tag not in known)
     # Only these tags have been observed in committed native fixtures. Preserve
     # and surface every other tag at any depth without guessing its meaning.
-    known_tags = {"PreviewClass", "PropClass", "Scene", "PropViews", "shape", "point"}
+    known_tags = {"PreviewClass", "PropClass", "Scene", "PropViews", "PropGroup", "member", "shape", "point"}
     unrecognized_elements = tuple(
         node for node in _walk_raw_elements(display) if node.tag not in known_tags
     )
@@ -205,6 +229,52 @@ def read_lorprev(path: str | Path) -> PropModel:
                         source=value,
                     )
                 )
+
+    prop_ids = {
+        value.value
+        for prop in prop_nodes
+        if (value := prop.attributes.get("id")) is not None
+    }
+    groups: list[PropGroupModel] = []
+    for group in group_nodes:
+        members: list[PropGroupMemberModel] = []
+        for member in (child for child in group.children if child.tag == "member"):
+            member_id = member.attributes.get("id")
+            if member_id is None:
+                unsupported.append(
+                    UnsupportedConstruct(
+                        kind="prop group member",
+                        detail="PropGroup member is missing its prop id reference",
+                        source=group.attributes.get("id")
+                        or SourceValue("", str(source), member.locator),
+                    )
+                )
+            elif member_id.value not in prop_ids:
+                unsupported.append(
+                    UnsupportedConstruct(
+                        kind="prop group member",
+                        detail=f"PropGroup member references unknown prop id {member_id.value!r}",
+                        source=member_id,
+                    )
+                )
+            members.append(
+                PropGroupMemberModel(
+                    source=member,
+                    prop_id=member_id,
+                    orientation=member.attributes.get("orientation"),
+                    top=member.attributes.get("top"),
+                    left=member.attributes.get("left"),
+                )
+            )
+        groups.append(
+            PropGroupModel(
+                source=group,
+                group_id=group.attributes.get("id"),
+                name=group.attributes.get("Name"),
+                arrangement=group.attributes.get("Arrangement"),
+                members=tuple(members),
+            )
+        )
 
     channel_entries: list[ChannelGridEntry] = []
     geometry_points: list[GeometryPoint] = []
@@ -291,6 +361,7 @@ def read_lorprev(path: str | Path) -> PropModel:
         props=prop_nodes,
         scenes=scenes,
         prop_views=prop_views,
+        groups=tuple(groups),
         unrecognized_top_level=unknown,
         unrecognized_elements=unrecognized_elements,
         unsupported_constructs=tuple(unsupported),
