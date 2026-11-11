@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from defusedxml import ElementTree as ET
 from pathlib import Path
 
+from defusedxml import ElementTree as ET
 import pytest
-
-from tests.fixture_builders import write_synthetic_loredit
 
 import lor_sequence_builder.lorprev as lorprev_module
 from lor_sequence_builder.lorprev import (
@@ -14,6 +12,9 @@ from lor_sequence_builder.lorprev import (
     UnsupportedLorprevRevisionError,
     read_lorprev,
 )
+
+from tests.fixture_builders import write_synthetic_loredit
+
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
