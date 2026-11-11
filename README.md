@@ -2,7 +2,7 @@
 
 A display-independent command-line tool for building native Light-O-Rama S6 sequences from music and a required `.lorprev` display preview.
 
-**Project status:** Phase 1 implements a fixture-driven reader and loss-preserving writer for the observed S6 LOREDIT save-file version 15 format. The tool does not yet analyze audio, parse `.lorprev` files, or generate choreography.
+**Project status:** Phase 1's native S6 LOREDIT reader/writer is complete. Phase 2 parses standalone `.lorprev` files and embedded `PreviewClass` data for observed revisions 0, 1, and 56, including props, controller/channel assignments, and prop groups. Audio analysis, prop classification, and choreography have not started.
 
 ## Product workflow
 
@@ -32,12 +32,18 @@ uv sync --locked
 uv run lor-sequence-builder --help
 ```
 
-## Phase 1 commands
+## Current commands
 
 Inspect a sequence:
 
 ```powershell
 uv run lor-sequence-builder inspect .\path\to\show.loredit
+```
+
+Inspect a standalone S6 display preview:
+
+```powershell
+uv run lor-sequence-builder inspect-preview .\path\to\display.lorprev
 ```
 
 Write a new round-trip copy (the destination must not already exist):
@@ -46,7 +52,9 @@ Write a new round-trip copy (the destination must not already exist):
 uv run lor-sequence-builder roundtrip .\path\to\show.loredit .\output\roundtrip.loredit
 ```
 
-The reader currently accepts only `saveFileVersion="15"`, the version represented by the reviewed fixture. XML is parsed with `defusedxml`, with DTDs, entities, and external references forbidden. The writer preserves the parsed XML tree opaquely and atomically creates a new output without overwriting the input or an existing destination.
+The LOREDIT reader currently accepts only `saveFileVersion="15"`, the version represented by the reviewed fixture. The preview parser supports internal `Revision` values `0`, `1`, and `56`; these are distinct from the LOREDIT save-file version. XML is parsed with `defusedxml`, with DTDs, entities, and external references forbidden. The writer preserves the parsed XML tree opaquely and atomically creates a new output without overwriting the input or an existing destination.
+
+The preview is the authoritative display map. For LOR props, each `ChannelGrid` row exposes network, Unit ID, and the circuit value present in that row; for DMX props, universe and channel are exposed. These are address fields only: remaining fields are retained verbatim and are not yet semantically interpreted. The original row and source locator are retained. The parser enforces a 20 MiB input limit, 256-level XML nesting limit, and 100,000-element limit, and reports missing or duplicate prop IDs rather than treating them as reliable identities. `PropGroup` and `member` records are parsed into typed group/member models, including prop ID references, arrangement, orientation, top, and left values. The supplied Revision 56 fixture contains 51 props and one group with five members.
 
 ## Development checks
 
