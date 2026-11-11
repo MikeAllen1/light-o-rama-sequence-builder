@@ -9,7 +9,6 @@ import pytest
 from lor_sequence_builder.loredit import read_loredit
 from lor_sequence_builder.pulse import (
     PulseGenerationError,
-    _temporary_path,
     _write_timeline_temp,
     build_pulse_sequence,
 )
@@ -551,11 +550,12 @@ def test_display_with_no_supported_props_fails_before_output(
 
 
 
-def test_temporary_path_is_reserved_until_written(tmp_path: Path) -> None:
-    temporary = _temporary_path(tmp_path, prefix=".sequence.", suffix=".tmp")
+def test_timeline_temp_is_written_through_reserved_handle(tmp_path: Path) -> None:
+    temporary = _write_timeline_temp(
+        tmp_path, prefix=".sequence.", suffix=".tmp", content='{"safe": true}'
+    )
     try:
         assert temporary.exists()
-        _write_timeline_temp(temporary, '{"safe": true}')
         assert temporary.read_text(encoding="utf-8") == '{"safe": true}'
     finally:
         temporary.unlink(missing_ok=True)
