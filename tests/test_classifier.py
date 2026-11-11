@@ -365,3 +365,17 @@ def test_cli_analyze_preview_requires_a_real_preview(
 ) -> None:
     assert main(["analyze-preview", str(tmp_path / "missing.lorprev")]) == 2
     assert "error" in capsys.readouterr().err
+
+
+def test_geometry_rejects_extreme_finite_offsets_before_spatial_math() -> None:
+    display = classic_yard().element()
+    prop = display.find("PropClass")
+    assert prop is not None
+    shape = prop.find("shape")
+    assert shape is not None
+    shape.set("OffsetX", "1e308")
+    shape.set("OffsetY", "0")
+    shape.set("ScaleX", "1")
+    shape.set("ScaleY", "1")
+    with pytest.raises(ClassificationError, match="supported magnitude"):
+        classify_preview(display)

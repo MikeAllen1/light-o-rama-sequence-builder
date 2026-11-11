@@ -162,17 +162,28 @@ def _float(value: str | None) -> float | None:
     return parsed
 
 
+def _geometry_number(value: str | None) -> float | None:
+    """Parse a coordinate/scale and reject magnitudes that break geometry math."""
+    parsed = _float(value)
+    if parsed is not None and abs(parsed) > 1_000_000:
+        raise ClassificationError(
+            f"Preview geometry value exceeds the supported magnitude: {value!r}"
+        )
+    return parsed
+
+
 def _geometry(prop: ET.Element) -> _Geometry | None:
     shape = prop.find("shape")
     if shape is None:
         return None
-    offset_x, offset_y = _float(shape.get("OffsetX")), _float(shape.get("OffsetY"))
-    scale_x, scale_y = _float(shape.get("ScaleX")), _float(shape.get("ScaleY"))
+    offset_x, offset_y = _geometry_number(shape.get("OffsetX")), _geometry_number(shape.get("OffsetY"))
+    scale_x, scale_y = _geometry_number(shape.get("ScaleX")), _geometry_number(shape.get("ScaleY"))
     if offset_x is not None and offset_y is not None and scale_x is not None and scale_y is not None:
         return _Geometry(offset_x, offset_y, abs(scale_x), abs(scale_y), False, False)
     points = [
         (x, y)
-        for x, y in ((_float(p.get("x")), _float(p.get("y"))) for p in shape.findall("point"))
+        for x, y in ((_geometry_number(p.get("x")), _geometry_number(p.get("y")))
+                     for p in shape.findall("point"))
         if x is not None and y is not None
     ]
     if not points:
