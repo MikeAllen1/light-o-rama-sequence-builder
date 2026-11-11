@@ -56,7 +56,7 @@ Build .lorprev / embedded PreviewClass → raw PropModel plus display/channel/co
 ### Phase 3 — Walking skeleton
 Build fixed-tempo "pulse every supported prop on the beat" → Timeline → writer.
 
-**Done when:** Complete pipeline runs with fixture preview and fixed tempo; Timeline references only preview-derived entities; expected pulse events appear; owner opens and plays it in LOR and confirms synchronization and correct display mapping. Mandatory human gate. This proves plumbing before intelligent behavior.
+**Done when:** The independent S6 Revision 58 standalone preview + native v15 sequence fixture runs through the fixed-tempo pipeline; full prop geometry and group parity is checked; every generated event carries a verified ChannelGrid address and native channel coordinate; unsupported/excluded props are enumerated; Timeline and native output are deterministic/validated; owner opens and plays the output in LOR and confirms synchronization and correct physical lights. Mandatory human gate. This proves plumbing before intelligent behavior.
 
 ### Phase 4 — Audio analysis
 Build beats, downbeats, onsets, sections, energy, and hard stops.
