@@ -22,7 +22,7 @@ import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
-from lor_sequence_builder.new_sequence import channel_layout_problem
+from lor_sequence_builder.channel_mapping import channel_layout_problem
 
 ROLES = (
     "arch",
