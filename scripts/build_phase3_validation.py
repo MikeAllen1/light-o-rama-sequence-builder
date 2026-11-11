@@ -9,6 +9,7 @@ import json
 import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
+import uuid
 from pathlib import Path
 
 from lor_sequence_builder.loredit import read_loredit
@@ -56,6 +57,21 @@ def _strip_local_background_references(template: Path) -> None:
                 removed += 1
     if removed == 0:
         raise RuntimeError("Expected a local preview background reference to sanitize.")
+
+    # S6 can resolve an embedded PreviewClass ID to an existing local display.
+    # Reusing the fixture ID can resurrect the user's house photo even after
+    # all file paths and embedded picture records have been removed.
+    preview_class = tree.getroot().find("PreviewClass")
+    if preview_class is None:
+        raise RuntimeError("The native S6 template has no PreviewClass to isolate.")
+    preview_class.set("id", str(uuid.uuid4()))
+    preview_class.set("Name", "Isolated Phase 3 Test Preview")
+    preview_class.set("EmbedBackgrounds", "False")
+    preview_class.attrib.pop("LastSelectedSceneId", None)
+
+    pictures = preview_class.find("pictures")
+    if pictures is not None:
+        pictures.clear()
     tree.write(template, encoding="utf-8", xml_declaration=True)
 
 
