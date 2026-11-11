@@ -90,14 +90,16 @@ The command writes a deterministic, versioned Timeline JSON and a new `.loredit`
 
 ## Development checks
 
-The CI workflow pins the development tools and runs:
+The pinned development tools are centralized in `requirements-dev.txt`. After `uv sync --locked`, run:
 
 ```powershell
-uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 python -m pytest
-uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 ruff check .
-uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 mypy --strict src tests
-uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 --with setuptools==84.1.0 pip-audit --skip-editable
+uv run --no-sync --with-requirements requirements-dev.txt python -m pytest
+uv run --no-sync --with-requirements requirements-dev.txt ruff check .
+uv run --no-sync --with-requirements requirements-dev.txt mypy --strict src tests
 ```
+
+CI audits the locked production dependency export separately with `pip-audit`; developer tooling is not mixed into that production dependency audit. The development-tool pins are centralized but are not yet part of `uv.lock`; moving the complete dev dependency graph into the lockfile remains outstanding.
+
 
 ## Repository structure
 
