@@ -1006,8 +1006,19 @@ def _validate_choreography_numeric_fields(choreography: Choreography) -> None:
         if isinstance(value, bool) or not isinstance(value, int):
             raise ChoreographyError(f"Choreography {field_name} must be an integer")
 
+    def require_tuple(value: object, field_name: str) -> tuple[object, ...]:
+        if not isinstance(value, tuple):
+            raise ChoreographyError(f"Choreography {field_name} must be a tuple")
+        return value
+
     require_int(choreography.duration_centiseconds, "duration_centiseconds")
-    for index, effect in enumerate(choreography.effects):
+    effects = require_tuple(choreography.effects, "effects")
+    movements = require_tuple(choreography.movements, "movements")
+    sections = require_tuple(choreography.sections, "sections")
+    hard_stops = require_tuple(
+        choreography.hard_stops_centiseconds, "hard_stops_centiseconds"
+    )
+    for index, effect in enumerate(effects):
         if not isinstance(effect, Effect):
             raise ChoreographyError(f"Choreography effects[{index}] must be an Effect")
         if not isinstance(effect.prop_id, str) or not effect.prop_id.strip():
@@ -1021,22 +1032,23 @@ def _validate_choreography_numeric_fields(choreography: Choreography) -> None:
             raise ChoreographyError(f"Choreography effects[{index}].movement_id must be text")
         if effect.color is not None and not isinstance(effect.color, str):
             raise ChoreographyError(f"Choreography effects[{index}].color must be text")
-    for index, movement in enumerate(choreography.movements):
+    for index, movement in enumerate(movements):
         if not isinstance(movement, Movement):
             raise ChoreographyError(f"Choreography movements[{index}] must be a Movement")
         require_int(movement.start_centisecond, f"movements[{index}].start_centisecond")
         require_int(movement.end_centisecond, f"movements[{index}].end_centisecond")
-    for index, section in enumerate(choreography.sections):
+    for index, section in enumerate(sections):
         if not isinstance(section, Section):
             raise ChoreographyError(f"Choreography sections[{index}] must be a Section")
         if not isinstance(section.label, str):
             raise ChoreographyError(f"Choreography sections[{index}].label must be text")
         require_int(section.start_centisecond, f"sections[{index}].start_centisecond")
         require_int(section.end_centisecond, f"sections[{index}].end_centisecond")
-    for index, stop in enumerate(choreography.hard_stops_centiseconds):
+    for index, stop in enumerate(hard_stops):
         require_int(stop, f"hard_stops_centiseconds[{index}]")
     if choreography.vocal_regions is not None:
-        for index, region in enumerate(choreography.vocal_regions):
+        vocal_regions = require_tuple(choreography.vocal_regions, "vocal_regions")
+        for index, region in enumerate(vocal_regions):
             if not isinstance(region, tuple) or len(region) != 2:
                 raise ChoreographyError(f"Choreography vocal_regions[{index}] must be a pair")
             require_int(region[0], f"vocal_regions[{index}][0]")
