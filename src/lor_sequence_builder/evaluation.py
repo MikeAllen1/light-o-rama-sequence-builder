@@ -145,12 +145,25 @@ def _event_times(analysis: dict[str, Any], key: str) -> list[float]:
     return times
 
 
+def _reject_duplicate_object_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject duplicate JSON names instead of silently retaining the last value."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise EvaluationError(f"Analysis JSON contains duplicate object key {key!r}")
+        result[key] = value
+    return result
+
+
 def load_analysis(path: str | Path) -> dict[str, Any]:
     source = Path(path)
     try:
         if source.stat().st_size > MAX_ANALYSIS_BYTES:
             raise EvaluationError("Analysis JSON exceeds the 50 MiB limit")
-        data = json.loads(source.read_text(encoding="utf-8"))
+        data = json.loads(
+            source.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_object_keys,
+        )
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise EvaluationError(f"Cannot read analysis JSON: {source}") from exc
     if not isinstance(data, dict):

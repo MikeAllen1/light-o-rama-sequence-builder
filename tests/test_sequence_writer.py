@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
+import lor_sequence_builder.sequence_writer as sequence_writer_module
 from lor_sequence_builder.choreography import (
     Choreography,
     Effect,
@@ -15,9 +18,8 @@ from lor_sequence_builder.choreography import (
 )
 from lor_sequence_builder.cli import main
 from lor_sequence_builder.loredit import read_loredit
+from lor_sequence_builder.new_sequence import NewSequenceError, build_new_sequence
 from lor_sequence_builder.rules import load_rule_set
-import lor_sequence_builder.sequence_writer as sequence_writer_module
-
 from lor_sequence_builder.sequence_writer import (
     RulesFailedError,
     SequenceWriteError,
@@ -248,12 +250,12 @@ def test_failed_native_build_report_is_truthful_and_same_attempt_can_retry(
     preview = _preview(tmp_path, display)
     output = tmp_path / "retry.loredit"
     report_path = tmp_path / "retry.json"
-    original_builder = sequence_writer_module.build_new_sequence
+    original_builder = build_new_sequence
 
     def fail_native_build(*args: object, **kwargs: object) -> object:
-        raise sequence_writer_module.NewSequenceError("synthetic native build failure")
+        raise NewSequenceError("synthetic native build failure")
 
-    monkeypatch.setattr(sequence_writer_module, "build_new_sequence", fail_native_build)
+    monkeypatch.setattr("lor_sequence_builder.sequence_writer.build_new_sequence", fail_native_build)
     with pytest.raises(SequenceWriteError, match="synthetic native build failure"):
         build_from_timeline(
             preview, _good(display), load_rule_set(), "song.mp3", output, report_path
@@ -266,7 +268,7 @@ def test_failed_native_build_report_is_truthful_and_same_attempt_can_retry(
     assert failed["sequence_written"] is False
     assert not output.exists()
 
-    monkeypatch.setattr(sequence_writer_module, "build_new_sequence", original_builder)
+    monkeypatch.setattr("lor_sequence_builder.sequence_writer.build_new_sequence", original_builder)
     result = build_from_timeline(
         preview, _good(display), load_rule_set(), "song.mp3", output, report_path
     )
@@ -275,6 +277,93 @@ def test_failed_native_build_report_is_truthful_and_same_attempt_can_retry(
     assert succeeded["ok"] is True
     assert succeeded["build_status"] == "success"
     assert succeeded["sequence_written"] is True
+
+
+def test_sequence_is_rolled_back_when_success_report_cannot_be_published(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    display = classic_yard()
+    preview = _preview(tmp_path, display)
+    output = tmp_path / "rollback.loredit"
+    report_path = tmp_path / "rollback.json"
+    original = sequence_writer_module._write_build_report
+
+    def fail_success_report(*args: object, **kwargs: object) -> None:
+        if kwargs.get("status") == "success":
+            raise SequenceWriteError("synthetic report publication failure")
+        original(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(sequence_writer_module, "_write_build_report", fail_success_report)
+    with pytest.raises(SequenceWriteError, match="sequence was removed"):
+        build_from_timeline(
+            preview, _good(display), load_rule_set(), "song.mp3", output, report_path
+        )
+
+    assert not output.exists()
+    assert not report_path.exists()
+
+
+
+def test_writer_wraps_invalid_direct_choreography_types(
+    tmp_path: Path,
+) -> None:
+    display = classic_yard()
+    preview = _preview(tmp_path, display)
+    invalid = Choreography(
+        duration_centiseconds="1200",  # type: ignore[arg-type]
+        effects=(),
+    )
+    with pytest.raises(SequenceWriteError, match="Invalid choreography data"):
+        build_from_timeline(
+            preview, invalid, load_rule_set(), "song.mp3",
+            tmp_path / "invalid.loredit", tmp_path / "invalid.json",
+        )
+
+
+
+def test_writer_converts_malformed_direct_numeric_data_to_sequence_write_error(
+    tmp_path: Path,
+) -> None:
+    display = classic_yard()
+    preview = _preview(tmp_path, display)
+    output = tmp_path / "invalid.loredit"
+    report = tmp_path / "invalid.json"
+    malformed = Choreography(duration_centiseconds=cast(int, "1200"), effects=())
+
+    with pytest.raises(SequenceWriteError, match="Invalid choreography data"):
+        build_from_timeline(
+            preview, malformed, load_rule_set(), "song.mp3", output, report
+        )
+
+    assert not output.exists()
+    assert not report.exists()
+
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("effects", None),
+        ("movements", None),
+        ("sections", None),
+        ("hard_stops_centiseconds", None),
+        ("vocal_regions", []),
+    ],
+)
+def test_writer_wraps_invalid_direct_choreography_collections(
+    tmp_path: Path, field: str, value: object
+) -> None:
+    display = classic_yard()
+    preview = _preview(tmp_path, display)
+    base = Choreography(duration_centiseconds=2000, effects=())
+    invalid = dataclasses.replace(base, **{field: cast(Any, value)})
+
+    with pytest.raises(SequenceWriteError, match="Invalid choreography data"):
+        build_from_timeline(
+            preview, invalid, load_rule_set(), "song.mp3",
+            tmp_path / f"invalid-{field}.loredit",
+            tmp_path / f"invalid-{field}.json",
+        )
 
 
 def test_timeline_writer_reports_excluded_preview_props(tmp_path: Path) -> None:

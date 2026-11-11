@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** Phases 0 through 4 merged; Phase 4b (scratch-built writer) is next. See PLAN.md for authoritative status.  
+**Status:** Architecture and confirmed design decisions only. Current implementation phase, review state, and next approved work are maintained in [PLAN.md](PLAN.md); do not infer project phase status from this document.  
 **Project:** Light-O-Rama Sequence Builder  
 **V1 interface:** Command line  
 **Target output:** Native Light-O-Rama S6 `.loredit` sequence  

@@ -19,7 +19,8 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
-from lor_sequence_builder.choreography import Choreography, Effect
+from lor_sequence_builder.artifacts import write_new_text_atomically
+from lor_sequence_builder.choreography import Choreography, ChoreographyError, Effect
 from lor_sequence_builder.loredit import LoreditError, read_loredit, write_loredit
 from lor_sequence_builder.lorprev import read_lorprev
 from lor_sequence_builder.new_sequence import (
@@ -139,16 +140,11 @@ def _effect_attributes(effect: Effect) -> dict[str, str]:
 
 def _write_new_text(path: Path, content: str) -> None:
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("x", encoding="utf-8", newline="\n") as stream:
-            stream.write(content)
-            stream.flush()
-            os.fsync(stream.fileno())
+        write_new_text_atomically(path, content)
     except FileExistsError as exc:
         raise SequenceWriteError(f"Report already exists; refusing to overwrite: {path}") from exc
     except OSError as exc:
-        raise SequenceWriteError(f"Cannot write report: {path}") from exc
-
+        raise SequenceWriteError(f"Cannot write report atomically: {path}") from exc
 
 def build_from_timeline(
     preview_path: str | Path,
@@ -214,7 +210,10 @@ def build_from_timeline(
             + "; ".join(item.detail for item in malformed_lor_assignments[:5])
         )
     preview = preview_element(preview_model)
-    report = check_choreography(preview, choreography, rule_set)
+    try:
+        report = check_choreography(preview, choreography, rule_set)
+    except ChoreographyError as exc:
+        raise SequenceWriteError(f"Invalid choreography data: {exc}") from exc
     if not report.ok:
         _write_build_report(
             report_output, report, output, status="failed", sequence_written=False,
@@ -281,8 +280,23 @@ def build_from_timeline(
             excluded_props=built.excluded_props,
         )
         raise SequenceWriteError(f"Could not write the sequence safely: {exc}") from exc
-    _write_build_report(
-        report_output, report, output, status="success", sequence_written=True,
-        excluded_props=built.excluded_props,
-    )
+    try:
+        _write_build_report(
+            report_output, report, output, status="success", sequence_written=True,
+            excluded_props=built.excluded_props,
+        )
+    except SequenceWriteError as exc:
+        # The sequence is not a successful command result unless its final report
+        # is published too. Roll back the validated sequence so a retry with the
+        # same paths is possible and no unreported success artifact remains.
+        try:
+            output.unlink(missing_ok=True)
+        except OSError as cleanup_error:
+            raise SequenceWriteError(
+                f"Could not publish the build report ({exc}); additionally could not "
+                f"remove the unreported sequence at {output}: {cleanup_error}"
+            ) from cleanup_error
+        raise SequenceWriteError(
+            f"Could not publish the build report; the sequence was removed: {exc}"
+        ) from exc
     return WriteResult(output, report_output, len(ordered), report, built.excluded_props)
