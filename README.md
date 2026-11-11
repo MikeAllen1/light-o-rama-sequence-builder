@@ -8,8 +8,8 @@ A display-independent command-line tool for building native Light-O-Rama S6 sequ
 
 The planned workflow is:
 
-1. `analyze` — inspect the audio and required `.lorprev`, then produce a human-reviewable `props.yaml`.
-2. Review and correct the prop map.
+1. `analyze-preview`: read the required `.lorprev` and report what each prop is (arch, mega tree, singing face, ...), with evidence and a review list.
+2. Review the report. Correct anything wrong in the S6 Preview Editor itself (shape type, grouping, start location, name) and run it again; the preview is the only input.
 3. `generate` — create a new native S6 `.loredit`, a Timeline JSON file, and a report.
 
 The implementation is deliberately staged. The native S6 read/write path and fixed-tempo sequence-generation path are established. Phase 4 adds audio feature analysis; intelligent choreography comes later.
@@ -55,6 +55,14 @@ uv run lor-sequence-builder roundtrip .\path\to\show.loredit .\output\roundtrip.
 The LOREDIT reader currently accepts only `saveFileVersion="15"`, the version represented by the reviewed fixture. A preview's internal `Revision` value is an edit counter that S6 increments each time the preview is saved; the parser records it but never uses it to accept or reject a preview. XML is parsed with `defusedxml`, with DTDs, entities, and external references forbidden. The writer preserves the parsed XML tree opaquely and atomically creates a new output without overwriting the input or an existing destination.
 
 The preview is the authoritative display map. For LOR props, each `ChannelGrid` row exposes network, Unit ID, and the circuit value present in that row; for DMX props, universe and channel are exposed. These are address fields only: remaining fields are retained verbatim and are not yet semantically interpreted. The original row and source locator are retained. The parser enforces a 20 MiB input limit, 256-level XML nesting limit, and 100,000-element limit, and reports missing or duplicate prop IDs rather than treating them as reliable identities. `PropGroup` and `member` records are parsed into typed group/member models, including prop ID references, arrangement, orientation, top, and left values. The repository's current fixture set is synthetic; larger preview examples are generated at test time.
+
+## Identify props in a preview
+
+```powershell
+uv run lor-sequence-builder analyze-preview .\display.lorprev --report .\display.analysis.json
+```
+
+Reads the preview only (never modifies it) and lists each prop as confident, needs review, or unknown, with its role, row position, direction, color capability, and whether v1 can sequence its channels. Evidence comes from the S6 shape type and parameters, geometry, channel count and type, groups and their order, links to master props, and the string start location. Names are a capped tiebreaker: a name alone never decides a role. To correct a conclusion, fix the prop in the S6 Preview Editor and run the command again.
 
 ## Phase 4 audio analysis
 
@@ -122,7 +130,7 @@ LICENSE                    MIT license
 ## Scope and safety
 
 - The `.lorprev` preview will be mandatory for both analysis and generation.
-- Props, channels, and controller identities must come from the preview or an explicitly reviewed prop map; never invent or silently reassign them.
+- Props, channels, and controller identities must come from the preview; never invent or silently reassign them.
 - V1 does not support pixel/RGB props. Unsupported props must be reported, not faked or silently omitted.
 - Source audio, previews, and sequence files are read-only. Generated output must be a new file.
 - Never commit original or sanitized show files, private previews, copyrighted audio, local machine paths, or secrets. Tests use fictional, hand-authored or runtime-generated synthetic fixtures only.

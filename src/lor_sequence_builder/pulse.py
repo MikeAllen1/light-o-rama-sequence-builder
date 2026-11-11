@@ -19,7 +19,7 @@ from lor_sequence_builder.loredit import (
     read_loredit,
     write_loredit,
 )
-from lor_sequence_builder.lorprev import RawElement, read_lorprev
+from lor_sequence_builder.lorprev import PropModel, RawElement, read_lorprev
 from lor_sequence_builder.new_sequence import NewSequenceError, build_new_sequence
 from lor_sequence_builder.timeline import (
     ExcludedProp,
@@ -60,6 +60,11 @@ class PulseGenerationResult:
 class _MappedChannel:
     reference: TimelineChannel
     element: ET.Element
+
+
+def preview_element(model: PropModel) -> ET.Element:
+    """Return the validated preview as an XML element."""
+    return _element_from_raw(model.display)
 
 
 def _element_from_raw(raw: RawElement) -> ET.Element:

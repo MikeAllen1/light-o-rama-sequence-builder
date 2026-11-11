@@ -16,7 +16,7 @@ If these documents disagree, `docs/PLAN.md` wins. If PLAN.md is ambiguous or sta
 - Before coding, list the files you plan to create or change and wait for approval.
 - One phase = one issue = one branch (`phase-N/short-description`) = one PR to `master`. Never push to `master`.
 - Test fixtures in `tests/fixtures/` must be synthetic, hand-authored or generated from fictional data. They exercise parser and writer behavior; they are not proof of compatibility with every real S6 construct. Never guess LOR file schemas from memory. When new format evidence is needed, request the minimum owner-run S6 export, inspect it locally, document only non-sensitive structural observations, and do not commit owner/customer files or sanitized derivatives.
-- Never invent, assume, or reassign props, channels, or controller identities. They come from the preview or a reviewed prop map only.
+- Never invent, assume, or reassign props, channels, or controller identities. They come from the preview only.
 - Nothing about any specific display may be hardcoded. This tool is for any Light-O-Rama display.
 - Never modify or overwrite input files. Outputs are always new paths.
 - Never commit real or sanitized owner/customer show files, previews, audio, local paths, personal metadata, or secrets. Base64 encoding does not make private source material safe to publish. Commit only fictional synthetic fixtures.

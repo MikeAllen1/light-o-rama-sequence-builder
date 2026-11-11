@@ -80,7 +80,8 @@ def _channel_count(prop: ET.Element) -> int:
     return len([entry for entry in prop.attrib.get("ChannelGrid", "").split(";") if entry])
 
 
-def _exclusion_reason(prop: ET.Element) -> str | None:
+def channel_layout_problem(prop: ET.Element) -> str | None:
+    """Why a prop's channels cannot be written natively yet, or None when they can."""
     device_type = prop.attrib.get("DeviceType", "")
     traditional_type = prop.attrib.get("TraditionalType", "")
     if device_type not in SUPPORTED_DEVICE_TYPES:
@@ -199,7 +200,7 @@ def build_new_sequence(
             continue
         prop_id = prop.attrib["id"]
         name = prop.attrib.get("Name", "")
-        reason = _exclusion_reason(prop)
+        reason = channel_layout_problem(prop)
         if reason is not None:
             excluded.append(ExcludedProp(prop_id=prop_id, name=name, reason=reason))
             continue
