@@ -22,8 +22,15 @@ The original audio, preview, prop map, and any reference sequence are read-only 
 - The generated sequence output is **`.loredit`**, intended to open in the configured target LOR S6 version.
 - Owner-provided `.loredit` and `.lorprev` files are private inputs and must remain outside the repository, including sanitized or transformed derivatives. Automated tests use hand-authored or runtime-generated synthetic XML with fictional identifiers and data.
 - Preview revision coverage in tests is synthetic and is not represented as a committed real-world golden export. The preview revision marker is distinct from the LOREDIT save-file version.
-- The user's display does **not** use pixel props. RGB/pixel support is therefore a declared V1 limitation, not something to fake or infer. If a preview contains a channel/prop type the current writer cannot safely represent, the tool must report it and must not silently drop it or claim full support.
+- V1 does **not** support RGB/pixel props. RGB/pixel support is therefore a declared product limitation, not something to fake or infer. If a preview contains a channel/prop type the current writer cannot safely represent, the tool must report it and must not silently drop it or claim full support.
 - V1 is CLI-only. GUI, controller upload, live playback, and editing existing sequences are out of scope.
+
+## 2.1 Implementation choices and intentional deviations
+
+- CLI: the original plan proposed Typer; the current CLI uses standard-library argparse to avoid an additional runtime dependency while the command surface is small.
+- Models: the original plan proposed Pydantic at public stage boundaries; current internal Timeline/value objects use dataclasses with explicit validation. Add Pydantic only when a concrete external configuration/schema boundary justifies it.
+- Audio: Phase 4 deliberately uses FFmpeg normalization followed by a standard-library deterministic baseline. It does not provide semantic section recognition, source separation, or vocal syllable detection. Those capabilities require a separately evaluated dependency set in Phase 8; do not overstate the current analyzer.
+- Native writer: the current pulse command is a template-based Phase 3 harness. Phase 4.5 (Issue #13) builds a blank v15 sequence from a standalone preview and verified target-version structure. A .loredit template is not required by the intended product workflow.
 
 ## 3. Design principles
 
@@ -78,7 +85,7 @@ generate
                        report + verification
 ```
 
-Every stage has typed Pydantic inputs and outputs. A stage may use the public models of another stage, but it must not reach into that stage's implementation internals. Stage orchestration belongs in the application/CLI layer.
+Public stage contracts should be typed and validated. The current implementation uses standard-library dataclasses for internal immutable models and `argparse` for the CLI; Pydantic and Typer were in the original proposal but are intentionally not runtime dependencies at this stage. Do not add them without a concrete validation/CLI need. Stage orchestration belongs in the application/CLI layer.
 
 ## 5. Stage responsibilities and contracts
 
@@ -215,7 +222,7 @@ The exact `.loredit` schema is not to be inferred from memory. Owner-supplied ex
 - Validate Timeline prop/channel references and event bounds before serialization; re-read the generated LOREDIT before publishing outputs.
 - Write a versioned Timeline JSON with SHA-256 fingerprints of the validated parsed XML trees, BPM, beat positions, supported/excluded props, and event references.
 
-This is a temporary engineering harness, not the final user workflow. It requires a compatible S6 sequence template because the current writer preserves a verified native v15 document rather than constructing a blank sequence. The standalone preview is not merged into the template: it is compared in full and must already describe the same prop geometry and group layout. Existing effects in the template copy are intentionally cleared and replaced by the generated pulses. The owner must open and play the output in S6 and confirm that the expected physical lights respond; automated checks do not satisfy this human gate.
+This is a temporary engineering harness, not the final user workflow. It currently requires a compatible S6 sequence template because the writer preserves a verified native v15 document rather than constructing a blank sequence. Phase 4.5 (Issue #13) removes this limitation from the product generation path; a template may remain an optional import/reference source but is not a product prerequisite. The standalone preview is not merged into the template: it is compared in full and must already describe the same prop geometry and group layout. Existing effects in the template copy are intentionally cleared and replaced by the generated pulses. The owner must open and play the output in S6 and confirm that the expected physical lights respond; automated checks do not satisfy this human gate.
 
 ### 5.8 `report`
 
@@ -318,7 +325,7 @@ V1 will prioritize the channel types actually present in the user's display and 
 - Single-color AC/DC channels.
 - Multi-color props whose colors share a single circuit, with correct handling so they are not treated as independent single-color channels.
 
-**RGB/pixel props are not used by the user's display and are outside the initial V1 implementation target.** The architecture should leave a typed extension point for them, but V1 must not emit pixel choreography or pretend to support pixel data. If a preview includes RGB/pixel props, they must be explicitly listed as unsupported in analysis and the generation report. Generation must fail if the requested sequence would require unsupported pixel channels or if excluding them would violate the user's no-silent-drop requirement. Adding pixel support later requires dedicated preview/sequence fixtures and target-LOR verification.
+**RGB/pixel props are outside the initial V1 implementation target.** The architecture should leave a typed extension point for them, but V1 must not emit pixel choreography or pretend to support pixel data. If a preview includes RGB/pixel props, they must be explicitly listed as unsupported in analysis and the generation report. Generation must fail if the requested sequence would require unsupported pixel channels or if excluding them would violate the user's no-silent-drop requirement. Adding pixel support later requires dedicated preview/sequence fixtures and target-LOR verification.
 
 Any other unsupported channel or effect type follows the same explicit-report-and-fail policy where safe output cannot be guaranteed.
 
@@ -376,7 +383,7 @@ Resolve these through additional fixtures, targeted questions, and tests before 
 
 ## Phase 4 implementation boundary
 
-The Phase 4 analyzer is exposed as `analyze-audio`; `audio_analysis.py` orchestrates the focused `audio_common.py`, `audio_io.py`, `audio_features.py`, `audio_tempo.py`, and `audio_plot.py` modules. FFmpeg is an external runtime requirement and normalizes the first audio stream to mono 11.025 kHz signed 16-bit PCM. Inputs are limited to 200 MiB and 30 minutes; clips shorter than two seconds are rejected. The pipeline uses the Python standard library only after normalization, avoiding a heavyweight machine-learning dependency at this stage.
+The Phase 4 analyzer is exposed as `analyze-audio`; `audio_analysis.py` orchestrates the focused `audio_common.py`, `audio_io.py`, `audio_features.py`, `audio_tempo.py`, and `audio_plot.py` modules. FFmpeg is an external runtime requirement and normalizes the first audio stream to mono 11.025 kHz signed 16-bit PCM. Inputs are limited to 200 MiB and 30 minutes; clips shorter than two seconds are rejected. The pipeline uses the Python standard library only after normalization, avoiding a heavyweight machine-learning dependency at this stage. This is an intentional Phase 4 baseline choice, not a claim that standard-library energy analysis can perform semantic verse/chorus or vocal/syllable recognition. Phase 8 may add maintained, pinned analysis/separation dependencies after compatibility, resource, and security review.
 
 The CLI exposes configurable minimum and maximum tempo bounds (30–300 BPM, with defaults of 60–200 BPM). The versioned JSON records these configuration values and keeps tempo, beats, downbeats, onsets, RMS energy, phrase candidates, section candidates, and hard-stop candidates as separate fields. Tempo uses autocorrelation over positive frame-energy flux; downbeats are provisional beat-one/every-fourth-beat assumptions; phrase candidates are fixed 16-beat groupings; section candidates are energy-change points without verse/chorus labels; hard stops are sustained near-silence candidates. These are deliberately conservative estimates, not semantic music understanding. The SVG diagnostic overlays energy, beat positions, onsets, and stop candidates.
 
