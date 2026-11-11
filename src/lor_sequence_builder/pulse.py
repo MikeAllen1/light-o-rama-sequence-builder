@@ -22,7 +22,6 @@ from lor_sequence_builder.loredit import (
 from lor_sequence_builder.lorprev import (
     MAX_LORPREV_BYTES,
     LorprevError,
-    PropModel,
     read_lorprev,
 )
 from lor_sequence_builder.timeline import (
@@ -155,7 +154,6 @@ def _write_timeline_temp(path: Path, content: str) -> None:
 
 
 def _build_timeline(
-    preview: PropModel,
     preview_root: ET.Element,
     document: LoreditDocument,
     preview_path: Path,
@@ -377,10 +375,14 @@ def build_pulse_sequence(
     output = Path(output_path)
     timeline_output = Path(timeline_path)
 
-    if isinstance(bpm, bool) or not MIN_BPM <= bpm <= MAX_BPM:
+    if not isinstance(bpm, int) or isinstance(bpm, bool) or not MIN_BPM <= bpm <= MAX_BPM:
         raise PulseGenerationError(f"BPM must be an integer from {MIN_BPM} to {MAX_BPM}")
-    if isinstance(pulse_duration_centiseconds, bool) or not (
-        1 <= pulse_duration_centiseconds <= 100
+    if (
+        not isinstance(pulse_duration_centiseconds, int)
+        or isinstance(pulse_duration_centiseconds, bool)
+        or not (
+            1 <= pulse_duration_centiseconds <= 100
+        )
     ):
         raise PulseGenerationError("Pulse duration must be an integer from 1 to 100 centiseconds")
     _validate_paths(preview_source, template_source, output, timeline_output)
@@ -392,7 +394,6 @@ def build_pulse_sequence(
     document = read_loredit(template_source)
 
     timeline, mapped_channels = _build_timeline(
-        preview_model,
         preview_root,
         document,
         preview_source,
