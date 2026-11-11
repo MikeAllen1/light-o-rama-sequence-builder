@@ -114,11 +114,13 @@ Build a native S6 v15 `.loredit` from a parsed `.lorprev` alone, with no templat
 
 Identify each prop from the preview alone: role (arch, mini tree, mega tree, star, singing face, icicles, outline, snowflake, or unknown), confidence with evidence, row position, direction, segment order, color capability, and whether v1 can sequence its channels. `analyze-preview` prints the conclusions and a review list and can write a JSON report. There is no prop map file (owner decision, 2026-11-11): the preview is the only input, and corrections are made in the S6 Preview Editor.
 
-**Evidence:** S6 shape type and parameters (`Parm1` is the segment or strand count), geometry (center and size for parametric shapes, bounding box, arcs, closed outlines, long flat runs), channel count and `TraditionalType`, `StartLocation`, `PropGroup` membership and order, matching repeated props ordered left to right, and `MasterPropId` links. Names add at most 0.25, below the 0.5 needed to assign a role, so a name alone never decides.
+**Evidence:** S6 shape type and parameters (`Parm1` is the segment or strand count), geometry (center and size for parametric shapes, bounding box, arcs, closed outlines, long flat runs), channel count and `TraditionalType`, `StartLocation`, `PropGroup` membership and order, look-alike props side by side, small props drawn on top of each other as one figure (a face built from parts), and `MasterPropId` links.
 
-**Fixtures:** four wholly fictional displays generated in `tests/display_builders.py` (classic yard, roofline house, misleading names, unsupported hardware), each with known roles.
+**Name rule (owner decision, 2026-11-11):** when the S6 shape type is specific (Arch, Star, Tree, Icicles, snowflake) or there is real structural evidence, the name is only a tiebreaker. When the shape type is generic (plain lines) and nothing structural says otherwise, the name decides, flagged for review. A first real-display check showed most props are drawn as plain lines, so names are the only usable evidence for them.
 
-**Done when:** classifications match the known answers on all fictional displays; low-confidence and unknown props are flagged with reasons; renaming props never switches a role; color capability and sequencing support agree with the sequence builder; the preview is never modified; the owner runs `analyze-preview` on a preview of their choice and agrees the conclusions are useful.
+**Fixtures:** five wholly fictional displays generated in `tests/display_builders.py` (classic yard, roofline house, misleading names, unsupported hardware, line-drawn yard), each with known roles. The owner's own display was analyzed locally at the owner's request; nothing from it is committed.
+
+**Done when:** classifications match the known answers on all fictional displays; low-confidence and unknown props are flagged with reasons; renaming props never switches a prop to a different role; color capability and sequencing support agree with the sequence builder; the preview is never modified; the owner runs `analyze-preview` on a preview of their choice and agrees the conclusions are useful.
 
 ### Phase 6 — Rules engine
 Build universal defaults and user profile layering.

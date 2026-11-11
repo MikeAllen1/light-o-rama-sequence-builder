@@ -266,7 +266,8 @@ def _analyze_preview(preview_path: str, report_path: str | None) -> int:
             role = item.role.replace("_", " ")
             extras = []
             if item.position_in_row is not None:
-                extras.append(f"#{item.position_in_row} in row")
+                where = f"in group {item.group!r}" if item.group else "in a row"
+                extras.append(f"#{item.position_in_row} of {item.row_size} {where}")
             if item.direction not in {"not applicable", "unknown"}:
                 extras.append(item.direction.replace("_", " "))
             if not item.color_capability.can_show_single_color and item.color_capability.kind == "combined_colors":

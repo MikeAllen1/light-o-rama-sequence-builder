@@ -121,7 +121,8 @@ Current internal stage models use frozen dataclasses with explicit validation. P
 **Responsibilities:**
 - Infer roles: arch, mini tree, mega tree, star, singing face, icicles, outline, snowflake, or unknown. Unknown is a valid outcome.
 - Combine evidence the way a person reads a preview: S6 shape type and parameters (`Parm1` is the segment or strand count; parametric shapes store center and size in `OffsetX`/`OffsetY`/`ScaleX`/`ScaleY`), geometry (arcs, closed outlines, long flat runs), channel count and `TraditionalType`, `PropGroup` membership and order, matching repeated props ordered left to right, and `MasterPropId` links.
-- Names are a capped tiebreaker (at most 0.25 against a 0.5 threshold), so a name alone never assigns a role.
+- Names: when the shape type is specific or structural evidence exists, the name is a tiebreaker (0.25). When the shape type is generic (plain lines) and nothing structural contradicts it, the name decides (0.55), flagged for review.
+- Small props drawn on top of each other form a figure; a figure with a clear face part (mouth, mustache) is a singing face, and linked parts drawn on it join it. Rows require look-alike props at a similar size and height, and only count when their members end up the same role.
 - Direction comes from `StartLocation` and is reported only for props that chase; otherwise it is unknown or not applicable. Segment order is the `ChannelGrid` order.
 - Color capability follows `TraditionalType`: single color, combined colors on one circuit (no color can be shown alone), or one color per channel. Sequencing support uses the same check as the sequence builder.
 - Every conclusion carries its evidence and review notes; close calls, weak evidence, and unsupported hardware are flagged for review.

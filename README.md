@@ -62,7 +62,7 @@ The preview is the authoritative display map. For LOR props, each `ChannelGrid` 
 uv run lor-sequence-builder analyze-preview .\display.lorprev --report .\display.analysis.json
 ```
 
-Reads the preview only (never modifies it) and lists each prop as confident, needs review, or unknown, with its role, row position, direction, color capability, and whether v1 can sequence its channels. Evidence comes from the S6 shape type and parameters, geometry, channel count and type, groups and their order, links to master props, and the string start location. Names are a capped tiebreaker: a name alone never decides a role. To correct a conclusion, fix the prop in the S6 Preview Editor and run the command again.
+Reads the preview only (never modifies it) and lists each prop as confident, needs review, or unknown, with its role, row position, direction, color capability, and whether v1 can sequence its channels. Evidence comes from the S6 shape type and parameters, geometry, channel count and type, groups and their order, links to master props, and the string start location. When the S6 shape type is specific (Arch, Star, Tree...), it wins over the name; when a prop is drawn as plain lines, its name decides and the prop is flagged for review. To correct a conclusion, fix the prop in the S6 Preview Editor and run the command again.
 
 ## Phase 4 audio analysis
 

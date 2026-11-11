@@ -154,6 +154,8 @@ def roofline_house() -> DisplayBuilder:
               colors=("Warm White",),
               points=[(-0.5 + 0.35 * i, 0.2), (-0.4 + 0.35 * i, 0.2), (-0.4 + 0.35 * i, 0.3),
                       (-0.5 + 0.35 * i, 0.3), (-0.5 + 0.35 * i, 0.2)])
+    d.add("C9 Strand", "outline", shape="Lines-Unconnected", channels=1, colors=("Multi",),
+          points=[(-0.9, -0.45), (-0.9, -0.2)])
     d.add("Big Flake", "snowflake", shape="Snowflake", channels=1, colors=("White",),
           box=(0.0, 0.6, 0.06, 0.06))
     return d
@@ -164,7 +166,7 @@ def misleading_names() -> DisplayBuilder:
     d = DisplayBuilder("Fictional Misleading Names")
     d.add("Mega Tree", "arch", shape="Arch", channels=1, box=(-0.5, -0.3, 0.08, 0.07))
     d.add("Arch 3", "star", shape="Star", channels=1, box=(0.0, 0.3, 0.05, 0.06))
-    d.add("Arch 7", "unknown", shape="Lines-Unconnected", channels=1,
+    d.add("Arch 7", "arch", shape="Lines-Unconnected", channels=1,
           points=[(0.3, -0.2), (0.35, -0.1)])
     d.add("Thing 12", "mega_tree", shape="Tree 180", channels=12,
           traditional="Multicolor_string_1_ch", colors=("Red", "Green"), box=(0.5, 0.0, 0.15, 0.35),
@@ -185,4 +187,52 @@ def unsupported_hardware() -> DisplayBuilder:
     return d
 
 
-ALL_DISPLAYS = (classic_yard, roofline_house, misleading_names, unsupported_hardware)
+def _box(cx: float, cy: float, w: float, h: float) -> list[tuple[float, float]]:
+    return [(cx - w / 2, cy - h / 2), (cx + w / 2, cy - h / 2), (cx + w / 2, cy + h / 2),
+            (cx - w / 2, cy + h / 2)]
+
+
+def line_drawn_yard() -> DisplayBuilder:
+    """Most props drawn as plain lines, the way many real previews are built."""
+    d = DisplayBuilder("Fictional Line-Drawn Yard")
+    lines = "Lines-Unconnected"
+    for i in range(6):
+        d.add(f"Snowflake {i + 1}", "snowflake", shape=lines, channels=1,
+              traditional="Multicolor_string_1_ch", colors=("White", "Blue"),
+              points=_box(-0.8 + 0.06 * (i % 2), 0.5 - 0.12 * i, 0.04, 0.04))
+    # Look-alike decor of different sizes and heights: not a row.
+    d.add("Reindeer", "decor", shape=lines, channels=1, colors=("White",),
+          points=_box(-0.4, -0.3, 0.12, 0.1))
+    d.add("Snowman", "decor", shape=lines, channels=1, colors=("White",),
+          points=_box(-0.2, -0.25, 0.06, 0.16))
+    d.add("Toy Train", "decor", shape=lines, channels=1, colors=("White",),
+          points=_box(0.05, -0.38, 0.22, 0.05))
+    d.add("Yard Santa", "decor", shape=lines, channels=1, colors=("Red",),
+          points=_box(0.45, -0.3, 0.1, 0.15))
+    for i in range(3):
+        d.add(f"Column {i + 1}", "outline", shape=lines, channels=1, colors=("White",),
+              points=[(-0.1 + 0.2 * i, -0.1), (-0.1 + 0.2 * i, 0.3)])
+    # A face built from three overlapping props plus a linked part.
+    d.add("Face Outline", "singing_face", shape=lines, channels=1,
+          traditional="Channel_per_color", colors=("White",), unit="23",
+          points=_loop(0.75, 0.0, 0.08))
+    d.add("Mouth Open", "singing_face", shape=lines, channels=1,
+          traditional="Channel_per_color", colors=("Red",), unit="23",
+          points=_box(0.75, -0.03, 0.06, 0.04))
+    d.add("Mouth Closed", "singing_face", shape=lines, channels=1,
+          traditional="Channel_per_color", colors=("Red",), unit="23",
+          points=_box(0.75, -0.035, 0.06, 0.02))
+    d.add("Face Eyes", "singing_face", shape=lines, channels=1,
+          traditional="Channel_per_color", colors=("Blue",), unit="23",
+          points=_box(0.75, 0.03, 0.06, 0.02), master="Face Outline")
+    d.add("Santa Cap", "singing_face", shape=lines, channels=1,
+          traditional="Channel_per_color", colors=("Red",), unit="23",
+          points=_box(0.75, 0.07, 0.07, 0.03), master="Face Outline")
+    d.add("Mystery Blob", "unknown", shape=lines, channels=1, colors=("White",),
+          points=_box(0.2, 0.6, 0.05, 0.05))
+    return d
+
+
+ALL_DISPLAYS = (
+    classic_yard, roofline_house, misleading_names, unsupported_hardware, line_drawn_yard,
+)

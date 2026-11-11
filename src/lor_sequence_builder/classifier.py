@@ -2,14 +2,20 @@
 
 The preview is the only input. Evidence comes from what S6 stores for each prop:
 its shape type and parameters, geometry, channel count and type, string start
-location, group membership and order, and links to a master prop. Names are a
-capped tiebreaker: a name alone can never reach the confidence needed to assign
-a role. Every conclusion carries its evidence so a person can check it, and a
-wrong conclusion is corrected the LOR way, by fixing the prop in the preview.
+location, group membership and order, overlapping props drawn as one figure, and
+links to a master prop.
+
+Names follow the owner's rule: when the shape type is specific (Arch, Star,
+Tree, Icicles, snowflake), it wins and the name is only a tiebreaker. When the
+shape type is generic (plain lines) the name may decide, flagged for review,
+because that is how a person reads such a prop. Every conclusion carries its
+evidence, and a wrong conclusion is corrected the LOR way: fix the prop in the
+preview and run the analysis again.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import itertools
 import math
 import re
@@ -27,23 +33,51 @@ ROLES = (
     "icicles",
     "outline",
     "snowflake",
+    "decor",
     "unknown",
 )
 CONFIDENT = 0.7
-DIRECTIONAL_ROLES = frozenset({"arch", "mini_tree", "mega_tree", "icicles", "outline", "unknown"})
 ASSIGN = 0.5
-NAME_WEIGHT = 0.25
+NAME_TIEBREAK_WEIGHT = 0.25
+NAME_DECIDES_WEIGHT = 0.55
+FIGURE_WEIGHT = 0.6
+# Structural evidence at least this strong for a role turns names into tiebreakers.
+STRUCTURE_OVERRULES_NAME = 0.45
+DIRECTIONAL_ROLES = frozenset({"arch", "mini_tree", "mega_tree", "icicles", "outline", "unknown"})
+_SPECIFIC_SHAPES = ("arch", "star", "tree", "icicles", "snowflake", "snow flake")
+# A figure is a few small props drawn on top of each other (a face built from parts).
+_FIGURE_MAX_SIZE = 0.4
+_FIGURE_OVERLAP = 0.3
 
+# Ordered: the first matching hint wins ("Mini Arch" is an arch, not a mini tree).
 _NAME_HINTS: tuple[tuple[str, str], ...] = (
+    (r"\bmega\s*tree|\bmegatree|\bmega\b", "mega_tree"),
     (r"\barch", "arch"),
-    (r"\bmega\b|\bmegatree\b|\bmega[\s_-]*tree", "mega_tree"),
-    (r"\bmini\b|\bmini[\s_-]*trees?\b|\bminitree", "mini_tree"),
-    (r"\bstar\b", "star"),
-    (r"\bface\b|\bsinging\b|\bmouth\b|\bmustache\b|\bsanta\b", "singing_face"),
     (r"\bicicle", "icicles"),
-    (r"\broof|\bgutter|\boutline|\bwindow|\bdoor|\beave", "outline"),
-    (r"\bsnow\s*flake|\bflake\b", "snowflake"),
+    (r"\bsnow\s*flakes?\b|\bflakes?\b", "snowflake"),
+    (r"\bstar\b|\btopper\b", "star"),
+    (r"\bface\b|\bmouth|\bmustache|\blips?\b|\bsinging\b", "singing_face"),
+    (r"\bmini\s*trees?\b|\bminitree|\btrees?\b", "mini_tree"),
+    (
+        (
+            r"\broof|\bgutter|\boutline|\bwindows?\b|\bdoors?\b|\beaves?\b|\bperimeter\b|"
+            r"\bgarage\b|\bpillars?\b|\bcolumns?\b|\bposts?\b|\bc\s?[79]\b|\bborder\b|"
+            r"\bfence\b|\brailing\b"
+        ),
+        "outline",
+    ),
+    (
+        (
+            r"\breindeer\b|\bdeer\b|\bsnow\s*m[ae]n\b|\bpresents?\b|\bgifts?\b|\bwreaths?\b|"
+            r"\btrain\b|\bsleigh\b|\bcandy\s*canes?\b|\bpenguins?\b|\bbears?\b|\bsigns?\b|"
+            r"\bnutcrackers?\b|\bangels?\b|\bnativity\b|\belf\b|\bsanta\b|\bdecor\b|"
+            r"\binflatable\b|\blanterns?\b|\bbows?\b"
+        ),
+        "decor",
+    ),
 )
+# Members of a face figure may carry these hints and still be face parts.
+_FACE_PART_HINTS = frozenset({None, "singing_face", "outline"})
 
 _START_DIRECTION = {
     "Left": "left_to_right",
@@ -92,6 +126,8 @@ class PropClassification:
     linked_to: str | None
     group: str | None
     position_in_row: int | None
+    row_size: int | None = None
+    figure: tuple[str, ...] = field(default_factory=tuple)
     review_notes: tuple[str, ...] = field(default_factory=tuple)
 
 
@@ -101,9 +137,15 @@ class _Geometry:
     center_y: float
     width: float
     height: float
-    point_count: int
     closed: bool
     arc_like: bool
+
+    @property
+    def box(self) -> tuple[float, float, float, float]:
+        return (
+            self.center_x - self.width / 2, self.center_y - self.height / 2,
+            self.center_x + self.width / 2, self.center_y + self.height / 2,
+        )
 
 
 def _float(value: str | None) -> float | None:
@@ -119,10 +161,8 @@ def _geometry(prop: ET.Element) -> _Geometry | None:
         return None
     offset_x, offset_y = _float(shape.get("OffsetX")), _float(shape.get("OffsetY"))
     scale_x, scale_y = _float(shape.get("ScaleX")), _float(shape.get("ScaleY"))
-    if None not in (offset_x, offset_y, scale_x, scale_y):
-        assert offset_x is not None and offset_y is not None
-        assert scale_x is not None and scale_y is not None
-        return _Geometry(offset_x, offset_y, abs(scale_x), abs(scale_y), 0, False, False)
+    if offset_x is not None and offset_y is not None and scale_x is not None and scale_y is not None:
+        return _Geometry(offset_x, offset_y, abs(scale_x), abs(scale_y), False, False)
     points = [
         (x, y)
         for x, y in ((_float(p.get("x")), _float(p.get("y"))) for p in shape.findall("point"))
@@ -142,13 +182,34 @@ def _geometry(prop: ET.Element) -> _Geometry | None:
         ordered_x = all(b[0] >= a[0] for a, b in itertools.pairwise(points))
         arc_like = ordered_x and middle - ends >= 0.6 * height
     return _Geometry(
-        (max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2, width, height,
-        len(points), closed, arc_like,
+        (max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2, width, height, closed, arc_like
     )
 
 
 def _channel_entries(prop: ET.Element) -> list[list[str]]:
     return [entry.split(",") for entry in prop.get("ChannelGrid", "").split(";") if entry]
+
+
+def _shape_name(prop: ET.Element) -> str:
+    shape = prop.find("shape")
+    return shape.get("ShapeName", "") if shape is not None else ""
+
+
+def _is_specific_shape(shape_name: str) -> bool:
+    return shape_name.lower().startswith(_SPECIFIC_SHAPES)
+
+
+def _normalized_name(name: str) -> str:
+    spaced = re.sub(r"[_\-.]+", " ", name.lower())
+    return re.sub(r"(?<=[a-z])(?=\d)|(?<=\d)(?=[a-z])", " ", spaced)
+
+
+def _name_hint(name: str) -> str | None:
+    normalized = _normalized_name(name)
+    for pattern, role in _NAME_HINTS:
+        if re.search(pattern, normalized):
+            return role
+    return None
 
 
 def _color_capability(prop: ET.Element) -> ColorCapability:
@@ -183,15 +244,6 @@ def _color_capability(prop: ET.Element) -> ColorCapability:
     )
 
 
-def _groups(preview: ET.Element) -> dict[str, tuple[str, list[str]]]:
-    membership: dict[str, tuple[str, list[str]]] = {}
-    for group in preview.findall("PropGroup"):
-        members = [m.get("id", "") for m in group.findall("member") if m.get("id")]
-        for member in members:
-            membership.setdefault(member, (group.get("Name", ""), members))
-    return membership
-
-
 def _shape_evidence(
     shape_name: str, channels: int, parm1: int | None, geometry: _Geometry | None,
     traditional: str,
@@ -213,27 +265,104 @@ def _shape_evidence(
         evidence.append(Evidence("icicles", 0.75, "S6 shape type is Icicles"))
     elif lowered.startswith(("snowflake", "snow flake")):
         evidence.append(Evidence("snowflake", 0.75, "S6 shape type is a snowflake"))
-    elif lowered.startswith("lines") and geometry is not None:
+    elif geometry is not None:
         if geometry.arc_like:
             evidence.append(Evidence("arch", 0.5, "Drawn as a single raised arc"))
         if geometry.closed and traditional == "Channel_per_color" and channels in (3, 4):
             evidence.append(Evidence(
-                "singing_face", 0.45,
-                f"Closed outline with {channels} independently colored channels (outline and mouth positions)",
+                "singing_face", 0.55,
+                f"Closed outline with {channels} independently colored channels "
+                "(outline and mouth positions)",
             ))
         elif geometry.closed:
             evidence.append(Evidence("outline", 0.35, "Closed outline shape"))
-        if geometry.width > 0 and geometry.height < 0.08 * geometry.width and geometry.width > 0.3:
+        if geometry.width > 0.3 and geometry.height < 0.08 * geometry.width:
             evidence.append(Evidence("outline", 0.45, "Long, flat horizontal run"))
-    if traditional == "Channel_per_color" and channels in (3, 4) and not lowered.startswith("lines"):
-        evidence.append(Evidence("singing_face", 0.2, f"{channels} independently colored channels"))
     return evidence
 
 
-def _name_evidence(name: str) -> list[Evidence]:
-    lowered = name.lower()
-    hits = [role for pattern, role in _NAME_HINTS if re.search(pattern, lowered)]
-    return [Evidence(role, NAME_WEIGHT, f"Name {name!r} suggests {role.replace('_', ' ')}") for role in hits[:1]]
+def _overlap(a: _Geometry, b: _Geometry) -> float:
+    ax0, ay0, ax1, ay1 = a.box
+    bx0, by0, bx1, by1 = b.box
+    width = min(ax1, bx1) - max(ax0, bx0)
+    height = min(ay1, by1) - max(ay0, by0)
+    if width <= 0 or height <= 0:
+        return 0.0
+    smaller = max(min(a.width * a.height, b.width * b.height), 1e-12)
+    return width * height / smaller
+
+
+def _figures(props: list[ET.Element], geometries: dict[str, _Geometry | None]) -> dict[str, list[str]]:
+    """Group small props drawn on top of each other into figures."""
+    candidates = [
+        p.get("id", "") for p in props
+        if (g := geometries[p.get("id", "")]) is not None
+        and g.width <= _FIGURE_MAX_SIZE and g.height <= _FIGURE_MAX_SIZE
+        and g.width * g.height > 0
+    ]
+    parent = {pid: pid for pid in candidates}
+
+    def find(pid: str) -> str:
+        while parent[pid] != pid:
+            parent[pid] = parent[parent[pid]]
+            pid = parent[pid]
+        return pid
+
+    for a, b in itertools.combinations(candidates, 2):
+        ga, gb = geometries[a], geometries[b]
+        assert ga is not None and gb is not None
+        if _overlap(ga, gb) >= _FIGURE_OVERLAP:
+            parent[find(a)] = find(b)
+    clusters: dict[str, list[str]] = {}
+    for pid in candidates:
+        clusters.setdefault(find(pid), []).append(pid)
+    return {pid: members for members in clusters.values() if len(members) >= 2 for pid in members}
+
+
+def _rows(
+    props: list[ET.Element], geometries: dict[str, _Geometry | None], preview: ET.Element,
+    figures: dict[str, list[str]],
+) -> dict[str, tuple[str, str, int, int]]:
+    """Rows come from the user's groups first, then from look-alike props side by side.
+
+    Values are (row key, group name, position, size). Parts of a figure are never a row.
+    """
+    rows: dict[str, tuple[str, str, int, int]] = {}
+    for group in preview.findall("PropGroup"):
+        members = [m.get("id", "") for m in group.findall("member") if m.get("id")]
+        key = f"group:{group.get('id', '')}"
+        for index, member in enumerate(members, start=1):
+            rows.setdefault(member, (key, group.get("Name", ""), index, len(members)))
+    by_signature: dict[tuple[str, int, str], list[str]] = {}
+    for prop in props:
+        pid = prop.get("id", "")
+        if pid in rows or pid in figures or prop.get("MasterPropId") or geometries[pid] is None:
+            continue
+        signature = (_shape_name(prop), len(_channel_entries(prop)), prop.get("TraditionalType", ""))
+        by_signature.setdefault(signature, []).append(pid)
+    for members in by_signature.values():
+        remaining = sorted(members, key=lambda pid: geometries[pid].center_y)  # type: ignore[union-attr]
+        while remaining:
+            seed = geometries[remaining[0]]
+            assert seed is not None
+            row = [remaining[0]]
+            for pid in remaining[1:]:
+                g = geometries[pid]
+                assert g is not None
+                similar_size = all(
+                    0.6 <= (x + 1e-9) / (y + 1e-9) <= 1.67
+                    for x, y in ((g.width, seed.width), (g.height, seed.height))
+                )
+                level = abs(g.center_y - seed.center_y) <= max(0.04, 0.6 * seed.height)
+                if similar_size and level:
+                    row.append(pid)
+            remaining = [pid for pid in remaining if pid not in row]
+            if len(row) >= 3:
+                ordered = sorted(row, key=lambda pid: geometries[pid].center_x)  # type: ignore[union-attr]
+                key = f"auto:{ordered[0]}"
+                for index, pid in enumerate(ordered, start=1):
+                    rows[pid] = (key, "", index, len(ordered))
+    return rows
 
 
 def classify_preview(preview: ET.Element) -> tuple[PropClassification, ...]:
@@ -243,43 +372,24 @@ def classify_preview(preview: ET.Element) -> tuple[PropClassification, ...]:
     props = preview.findall("PropClass")
     if not props:
         raise ClassificationError("Preview contains zero PropClass entries")
-    groups = _groups(preview)
     by_id = {p.get("id", ""): p for p in props}
     geometries = {p.get("id", ""): _geometry(p) for p in props}
+    figures = _figures(props, geometries)
+    rows = _rows(props, geometries, preview, figures)
+    hints = {p.get("id", ""): _name_hint(p.get("Name", "")) for p in props}
 
-    # Props that look the same and sit together form a row (arches, mini trees).
-    # Group order is the user's own ordering; otherwise order left to right.
-    row_position: dict[str, tuple[str, int, int]] = {}
-    for prop_id, (group_name, members) in groups.items():
-        row_position[prop_id] = (group_name, members.index(prop_id) + 1, len(members))
-    signature_rows: dict[tuple[str, int, str], list[str]] = {}
-    for prop in props:
-        prop_id = prop.get("id", "")
-        if prop_id in row_position or prop.get("MasterPropId"):
-            continue
-        shape = prop.find("shape")
-        signature = (
-            shape.get("ShapeName", "") if shape is not None else "",
-            len(_channel_entries(prop)),
-            prop.get("TraditionalType", ""),
-        )
-        signature_rows.setdefault(signature, []).append(prop_id)
-    for members in signature_rows.values():
-        if len(members) < 3:
-            continue
-        ordered = sorted(
-            members,
-            key=lambda i: (geometries[i].center_x if geometries[i] is not None else 0.0),  # type: ignore[union-attr]
-        )
-        for index, prop_id in enumerate(ordered, start=1):
-            row_position[prop_id] = ("", index, len(ordered))
+    # A figure is a singing face when any part is clearly a face part.
+    face_figures: set[str] = set()
+    for pid, members in figures.items():
+        if any(hints[m] == "singing_face" for m in members):
+            face_figures.add(pid)
 
     results: list[PropClassification] = []
     for prop in props:
         prop_id = prop.get("id", "")
         name = prop.get("Name", "")
-        shape = prop.find("shape")
-        shape_name = shape.get("ShapeName", "") if shape is not None else ""
+        shape_name = _shape_name(prop)
+        specific = _is_specific_shape(shape_name)
         channels = len(_channel_entries(prop))
         parm1_value = _float(prop.get("Parm1"))
         parm1 = int(parm1_value) if parm1_value is not None else None
@@ -289,23 +399,47 @@ def classify_preview(preview: ET.Element) -> tuple[PropClassification, ...]:
         notes: list[str] = []
 
         evidence = _shape_evidence(shape_name, channels, parm1, geometry, traditional)
-        row = row_position.get(prop_id)
-        if row is not None and row[2] >= 3:
-            shared = (
-                f"one of {row[2]} matching props"
-                + (f" in group {row[0]!r}" if row[0] else " in a row")
+        row = rows.get(prop_id)
+        if row is not None and row[3] >= 3:
+            shared = f"one of {row[3]} matching props" + (
+                f" in group {row[1]!r}" if row[1] else " side by side"
             )
-            leading = max((e for e in evidence), key=lambda e: e.weight, default=None)
+            leading = max(evidence, key=lambda e: e.weight, default=None)
             if leading is not None and leading.role in {"arch", "mini_tree"}:
                 evidence.append(Evidence(leading.role, 0.15, f"Repeated: {shared}"))
-            elif not evidence and channels <= 4:
-                evidence.append(Evidence("mini_tree", 0.2, f"Small repeated prop: {shared}"))
-        evidence += _name_evidence(name)
-        if master is not None and master in by_id:
-            master_name = by_id[master].get("Name", "")
+
+        figure_members = figures.get(prop_id, [])
+        if prop_id in face_figures and hints[prop_id] in _FACE_PART_HINTS:
+            parts = ", ".join(repr(by_id[m].get("Name", "")) for m in figure_members if m != prop_id)
             evidence.append(Evidence(
-                "star" if shape_name.lower() == "star" else "unknown", 0.0,
-                f"Linked to master prop {master_name!r}; driven by the master's channels",
+                "singing_face", FIGURE_WEIGHT, f"Drawn as one figure with face parts {parts}"
+            ))
+
+        hint = hints[prop_id]
+        structural: dict[str, float] = {}
+        for item in evidence:
+            if item.role != "unknown":
+                structural[item.role] = structural.get(item.role, 0.0) + item.weight
+        overruled = any(
+            role_name != hint and weight >= STRUCTURE_OVERRULES_NAME
+            for role_name, weight in structural.items()
+        )
+        if hint is not None:
+            if specific or overruled:
+                evidence.append(Evidence(
+                    hint, NAME_TIEBREAK_WEIGHT, f"Name {name!r} suggests {hint.replace('_', ' ')}"
+                ))
+            else:
+                evidence.append(Evidence(
+                    hint, NAME_DECIDES_WEIGHT,
+                    f"Name {name!r} suggests {hint.replace('_', ' ')} "
+                    "(shape type is generic, so the name decides)",
+                ))
+        if master is not None and master in by_id:
+            evidence.append(Evidence(
+                "unknown", 0.0,
+                f"Linked to master prop {by_id[master].get('Name', '')!r}; "
+                "driven by the master's channels",
             ))
 
         totals: dict[str, float] = {}
@@ -314,29 +448,27 @@ def classify_preview(preview: ET.Element) -> tuple[PropClassification, ...]:
                 totals[item.role] = totals.get(item.role, 0.0) + item.weight
         role, score = ("unknown", 0.0)
         if totals:
-            role, score = max(totals.items(), key=lambda pair: (pair[1], pair[0] == "unknown"))
-        competitors = sorted((v for r, v in totals.items() if r != role), reverse=True)
-        if competitors and score - competitors[0] < 0.15:
+            role, score = max(totals.items(), key=lambda pair: pair[1])
+        close = [r for r, v in totals.items() if r != role and v >= score - 0.15]
+        if close:
             notes.append(
                 "Close call between "
-                + " and ".join(
-                    r.replace("_", " ") for r, v in totals.items() if v >= score - 0.15
-                )
+                + " and ".join(r.replace("_", " ") for r in [role, *close])
             )
-        name_only = all(e.reason.startswith("Name ") for e in evidence if e.role == role)
+        from_name = any(
+            e.reason.startswith("Name ") for e in evidence if e.role == role
+        ) and sum(
+            e.weight for e in evidence if e.role == role and not e.reason.startswith("Name ")
+        ) < ASSIGN
         if score < ASSIGN:
             if role != "unknown":
                 label = role.replace("_", " ")
                 article = "an" if label[0] in "aeiou" else "a"
-                notes.append(
-                    f"Evidence too weak to call it {article} {label}"
-                    + (" (name only)" if name_only else "")
-                )
+                notes.append(f"Evidence too weak to call it {article} {label}")
             role = "unknown"
+        elif from_name:
+            notes.append("Identified from its name; the shape type does not say what it is")
         confidence = round(min(1.0, score), 2)
-        status = "confident" if role != "unknown" and confidence >= CONFIDENT and not notes else (
-            "review" if role != "unknown" else "unknown"
-        )
 
         capability = _color_capability(prop)
         if capability.kind in {"unsupported", "unknown"}:
@@ -348,19 +480,23 @@ def classify_preview(preview: ET.Element) -> tuple[PropClassification, ...]:
             support = "supported"
         else:
             support = support_problem
-            if support_problem not in notes and capability.kind not in {"unsupported", "unknown"}:
+            if capability.kind not in {"unsupported", "unknown"}:
                 notes.append(f"Cannot be sequenced yet: {support_problem}")
-        if (capability.kind in {"unsupported", "unknown"} or support_problem) and status == "confident":
-            status = "review"
 
         start = prop.get("StartLocation", "")
         directional = channels > 1 and role in DIRECTIONAL_ROLES
         direction = _START_DIRECTION.get(start, "unknown") if directional else "not applicable"
         if directional and direction == "unknown" and role != "unknown":
             notes.append("Direction unknown: no string start location in the preview")
-        segment_order = (
-            "channel order as listed in the preview" if channels > 1 else "single channel"
-        )
+
+        if role == "unknown":
+            status = "unknown"
+        elif confidence >= CONFIDENT and not from_name and not close and support_problem is None and (
+            capability.kind not in {"unsupported", "unknown"}
+        ):
+            status = "confident"
+        else:
+            status = "review"
 
         results.append(PropClassification(
             prop_id=prop_id,
@@ -373,13 +509,65 @@ def classify_preview(preview: ET.Element) -> tuple[PropClassification, ...]:
             color_capability=capability,
             sequencing_support=support,
             direction=direction,
-            segment_order=segment_order,
+            segment_order="channel order as listed in the preview" if channels > 1 else "single channel",
             linked_to=master,
-            group=(row[0] or None) if row is not None else None,
-            position_in_row=row[1] if row is not None and row[2] >= 3 else None,
+            group=(row[1] or None) if row is not None and row[0].startswith("group:") else None,
+            position_in_row=None,
+            figure=tuple(by_id[m].get("Name", "") for m in figure_members if m != prop_id),
             review_notes=tuple(notes),
         ))
-    return tuple(results)
+    return _finish(tuple(results), rows, figures, geometries)
+
+
+def _finish(
+    results: tuple[PropClassification, ...],
+    rows: dict[str, tuple[str, str, int, int]],
+    figures: dict[str, list[str]],
+    geometries: dict[str, _Geometry | None],
+) -> tuple[PropClassification, ...]:
+    """Apply conclusions that depend on other props' roles."""
+    by_id = {r.prop_id: r for r in results}
+
+    # A linked part drawn on a face is part of that face, whatever its name says.
+    for result in results:
+        master = by_id.get(result.linked_to or "")
+        if (
+            master is not None and master.role == "singing_face"
+            and result.prop_id in figures and master.prop_id in figures[result.prop_id]
+            and result.role != "singing_face"
+        ):
+            by_id[result.prop_id] = dataclasses.replace(
+                result,
+                role="singing_face",
+                confidence=master.confidence,
+                status="review" if master.status != "confident" else "confident",
+                evidence=(*result.evidence, Evidence(
+                    "singing_face", FIGURE_WEIGHT,
+                    f"Linked to face part {master.name!r} and drawn on it",
+                )),
+                review_notes=tuple(
+                    n for n in result.review_notes if not n.startswith("Identified from its name")
+                ),
+            )
+
+    # A row only counts when its members turn out to be the same kind of prop.
+    members_by_row: dict[tuple[str, str], list[str]] = {}
+    for prop_id, (key, _, _, _) in rows.items():
+        if prop_id in by_id:
+            members_by_row.setdefault((key, by_id[prop_id].role), []).append(prop_id)
+    for (key, role), members in members_by_row.items():
+        user_group = key.startswith("group:")
+        if role == "unknown" or (len(members) < 3 and not user_group):
+            continue
+        if user_group:
+            members.sort(key=lambda pid: rows[pid][2])
+        else:
+            members.sort(key=lambda pid: geometries[pid].center_x)  # type: ignore[union-attr]
+        for index, prop_id in enumerate(members, start=1):
+            by_id[prop_id] = dataclasses.replace(
+                by_id[prop_id], position_in_row=index, row_size=len(members)
+            )
+    return tuple(by_id[r.prop_id] for r in results)
 
 
 def classification_report(
@@ -425,6 +613,8 @@ def classification_report(
                 "linked_to": c.linked_to,
                 "group": c.group,
                 "position_in_row": c.position_in_row,
+                "row_size": c.row_size,
+                "figure": list(c.figure),
                 "review_notes": list(c.review_notes),
             }
             for c in classifications
