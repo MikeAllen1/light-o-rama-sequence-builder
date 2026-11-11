@@ -138,7 +138,7 @@ canvas { display: block; }
   min-height: 75px; display: flex; align-items: center; gap: 25px; padding: 10px 18px;
   background: #151e27; border-top: 1px solid var(--line);
 }
-.inspector { min-width: 330px; max-width: 48%; }
+.inspector { min-width: 330px; max-width: 52%; flex: 0 0 560px; }
 .inspector-heading { color: #718391; font-size: 8px; font-weight: 800; letter-spacing: 1.2px; }
 .inspector-content { color: #b5c1cb; font-size: 10px; margin-top: 6px; line-height: 1.5; }
 .inspector-content .inspector-primary { color: #edf4f8; font-weight: 700; }
@@ -179,3 +179,29 @@ canvas { display: block; }
 .legend-vocal { background: #5ea8d9; }
 .legend-syllable { background: #d48db9; }
 .legend-native { background: #8096a6; }
+
+/* Editing */
+.edit-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 6px 18px;
+  background: #121a22; border-bottom: 1px solid var(--line); font-size: 10px; color: #9fadb9;
+}
+.edit-bar .tool-button { min-height: 26px; padding: 0 10px; font-size: 10px; }
+.edit-bar .tool-button:disabled { opacity: .4; cursor: default; }
+.snap-heading { color: #718391; font-size: 8px; font-weight: 800; letter-spacing: 1.2px; }
+.snap-option { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.snap-option input { margin: 0; accent-color: var(--accent); }
+.snap-hint { color: var(--faint); font-size: 9px; }
+.edit-spacer { flex: 1; }
+.edit-status { color: var(--faint); font-size: 9px; }
+.edit-status.dirty { color: var(--amber); }
+.tracks-canvas { touch-action: none; }
+.edit-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px 10px; margin-top: 6px; }
+.edit-field { display: inline-flex; flex-direction: column; gap: 2px; color: #82919e; font-size: 8px; }
+.edit-field input[type="number"], .edit-field select {
+  width: 72px; height: 24px; padding: 0 5px; border-radius: 4px; border: 1px solid var(--line);
+  background: #0f161d; color: var(--text); font-size: 10px;
+}
+.edit-field select { width: 92px; }
+.edit-field input[type="checkbox"] { height: 18px; margin: 3px 0; accent-color: var(--accent); }
+.edit-form .tool-button, .inspector-action { min-height: 24px; padding: 0 12px; font-size: 10px; }
+.inspector-action { margin-top: 6px; }
