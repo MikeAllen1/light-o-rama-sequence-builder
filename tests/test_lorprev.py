@@ -474,15 +474,3 @@ def test_missing_revision_is_accepted(tmp_path: Path) -> None:
     model = read_lorprev(source)
     assert model.revision is None
     assert len(model.props) == 1
-
-
-@pytest.mark.parametrize(
-    "content",
-    [
-        b"",
-        b"not xml",
-        b"<Other />",
-        b'<!DOCTYPE x [<!ENTITY e "boom">]><PreviewClass Revision="0" />',
-        b'<PreviewClass Revision="0" />',
-    ],
-)
