@@ -504,6 +504,8 @@ def _known_props_and_channels(ctx: _Context) -> str | None:
                 e,
             )
     for m in ctx.choreography.movements:
+        if not _movement_identity_valid(m):
+            continue
         for pid in m.prop_ids:
             prop = ctx.display.props.get(pid)
             if prop is None or not prop.sequenceable:
