@@ -171,16 +171,17 @@ def _validate_paths(
 
 def _temporary_path(parent: Path, prefix: str, suffix: str) -> Path:
     parent.mkdir(parents=True, exist_ok=True)
+    # Keep the exclusively-created file in place. Unlinking it here and
+    # recreating it later would expose a symlink/path-swap race in shared temp dirs.
     with tempfile.NamedTemporaryFile(
         mode="wb", dir=parent, prefix=prefix, suffix=suffix, delete=False
     ) as stream:
-        path = Path(stream.name)
-    path.unlink()
-    return path
+        return Path(stream.name)
 
 
 def _write_timeline_temp(path: Path, content: str) -> None:
-    with path.open("xb") as stream:
+    # _temporary_path already reserved this path exclusively for this process.
+    with path.open("wb") as stream:
         stream.write(content.encode("utf-8"))
         stream.flush()
         os.fsync(stream.fileno())
