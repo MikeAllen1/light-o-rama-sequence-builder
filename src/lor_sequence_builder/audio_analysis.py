@@ -236,7 +236,8 @@ def _phrase_boundaries(
 
 
 def _section_candidates(energy: list[dict[str, float]]) -> list[dict[str, Any]]:
-    # Report only substantial relative energy shifts; do not assign verse/chorus labels.
+    # Compare broad context windows, then localize the candidate to the strongest
+    # adjacent one-second energy change. Never assign verse/chorus labels.
     result: list[dict[str, Any]] = []
     for index in range(8, len(energy) - 8):
         before = [point["rms"] for point in energy[index - 8:index]]
@@ -245,17 +246,26 @@ def _section_candidates(energy: list[dict[str, float]]) -> list[dict[str, Any]]:
         right = math.fsum(after) / len(after)
         denominator = max(left, right, 1e-6)
         change = abs(right - left) / denominator
-        if change >= 0.55:
-            if not result or energy[index]["time"] - result[-1]["time"] >= 8.0:
-                result.append({
-                    "time": energy[index]["time"],
-                    "kind": "energy_transition_candidate",
-                    "relative_change": round(change, 4),
-                    "confidence": round(min(0.75, 0.35 + change * 0.25), 3),
-                    "label": None,
-                })
+        if change < 0.55:
+            continue
+        local_start = max(1, index - 7)
+        local_end = min(len(energy) - 1, index + 8)
+        transition_index = max(
+            range(local_start, local_end),
+            key=lambda item: abs(
+                energy[item]["rms"] - energy[item - 1]["rms"]
+            ) / max(energy[item]["rms"], energy[item - 1]["rms"], 1e-6),
+        )
+        transition_time = energy[transition_index]["time"]
+        if not result or transition_time - result[-1]["time"] >= 8.0:
+            result.append({
+                "time": transition_time,
+                "kind": "energy_transition_candidate",
+                "relative_change": round(change, 4),
+                "confidence": round(min(0.75, 0.35 + change * 0.25), 3),
+                "label": None,
+            })
     return result
-
 
 def _svg_plot(
     path: Path, duration: float, energy: list[dict[str, float]],
