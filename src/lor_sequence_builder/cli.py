@@ -17,8 +17,10 @@ from lor_sequence_builder.classifier import (
     classify_preview,
 )
 from lor_sequence_builder.evaluation import EvaluationError, evaluate
+from lor_sequence_builder.generate import generate_show
 from lor_sequence_builder.loredit import LoreditError, read_loredit, write_loredit
 from lor_sequence_builder.lorprev import LorprevError, read_lorprev
+from lor_sequence_builder.planner import LEVEL_NAMES, PlanningError
 from lor_sequence_builder.pulse import PulseGenerationError, build_pulse_sequence, preview_element
 from lor_sequence_builder.requirements_intake import (
     IntakeError,
@@ -161,6 +163,29 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     listing.add_argument("--rules", action="append", default=[], help=_RULES_HELP)
     listing.add_argument("--preview", help="include the requirements saved for this preview")
+    generate = commands.add_parser(
+        "generate", help="build a full show sequence from a song and a display preview"
+    )
+    generate.add_argument("--preview", required=True, help="required standalone .lorprev file")
+    source = generate.add_mutually_exclusive_group(required=True)
+    source.add_argument("--audio", help="song audio file supported by FFmpeg")
+    source.add_argument("--analysis", help="existing analysis JSON from analyze-audio")
+    generate.add_argument("--output", required=True, help="new output .loredit path")
+    generate.add_argument(
+        "--music-filename",
+        help="audio file name to store in the sequence, inside the S6 audio folder "
+        "(default: the audio file's name)",
+    )
+    generate.add_argument("--beats-per-bar", type=int, choices=(3, 4), default=4,
+                          help="4 for most songs, 3 for waltz time (default: 4)")
+    generate.add_argument("--rules", action="append", default=[], help=_RULES_HELP)
+    generate.add_argument("--ignore-saved-requirements", action="store_true",
+                          help=_IGNORE_HELP)
+    asking = generate.add_mutually_exclusive_group()
+    asking.add_argument("--ask-requirements", action="store_true",
+                        help="always ask about specific requirements first")
+    asking.add_argument("--no-ask", action="store_true",
+                        help="never ask; use saved requirements only")
     intake = commands.add_parser(
         "requirements",
         help="tell the builder your specific requirements for a display, and save them",
@@ -188,6 +213,53 @@ def _check_timeline(
             stream.write(json.dumps(report.to_dict(), indent=2) + "\n")
         print(f"Report: {report_path}")
     return 0 if report.ok else 1
+
+
+def _generate(options: argparse.Namespace) -> int:
+    saved = saved_requirements_path(options.preview)
+    interactive = sys.stdin.isatty()
+    if options.ask_requirements or (
+        not options.no_ask and not options.ignore_saved_requirements
+        and interactive and not saved.exists()
+    ):
+        _run_intake(options.preview, fresh=False, guided=False)
+    rule_set = load_rule_set(
+        _profiles(options.preview, options.rules, options.ignore_saved_requirements)
+    )
+    try:
+        show = generate_show(
+            options.preview, options.output, rule_set,
+            audio_path=options.audio, analysis_path=options.analysis,
+            music_filename=options.music_filename, beats_per_bar=options.beats_per_bar,
+        )
+    except RulesFailedError as failed:
+        print(failed.report.format_text())
+        print(f"error: {failed}. This is a planner bug; please report it.", file=sys.stderr)
+        return 1
+    plan = show.plan
+    print("Sections:")
+    for section in plan.sections:
+        print(f"  {_time(section.start_centisecond)}-{_time(section.end_centisecond)} "
+              f"{section.label} ({LEVEL_NAMES[section.level]} energy)")
+    print(f"Props used: {len(plan.used_props)}")
+    if plan.skipped_props:
+        print("Props left out:")
+        for skipped in plan.skipped_props:
+            print(f"  {skipped.name}: {skipped.reason}")
+    for note in plan.notes:
+        print(f"Note: {note}")
+    print(show.report.format_text())
+    print(f"Sequence: {show.sequence_path}")
+    print(f"Timeline: {show.timeline_path}")
+    print(f"Plan: {show.plan_path}")
+    print(f"Rule report: {show.report_path}")
+    if show.analysis_path is not None:
+        print(f"Analysis: {show.analysis_path}")
+    return 0
+
+
+def _time(centiseconds: int) -> str:
+    return f"{centiseconds // 6000}:{(centiseconds // 100) % 60:02d}"
 
 
 def _list_rules(rules: list[str], preview: str | None) -> int:
@@ -322,6 +394,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                                    options.report, options.ignore_saved_requirements)
         if options.command == "list-rules":
             return _list_rules(options.rules, options.preview)
+        if options.command == "generate":
+            return _generate(options)
         if options.command == "requirements":
             _run_intake(options.preview, options.fresh, options.guided)
             return 0
@@ -382,6 +456,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ClassificationError,
         EvaluationError,
         IntakeError,
+        PlanningError,
         RuleProfileError,
         SequenceWriteError,
         LoreditError,
