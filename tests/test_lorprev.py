@@ -12,7 +12,6 @@ from lor_sequence_builder.lorprev import (
     UnsupportedLorprevRevisionError,
     read_lorprev,
 )
-
 from tests.fixture_builders import write_synthetic_loredit
 
 
