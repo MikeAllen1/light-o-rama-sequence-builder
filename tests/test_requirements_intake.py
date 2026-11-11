@@ -135,7 +135,6 @@ def test_plain_english_is_translated_validated_and_confirmed(tmp_path: Path) -> 
     assert load_rule_set((saved,)).sources == ("default.yaml", "yard.requirements.yaml")
 
 
-
 def test_fresh_requirements_bypass_malformed_saved_sidecar(tmp_path: Path) -> None:
     preview = _preview(tmp_path, classic_yard())
     sidecar = saved_requirements_path(preview)
