@@ -107,3 +107,26 @@ def test_silence_does_not_fabricate_a_tempo(tmp_path: Path) -> None:
     assert report["analysis"]["tempo"]["bpm"] is None
     assert report["analysis"]["beats"] == []
     assert report["analysis"]["downbeats"] == []
+
+
+def test_energy_transition_produces_unlabelled_section_candidate(tmp_path: Path) -> None:
+    import array
+
+    audio = tmp_path / "energy-transition.wav"
+    rate = 11_025
+    samples = array.array("h")
+    for index in range(rate * 20):
+        amplitude = 2_000 if index < rate * 10 else 16_000
+        samples.append(int(amplitude * math.sin(2 * math.pi * 220 * index / rate)))
+    with wave.open(str(audio), "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(rate)
+        output.writeframes(samples.tobytes())
+
+    report = analyze_audio(audio, tmp_path / "energy.json", tmp_path / "energy.svg")
+
+    candidates = report["analysis"]["section_candidates"]
+    assert candidates
+    assert candidates[0]["time"] == pytest.approx(10.0, abs=1.0)
+    assert candidates[0]["label"] is None
