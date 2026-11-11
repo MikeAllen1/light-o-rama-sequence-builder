@@ -6,17 +6,13 @@ import argparse
 import sys
 from collections.abc import Sequence
 
-from lor_sequence_builder.audio_analysis import (
-    MAX_BPM as MAX_AUDIO_BPM,
-    MIN_BPM as MIN_AUDIO_BPM,
-)
+from lor_sequence_builder.audio_analysis import MAX_BPM as MAX_AUDIO_BPM
+from lor_sequence_builder.audio_analysis import MIN_BPM as MIN_AUDIO_BPM
 from lor_sequence_builder.audio_analysis import AudioAnalysisError, analyze_audio
 from lor_sequence_builder.loredit import LoreditError, read_loredit, write_loredit
 from lor_sequence_builder.lorprev import LorprevError, read_lorprev
-from lor_sequence_builder.pulse import (
-    MAX_BPM as MAX_PULSE_BPM,
-    MIN_BPM as MIN_PULSE_BPM,
-)
+from lor_sequence_builder.pulse import MAX_BPM as MAX_PULSE_BPM
+from lor_sequence_builder.pulse import MIN_BPM as MIN_PULSE_BPM
 from lor_sequence_builder.pulse import PulseGenerationError, build_pulse_sequence
 
 
