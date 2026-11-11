@@ -18,10 +18,11 @@ import wave
 from array import array
 from pathlib import Path
 
-from lor_sequence_builder.file_publish import publish_new_files
+from typing import Any
+
 from lor_sequence_builder.audio_plot import _svg_plot
 from lor_sequence_builder.audio_tempo import _beat_grid_status, _estimate_tempo
-from typing import Any
+from lor_sequence_builder.file_publish import publish_new_files
 
 ANALYSIS_SCHEMA_VERSION = "1.3"
 SAMPLE_RATE = 11_025
