@@ -234,7 +234,10 @@ def _track_beats(
     # intervals alternate, so a least-squares slope beats a median interval.
     times = _frames_to_times(frames)
     rough_period = float(np.median(np.diff(times)))
-    beat_numbers = np.round((times - times[0]) / rough_period)
+    # Number beats gap by gap. Dividing elapsed time by a frame-quantized median
+    # period misnumbers beats late in long songs and biases the fitted tempo.
+    steps = np.maximum(1.0, np.round(np.diff(times) / rough_period))
+    beat_numbers = np.concatenate(([0.0], np.cumsum(steps)))
     period = float(np.polyfit(beat_numbers, times, 1)[0])
     if not math.isfinite(period) or period <= 0:
         return None, empty, 0.0, 0.0
