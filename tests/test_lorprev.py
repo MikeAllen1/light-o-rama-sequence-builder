@@ -325,6 +325,26 @@ def test_point_like_elements_outside_shape_are_not_interpreted_as_geometry(
     ]
 
 
+def test_nested_unrecognized_shape_is_not_interpreted_as_prop_geometry(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "unrelated-shape.lorprev"
+    source.write_text(
+        '<PreviewClass Revision="1"><PropClass id="p">'
+        '<shape><point x="1" y="2" /></shape>'
+        '<ControllerClass><shape><point x="99" y="100" /></shape></ControllerClass>'
+        '</PropClass></PreviewClass>',
+        encoding="utf-8",
+    )
+
+    model = read_lorprev(source)
+    assert len(model.geometry_points) == 1
+    assert model.geometry_points[0].x.value == "1"
+    assert [node.tag for node in model.unrecognized_elements] == [
+        "ControllerClass", "shape"
+    ]
+
+
 def test_incomplete_shape_geometry_point_fails_clearly(tmp_path: Path) -> None:
     source = tmp_path / "incomplete-point.lorprev"
     source.write_text(
