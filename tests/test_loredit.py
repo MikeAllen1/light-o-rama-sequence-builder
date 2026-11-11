@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import re
 import shutil
-from pathlib import Path
-
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 from defusedxml.ElementTree import parse as safe_parse
 import pytest
