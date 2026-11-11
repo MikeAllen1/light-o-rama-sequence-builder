@@ -66,7 +66,7 @@ uv run lor-sequence-builder analyze-audio .\song.mp3 --output-json .\song.analys
 
 The current deterministic signal-processing baseline estimates one global tempo from positive energy-flux autocorrelation, derives beat/downbeat candidates, detects energy-flux onsets, reports RMS energy, proposes energy-transition and fixed 16-beat phrase candidates, and flags sustained near-silence as hard-stop candidates. It deliberately does **not** claim semantic verse/chorus recognition, changing-tempo tracking, spectral onset classification, or vocal/syllable detection. Confidence, event provenance, tool versions, and limitations are included in the JSON. The formal v1.0 contract is [audio-analysis-v1.schema.json](docs/schemas/audio-analysis-v1.schema.json). Output files must be new paths and are never overwritten.
 
-This is an initial measurable baseline, not professional choreography. Inspect the SVG against the song and treat low-confidence or musically implausible estimates as unresolved.
+This is an initial measurable baseline, not professional choreography. Inspect the SVG against the song and treat low-confidence or musically implausible estimates as unresolved. Follow the [real-song review procedure](docs/AUDIO_ANALYSIS_REVIEW.md) before relying on these estimates for later planning.
 
 ## Phase 3 walking skeleton
 
