@@ -185,7 +185,7 @@ def _build_timeline(
     template_xml_sha256: str,
     bpm: int,
     pulse_duration_centiseconds: int,
-) -> tuple[Timeline, dict[tuple[str, int], ET.Element]]:
+) -> tuple[Timeline, dict[tuple[str, int], _MappedChannel]]:
     embedded_preview = document.root.find("PreviewClass")
     sequence_props = document.root.find("SequenceProps")
     if embedded_preview is None or sequence_props is None:
