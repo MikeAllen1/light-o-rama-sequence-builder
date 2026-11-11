@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import platform
 import shutil
 import struct
@@ -60,7 +61,7 @@ def _normalize(path: Path, output: Path) -> str:
     ffmpeg_version = version_result.stdout.splitlines()[0].strip()
     command = [
         ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
-        "-i", str(path), "-t", str(MAX_DURATION_SECONDS + 1), "-map", "0:a:0", "-vn", "-ac", "1",
+        "-i", str(path.resolve()), "-t", str(MAX_DURATION_SECONDS + 1), "-map", "0:a:0", "-vn", "-ac", "1",
         "-ar", str(SAMPLE_RATE), "-c:a", "pcm_s16le", "-f", "wav", str(output),
     ]
     try:
@@ -467,13 +468,38 @@ def analyze_audio(
             },
         }
         serialized = json.dumps(report, indent=2, sort_keys=True) + "\n"
-        with json_path.open("x", encoding="utf-8") as stream:
-            stream.write(serialized)
+        # Build both artifacts beside their destinations, then publish with
+        # atomic no-overwrite links. If either publication fails, remove the
+        # other so callers never receive a half-published report/plot pair.
+        json_temp: Path | None = None
+        plot_temp: Path | None = None
+        json_published = False
         try:
-            _svg_plot(plot_path, duration, energy, beat_times, downbeats, onsets, sections, stops)
-        except OSError:
-            json_path.unlink(missing_ok=True)
-            raise
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=json_path.parent,
+                prefix=f".{json_path.name}.", suffix=".tmp", delete=False,
+            ) as stream:
+                json_temp = Path(stream.name)
+                stream.write(serialized)
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=plot_path.parent,
+                prefix=f".{plot_path.name}.", suffix=".tmp", delete=False,
+            ) as stream:
+                plot_temp = Path(stream.name)
+            plot_temp.unlink()
+            _svg_plot(plot_temp, duration, energy, beat_times, downbeats, onsets, sections, stops)
+            os.link(json_temp, json_path)
+            json_published = True
+            os.link(plot_temp, plot_path)
+        except FileExistsError as exc:
+            raise AudioAnalysisError("Refusing to overwrite an existing analysis output") from exc
+        finally:
+            if json_temp is not None:
+                json_temp.unlink(missing_ok=True)
+            if plot_temp is not None:
+                plot_temp.unlink(missing_ok=True)
+            if json_published and not plot_path.exists():
+                json_path.unlink(missing_ok=True)
         return report
     except OSError as exc:
         raise AudioAnalysisError(f"Audio analysis I/O failure: {exc}") from exc
