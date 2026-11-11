@@ -34,6 +34,7 @@ jobs:
   build-package:
     name: Generate ready-to-open S6 test ZIP
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
