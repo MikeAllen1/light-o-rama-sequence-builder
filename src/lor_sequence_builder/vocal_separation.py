@@ -63,9 +63,23 @@ def separate_vocals(audio_path: str | Path, vocals_output: str | Path) -> Path:
         if not vocals or not vocals[0].is_file():
             raise SeparationError("Vocal separation did not produce a vocals track")
         output.parent.mkdir(parents=True, exist_ok=True)
+        temporary: Path | None = None
         try:
-            with vocals[0].open("rb") as source, output.open("xb") as target:
-                shutil.copyfileobj(source, target)
+            with tempfile.NamedTemporaryFile(
+                "wb", dir=output.parent, prefix=f".{output.name}.", suffix=".tmp",
+                delete=False,
+            ) as target:
+                temporary = Path(target.name)
+                with vocals[0].open("rb") as source:
+                    shutil.copyfileobj(source, target)
+                target.flush()
+                os.fsync(target.fileno())
+            # A hard link publishes the completed file atomically and fails if
+            # another process created the destination in the meantime.
+            os.link(temporary, output)
         except OSError as exc:
             raise SeparationError(f"Cannot save separated vocals: {output}") from exc
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
     return output

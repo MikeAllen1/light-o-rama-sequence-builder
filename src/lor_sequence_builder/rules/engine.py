@@ -575,9 +575,9 @@ def _movements_complete(ctx: _Context) -> str | None:
                     "partway", prop_id=pid, centisecond=m.start_centisecond)
         reached = [firsts[pid] for pid in m.prop_ids if pid in firsts]
         for index, (before, after) in enumerate(itertools.pairwise(reached)):
-            if after < before:
+            if after <= before:
                 pid = [p for p in m.prop_ids if p in firsts][index + 1]
-                ctx.add(f"The {m.kind} {m.movement_id!r} reaches this prop before the one "
+                ctx.add(f"The {m.kind} {m.movement_id!r} reaches this prop at the same time as or before the one "
                         "listed ahead of it", prop_id=pid, centisecond=after)
     return None
 

@@ -20,13 +20,13 @@ from __future__ import annotations
 
 import json
 import math
-import os
 from pathlib import Path
 from typing import Any
 
 import librosa
 import numpy as np
 
+from lor_sequence_builder.artifacts import write_new_text_atomically
 from lor_sequence_builder.audio_analysis import SAMPLE_RATE, AudioAnalysisError, decode_audio
 
 VOCALS_SCHEMA_VERSION = "vocals-1.0"
@@ -157,12 +157,8 @@ def analyze_vocals(vocal_path: str | Path, json_output: str | Path, source: str)
         ],
         **events,
     }
-    output.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with output.open("x", encoding="utf-8", newline="\n") as stream:
-            stream.write(json.dumps(report, indent=2) + "\n")
-            stream.flush()
-            os.fsync(stream.fileno())
+        write_new_text_atomically(output, json.dumps(report, indent=2) + "\n")
     except OSError as exc:
         raise VocalAnalysisError(f"Cannot write vocal analysis: {output}") from exc
     return report

@@ -945,3 +945,27 @@ def test_duplicate_group_names_union_members_for_name_selectors() -> None:
         _ids(builder)[f"Arch {index}"] for index in range(1, 5)
     } | {mini_tree_id}
     assert set(display.groups["Arches"]) == expected
+
+
+def test_movement_sequence_rejects_simultaneous_first_reach_times() -> None:
+    builder = classic_yard()
+    ids = _ids(builder)
+    from lor_sequence_builder.choreography import Movement
+
+    movement = Movement(
+        movement_id="same-time-chase", kind="chase", direction="left_to_right",
+        prop_ids=(ids["Arch 1"], ids["Arch 2"], ids["Arch 3"]),
+        start_centisecond=100, end_centisecond=500,
+    )
+    effects = tuple(
+        Effect(
+            prop_id=pid, channel_index=0, start_centisecond=200,
+            end_centisecond=250, kind="on", start_intensity=100, end_intensity=100,
+            movement_id="same-time-chase",
+        )
+        for pid in movement.prop_ids
+    )
+    timeline = Choreography(duration_centiseconds=SONG, effects=effects,
+                            movements=(movement,))
+    report = _check(builder, timeline)
+    assert any("same time as or before" in finding.message for finding in report.errors)
