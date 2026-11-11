@@ -29,7 +29,7 @@ from lor_sequence_builder.show_builder import ShowBuildError, ShowSessions
 
 _WEB_ROOT = Path(__file__).with_name("web")
 _MAX_UPLOAD_BYTES = MAX_INPUT_BYTES
-_MAX_EXPORT_BYTES = 3 * MAX_LOREDIT_BYTES + 1024 * 1024
+_MAX_EXPORT_BYTES = 4 * MAX_LOREDIT_BYTES + 1024 * 1024
 _MAX_JSON_BYTES = 256 * 1024
 # Shows being built from the browser (preview, song, requirements, generate).
 SHOWS = ShowSessions()
