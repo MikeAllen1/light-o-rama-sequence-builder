@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import gzip
 import json
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
@@ -13,20 +13,22 @@ from lor_sequence_builder.evaluation import (
     match_events,
     read_timing_grid,
 )
+from tests.fixture_builders import write_synthetic_loredit
 
-FIXTURE_GZIP = Path(__file__).parent / "fixtures" / "basic_show.loredit.gz"
-SANITIZED_GRID = 'TimingGridFree name="Fixture Timing Grid"'
+BEAT_MARKS_CS = (0, 48, 96, 156, 209, 264, 316)
 
 
 def _sequence_with_named_grids(tmp_path: Path, *names: str) -> Path:
-    """Copy the fixture, renaming its first free grids (all share a sanitized name)."""
-    with gzip.open(FIXTURE_GZIP, "rb") as source:
-        text = source.read().decode("utf-8")
+    """Synthetic sequence plus free timing grids; repeated names create ambiguity."""
+    path = write_synthetic_loredit(tmp_path / "reference.loredit")
+    tree = ET.parse(path)
+    grids = tree.getroot().find("TimingGrids")
+    assert grids is not None
     for name in names:
-        assert SANITIZED_GRID in text
-        text = text.replace(SANITIZED_GRID, f'TimingGridFree name="{name}"', 1)
-    path = tmp_path / "reference.loredit"
-    path.write_text(text, encoding="utf-8")
+        grid = ET.SubElement(grids, "TimingGridFree", {"name": name})
+        for centisecond in BEAT_MARKS_CS:
+            ET.SubElement(grid, "timing", {"centisecond": str(centisecond)})
+    tree.write(path, encoding="utf-8", xml_declaration=True)
     return path
 
 
@@ -68,11 +70,11 @@ def test_read_timing_grid_returns_sorted_seconds(tmp_path: Path) -> None:
 
 
 def test_read_timing_grid_rejects_missing_and_ambiguous_names(tmp_path: Path) -> None:
-    sequence = _sequence_with_named_grids(tmp_path, "Beats")
+    sequence = _sequence_with_named_grids(tmp_path, "Beats", "Duplicate", "Duplicate")
     with pytest.raises(EvaluationError, match="not found.*'Beats'"):
         read_timing_grid(sequence, "Bars")
     with pytest.raises(EvaluationError, match="free timing grids are named"):
-        read_timing_grid(sequence, "Fixture Timing Grid")
+        read_timing_grid(sequence, "Duplicate")
 
 
 def test_evaluate_scores_each_requested_grid(tmp_path: Path) -> None:
