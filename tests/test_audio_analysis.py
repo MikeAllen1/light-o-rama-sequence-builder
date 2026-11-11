@@ -10,11 +10,11 @@ from lor_sequence_builder.audio_analysis import AudioAnalysisError, analyze_audi
 from lor_sequence_builder.cli import main
 
 
-def _click_track(path: Path, duration: float = 8.0) -> None:
+def _click_track(path: Path, duration: float = 8.0, bpm: float = 120.0) -> None:
     rate = 11_025
     total = int(rate * duration)
     samples = [0] * total
-    beat = 0.5
+    beat = 60.0 / bpm
     onset = 0.25
     index = 0
     while onset + 0.04 < 6.0:
@@ -69,7 +69,10 @@ def test_analyze_audio_detects_tempo_beats_onsets_and_hard_stop(tmp_path: Path) 
     assert report_path.is_file()
     assert report_path.read_text(encoding="utf-8").startswith("{")
     assert plot_path.is_file()
-    assert "<svg" in plot_path.read_text(encoding="utf-8")
+    svg = plot_path.read_text(encoding="utf-8")
+    assert "<svg" in svg
+    assert "provisional downbeats" in svg
+    assert "energy transitions" in svg
 
 
 def test_analysis_refuses_to_overwrite_outputs(tmp_path: Path) -> None:
@@ -203,3 +206,19 @@ def test_analysis_json_records_provenance_and_runtime_configuration(tmp_path: Pa
     assert report["configuration"]["minimum_bpm"] == 100
     assert report["configuration"]["maximum_bpm"] == 140
     assert report["analysis"]["phrase_boundaries"][0]["method"]
+
+
+
+def test_analyzer_recovers_a_different_known_tempo(tmp_path: Path) -> None:
+    audio = tmp_path / "known-90-bpm.wav"
+    _click_track(audio, duration=12.0, bpm=90.0)
+
+    report = analyze_audio(
+        audio, tmp_path / "ninety.json", tmp_path / "ninety.svg",
+        min_bpm=70, max_bpm=130,
+    )
+
+    assert report["analysis"]["tempo"]["bpm"] == pytest.approx(90.0, abs=3.0)
+    beat_times = [event["time"] for event in report["analysis"]["beats"]]
+    assert beat_times[0] == pytest.approx(0.25, abs=0.15)
+    assert beat_times[1] - beat_times[0] == pytest.approx(2 / 3, abs=0.08)
