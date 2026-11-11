@@ -699,6 +699,7 @@ def test_duplicate_movement_ids_are_reported() -> None:
     display = classic_yard()
     timeline = Choreography(
         duration_centiseconds=SONG,
+        effects=(),
         movements=(
             Movement("duplicate", "chase", ("a",), "left_to_right", 0, 100),
             Movement("duplicate", "chase", ("b",), "left_to_right", 100, 200),
