@@ -19,6 +19,7 @@ lyric recognition. The report says so.
 from __future__ import annotations
 
 import json
+import math
 import os
 from pathlib import Path
 from typing import Any
@@ -41,6 +42,7 @@ DIP = 0.55
 # A syllable reaches at least this share of the track's loud level.
 ONSET_LEVEL = 0.2
 MAX_SYLLABLE_SECONDS = 1.5
+MAX_VOCALS_BYTES = 10 * 1024 * 1024
 
 
 class VocalAnalysisError(ValueError):
@@ -167,13 +169,54 @@ def analyze_vocals(vocal_path: str | Path, json_output: str | Path, source: str)
 
 
 def load_vocals(path: str | Path) -> dict[str, Any]:
+    source = Path(path)
     try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        if source.stat().st_size > MAX_VOCALS_BYTES:
+            raise VocalAnalysisError("Vocal analysis JSON exceeds the 10 MiB limit")
+        data = json.loads(source.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, ValueError) as exc:
         raise VocalAnalysisError(f"Cannot read vocal analysis: {path}") from exc
     if not isinstance(data, dict) or data.get("schema_version") != VOCALS_SCHEMA_VERSION:
         raise VocalAnalysisError(f"Unsupported vocal analysis; expected {VOCALS_SCHEMA_VERSION}")
+
+    duration = data.get("duration_seconds")
+    if (isinstance(duration, bool) or not isinstance(duration, int | float)
+            or not math.isfinite(float(duration)) or float(duration) <= 0):
+        raise VocalAnalysisError("Vocal analysis has an invalid duration_seconds value")
+    duration = float(duration)
+
+    def number(item: dict[str, Any], field: str, collection: str) -> float:
+        value = item.get(field)
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            raise VocalAnalysisError(
+                f"Vocal analysis field {collection!r} contains an event without numeric {field!r}"
+            )
+        result = float(value)
+        if not math.isfinite(result):
+            raise VocalAnalysisError(
+                f"Vocal analysis field {collection!r} contains a non-finite {field!r}"
+            )
+        return result
+
     for key in ("regions", "syllables"):
-        if not isinstance(data.get(key), list):
+        events = data.get(key)
+        if not isinstance(events, list):
             raise VocalAnalysisError(f"Vocal analysis field {key!r} must be a list")
+        for event in events:
+            if not isinstance(event, dict):
+                raise VocalAnalysisError(
+                    f"Vocal analysis field {key!r} contains a non-object event"
+                )
+            start = number(event, "start", key)
+            end = number(event, "end", key)
+            if start < 0 or end <= start or end > duration:
+                raise VocalAnalysisError(
+                    f"Vocal analysis field {key!r} contains an invalid time range"
+                )
+            if key == "syllables":
+                strength = number(event, "strength", key)
+                if not 0 <= strength <= 1:
+                    raise VocalAnalysisError(
+                        "Vocal analysis syllable strength must be between 0 and 1"
+                    )
     return data

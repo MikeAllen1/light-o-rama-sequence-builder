@@ -195,8 +195,38 @@ def load_analysis(path: str | Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise EvaluationError("Analysis JSON is missing its analysis object")
     for key in ("beats", "downbeats", "section_candidates"):
-        if not isinstance(payload.get(key), list):
+        events = payload.get(key)
+        if not isinstance(events, list):
             raise EvaluationError(f"Analysis JSON field {key!r} must be a list")
+        for event in events:
+            if not isinstance(event, dict):
+                raise EvaluationError(
+                    f"Analysis JSON field {key!r} contains a non-object event"
+                )
+            raw_time = event.get("time")
+            if (isinstance(raw_time, bool) or not isinstance(raw_time, int | float)
+                    or not math.isfinite(float(raw_time))
+                    or not 0 <= float(raw_time) <= float(duration)):
+                raise EvaluationError(
+                    f"Analysis JSON field {key!r} contains an invalid or missing event time"
+                )
+
+    energy = payload.get("energy")
+    if energy is not None:
+        if not isinstance(energy, list):
+            raise EvaluationError("Analysis JSON field 'energy' must be a list")
+        for event in energy:
+            if not isinstance(event, dict):
+                raise EvaluationError("Analysis JSON energy contains a non-object event")
+            for field in ("time", "rms"):
+                value = event.get(field)
+                if (isinstance(value, bool) or not isinstance(value, int | float)
+                        or not math.isfinite(float(value))):
+                    raise EvaluationError(
+                        f"Analysis JSON energy event has an invalid or missing {field!r}"
+                    )
+            if not 0 <= float(event["time"]) <= float(duration) or float(event["rms"]) < 0:
+                raise EvaluationError("Analysis JSON energy event has an out-of-range value")
     return data
 
 

@@ -289,3 +289,33 @@ def test_a_mustache_face_sings_with_up_open_and_down_resting() -> None:
                for e in up)
     # The resting mustache also shows before anyone sings.
     assert any(e.start_centisecond < 190 for e in down)
+
+
+@pytest.mark.parametrize("events", [
+    [None],
+    [{}],
+    [{"start": 1.0, "end": 2.0}],
+    [{"start": 2.0, "end": 1.0, "strength": 0.5}],
+    [{"start": 0.0, "end": 13.0, "strength": 0.5}],
+    [{"start": 0.0, "end": 1.0, "strength": float("nan")}],
+    [{"start": 0.0, "end": 1.0, "strength": 1.1}],
+])
+def test_load_vocals_rejects_malformed_syllable_events(tmp_path: Path, events: list[Any]) -> None:
+    path = tmp_path / "vocals.json"
+    path.write_text(json.dumps({
+        "schema_version": "vocals-1.0", "duration_seconds": 12.0,
+        "regions": [], "syllables": events,
+    }), encoding="utf-8")
+    with pytest.raises(VocalAnalysisError):
+        load_vocals(path)
+
+
+@pytest.mark.parametrize("regions", [[None], [{}], [{"start": 2, "end": 1}]])
+def test_load_vocals_rejects_malformed_regions(tmp_path: Path, regions: list[Any]) -> None:
+    path = tmp_path / "vocals.json"
+    path.write_text(json.dumps({
+        "schema_version": "vocals-1.0", "duration_seconds": 12.0,
+        "regions": regions, "syllables": [],
+    }), encoding="utf-8")
+    with pytest.raises(VocalAnalysisError):
+        load_vocals(path)

@@ -239,3 +239,29 @@ def test_a_music_review_is_read_as_its_corrected_analysis(tmp_path: Path) -> Non
     empty.write_text(json.dumps({"schema_version": "music-review-1.0"}), encoding="utf-8")
     with pytest.raises(EvaluationError, match="no analysis"):
         load_analysis(empty)
+
+
+def test_load_analysis_rejects_malformed_event_and_energy_items(tmp_path: Path) -> None:
+    from lor_sequence_builder.evaluation import load_analysis
+
+    base = {
+        "schema_version": "2.0",
+        "audio": {"duration_seconds": 10.0},
+        "analysis": {
+            "beats": [{"time": 1.0}], "downbeats": [], "section_candidates": [],
+            "energy": [{"time": 1.0, "rms": 0.2}],
+        },
+    }
+    path = tmp_path / "analysis.json"
+    for malformed in (None, {}, {"time": float("nan")}, {"time": 11.0}):
+        document = json.loads(json.dumps(base))
+        document["analysis"]["beats"] = [malformed]
+        path.write_text(json.dumps(document), encoding="utf-8")
+        with pytest.raises(EvaluationError):
+            load_analysis(path)
+
+    document = json.loads(json.dumps(base))
+    document["analysis"]["energy"] = [{"time": 1.0}]
+    path.write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(EvaluationError, match="energy event"):
+        load_analysis(path)
