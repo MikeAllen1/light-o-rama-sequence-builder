@@ -14,15 +14,27 @@ from lor_sequence_builder.pulse import PulseGenerationError, build_pulse_sequenc
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 FIXTURE = FIXTURE_DIR / "basic_show.loredit.gz"
-INDEPENDENT_PREVIEW = FIXTURE_DIR / "s6_revision_58_independent.lorprev.gz.b64"
 INDEPENDENT_TEMPLATE = FIXTURE_DIR / "s6_revision_56_independent_template.loredit.gz.b64"
 
 
 def independent_inputs(tmp_path: Path) -> tuple[Path, Path]:
     preview_path = tmp_path / "independent.lorprev"
     template_path = tmp_path / "independent-template.loredit"
-    preview_path.write_bytes(gzip.decompress(base64.b64decode(INDEPENDENT_PREVIEW.read_bytes())))
     template_path.write_bytes(gzip.decompress(base64.b64decode(INDEPENDENT_TEMPLATE.read_bytes())))
+    template_root = ET.parse(template_path).getroot()
+    preview_root = template_root.find("PreviewClass")
+    assert preview_root is not None
+    for element in preview_root.iter():
+        for attribute in tuple(element.attrib):
+            if attribute.casefold() in {
+                "backgroundfile",
+                "backgroundimage",
+                "backgroundimagefile",
+            }:
+                del element.attrib[attribute]
+    ET.ElementTree(preview_root).write(
+        preview_path, encoding="utf-8", xml_declaration=True
+    )
     return preview_path, template_path
 
 
