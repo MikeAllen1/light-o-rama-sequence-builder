@@ -119,13 +119,17 @@ def _detect_onsets(flux: list[float]) -> list[dict[str, float]]:
     baseline = _median(flux)
     deviations = [abs(value - baseline) for value in flux]
     mad = _median(deviations)
-    threshold = max(baseline + 3.0 * mad, max(flux) * 0.08, 1e-8)
+    maximum = max(flux)
+    threshold = max(baseline + 3.0 * mad, maximum * 0.08, 1e-8)
     peaks: list[dict[str, float]] = []
     for index in range(1, len(flux) - 1):
         value = flux[index]
         if value >= threshold and value >= flux[index - 1] and value > flux[index + 1]:
-            peaks.append({"time": round(index * FRAME_SECONDS, 3),
-                          "strength": round(value, 8)})
+            peaks.append({
+                "time": round(index * FRAME_SECONDS, 3),
+                "strength": round(value, 8),
+                "confidence": round(min(1.0, value / maximum), 4),
+            })
     return peaks
 
 
@@ -158,6 +162,8 @@ def _estimate_tempo(flux: list[float], duration: float) -> tuple[float | None, f
     positive = [score for score, _ in candidates if score > 0]
     mean_score = math.fsum(positive) / len(positive) if positive else 0.0
     confidence = max(0.0, min(1.0, (best_score - mean_score) / (abs(best_score) + 1e-12)))
+    if confidence < 0.15:
+        return None, round(confidence, 4), None, None
     bpm = 60.0 / (best_lag * FRAME_SECONDS)
     # Phase maximizes onset strength sampled at the candidate beat period.
     period = best_lag
@@ -183,7 +189,7 @@ def _energy_curve(rms: list[float]) -> list[dict[str, float]]:
 
 
 def _hard_stops(rms: list[float]) -> list[dict[str, float]]:
-    threshold = max(0.002, max(rms, default=0.0) * 0.025)
+    threshold = max(1e-5, max(rms, default=0.0) * 0.025)
     required_frames = round(0.25 / FRAME_SECONDS)
     stops: list[dict[str, float]] = []
     index = 1
@@ -196,7 +202,7 @@ def _hard_stops(rms: list[float]) -> list[dict[str, float]]:
                 stops.append({
                     "time": round(index * FRAME_SECONDS, 3),
                     "silence_duration": round((end - index) * FRAME_SECONDS, 3),
-                    "confidence": 0.95,
+                    "confidence": 0.8,\n                    "method": "sustained near-silence threshold",
                 })
             index = end
         else:
@@ -341,8 +347,7 @@ def analyze_audio(
                 "duration_seconds": round(duration, 3),
                 "normalized_sample_rate": SAMPLE_RATE,
                 "channels": 1,
-                "sample_format": "signed 16-bit PCM",
-            },
+                "sample_format": "signed 16-bit PCM",\n            },\n            "configuration": {\n                "frame_seconds": FRAME_SECONDS,\n                "minimum_bpm": MIN_BPM,\n                "maximum_bpm": MAX_BPM,\n                "minimum_duration_seconds": MIN_DURATION_SECONDS,\n                "maximum_duration_seconds": MAX_DURATION_SECONDS,\n                "maximum_input_bytes": MAX_INPUT_BYTES,\n                "confidence_values": "heuristic and uncalibrated",\n            },
             "analysis": {
                 "method": "FFmpeg normalization + deterministic RMS/positive-energy-flux/autocorrelation",
                 "limitations": [
