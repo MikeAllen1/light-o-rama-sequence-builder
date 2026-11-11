@@ -46,7 +46,7 @@ jobs:
 
   quality:
     name: Tests, lint, types, and dependency audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
@@ -85,7 +85,7 @@ jobs:
         run: uv sync --locked
 
       - name: Install Playwright Chromium
-        run: uv run --no-sync --with playwright==1.56.0 python -m playwright install chromium --only-shell
+        run: uv run --no-sync --with playwright==1.56.0 python -m playwright install chromium --with-deps
 
       - name: Run tests
         run: uv run --no-sync --with pytest==9.2.0 --with playwright==1.56.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 --with types-PyYAML==6.0.12.20260906 python -m pytest
