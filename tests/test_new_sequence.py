@@ -223,3 +223,65 @@ def test_cli_pulse_builds_without_a_template(
     assert code == 0
     assert read_loredit(tmp_path / "cli.loredit").total_centiseconds == 1_250
     assert "Excluded props:" in capsys.readouterr().out
+
+
+def test_new_sequence_rejects_missing_self_and_chained_master_references(
+    tmp_path: Path,
+) -> None:
+    preview = _synthetic_preview(tmp_path)
+    props = preview.findall("PropClass")
+    props[1].set("MasterPropId", "does-not-exist")
+    with pytest.raises(NewSequenceError, match="references missing master"):
+        build_new_sequence(preview, 12_000, "song.mp3")
+
+    preview = _synthetic_preview(tmp_path / "self")
+    props = preview.findall("PropClass")
+    props[0].set("MasterPropId", props[0].get("id", ""))
+    with pytest.raises(NewSequenceError, match="cannot reference itself"):
+        build_new_sequence(preview, 12_000, "song.mp3")
+
+    preview = _synthetic_preview(tmp_path / "chain")
+    props = preview.findall("PropClass")
+    props[1].set("MasterPropId", props[0].get("id", ""))
+    props[0].set("MasterPropId", props[2].get("id", ""))
+    with pytest.raises(NewSequenceError, match="master chains and cycles"):
+        build_new_sequence(preview, 12_000, "song.mp3")
+
+
+def test_new_sequence_rejects_linked_prop_with_unusable_master(
+    tmp_path: Path,
+) -> None:
+    preview = _synthetic_preview(tmp_path)
+    props = preview.findall("PropClass")
+    props[0].set("DeviceType", "DMX")
+    props[1].set("MasterPropId", props[0].get("id", ""))
+
+    with pytest.raises(NewSequenceError, match="without a verified native channel layout"):
+        build_new_sequence(preview, 12_000, "song.mp3")
+
+
+@pytest.mark.parametrize("marks", [(1.5,), (True,), ("10",)])
+def test_new_sequence_rejects_non_integer_timing_grid_marks(
+    tmp_path: Path, marks: tuple[object, ...]
+) -> None:
+    preview = _synthetic_preview(tmp_path)
+    grid = FreeTimingGrid("Beats", marks)  # type: ignore[arg-type]
+    with pytest.raises(NewSequenceError, match="integer centiseconds"):
+        build_new_sequence(preview, 12_000, "song.mp3", timing_grids=(grid,))
+
+
+@pytest.mark.parametrize("duration", ["nan", "inf", "-inf"])
+def test_cli_pulse_rejects_non_finite_duration(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], duration: str
+) -> None:
+    preview_path = _preview_file(tmp_path, _synthetic_preview(tmp_path))
+    code = main([
+        "pulse", "--preview", str(preview_path), "--bpm", "120",
+        f"--duration-seconds={duration}", "--music-filename", "song.mp3",
+        "--output", str(tmp_path / "invalid.loredit"),
+        "--timeline-output", str(tmp_path / "invalid.timeline.json"),
+    ])
+
+    assert code == 2
+    assert "finite number" in capsys.readouterr().err
+    assert not (tmp_path / "invalid.loredit").exists()

@@ -38,7 +38,7 @@ def _analysis(tmp_path: Path, beats: list[float], downbeats: list[float] | None 
         return [{"time": time, "confidence": 1.0, "method": "test"} for time in times]
 
     path = tmp_path / "analysis.json"
-    path.write_text(json.dumps({"analysis": {
+    path.write_text(json.dumps({"schema_version": "2.0", "audio": {"duration_seconds": 30.0}, "analysis": {
         "beats": events(beats),
         "downbeats": events(downbeats or []),
         "section_candidates": events(sections or []),
@@ -53,6 +53,20 @@ def test_match_events_counts_one_to_one_hits_within_tolerance() -> None:
     assert result.precision == pytest.approx(0.5)
     assert result.recall == pytest.approx(2 / 3)
     assert result.f_measure == pytest.approx(2 * 0.5 * (2 / 3) / (0.5 + 2 / 3))
+
+
+def test_match_events_finds_maximum_cardinality_not_greedy_nearest() -> None:
+    result = match_events([0.0, 0.09], [-0.09, 0.01], 0.10)
+    assert result.hits == 2
+
+
+def test_match_events_rejects_non_finite_values() -> None:
+    with pytest.raises(EvaluationError, match="finite"):
+        match_events([float("nan")], [1.0], 0.07)
+    with pytest.raises(EvaluationError, match="finite"):
+        match_events([1.0], [float("inf")], 0.07)
+    with pytest.raises(EvaluationError, match="finite"):
+        match_events([1.0], [1.0], float("inf"))
 
 
 def test_match_events_handles_empty_inputs_and_bad_tolerance() -> None:
@@ -94,7 +108,7 @@ def test_evaluate_requires_a_grid_and_valid_analysis(tmp_path: Path) -> None:
     with pytest.raises(EvaluationError, match="at least one timing grid"):
         evaluate(analysis, sequence)
     broken = tmp_path / "broken.json"
-    broken.write_text('{"analysis": {"beats": [{"time": "soon"}]}}', encoding="utf-8")
+    broken.write_text('{"schema_version":"2.0","audio":{"duration_seconds":10},"analysis":{"beats":[{"time":"soon"}],"downbeats":[],"section_candidates":[]}}', encoding="utf-8")
     with pytest.raises(EvaluationError, match="numeric time"):
         evaluate(broken, sequence, beats_grid="Beats")
 
@@ -132,3 +146,32 @@ def test_cli_evaluate_analysis_reports_missing_grid(
     ])
     assert code == 2
     assert "not found" in capsys.readouterr().err
+
+
+def test_load_analysis_rejects_unsupported_schema_and_non_finite_times(tmp_path: Path) -> None:
+    path = tmp_path / "wrong-version.json"
+    path.write_text(json.dumps({"schema_version": "1.3", "audio": {"duration_seconds": 5},
+                                "analysis": {"beats": [], "downbeats": [],
+                                             "section_candidates": []}}), encoding="utf-8")
+    sequence = _sequence_with_named_grids(tmp_path, "Beats")
+    with pytest.raises(EvaluationError, match="Unsupported analysis schema_version"):
+        evaluate(path, sequence, beats_grid="Beats")
+
+    path.write_text(json.dumps({"schema_version": "2.0", "audio": {"duration_seconds": 5},
+                                "analysis": {"beats": [{"time": float("nan")}],
+                                             "downbeats": [], "section_candidates": []}}),
+                    encoding="utf-8")
+    with pytest.raises(EvaluationError, match="invalid time"):
+        evaluate(path, sequence, beats_grid="Beats")
+
+
+def test_load_analysis_rejects_boolean_and_out_of_duration_timestamps(tmp_path: Path) -> None:
+    sequence = _sequence_with_named_grids(tmp_path, "Beats")
+    path = tmp_path / "analysis.json"
+    for invalid_time in (True, 31.0, -0.1):
+        path.write_text(json.dumps({"schema_version": "2.0", "audio": {"duration_seconds": 30},
+                                    "analysis": {"beats": [{"time": invalid_time}],
+                                                 "downbeats": [], "section_candidates": []}}),
+                        encoding="utf-8")
+        with pytest.raises(EvaluationError):
+            evaluate(path, sequence, beats_grid="Beats")

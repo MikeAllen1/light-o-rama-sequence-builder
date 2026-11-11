@@ -8,8 +8,8 @@ mark that no other estimate has already claimed.
 """
 from __future__ import annotations
 
-import bisect
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -19,6 +19,7 @@ from lor_sequence_builder.loredit import read_loredit
 BEAT_TOLERANCE_SECONDS = 0.07
 SECTION_TOLERANCE_SECONDS = 2.0
 MAX_ANALYSIS_BYTES = 50 * 1024 * 1024
+ANALYSIS_SCHEMA_VERSION = "2.0"
 
 
 class EvaluationError(ValueError):
@@ -51,24 +52,34 @@ class MatchScore:
 def match_events(
     estimated: list[float], reference: list[float], tolerance: float
 ) -> MatchScore:
-    """Greedy one-to-one matching of estimates to the nearest unused reference mark."""
-    if tolerance <= 0:
-        raise EvaluationError("Matching tolerance must be positive")
-    ordered = sorted(reference)
-    used: set[int] = set()
+    """Maximum-cardinality one-to-one matching for a fixed time tolerance.
+
+    With sorted event times and a symmetric fixed tolerance, matching the
+    earliest compatible pair cannot reduce the number of later matches. This
+    two-pointer algorithm therefore finds the maximum number of valid hits
+    without the order-dependent failures of nearest-neighbour greedy matching.
+    """
+    if not math.isfinite(tolerance) or tolerance <= 0:
+        raise EvaluationError("Matching tolerance must be finite and positive")
+    if any(not math.isfinite(value) for value in (*estimated, *reference)):
+        raise EvaluationError("Event times must all be finite numbers")
+    ordered_estimated = sorted(estimated)
+    ordered_reference = sorted(reference)
+    estimate_index = 0
+    reference_index = 0
     hits = 0
-    for value in sorted(estimated):
-        index = bisect.bisect_left(ordered, value)
-        best: int | None = None
-        for candidate in range(max(0, index - 2), min(len(ordered), index + 2)):
-            if candidate in used or abs(ordered[candidate] - value) > tolerance:
-                continue
-            if best is None or abs(ordered[candidate] - value) < abs(ordered[best] - value):
-                best = candidate
-        if best is not None:
-            used.add(best)
+    while estimate_index < len(ordered_estimated) and reference_index < len(ordered_reference):
+        estimate = ordered_estimated[estimate_index]
+        mark = ordered_reference[reference_index]
+        if estimate < mark - tolerance:
+            estimate_index += 1
+        elif mark < estimate - tolerance:
+            reference_index += 1
+        else:
             hits += 1
-    return MatchScore(len(estimated), len(ordered), hits, tolerance)
+            estimate_index += 1
+            reference_index += 1
+    return MatchScore(len(ordered_estimated), len(ordered_reference), hits, tolerance)
 
 
 def read_timing_grid(sequence_path: str | Path, grid_name: str) -> list[float]:
@@ -105,14 +116,26 @@ def read_timing_grid(sequence_path: str | Path, grid_name: str) -> list[float]:
 
 
 def _event_times(analysis: dict[str, Any], key: str) -> list[float]:
-    events = analysis.get("analysis", {}).get(key, [])
+    payload = analysis.get("analysis")
+    if not isinstance(payload, dict):
+        raise EvaluationError("Analysis JSON is missing its analysis object")
+    events = payload.get(key)
     if not isinstance(events, list):
         raise EvaluationError(f"Analysis field {key!r} is not a list")
+    duration = analysis["audio"]["duration_seconds"]
     times: list[float] = []
     for event in events:
-        if not isinstance(event, dict) or not isinstance(event.get("time"), int | float):
+        if not isinstance(event, dict):
+            raise EvaluationError(f"Analysis field {key!r} contains a non-object event")
+        raw_time = event.get("time")
+        if isinstance(raw_time, bool) or not isinstance(raw_time, int | float):
             raise EvaluationError(f"Analysis field {key!r} has an event without a numeric time")
-        times.append(float(event["time"]))
+        value = float(raw_time)
+        if not math.isfinite(value) or value < 0 or value > duration:
+            raise EvaluationError(
+                f"Analysis field {key!r} contains an invalid time outside the audio duration"
+            )
+        times.append(value)
     return times
 
 
@@ -122,10 +145,32 @@ def load_analysis(path: str | Path) -> dict[str, Any]:
         if source.stat().st_size > MAX_ANALYSIS_BYTES:
             raise EvaluationError("Analysis JSON exceeds the 50 MiB limit")
         data = json.loads(source.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise EvaluationError(f"Cannot read analysis JSON: {source}") from exc
     if not isinstance(data, dict):
         raise EvaluationError("Analysis JSON must be an object")
+    if data.get("schema_version") != ANALYSIS_SCHEMA_VERSION:
+        raise EvaluationError(
+            f"Unsupported analysis schema_version {data.get('schema_version')!r}; "
+            f"expected {ANALYSIS_SCHEMA_VERSION!r}"
+        )
+    audio = data.get("audio")
+    if not isinstance(audio, dict):
+        raise EvaluationError("Analysis JSON is missing its audio object")
+    duration = audio.get("duration_seconds")
+    if (
+        isinstance(duration, bool)
+        or not isinstance(duration, int | float)
+        or not math.isfinite(float(duration))
+        or float(duration) <= 0
+    ):
+        raise EvaluationError("Analysis JSON has an invalid audio duration_seconds value")
+    payload = data.get("analysis")
+    if not isinstance(payload, dict):
+        raise EvaluationError("Analysis JSON is missing its analysis object")
+    for key in ("beats", "downbeats", "section_candidates"):
+        if not isinstance(payload.get(key), list):
+            raise EvaluationError(f"Analysis JSON field {key!r} must be a list")
     return data
 
 

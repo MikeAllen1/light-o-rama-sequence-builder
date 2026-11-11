@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from collections.abc import Sequence
 
@@ -121,6 +122,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"Hard stops: {len(analysis['hard_stops'])}")
             return 0
         if options.command == "pulse":
+            if options.duration_seconds is not None and not math.isfinite(
+                options.duration_seconds
+            ):
+                raise PulseGenerationError("Duration must be a finite number of seconds")
             total_centiseconds = (
                 round(options.duration_seconds * 100)
                 if options.duration_seconds is not None

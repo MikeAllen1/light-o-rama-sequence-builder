@@ -37,6 +37,27 @@ MAX_DECODED_SAMPLES = SAMPLE_RATE * MAX_DURATION_SECONDS
 MIN_BPM = 60
 MAX_BPM = 200
 SUPPORTED_BEATS_PER_BAR = (3, 4)
+# Explicit demuxer allowlist prevents playlist/container inputs from selecting
+# arbitrary nested resources. Protocols are independently restricted below.
+INPUT_DEMUXERS = {
+    ".wav": "wav",
+    ".mp3": "mp3",
+    ".aac": "aac",
+    ".flac": "flac",
+    ".ogg": "ogg",
+    ".opus": "ogg",
+    ".wma": "asf",
+    ".aif": "aiff",
+    ".aiff": "aiff",
+    ".m4a": "mov",
+    ".m4b": "mov",
+    ".mp4": "mov",
+    ".mka": "matroska",
+    ".mkv": "matroska",
+    ".webm": "matroska",
+    ".ape": "ape",
+    ".wv": "wv",
+}
 
 # Structural segmentation tunables, chosen against owner-made section grids.
 SECTION_KERNEL_BEATS = 16
@@ -83,9 +104,16 @@ def _normalize(path: Path, output: Path) -> str:
     if version_result.returncode != 0 or not version_result.stdout:
         raise AudioAnalysisError("Could not determine the installed FFmpeg version")
     ffmpeg_version = version_result.stdout.splitlines()[0].strip()
+    demuxer = INPUT_DEMUXERS.get(path.suffix.lower())
+    if demuxer is None:
+        supported = ", ".join(sorted(INPUT_DEMUXERS))
+        raise AudioAnalysisError(
+            f"Unsupported audio file extension {path.suffix!r}; supported extensions: {supported}"
+        )
     command = [
         ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
-        "-i", str(path.resolve()), "-t", str(MAX_DURATION_SECONDS + 1), "-map", "0:a:0",
+        "-protocol_whitelist", "file,pipe", "-f", demuxer, "-i", str(path.resolve()),
+        "-t", str(MAX_DURATION_SECONDS + 1), "-map", "0:a:0",
         "-vn", "-ac", "1", "-ar", str(SAMPLE_RATE), "-c:a", "pcm_s16le", "-f", "wav",
         str(output),
     ]
@@ -201,8 +229,13 @@ def _drop_unsupported_beats(envelope: FloatArray, frames: IntArray) -> IntArray:
          for f in frames],
         dtype=np.float64,
     )
-    floor = float(np.median(support)) * BEAT_SUPPORT_RATIO
-    return frames[support >= floor]
+    positive_support = support[support > 1e-8]
+    if positive_support.size == 0:
+        return np.zeros(0, dtype=np.int64)
+    floor = float(np.median(positive_support)) * BEAT_SUPPORT_RATIO
+    # A zero median must never turn the threshold into zero: that would retain
+    # unsupported grid positions throughout silence.
+    return frames[(support > 1e-8) & (support >= floor)]
 
 
 def _track_beats(
