@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 
+
 def _estimate_tempo(
     flux: list[float], min_bpm: int, max_bpm: int, frame_seconds: float
 ) -> tuple[float | None, float, float | None, int | None, float, list[dict[str, float]]]:
