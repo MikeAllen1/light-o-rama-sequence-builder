@@ -275,8 +275,13 @@ class ApiTranslator:
                               "read") from exc
         if not isinstance(requirements, list) or not isinstance(not_supported, list):
             raise IntakeError("The translation service sent an answer this tool cannot read")
+        if any(not isinstance(item, dict) for item in requirements):
+            raise IntakeError(
+                "The translation service returned a malformed requirement; "
+                "no requirement was silently discarded. Please retry or use guided questions."
+            )
         return Translation(
-            [r for r in requirements if isinstance(r, dict)],
+            requirements,
             [str(item) for item in not_supported],
         )
 
@@ -451,6 +456,12 @@ def gather_requirements(
             existing = ()
 
     def finish(result: tuple[Requirement, ...]) -> tuple[Requirement, ...]:
+        if fresh:
+            if not result:
+                # Completing a fresh intake with no accepted requirements must
+                # clear the old sidecar too; otherwise the next build resurrects it.
+                saved_requirements_path(preview_path).unlink(missing_ok=True)
+            return result
         if result or not saved or existing:
             return result if result else existing
         if _yes(ask("Remove your saved requirements too? [y/N] ")):
