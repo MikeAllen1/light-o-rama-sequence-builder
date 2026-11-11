@@ -14,6 +14,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
+from lor_sequence_builder.channel_mapping import parse_channel_grid
 from lor_sequence_builder.loredit import (
     LoreditDocument,
     LoreditError,
@@ -344,16 +345,19 @@ def _build_timeline(
                 )
             )
             continue
-        address_entries = [entry.split(",") for entry in channel_grid.split(";")]
-        if not address_entries or any(
-            len(entry) < 3 or not all(field.strip() for field in entry[:3])
-            for entry in address_entries
-        ):
+        try:
+            address_entries = parse_channel_grid(channel_grid)
+        except ValueError as exc:
+            excluded.append(
+                ExcludedProp(prop_id=prop_id, name=name, reason=str(exc))
+            )
+            continue
+        if not address_entries:
             excluded.append(
                 ExcludedProp(
                     prop_id=prop_id,
                     name=name,
-                    reason="ChannelGrid lacks a complete LOR network/Unit ID/circuit address",
+                    reason="ChannelGrid has no controller assignments",
                 )
             )
             continue
@@ -434,9 +438,9 @@ def _build_timeline(
                 prop_id=prop_id,
                 channel_index=index,
                 preview_channel_index=index,
-                network=address[0].strip(),
-                unit_id=address[1].strip(),
-                circuit=address[2].strip(),
+                network=address.network,
+                unit_id=address.unit_id,
+                circuit=address.circuit,
                 row=row,
                 col=col,
                 color=color,
