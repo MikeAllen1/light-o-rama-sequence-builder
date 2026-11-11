@@ -378,6 +378,53 @@ def test_preview_size_limit_is_enforced_while_reading(tmp_path: Path) -> None:
     with pytest.raises(LorprevError, match="20 MiB limit"):
         read_lorprev(source)
 
+def test_owner_supplied_s6_revision_56_preview_parses_native_prop_group(
+    tmp_path: Path,
+) -> None:
+    fixture = FIXTURES / "s6_revision_56_group_export.lorprev.gz.b64"
+    source = tmp_path / "s6_revision_56_group_export.lorprev"
+    compressed = base64.b64decode(fixture.read_bytes(), validate=True)
+    source.write_bytes(gzip.decompress(compressed))
+
+    model = read_lorprev(source)
+    assert model.revision.value == "56"
+    assert len(model.props) == 51
+    assert len(model.groups) == 1
+
+    group = model.groups[0]
+    assert group.group_id is not None
+    assert group.group_id.value == "661c4882-d019-4894-8812-d8ca520d3659"
+    assert group.name is not None and group.name.value == "Fixture Group 01"
+    assert group.arrangement is not None and group.arrangement.value == "Preview"
+    assert len(group.members) == 5
+    prop_names = {
+        prop.attributes["id"].value: prop.attributes["Name"].value
+        for prop in model.props
+    }
+    assert [
+        prop_names[member.prop_id.value]
+        for member in group.members
+        if member.prop_id is not None
+    ] == [
+        "Fixture Prop 011",
+        "Fixture Prop 010",
+        "Fixture Prop 009",
+        "Fixture Prop 008",
+        "Fixture Prop 007",
+    ]
+    assert all(member.orientation is not None and member.orientation.value == "normal"
+               for member in group.members)
+    assert all(member.top is not None and member.top.value == "0"
+               for member in group.members)
+    assert all(member.left is not None and member.left.value == "0"
+               for member in group.members)
+    assert group.source.locator == "/PreviewClass/PropGroup[0]"
+    assert all(member.source.locator.startswith(group.source.locator + "/member[")
+               for member in group.members)
+    assert model.unsupported_constructs == ()
+    assert model.unrecognized_top_level == ()
+
+
 def test_owner_supplied_default_preview_is_rejected_as_zero_prop_fixture() -> None:
     with pytest.raises(LorprevError, match="zero PropClass"):
         read_lorprev(FIXTURES / "default_empty.lorprev")
@@ -397,7 +444,7 @@ def test_unsupported_revision_fails_clearly(tmp_path: Path) -> None:
     )
     with pytest.raises(
         UnsupportedLorprevRevisionError,
-        match="verified revisions are 0, 1",
+        match="verified revisions are 0, 1, 56",
     ):
         read_lorprev(source)
 
