@@ -46,7 +46,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"Channel-grid entries: {len(model.channel_grid_entries)}")
             print(f"Geometry points: {len(model.geometry_points)}")
             print(f"Unsupported prop/device constructs: {len(model.unsupported_constructs)}")
-            print(f"Unrecognized top-level elements: {len(model.unrecognized_top_level)}")
+            print(f"Unrecognized elements (all levels): {len(model.unrecognized_elements)}")
             return 0
         document = read_loredit(options.sequence)
         if options.command == "inspect":
