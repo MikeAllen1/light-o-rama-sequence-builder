@@ -23,7 +23,7 @@ from typing import Any
 ANALYSIS_SCHEMA_VERSION = "1.3"
 SAMPLE_RATE = 11_025
 FRAME_HOP_SAMPLES = round(SAMPLE_RATE * 0.01)
-FRAME_WINDOW_SAMPLES = round(SAMPLE_RATE * 0.02)
+FRAME_WINDOW_SAMPLES = round(SAMPLE_RATE * 0.05)
 FRAME_SECONDS = FRAME_HOP_SAMPLES / SAMPLE_RATE
 FRAME_WINDOW_SECONDS = FRAME_WINDOW_SAMPLES / SAMPLE_RATE
 FRAME_CENTER_SECONDS = FRAME_WINDOW_SECONDS / 2.0
@@ -120,7 +120,7 @@ def _read_features(wav_path: Path) -> tuple[list[float], list[float], float]:
                 if next_start + window > len(samples):
                     break
                 # Update the overlapping window in O(hop) rather than
-                # recalculating every 20 ms window from all its samples.
+                # recalculating every 50 ms window from all its samples.
                 for index in range(start, next_start):
                     sample = samples[index]
                     window_energy -= float(sample) * sample
@@ -186,7 +186,10 @@ def _estimate_tempo(
     if not candidates:
         return None, 0.0, None, None, 0.0, []
     best_score = max(score for score, _ in candidates)
-    if best_score <= 1e-12:
+    variance = math.fsum(value * value for value in centered) / len(centered)
+    # Reject weak periodic ripple, such as the window-boundary variation of a
+    # steady tone. A candidate must explain a meaningful share of flux variance.
+    if best_score <= max(1e-12, variance * 0.01):
         return None, 0.0, None, None, 0.0, []
     # Autocorrelation has octave/subdivision aliases: the strongest peak can
     # represent a slower metrical level (for example, half-time). Prefer the
@@ -248,12 +251,17 @@ def _estimate_tempo(
         score for offset, score in enumerate(phase_scores)
         if min((offset - phase) % period, (phase - offset) % period) >= separation
     ]
-    alternate_score = max(alternatives, default=0.0)
-    winning_score = phase_scores[phase]
-    phase_confidence = (
-        max(0.0, min(1.0, (winning_score - alternate_score) / (winning_score + 1e-12)))
-        if winning_score > 1e-12 else 0.0
+    half_period_phase = (phase + max(1, round(period / 2))) % period
+    alternate_score = max(
+        max(alternatives, default=0.0), phase_scores[half_period_phase]
     )
+    winning_score = phase_scores[phase]
+    alternate_ratio = alternate_score / (winning_score + 1e-12)
+    # A meaningful accent halfway between candidate beats may be an offbeat
+    # or subdivision. Autocorrelation cannot decide which accent is metrical,
+    # so confidence falls to zero when that competing phase reaches 10% of the
+    # winning phase instead of confidently selecting the louder accent.
+    phase_confidence = max(0.0, min(1.0, 1.0 - alternate_ratio / 0.10))
     return round(bpm, 2), round(confidence, 4), refined_lag, phase, round(phase_confidence, 4), tempo_candidates
 
 
@@ -510,16 +518,16 @@ def analyze_audio(
             },
             "analysis": {
                 "method": "FFmpeg normalization + deterministic RMS/positive-energy-flux/autocorrelation",
-                "provenance": "All timestamps are relative to the decoded audio stream start; RMS and positive energy flux use 220-sample (20 ms) windows every 110 samples (approximately 10 ms), with transient and beat timestamps centered on the analysis window.",
+                "provenance": "All timestamps are relative to the decoded audio stream start; RMS and positive energy flux use 551-sample (approximately 50 ms) windows every 110 samples (approximately 10 ms), with transient and beat timestamps centered on the analysis window.",
                 "limitations": [
                     "Tempo is a single global estimate; tempo changes are not modeled.",
                     "Strong repeating accents, syncopation, and subdivisions can create half-time or double-time ambiguity; candidate peaks are exposed but not musically ranked.",
                     "Beat-grid status is provisional only: unavailable means no grid was produced; ambiguous means tempo-confidence multiplied by phase-confidence is below 0.20; provisional does not mean musically verified.",
-                    "Beat phase is selected from repeating onset energy; competing beat/offbeat phases reduce beat confidence and cannot be resolved reliably without musical context.",
+                    "Beat phase is selected from repeating onset energy; meaningful energy halfway between candidate beats reduces phase confidence because autocorrelation cannot determine whether the stronger accent is the metrical beat or an offbeat.",
                     "Downbeats assume the first detected beat is beat one and group every four beats.",
                     "Phrase boundaries are fixed 16-beat candidates, not semantic phrase detection.",
                     "Section candidates are energy transitions only; verse/chorus labels are not inferred.",
-                    "Onsets are spectral-unaware positive energy-flux peaks from overlapping 20 ms windows on a 10 ms hop; timestamps are window-centered and remain approximate, not sample-accurate musical attacks.",
+                    "Onsets are spectral-unaware positive energy-flux peaks from overlapping 50 ms windows on a 10 ms hop; timestamps are window-centered and remain approximate, not sample-accurate musical attacks.",
                     "The 10 ms hop improves timing resolution but does not by itself validate a 30 ms lighting lead; real-song alignment still requires listening and comparison with finished sequences.",
                     "Hard stops are sustained near-silence candidates and may include intentional pauses.",
                 ],

@@ -6,7 +6,7 @@ This is the manual review procedure for Phase 4. Automated tests use synthetic a
 
 Requirements: Python 3.12, the project environment installed with `uv sync --locked`, and FFmpeg available on `PATH`.
 
-Use a copy of a song you are permitted to analyze. The analyzer does not modify the source audio. Feature extraction uses overlapping 20 ms windows on a 10 ms hop; transient and beat timestamps are window-centered. Both output paths must be new files.
+Use a copy of a song you are permitted to analyze. The analyzer does not modify the source audio. Feature extraction uses overlapping 50 ms windows on a 10 ms hop; transient and beat timestamps are window-centered. Both output paths must be new files.
 
 ```powershell
 uv run lor-sequence-builder analyze-audio .\song.mp3 --output-json .\song.analysis.json --plot .\song.analysis.svg
