@@ -828,6 +828,7 @@ def test_ffmpeg_normalization_restricts_protocol_and_demuxer(
         calls.append(command)
         if "-version" in command:
             return SimpleNamespace(returncode=0, stdout="ffmpeg version test", stderr="")
+        Path(command[-1]).write_bytes(b"\0" * 44)
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(audio_analysis.subprocess, "run", fake_run)
