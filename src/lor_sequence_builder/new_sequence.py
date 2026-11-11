@@ -25,6 +25,10 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath, PureWindowsPath
 
 from lor_sequence_builder.loredit import LoreditDocument
+from lor_sequence_builder.lorprev import (
+    MAX_CHANNEL_GRID_ENTRIES_PER_PROP,
+    MAX_CHANNEL_GRID_ENTRIES_TOTAL,
+)
 from lor_sequence_builder.timeline import ExcludedProp
 
 SAVE_FILE_VERSION = "15"
@@ -77,7 +81,15 @@ class NewSequence:
 
 
 def _channel_count(prop: ET.Element) -> int:
-    return len([entry for entry in prop.attrib.get("ChannelGrid", "").split(";") if entry])
+    value = prop.attrib.get("ChannelGrid", "")
+    if not value:
+        return 0
+    entry_count = value.count(";") + 1
+    if entry_count > MAX_CHANNEL_GRID_ENTRIES_PER_PROP:
+        raise NewSequenceError(
+            f"Prop ChannelGrid exceeds the {MAX_CHANNEL_GRID_ENTRIES_PER_PROP} entry limit"
+        )
+    return sum(bool(entry) for entry in value.split(";"))
 
 
 def channel_layout_problem(prop: ET.Element) -> str | None:
@@ -86,6 +98,9 @@ def channel_layout_problem(prop: ET.Element) -> str | None:
     traditional_type = prop.attrib.get("TraditionalType", "")
     if device_type not in SUPPORTED_DEVICE_TYPES:
         return f"DeviceType {device_type or '(missing)'} has no verified native channel layout"
+    string_type = prop.attrib.get("StringType", "Traditional")
+    if string_type != "Traditional":
+        return f"StringType {string_type!r} has no verified native channel layout"
     if traditional_type not in COLUMN_LAYOUT_TYPES | COLOR_LAYOUT_TYPES:
         return (
             f"TraditionalType {traditional_type or '(missing)'} has no verified native "
@@ -148,6 +163,21 @@ def build_new_sequence(
             prop.set("MasterPropId", prop.attrib["MasterPropId"].strip())
     if not props:
         raise NewSequenceError("Preview contains zero PropClass entries")
+    total_channel_entries = 0
+    for prop in props:
+        grid = prop.attrib.get("ChannelGrid", "")
+        if grid:
+            entry_count = grid.count(";") + 1
+            if entry_count > MAX_CHANNEL_GRID_ENTRIES_PER_PROP:
+                raise NewSequenceError(
+                    f"Prop ChannelGrid exceeds the {MAX_CHANNEL_GRID_ENTRIES_PER_PROP} entry limit"
+                )
+            total_channel_entries += entry_count
+            if total_channel_entries > MAX_CHANNEL_GRID_ENTRIES_TOTAL:
+                raise NewSequenceError(
+                    "Preview exceeds the total ChannelGrid entry limit "
+                    f"of {MAX_CHANNEL_GRID_ENTRIES_TOTAL}"
+                )
     prop_ids = [prop.attrib.get("id", "") for prop in props]
     if any(not prop_id for prop_id in prop_ids) or len(set(prop_ids)) != len(prop_ids):
         raise NewSequenceError("Preview contains missing or duplicate prop identities")
@@ -227,7 +257,7 @@ def build_new_sequence(
     ET.SubElement(root, "RgbAggregates")
     grids = ET.SubElement(root, "TimingGrids")
     ET.SubElement(grids, "TimingGridFixed", {"name": "Fixed Grid: 0.05", "spacing": "5"})
-    seen_names: set[str] = set()
+    seen_names: set[str] = {"Fixed Grid: 0.05"}
     for grid in timing_grids:
         if not isinstance(grid.name, str) or not grid.name.strip() or grid.name in seen_names:
             raise NewSequenceError(f"Timing grid names must be unique and non-empty: {grid.name!r}")

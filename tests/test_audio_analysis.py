@@ -855,3 +855,32 @@ def test_ffmpeg_normalization_rejects_unknown_demuxer(
     )
     with pytest.raises(AudioAnalysisError, match="Unsupported audio file extension"):
         audio_analysis._normalize(tmp_path / "playlist.m3u", tmp_path / "normalized.wav")
+
+
+def test_tempo_octave_normalization_never_returns_out_of_range_values() -> None:
+    from lor_sequence_builder.audio_analysis import _fit_tempo_bounds
+
+    assert _fit_tempo_bounds(80.0, 60, 100) == 80.0
+    assert _fit_tempo_bounds(40.0, 60, 100) == 80.0
+    assert _fit_tempo_bounds(160.0, 60, 200) == 160.0
+    assert _fit_tempo_bounds(160.0, 180, 200) is None
+    assert _fit_tempo_bounds(220.0, 60, 200) == 110.0
+    assert _fit_tempo_bounds(float("nan"), 60, 200) is None
+
+
+def test_section_recurrence_matrix_is_skipped_above_beat_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import numpy as np
+    import lor_sequence_builder.audio_analysis as audio_module
+
+    def unexpected_recurrence(*args: object, **kwargs: object) -> object:
+        raise AssertionError("quadratic recurrence allocation must be skipped")
+
+    monkeypatch.setattr(audio_module.librosa.segment, "recurrence_matrix", unexpected_recurrence)
+    features = np.ones((8, audio_module.MAX_SECTION_RECURRENCE_BEATS + 1), dtype=np.float64)
+
+    novelty = audio_module._section_recurrence_novelty(features)
+
+    assert novelty.shape == (audio_module.MAX_SECTION_RECURRENCE_BEATS + 1,)
+    assert np.count_nonzero(novelty) == 0

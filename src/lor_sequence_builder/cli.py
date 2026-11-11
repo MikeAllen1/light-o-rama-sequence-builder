@@ -340,10 +340,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
-
-
 def _analyze_preview(preview_path: str, report_path: str | None) -> int:
     model = read_lorprev(preview_path)
     if report_path is not None and Path(report_path).exists():
@@ -379,3 +375,7 @@ def _analyze_preview(preview_path: str, report_path: str | None) -> int:
             stream.write(json.dumps(report, indent=2) + "\n")
         print(f"Report: {report_path}")
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

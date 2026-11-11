@@ -557,3 +557,51 @@ def test_timeline_temp_is_written_through_reserved_handle(tmp_path: Path) -> Non
         assert temporary.read_text(encoding="utf-8") == '{"safe": true}'
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def test_pulse_excludes_pixel_string_types(
+    tmp_path: Path, matching_inputs: tuple[Path, Path]
+) -> None:
+    preview, template = matching_inputs
+    preview_tree = ET.parse(preview)
+    template_tree = ET.parse(template)
+    preview_root = preview_tree.getroot()
+    template_root = template_tree.getroot().find("PreviewClass")
+    assert template_root is not None
+    candidate = next(
+        prop for prop in preview_root.findall("PropClass")
+        if prop.get("DeviceType") == "LOR"
+        and prop.get("TraditionalType") == "Single Color"
+    )
+    prop_id = candidate.get("id")
+    assert prop_id is not None
+    candidate.set("StringType", "Pixel")
+    embedded = template_root.find(f"PropClass[@id='{prop_id}']")
+    assert embedded is not None
+    embedded.set("StringType", "Pixel")
+    preview_tree.write(preview, encoding="utf-8", xml_declaration=True)
+    template_tree.write(template, encoding="utf-8", xml_declaration=True)
+
+    output = tmp_path / "pixel-excluded.loredit"
+    timeline_path = tmp_path / "pixel-excluded.json"
+    result = build_pulse_sequence(preview, template, output, timeline_path, bpm=120)
+
+    timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
+    excluded = next(item for item in timeline["excluded_props"] if item["prop_id"] == prop_id)
+    assert "StringType 'Pixel'" in excluded["reason"]
+    assert prop_id not in timeline["supported_prop_ids"]
+    assert all(event["channel"]["prop_id"] != prop_id for event in timeline["events"])
+    assert result.excluded_prop_count == len(timeline["excluded_props"])
+
+
+def test_preview_template_geometry_comparison_rejects_non_finite_coordinates() -> None:
+    from lor_sequence_builder.pulse import _elements_equivalent
+
+    finite = ET.Element("point", {"x": "1.0", "y": "2.0"})
+    nan_coordinate = ET.Element("point", {"x": "nan", "y": "2.0"})
+    same_nan = ET.Element("point", {"x": "nan", "y": "2.0"})
+    invalid_coordinate = ET.Element("point", {"x": "not-a-number", "y": "2.0"})
+
+    assert not _elements_equivalent(finite, nan_coordinate)
+    assert not _elements_equivalent(nan_coordinate, same_nan)
+    assert not _elements_equivalent(invalid_coordinate, invalid_coordinate)
