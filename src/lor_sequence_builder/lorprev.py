@@ -54,11 +54,17 @@ class UnsupportedConstruct:
 
 @dataclass(frozen=True, slots=True)
 class ChannelGridEntry:
-    """One source ChannelGrid entry; comma-separated fields remain uninterpreted."""
+    """One source channel assignment, with documented address fields and raw provenance."""
 
     source: SourceValue
     entry_index: int
+    device_type: str | None
     raw_fields: tuple[str, ...]
+    network: str | None = None
+    unit_id: str | None = None
+    circuit: str | None = None
+    universe: str | None = None
+    channel: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,7 +199,7 @@ def read_lorprev(path: str | Path) -> PropModel:
     unsupported: list[UnsupportedConstruct] = []
     for prop in prop_nodes:
         for attribute, kind, supported_values in (
-            ("DeviceType", "device type", {"LOR", "AC", "DC"}),
+            ("DeviceType", "device type", {"LOR", "DMX", "Undetermined"}),
             (
                 "TraditionalType",
                 "traditional prop type",
@@ -214,13 +220,60 @@ def read_lorprev(path: str | Path) -> PropModel:
     geometry_points: list[GeometryPoint] = []
     for prop in prop_nodes:
         channel_grid = prop.attributes.get("ChannelGrid")
+        device_type_value = prop.attributes.get("DeviceType")
+        device_type = device_type_value.value if device_type_value is not None else None
         if channel_grid is not None:
             for entry_index, entry in enumerate(channel_grid.value.split(";")):
+                raw_fields = tuple(entry.split(","))
+                assignment: dict[str, str | None] = {
+                    "network": None,
+                    "unit_id": None,
+                    "circuit": None,
+                    "universe": None,
+                    "channel": None,
+                }
+                if device_type == "LOR":
+                    if len(raw_fields) >= 3 and all(raw_fields[:3]):
+                        assignment.update(
+                            network=raw_fields[0],
+                            unit_id=raw_fields[1],
+                            circuit=raw_fields[2],
+                        )
+                    else:
+                        unsupported.append(
+                            UnsupportedConstruct(
+                                kind="channel assignment",
+                                detail=(
+                                    "LOR ChannelGrid entry must include network, "
+                                    "Unit ID, and circuit fields"
+                                ),
+                                source=channel_grid,
+                            )
+                        )
+                elif device_type == "DMX":
+                    if len(raw_fields) >= 2 and all(raw_fields[:2]):
+                        assignment.update(
+                            universe=raw_fields[0],
+                            channel=raw_fields[1],
+                        )
+                    else:
+                        unsupported.append(
+                            UnsupportedConstruct(
+                                kind="channel assignment",
+                                detail=(
+                                    "DMX ChannelGrid entry must include universe "
+                                    "and channel fields"
+                                ),
+                                source=channel_grid,
+                            )
+                        )
                 channel_entries.append(
                     ChannelGridEntry(
                         source=channel_grid,
                         entry_index=entry_index,
-                        raw_fields=tuple(entry.split(",")),
+                        device_type=device_type,
+                        raw_fields=raw_fields,
+                        **assignment,
                     )
                 )
         # A point is geometry only when it is a direct child of an observed
