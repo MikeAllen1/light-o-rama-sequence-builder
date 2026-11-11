@@ -776,6 +776,9 @@ def test_direct_choreography_rejects_malformed_numeric_fields_cleanly() -> None:
     with pytest.raises(ChoreographyError, match="duration_centiseconds must be an integer"):
         _check(display, Choreography(duration_centiseconds=cast(int, "1200"), effects=()))
 
+    with pytest.raises(ChoreographyError, match="duration_centiseconds must be an integer"):
+        _check(display, Choreography(duration_centiseconds=cast(int, True), effects=()))
+
     invalid_intensity = Choreography(
         duration_centiseconds=SONG,
         effects=(Effect(_ids(display)["Arch 1"], 0, 0, 100,
