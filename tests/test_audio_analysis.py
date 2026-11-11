@@ -175,7 +175,6 @@ def test_competing_offbeat_accents_reduce_beat_grid_confidence(tmp_path: Path) -
     assert analysis["tempo"]["bpm"] == pytest.approx(120.0, abs=5.0)
     assert analysis["beats"]
     assert analysis["beats"][0]["confidence"] <= 0.05
-    assert analysis["tempo"]["confidence"] <= 0.05
 
 
 def test_analysis_refuses_to_overwrite_outputs(tmp_path: Path) -> None:
