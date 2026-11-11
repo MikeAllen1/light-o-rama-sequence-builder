@@ -338,6 +338,24 @@ def test_writer_converts_malformed_direct_numeric_data_to_sequence_write_error(
     assert not report.exists()
 
 
+
+def test_writer_wraps_invalid_direct_choreography_collection(
+    tmp_path: Path,
+) -> None:
+    display = classic_yard()
+    preview = _preview(tmp_path, display)
+    invalid = Choreography(
+        duration_centiseconds=2000,
+        effects=None,  # type: ignore[arg-type]
+    )
+    with pytest.raises(SequenceWriteError, match="Invalid choreography data"):
+        build_from_timeline(
+            preview, invalid, load_rule_set(), "song.mp3",
+            tmp_path / "invalid-collection.loredit",
+            tmp_path / "invalid-collection.json",
+        )
+
+
 def test_timeline_writer_reports_excluded_preview_props(tmp_path: Path) -> None:
     display = classic_yard()
     display.add(
