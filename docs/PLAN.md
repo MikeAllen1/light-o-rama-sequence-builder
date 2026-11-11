@@ -110,7 +110,7 @@ Build a native S6 v15 `.loredit` from a parsed `.lorprev` alone, with no templat
 **Done when:** A scratch-built sequence for every committed fixture preview is semantically equal to its S6-created reference fixture (props, channel coordinates, addresses, timing, metadata); unsupported props are enumerated, never silently dropped; `pulse` works with only a preview, audio duration or explicit duration, and BPM; the template path is removed or explicitly deprecated; inputs are never modified; the owner opens a scratch-built sequence in S6, confirms it loads, the preview renders, and events appear. Mandatory human gate.
 
 ### Phase 5 — Classifier
-**Status: Implemented; owner review pending.**
+**Status: Complete. Owner confirmed on 2026-11-11 that the conclusions on a real display match how they read it.**
 
 Identify each prop from the preview alone: role (arch, mini tree, mega tree, star, singing face, icicles, outline, snowflake, or unknown), confidence with evidence, row position, direction, segment order, color capability, and whether v1 can sequence its channels. `analyze-preview` prints the conclusions and a review list and can write a JSON report. There is no prop map file (owner decision, 2026-11-11): the preview is the only input, and corrections are made in the S6 Preview Editor.
 
