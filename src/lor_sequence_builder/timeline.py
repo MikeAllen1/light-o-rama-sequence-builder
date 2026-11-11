@@ -42,8 +42,8 @@ class Timeline:
 
     schema_version: str
     timebase: str
-    preview_sha256: str
-    template_sha256: str
+    preview_xml_sha256: str
+    template_xml_sha256: str
     bpm: int
     duration_centiseconds: int
     pulse_duration_centiseconds: int
