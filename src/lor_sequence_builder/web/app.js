@@ -852,7 +852,7 @@
     $("fitButton").addEventListener("click", () => {
       if (!state.sequence) return;
       const available = Math.max(1, canvasViewport.clientWidth - 20);
-      state.pxPerSecond = Math.max(8, Math.min(48, Math.floor(available / state.sequence.durationSeconds)));
+      state.pxPerSecond = Math.max(1, Math.min(48, Math.floor(available / state.sequence.durationSeconds)));
       $("zoomSlider").value = String(state.pxPerSecond);
       refreshTimeline();
       canvasViewport.scrollLeft = 0;
