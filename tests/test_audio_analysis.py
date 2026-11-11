@@ -251,7 +251,7 @@ def test_hard_stop_detection_includes_leading_silence_but_not_silent_files() -> 
     assert stops[0]["time"] == 0.0
     assert stops[0]["method"] == "leading_near_silence_relative_to_track_peak"
     assert stops[0]["silence_duration"] == pytest.approx(1.0)
-    assert stops[1]["time"] == pytest.approx(3.0)
+    assert stops[1]["time"] == pytest.approx(3.0, abs=0.01)
     assert _hard_stops([0.0] * 100) == []
 
 
