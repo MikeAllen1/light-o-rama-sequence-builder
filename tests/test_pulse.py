@@ -7,7 +7,11 @@ from pathlib import Path
 import pytest
 
 from lor_sequence_builder.loredit import read_loredit
-from lor_sequence_builder.pulse import PulseGenerationError, build_pulse_sequence
+from lor_sequence_builder.pulse import (
+    PulseGenerationError,
+    _write_timeline_temp,
+    build_pulse_sequence,
+)
 from tests.fixture_builders import write_synthetic_loredit
 
 
@@ -543,3 +547,13 @@ def test_display_with_no_supported_props_fails_before_output(
         build_pulse_sequence(preview, template, output, timeline, bpm=120)
     assert not output.exists()
     assert not timeline.exists()
+
+def test_timeline_temp_is_written_through_reserved_handle(tmp_path: Path) -> None:
+    temporary = _write_timeline_temp(
+        tmp_path, prefix=".sequence.", suffix=".tmp", content='{"safe": true}'
+    )
+    try:
+        assert temporary.exists()
+        assert temporary.read_text(encoding="utf-8") == '{"safe": true}'
+    finally:
+        temporary.unlink(missing_ok=True)
