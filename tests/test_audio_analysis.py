@@ -480,14 +480,23 @@ def test_concurrent_plot_creation_does_not_leave_partial_json(
     plot_path = tmp_path / "race.svg"
     _click_track(audio)
 
-    def create_competing_plot(path: Path, *args: object, **kwargs: object) -> None:
-        path.write_text("another process won", encoding="utf-8")
+    real_link = audio_analysis.os.link
+    link_calls = 0
 
-    monkeypatch.setattr(audio_analysis, "_svg_plot", create_competing_plot)
+    def create_competing_plot(source: str | Path, destination: str | Path) -> None:
+        nonlocal link_calls
+        link_calls += 1
+        if link_calls == 2:
+            Path(destination).write_text("another process won", encoding="utf-8")
+        else:
+            real_link(source, destination)
+
+    monkeypatch.setattr(audio_analysis.os, "link", create_competing_plot)
 
     with pytest.raises(AudioAnalysisError, match="overwrite"):
         analyze_audio(audio, json_path, plot_path)
 
+    assert link_calls == 2
     assert not json_path.exists()
     assert plot_path.read_text(encoding="utf-8") == "another process won"
     assert not list(tmp_path.glob(".race.*.tmp"))
