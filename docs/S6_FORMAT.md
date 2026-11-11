@@ -115,12 +115,12 @@ Structural observations from native S6 6.6.0.12 musical sequences examined local
 - **Channels:** one per `ChannelGrid` entry. `Single Color` and `Multicolor_string_1_ch` use row 0 with sequential columns; `Channel_per_color` uses row 0, column 0, with sequential colors. Verified on every prop examined.
 - **Timing grids:** a `TimingGridFixed name="Fixed Grid: 0.05" spacing="5"` is present unless a user removes it, followed by any user-made `TimingGridFree` grids.
 - **Root attributes:** `saveFileVersion="15"`, `AppVersion`, `id`, `totalCentiseconds`, and `musicFilename` are always present, plus editor settings with identical values in every sequence examined (`WaveHeight`, `TimingGridIdx`, `DragEventsWithTimings`, `ChaseClearFirst`, `ChaseSameRowType`, `ChaseType`, `AudioAnalysisLevel`, `GridView`, `GridViewSource`, `StartColor`, `EndColor`) and view settings that vary (`NameAreaWidth`, `ZoomWidth`, `ZoomHeight`). `author`, `musicArtist`, `musicTitle`, `musicAlbum`, and `createdAt` are optional.
-- **Audio:** S6 creates musical sequences only with an audio file chosen. `musicFilename` is stored as a relative path such as `Folder\song.mp3`; the base folder it is relative to is not yet confirmed.
+- **Audio:** S6 creates musical sequences only with an audio file chosen. `musicFilename` is stored as a path relative to the user's S6 audio folder (by default `Documents\Audio`), such as `Folder\song.mp3`. S6 reports a missing media file when it is not found there.
 - **Views:** the sequence-level `PropViews` holds editor view state (a system view listing members, expansion, scroll, zoom). New sequences are written with an empty `PropViews`; whether S6 rebuilds its default view on open is checked in the Phase 4b owner gate.
 
 Rebuilding each examined sequence from its embedded preview alone matched every sequence prop, channel coordinate, empty section, and shared root setting, apart from user edits such as a removed fixed grid.
 
-Still unconfirmed, pending a sequence created and saved in S6 with no edits: the default `PropViews` content, default view settings, and the base folder for `musicFilename`.
+Still unconfirmed: the exact default `PropViews` content and view settings S6 writes for a brand-new sequence. S6 accepts an empty `PropViews` and builds its own view on open.
 
 ## What remains to be learned
 

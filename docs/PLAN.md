@@ -97,7 +97,7 @@ Review audio, sequences, and results stay local and are never committed.
 **Done when:** on at least three contrasting songs with trusted grids, beats F ≥ 0.85 and bars F ≥ 0.85 via `evaluate-analysis`; section recall is reported; synthetic tests cover tempo, beats, downbeats, sections, stops, and the schema contract; CI is green; owner approves moving to Phase 4b.
 
 ### Phase 4b — Scratch-built sequence writer
-**Status: Implemented; owner S6 open-test pending.**
+**Status: Complete. Owner S6 open-test passed on 2026-11-11.**
 
 Build a native S6 v15 `.loredit` from a parsed `.lorprev` alone, with no template sequence: sequence metadata, embedded preview, one `SeqProp` and native channel record per supported preview channel, timing grid, duration, and audio reference. Replace the Phase 3 template requirement in `pulse` with this writer.
 
@@ -105,7 +105,7 @@ Build a native S6 v15 `.loredit` from a parsed `.lorprev` alone, with no templat
 
 **Delivered:** `new_sequence.py` builds the eleven-section skeleton, embeds the preview, creates sequence props for non-linked props in preview order with verified channel layouts, excludes and reports unverified prop types, adds the 0.05 s fixed grid and optional free timing grids, and derives a deterministic sequence id. `pulse` builds from the preview alone (`--duration-seconds`, `--music-filename`); `--template` is deprecated. Rebuilding examined sequences from their embedded previews matched every sequence prop, channel coordinate, empty section, and shared root setting. The Timeline field `template_xml_sha256` keeps its name for schema stability; without a template it fingerprints the newly built base sequence.
 
-**Remaining:** owner opens a scratch-built pulse sequence in S6 and confirms it loads without a repair prompt, the preview renders, events appear, and the editor view is usable (new sequences have an empty `PropViews`). The test sequence for this gate must be built from a synthetic preview, not the owner's display.
+**Owner gate (2026-11-11):** a sequence built from a wholly fictional 8-prop display (controller units 10 and 11) with a generated 120 BPM click track opened in S6 6.6.12, imported its embedded preview, rendered all props, and played with pulses on every click across all seven sequence props. S6's load notices were only because the files were opened from inside the zip: the sequence was read-only, and the audio was not yet in place. The notice confirmed that S6 resolves `musicFilename` against the user's S6 audio folder (by default `Documents\Audio`), so `--music-filename` should be the audio file's path relative to that folder.
 
 **Done when:** A scratch-built sequence for every committed fixture preview is semantically equal to its S6-created reference fixture (props, channel coordinates, addresses, timing, metadata); unsupported props are enumerated, never silently dropped; `pulse` works with only a preview, audio duration or explicit duration, and BPM; the template path is removed or explicitly deprecated; inputs are never modified; the owner opens a scratch-built sequence in S6, confirms it loads, the preview renders, and events appear. Mandatory human gate.
 
