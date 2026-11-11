@@ -450,8 +450,6 @@ def _effects_well_formed(ctx: _Context) -> str | None:
                 prop_id=prop_id,
                 centisecond=centisecond,
             )
-        if not _movement_identity_valid(m):
-            continue
         if (
             isinstance(m.start_centisecond, bool)
             or not isinstance(m.start_centisecond, int)
@@ -463,6 +461,8 @@ def _effects_well_formed(ctx: _Context) -> str | None:
                 prop_id=prop_id,
                 centisecond=centisecond,
             )
+            continue
+        if not _movement_identity_valid(m):
             continue
         if not 0 <= m.start_centisecond < m.end_centisecond <= duration:
             ctx.add(f"Movement {m.movement_id!r} must start before it ends, inside the song",
