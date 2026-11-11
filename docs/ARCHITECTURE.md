@@ -205,7 +205,7 @@ The exact `.loredit` schema is not to be inferred from memory. The supplied real
 **Inputs:** Required standalone `.lorprev`, matching native S6 v15 `.loredit` template, integer fixed BPM, pulse duration.
 
 **Responsibilities:**
-- Require exact equality between standalone and embedded preview prop-ID sets. Never remap IDs based on names or order.
+- Require exact equality between standalone and embedded preview prop-ID sets and equality of each prop's `DeviceType`, `TraditionalType`, and `ChannelGrid` declarations. Never remap IDs based on names or order.
 - Limit the initial supported set to `DeviceType=LOR` with `TraditionalType=Single Color` or `Multicolor_string_1_ch`, complete LOR ChannelGrid addresses, and existing native channel records in the matching template.
 - Exclude unsupported prop/device types explicitly in Timeline JSON. If a prop inside the supported type boundary lacks a complete ChannelGrid or native channel mapping, fail before writing.
 - Use existing native `channel` row/col/color coordinates from the template as channel identities. Do not derive or invent these coordinates from ChannelGrid rows.
