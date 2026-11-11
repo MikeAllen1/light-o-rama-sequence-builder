@@ -643,6 +643,7 @@ def build_pulse_sequence(
             },
         )
 
+    output.parent.mkdir(parents=True, exist_ok=True)
     timeline_temp: Path | None = None
     sequence_linked = False
     try:
