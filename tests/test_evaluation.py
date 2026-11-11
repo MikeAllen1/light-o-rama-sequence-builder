@@ -77,7 +77,6 @@ def test_match_events_handles_empty_inputs_and_bad_tolerance() -> None:
         match_events([1.0], [1.0], 0.0)
 
 
-
 def test_analysis_json_rejects_duplicate_object_keys_at_any_depth(tmp_path: Path) -> None:
     path = tmp_path / "duplicate-analysis.json"
     path.write_text(
