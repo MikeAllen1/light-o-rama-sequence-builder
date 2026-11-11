@@ -13,16 +13,16 @@ How it works:
    octave as the song's tempo and smoothed over a few seconds, so it can drift
    with the singer but not jump.
 3. Track beats on the blend with that drifting tempo.
-4. Only inside passages where someone is singing, compare the original and
-   the vocal-guided beats window by window. Use the vocal-guided beats only
-   where they line up with the music better (higher on-beat versus off-beat
-   contrast). Everywhere else the original beats stay exactly as they were, so
-   steady songs are not changed.
+4. Only inside passages where someone is singing, and only where the band's
+   own tempo drifts away from the song's tempo (it is following the singer),
+   use the vocal-guided beats. Everywhere else the original beats stay exactly
+   as they were. On real songs a steady band with a syncopating singer must
+   keep its plain grid: an early version that trusted the voice wherever it
+   lined up better made a steady pop song much worse.
 """
 
 from __future__ import annotations
 
-import itertools
 from typing import Any
 
 import librosa
@@ -40,8 +40,11 @@ TEMPO_SMOOTHING_SECONDS = 3.0
 PASSAGE_GAP_SECONDS = 4.0
 WINDOW_SECONDS = 6.0
 WINDOW_STEP_SECONDS = 1.5
-# Vocal-guided beats must line up better than the original by at least this much.
-MARGIN = 0.02
+# The band counts as following the singer where its local tempo is this far from
+# the song's tempo (in octaves; 0.1 is about 7%).
+DRIFT_LIMIT = 0.1
+# Local tempo estimates near the very start and end of a song are unreliable.
+SETTLE_SECONDS = 8.0
 
 
 def _times(frames: IntArray) -> FloatArray:
@@ -49,15 +52,17 @@ def _times(frames: IntArray) -> FloatArray:
                       dtype=np.float64)
 
 
-def _contrast(times: FloatArray, envelope: FloatArray, start: float, end: float) -> float:
-    frames = [int(t * SAMPLE_RATE / HOP_LENGTH) for t in times if start <= t < end]
-    frames = [f for f in frames if f < envelope.size]
-    if len(frames) < 3:
-        return -1.0
-    on = float(np.mean(envelope[frames]))
-    middles = [(a + b) // 2 for a, b in itertools.pairwise(frames)]
-    off = float(np.mean(envelope[middles]))
-    return (on - off) / (on + off + 1e-12)
+def _tempo_drift(envelope: FloatArray, bpm: float) -> FloatArray:
+    """Per frame, how far the mix's local tempo is from the song's (in octaves)."""
+    local = np.asarray(
+        librosa.feature.tempo(onset_envelope=envelope, sr=SAMPLE_RATE, hop_length=HOP_LENGTH,
+                              aggregate=None, max_tempo=300.0),
+        dtype=np.float64,
+    )
+    local = np.where(np.isfinite(local) & (local > 0), local, bpm)
+    references = bpm * np.array([0.5, 1.0, 2.0])
+    return np.asarray(np.min(np.abs(np.log2(local[None, :] / references[:, None])), axis=0),
+                      dtype=np.float64)
 
 
 def _passages(regions: list[dict[str, Any]]) -> list[tuple[float, float]]:
@@ -118,13 +123,23 @@ def vocal_guided_beats(
     original_times = _times(beat_frames)
     guided_times = _times(guided)
 
+    drift = _tempo_drift(mix, bpm)
+    duration = size * HOP_LENGTH / SAMPLE_RATE
+    window_frames = max(1, int(WINDOW_SECONDS * SAMPLE_RATE / HOP_LENGTH))
     chosen: list[tuple[float, float]] = []
     for start, end in _passages(vocal_regions):
         cursor = start
         while cursor < end:
             stop = min(end, cursor + WINDOW_SECONDS)
-            if (_contrast(guided_times, blend, cursor, stop)
-                    > _contrast(original_times, blend, cursor, stop) + MARGIN):
+            first = int(cursor * SAMPLE_RATE / HOP_LENGTH)
+            span = drift[first:first + window_frames]
+            # The local tempo needs several seconds of music on each side to settle.
+            settled = SETTLE_SECONDS <= cursor and stop <= duration - SETTLE_SECONDS
+            # Only where the band's own tempo wanders away from the song's tempo:
+            # that is when it is following the singer. A steady band is left alone,
+            # because singers syncopate and lining up with the voice is not lining
+            # up with the beat.
+            if settled and span.size and float(np.median(span)) > DRIFT_LIMIT:
                 if chosen and cursor <= chosen[-1][1]:
                     chosen[-1] = (chosen[-1][0], max(chosen[-1][1], stop))
                 else:

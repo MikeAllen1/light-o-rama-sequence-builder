@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import math
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from pathlib import Path
@@ -161,7 +162,9 @@ def test_mouths_stay_still_until_vocals_exist() -> None:
     ids = _ids(display)
     plan, report = _plan(display)
     lit = {e.prop_id for e in plan.choreography.effects}
-    assert ids["Mouth Open"] not in lit and ids["Mouth Closed"] not in lit
+    # Without vocals the mouth never opens; the closed mouth may rest with the face.
+    assert ids["Mouth Open"] not in lit
+    assert ids["Mouth Closed"] in lit
     assert ids["Face Outline"] in lit
     skipped = {s.name: s.reason for s in plan.skipped_props}
     assert "no vocals for this song" in skipped["Mouth Open"]
@@ -390,3 +393,44 @@ def test_any_song_shape_plans_without_breaking_a_rule(seed: int) -> None:
     for make in ALL_DISPLAYS:
         _, report = _plan(make(), analysis)
         assert report.ok, f"{make.__name__}: {report.format_text()}"
+
+
+def test_two_rows_of_the_same_size_stay_separate_and_face_groups_are_not_rows() -> None:
+    display = DisplayBuilder("Two Fictional Rows")
+    for i in range(3):
+        display.add(f"Low Arch {i + 1}", "arch", shape="Arch", channels=2,
+                    box=(-0.9 + 0.06 * i, -0.2, 0.05, 0.04), unit="50")
+        display.add(f"High Arch {i + 1}", "arch", shape="Arch", channels=4,
+                    box=(0.4 + 0.16 * i, -0.37, 0.12, 0.1), unit="51")
+    ring = [(0.1 + 0.05 * math.cos(a), 0.05 * math.sin(a))
+            for a in (k * math.pi / 6 for k in range(13))]
+    names = ("Face Outline", "Face Mouth Open", "Face Mouth Closed")
+    for name in names:
+        display.add(name, "singing_face", shape="Lines-Connected", points=ring, unit="52")
+    display.group("Face", names)
+    props = display_from_preview(display.element()).props
+    low = {props[p].row_id for p in props if props[p].name.startswith("Low")}
+    high = {props[p].row_id for p in props if props[p].name.startswith("High")}
+    assert len(low) == len(high) == 1 and low != high
+    plan, report = _plan(display)
+    assert report.ok, report.format_text()
+    for movement in plan.choreography.movements:
+        rows = {props[p].row_id for p in movement.prop_ids}
+        assert len(rows) == 1
+        assert all(props[p].role == "arch" for p in movement.prop_ids)
+
+
+def test_multi_segment_arches_wipe_across_their_segments() -> None:
+    display = DisplayBuilder("Segmented Fictional Arches")
+    for i in range(4):
+        display.add(f"Segment Arch {i + 1}", "arch", shape="Arch", channels=4,
+                    box=(-0.6 + 0.3 * i, -0.3, 0.2, 0.15), unit="70")
+    plan, report = _plan(display)
+    assert report.ok, report.format_text()
+    chase = next(m for m in plan.choreography.movements if m.kind == "chase")
+    first = chase.prop_ids[0]
+    starts = sorted((e.start_centisecond, e.channel_index) for e in plan.choreography.effects
+                    if e.movement_id == chase.movement_id and e.prop_id == first)
+    assert len({s for s, _ in starts}) == 4  # each segment starts a little later
+    expected = [0, 1, 2, 3] if chase.direction == "left_to_right" else [3, 2, 1, 0]
+    assert [c for _, c in starts] == expected

@@ -170,6 +170,7 @@ class DisplayProp:
     position_in_row: int | None
     row_size: int | None
     figure: tuple[str, ...] = field(default_factory=tuple)
+    row_id: str | None = None
 
     @property
     def sequenceable(self) -> bool:
@@ -210,6 +211,7 @@ def display_from_preview(preview: ET.Element) -> Display:
             group=c.group,
             position_in_row=c.position_in_row,
             row_size=c.row_size,
+            row_id=c.row_id,
             figure=tuple(
                 pid for name in c.figure for pid in name_to_ids.get(name, [])
                 if len(name_to_ids[name]) == 1
@@ -504,9 +506,7 @@ def _chases_follow_layout(ctx: _Context) -> str | None:
         known = [p for p in props if p is not None]
         if m.direction in {"row_order", "reverse_row_order"}:
             positions = [p.position_in_row for p in known]
-            if any(pos is None for pos in positions) or len(
-                {(p.group, p.row_size, p.role) for p in known}
-            ) != 1:
+            if any(pos is None for pos in positions) or len({p.row_id for p in known}) != 1:
                 ctx.add(f"The {m.kind} {m.movement_id!r} follows row order, but its props are "
                         "not one row in the preview", prop_id=m.prop_ids[0],
                         centisecond=m.start_centisecond)
@@ -628,12 +628,15 @@ def _face_outline_with_mouth(ctx: _Context) -> str | None:
 
 def _mouths_only_during_vocals(ctx: _Context) -> str | None:
     mouth_words = ctx.settings.params["mouth_names"]
+    rest_words = ctx.settings.params.get("rest_names", [])
+    # A closed (resting) mouth may stay on with the face; only moving mouths count.
     mouths = {
         pid for face in _faces(ctx) for pid in face
         if _named(ctx.display.props[pid].name, mouth_words)
+        and not _named(ctx.display.props[pid].name, rest_words)
     }
     if not mouths:
-        return "the preview has no singing-face mouth props"
+        return "the preview has no singing-face mouth props that open"
     if ctx.choreography.vocal_regions is None:
         return "vocals were not analyzed for this song yet"
     vocals = _merge(ctx.choreography.vocal_regions)

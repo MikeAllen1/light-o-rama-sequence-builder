@@ -129,6 +129,8 @@ class PropClassification:
     row_size: int | None = None
     figure: tuple[str, ...] = field(default_factory=tuple)
     review_notes: tuple[str, ...] = field(default_factory=tuple)
+    # Identifies the row this prop belongs to; two rows of the same size are distinct.
+    row_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -649,7 +651,8 @@ def _finish(
             members.sort(key=lambda pid: geometries[pid].center_x)  # type: ignore[union-attr]
         for index, prop_id in enumerate(members, start=1):
             by_id[prop_id] = dataclasses.replace(
-                by_id[prop_id], position_in_row=index, row_size=len(members)
+                by_id[prop_id], position_in_row=index, row_size=len(members),
+                row_id=f"{key}/{role}",
             )
     return tuple(by_id[r.prop_id] for r in results)
 

@@ -143,12 +143,13 @@ def test_a_face_sings_with_shapes_blinks_and_its_outline() -> None:
     # Exactly one mouth at a time.
     for a, b in itertools.pairwise(mouth_effects):
         assert a.end_centisecond <= b.start_centisecond
-    # The face rests between phrases and before the singing starts.
-    face_ids = {ids[n] for n in ("Face Outline", "Eyes Open", "Eyes Closed", *mouths.values())}
-    assert not [e for e in timeline.effects if e.prop_id in face_ids
-                and e.start_centisecond < 190]
-    assert not [e for e in timeline.effects if e.prop_id in face_ids
-                and 500 < e.start_centisecond < 790]
+    # Before the singing and between phrases the face holds still: outline, open
+    # eyes and the closed mouth, never an open mouth.
+    moving = {ids[n] for n in ("Mouth Half", "Mouth Open", "Mouth O")}
+    resting = [e for e in timeline.effects if e.start_centisecond < 190
+               or 500 < e.start_centisecond < 790]
+    assert not [e for e in resting if e.prop_id in moving]
+    assert {ids["Face Outline"], ids["Mouth Closed"]} <= {e.prop_id for e in resting}
     blinks = [e for e in timeline.effects if e.prop_id == ids["Eyes Closed"]]
     assert blinks and all(e.end_centisecond - e.start_centisecond == 15 for e in blinks)
     # The rest of the display still gets its normal look.
@@ -265,3 +266,26 @@ def test_separation_explains_how_to_get_it(tmp_path: Path,
                         lambda: False)
     with pytest.raises(SeparationError, match="uv sync --extra vocals"):
         separate_vocals(tmp_path / "song.wav", tmp_path / "v.wav")
+
+
+def test_a_mustache_face_sings_with_up_open_and_down_resting() -> None:
+    d = DisplayBuilder("Fictional Snowman Face")
+    ring = [(0.5 + 0.1 * np.cos(a), 0.1 * np.sin(a)) for a in np.linspace(0, 2 * np.pi, 13)]
+    d.add("Snowman Face Outline", "singing_face", shape="Lines-Connected", unit="60",
+          points=[(float(x), float(y)) for x, y in ring])
+    for name, y in (("Snowman Mustache Down", -0.05), ("Snowman Mustache Up", -0.03)):
+        d.add(name, "singing_face", shape="Lines-Connected", unit="60",
+              points=[(0.46, y), (0.5, y + 0.01), (0.54, y)])
+    ids = {p.get("Name", ""): p.get("id", "") for p in d.element().findall("PropClass")}
+    plan, report = _plan(d, _vocals())
+    assert report.ok, report.format_text()
+    statuses = {r.rule_id: r.status for r in report.results}
+    assert statuses["mouths_only_during_vocals"] == "passed"
+    up = [e for e in plan.choreography.effects if e.prop_id == ids["Snowman Mustache Up"]]
+    down = [e for e in plan.choreography.effects if e.prop_id == ids["Snowman Mustache Down"]]
+    assert len(up) >= 5 and down
+    regions = plan.choreography.vocal_regions or ()
+    assert all(any(a <= e.start_centisecond and e.end_centisecond <= b for a, b in regions)
+               for e in up)
+    # The resting mustache also shows before anyone sings.
+    assert any(e.start_centisecond < 190 for e in down)

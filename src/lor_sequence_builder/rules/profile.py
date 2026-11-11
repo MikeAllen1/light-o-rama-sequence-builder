@@ -73,7 +73,7 @@ RULE_SPECS: dict[str, RuleSpec] = {
             "mouths_only_during_vocals",
             "Mouths move only while someone is singing",
             False,
-            {"mouth_names": _NAMES},
+            {"mouth_names": _NAMES, "rest_names": _NAMES},
         ),
         RuleSpec(
             "single_color_only_where_possible",

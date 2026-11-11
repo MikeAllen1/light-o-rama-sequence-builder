@@ -269,6 +269,7 @@ def _constraints(display: Display, rule_set: RuleSet, vocals_known: bool) -> _Co
         *rule_set.rules["face_outline_with_mouth"].params.get("mouth_names", []),
         *rule_set.rules["mouths_only_during_vocals"].params.get("mouth_names", []),
     })
+    rest_words = rule_set.rules["mouths_only_during_vocals"].params.get("rest_names", [])
     for prop in display.props.values():
         if prop.linked_to is not None:
             master = display.props.get(prop.linked_to)
@@ -276,7 +277,8 @@ def _constraints(display: Display, rule_set: RuleSet, vocals_known: bool) -> _Co
                 f"driven by its master prop {master.name if master else '(missing)'}")
         elif prop.layout_problem is not None:
             c.excluded[prop.prop_id] = f"cannot be sequenced yet: {prop.layout_problem}"
-        elif prop.role == "singing_face" and _named(prop.name, mouth_words) and not vocals_known:
+        elif (prop.role == "singing_face" and _named(prop.name, mouth_words)
+              and not _named(prop.name, rest_words) and not vocals_known):
             c.excluded[prop.prop_id] = (
                 "no vocals for this song: pass --vocals, or install the vocals add-on")
         else:
@@ -326,13 +328,15 @@ class _Row:
 
 
 def _rows(display: Display, usable: set[str]) -> tuple[list[_Row], list[str]]:
-    keyed: dict[tuple[str, str | None, int | None], list[DisplayProp]] = defaultdict(list)
+    keyed: dict[tuple[str, str], list[DisplayProp]] = defaultdict(list)
     for prop in display.props.values():
-        if prop.prop_id in usable and prop.position_in_row is not None:
-            keyed[(prop.role, prop.group, prop.row_size)].append(prop)
+        # Parts of a singing face share a group but are never chased like a row.
+        if (prop.prop_id in usable and prop.position_in_row is not None
+                and prop.row_id is not None and prop.role != "singing_face"):
+            keyed[(prop.role, prop.row_id)].append(prop)
     rows: list[_Row] = []
     in_rows: set[str] = set()
-    for (role, _, _), members in sorted(keyed.items(), key=lambda kv: str(kv[0])):
+    for (role, _), members in sorted(keyed.items(), key=lambda kv: str(kv[0])):
         if len(members) < 2:
             continue
         ordered = sorted(members, key=lambda p: p.position_in_row or 0)
@@ -413,6 +417,9 @@ class _Planner:
     sections: list[PlannedSection]
     canvas: _Canvas
     movement_counter: int = 0
+    # Mid-energy sections hit hard; quiet and loud ones flare and decay. Mixing the
+    # two is what keeps a show from feeling all-flash or all-fade.
+    soft: bool = True
     turns: dict[frozenset[str], int] = field(default_factory=dict)
 
     def channels(self, pid: str, section_index: int) -> list[int]:
@@ -431,11 +438,19 @@ class _Planner:
 
     def light(self, pid: str, section_index: int, start: int, end: int, kind: str = "on",
               intensity: int = 100, end_intensity: int | None = None,
-              movement: str | None = None) -> bool:
+              movement: str | None = None, sweep: str | None = None) -> bool:
+        """Light a prop. ``sweep`` ("forward" or "back") staggers a multi-segment prop's
+        segments so the light wipes across it instead of switching on all at once."""
+        channels = self.channels(pid, section_index)
+        step = 0
+        if sweep is not None and len(channels) > 1:
+            step = min(SWEEP_STEP, (end - start) // (2 * len(channels)))
+            if sweep == "back":
+                channels = list(reversed(channels))
         placed = False
-        for ch in self.channels(pid, section_index):
-            placed |= self.canvas.put(pid, ch, start, end, kind, intensity, end_intensity,
-                                      self.color(pid, ch), movement)
+        for index, ch in enumerate(channels):
+            placed |= self.canvas.put(pid, ch, start + index * step, end, kind, intensity,
+                                      end_intensity, self.color(pid, ch), movement)
         return placed
 
     def direction_for(self, row: _Row, kind: str) -> tuple[tuple[str, ...], str]:
@@ -482,12 +497,14 @@ class _Planner:
             if end > window.end:
                 break
             movement_id = self.movement("chase", order, direction, start, end)
+            wipe = _sweep_for(direction)
             for pid, step in zip(order, steps, strict=True):
                 length = _beat_length(window, step) * every
                 stop = min(beats[step] + length, end)
+                # Each step flares and decays, leaving a short tail behind the chase.
                 self.light(pid, window.section_index, beats[step], stop,
-                           "fade" if every > 1 else "on", intensity,
-                           0 if every > 1 else None, movement_id)
+                           "fade" if self.soft or every > 1 else "on", intensity,
+                           0 if every > 1 else TAIL, movement_id, sweep=wipe)
             placed = True
             index += n * every
         return placed
@@ -504,9 +521,10 @@ class _Planner:
             if step < 5:
                 continue
             movement_id = self.movement("fill", order, direction, bar_start, bar_end)
+            wipe = _sweep_for(direction)
             for i, pid in enumerate(order):
                 self.light(pid, window.section_index, bar_start + i * step, bar_end,
-                           movement=movement_id)
+                           movement=movement_id, sweep=wipe)
             placed = True
         return placed
 
@@ -515,19 +533,24 @@ class _Planner:
             for i, pid in enumerate(props):
                 if i % 2 == b % 2:
                     self.light(pid, window.section_index, beat,
-                               beat + _beat_length(window, b), intensity=90)
+                               beat + _beat_length(window, b), "fade" if self.soft else "on",
+                               90, TAIL)
 
-    def pulse(self, pid: str, window: _Window, marks: str = "beats", intensity: int = 100
-              ) -> None:
+    def pulse(self, pid: str, window: _Window, marks: str = "beats", intensity: int = 100,
+              per_beat: int = 1) -> None:
+        """Hit on each beat (or each bar, or each half beat) and decay quickly."""
         if marks == "beats":
-            times = list(window.beats)
+            times: list[int] = []
+            for b, beat in enumerate(window.beats):
+                length = _beat_length(window, b)
+                times.extend(beat + (length * k) // per_beat for k in range(per_beat))
         else:
             times = [a for a, _ in _bars(window)]
         for i, t in enumerate(times):
             following = times[i + 1] if i + 1 < len(times) else window.end
-            length = max(5, (following - t) // 2)
+            length = max(5, (following - t) * 3 // 4)
             self.light(pid, window.section_index, t, min(window.end, t + length),
-                       intensity=intensity)
+                       "fade" if self.soft else "on", intensity, 0)
 
     def breathe(self, pid: str, window: _Window, intensity: int) -> None:
         """Swell on each bar and fade away by the next one."""
@@ -561,6 +584,16 @@ class _CannotHonor(Exception):
     pass
 
 
+# A multi-segment prop's segments start this far apart (centiseconds) in a wipe.
+SWEEP_STEP = 8
+# Chase steps and alternating hits fade to this level rather than cutting off.
+TAIL = 20
+
+
+def _sweep_for(direction: str) -> str:
+    return "back" if direction in {"right_to_left", "reverse_row_order"} else "forward"
+
+
 def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[str],
           active: set[str], variant: int, flip: bool) -> None:
     """One phrase of one section: what each kind of prop does at this energy level.
@@ -569,6 +602,7 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
     ``flip`` spins multi-segment props the other way.
     """
     level = planner.sections[window.section_index].level
+    planner.soft = level != MID
 
     for row in rows:
         members = [pid for pid in row.props if pid in active]
@@ -585,7 +619,7 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
                 moved = planner.chase(row, members, window, every=1, intensity=90)
             elif level == HIGH:
                 for pid in members:
-                    planner.pulse(pid, window)
+                    planner.pulse(pid, window, per_beat=2)
         elif row.role == "arch":
             if level == LOW and variant == 0:
                 moved = planner.chase(row, members, window, every=2, intensity=80)
@@ -625,7 +659,7 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
                 planner.pulse(pid, window)
             else:
                 planner.rotate(pid, window, 60 if level == LOW else 100,
-                               2 if level == HIGH else 1, reverse=flip)
+                               {LOW: 1, MID: 2, HIGH: 4}[level], reverse=flip)
         elif prop.role == "star":
             planner.steady(pid, window, 100, "twinkle" if level == HIGH else "on")
         elif prop.role == "snowflake":
@@ -693,9 +727,9 @@ def _accent(planner: _Planner, window: _Window, active: set[str]) -> int:
 
 # ---------------------------------------------------------------- singing faces
 
-_CLOSED = {"closed", "close", "shut", "rest"}
+_CLOSED = {"closed", "close", "shut", "rest", "down"}
 _HALF = {"half", "mid", "middle", "partial", "semi"}
-_OPEN = {"open", "full", "wide"}
+_OPEN = {"open", "full", "wide", "up"}
 _ROUND = {"o", "oo", "ooh", "round"}
 _BLINK = {"closed", "close", "shut", "blink"}
 BLINK_EVERY = 300
@@ -723,6 +757,7 @@ def _faces(display: Display, rule_set: RuleSet, usable: set[str]) -> list[_Face]
         *rule_set.rules["face_outline_with_mouth"].params.get("mouth_names", []),
         *rule_set.rules["mouths_only_during_vocals"].params.get("mouth_names", []),
     })
+    rest_words = rule_set.rules["mouths_only_during_vocals"].params.get("rest_names", [])
     seen: set[str] = set()
     faces: list[_Face] = []
     for prop in display.props.values():
@@ -737,7 +772,8 @@ def _faces(display: Display, rule_set: RuleSet, usable: set[str]) -> list[_Face]
             name = display.props[pid].name
             words = _words(name)
             if _named(name, mouth_words):
-                shape = ("closed" if words & _CLOSED else "half" if words & _HALF
+                shape = ("closed" if words & _CLOSED or _named(name, rest_words)
+                         else "half" if words & _HALF
                          else "round" if words & _ROUND else "open")
                 face.mouths.setdefault(shape, pid)
             elif words & {"eye", "eyes"}:
@@ -749,6 +785,31 @@ def _faces(display: Display, rule_set: RuleSet, usable: set[str]) -> list[_Face]
         if face.members:
             faces.append(face)
     return faces
+
+
+def _rest_spans(sections: list[PlannedSection], regions: list[tuple[int, int]],
+                stops: list[tuple[int, int]], face: _Face, constraints: _Constraints
+                ) -> list[tuple[int, int, int]]:
+    """Mid and high energy stretches with no singing and no hard stop."""
+    spans: list[tuple[int, int, int]] = []
+    for index, section in enumerate(sections):
+        if section.level < MID or any(section.label.lower() in constraints.quiet.get(p, set())
+                                      for p in face.members):
+            continue
+        pieces = [(section.start_centisecond, section.end_centisecond)]
+        for a, b in [*regions, *stops]:
+            next_pieces = []
+            for s, e in pieces:
+                if b <= s or a >= e:
+                    next_pieces.append((s, e))
+                    continue
+                if s < a:
+                    next_pieces.append((s, a))
+                if b < e:
+                    next_pieces.append((b, e))
+            pieces = next_pieces
+        spans.extend((s, e, index) for s, e in pieces if e - s >= 50)
+    return spans
 
 
 def display_has_mouths(display: Display, rule_set: RuleSet) -> bool:
@@ -812,6 +873,16 @@ def _sing(planner: _Planner, face: _Face, regions: list[tuple[int, int]],
             cursor = b
         if "closed" in shapes and end - cursor >= 5:
             planner.light(shapes["closed"], section, cursor, end)
+
+
+def _rest(planner: _Planner, face: _Face, spans: list[tuple[int, int, int]]) -> None:
+    """Between songs' vocal lines, a face holds still: outline, eyes, closed mouth."""
+    parts = [*face.outline, *face.others, *face.eyes_open]
+    if "closed" in face.mouths and face.outline:
+        parts.append(face.mouths["closed"])
+    for start, end, section in spans:
+        for pid in parts:
+            planner.light(pid, section, start, end)
 
 
 def _joined(effects: list[Effect]) -> list[Effect]:
@@ -882,6 +953,7 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
                            for p in face.members)
             ]
             _sing(planner, face, allowed_regions, syllables, section_at)
+            _rest(planner, face, _rest_spans(sections, regions, music.stops, face, constraints))
             singing |= face.members
         if not faces:
             notes.append("Vocals were analyzed, but the preview has no singing face to use them.")
