@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10151c">
+  <title>LOR Sequencing Workspace</title>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">L</div>
+      <div>
+        <div class="brand-name">LOR SEQUENCER</div>
+        <div class="brand-subtitle">MUSIC · TIMELINE · LIGHTING</div>
+      </div>
+    </div>
+    <div class="toolbar">
+      <label class="tool-button primary">
+        <span>Open sequence</span>
+        <input id="sequenceFile" type="file" accept=".loredit,.xml,application/xml,text/xml">
+      </label>
+      <label class="tool-button">
+        <span>Open audio</span>
+        <input id="audioFile" type="file" accept="audio/*,.mp3,.mp4,.wav,.flac,.m4a,.ogg,.opus">
+      </label>
+      <label class="tool-button subtle">
+        <span>Load analysis</span>
+        <input id="analysisFile" type="file" accept=".json,application/json">
+      </label>
+      <label class="tool-button subtle">
+        <span>Load vocals</span>
+        <input id="vocalsFile" type="file" accept=".json,application/json">
+      </label>
+      <span class="toolbar-divider"></span>
+      <button id="playButton" class="icon-button" type="button" disabled aria-label="Play audio">▶</button>
+      <button id="stopButton" class="icon-button" type="button" disabled aria-label="Stop audio">■</button>
+      <label class="meter-control" title="Meter used for downbeat analysis">
+        <span>Meter</span>
+        <select id="meterSelect">
+          <option value="4" selected>4/4</option>
+          <option value="3">3/4</option>
+        </select>
+      </label>
+      <label class="zoom-control">
+        <span>Zoom</span>
+        <input id="zoomSlider" type="range" min="8" max="48" value="22" step="1">
+      </label>
+      <button id="fitButton" class="tool-button subtle" type="button">Fit</button>
+    </div>
+    <div id="connectionStatus" class="connection-status">LOCAL WORKSPACE</div>
+  </header>
+
+  <main>
+    <section id="welcome" class="welcome">
+      <div class="welcome-kicker">BROWSER-FIRST SEQUENCING</div>
+      <h1>See the music.<br><span>Shape the show.</span></h1>
+      <p>Open an actual Light-O-Rama S6 sequence and its audio. The workspace builds its tracks from the sequence's real props, channels, timing grids, and effects.</p>
+      <div class="welcome-actions">
+        <label class="tool-button primary large">
+          <span>Open a .LOREDIT sequence</span>
+          <input id="welcomeSequenceFile" type="file" accept=".loredit,.xml,application/xml,text/xml">
+        </label>
+        <label class="tool-button large">
+          <span>Open matching audio</span>
+          <input id="welcomeAudioFile" type="file" accept="audio/*,.mp3,.mp4,.wav,.flac,.m4a,.ogg,.opus">
+        </label>
+      </div>
+      <div class="welcome-note">Your files stay on this computer. Audio analysis runs through the local Python engine when this workspace is started with <code>lor-sequence-ui</code>.</div>
+      <div class="capability-strip">
+        <span>Native S6 tracks</span><span>Shared timebase</span><span>Real waveform</span><span>Beat analysis</span><span>Effect inspection</span>
+      </div>
+    </section>
+
+    <section id="editor" class="editor hidden">
+      <div class="sequence-bar">
+        <div class="sequence-identity">
+          <div class="sequence-title" id="sequenceTitle">No sequence loaded</div>
+          <div class="sequence-subtitle" id="sequenceSubtitle">Open a native S6 .loredit file to populate the timeline</div>
+        </div>
+        <div class="sequence-stats">
+          <div><strong id="durationStat">—</strong><span>DURATION</span></div>
+          <div><strong id="propStat">—</strong><span>PROPS</span></div>
+          <div><strong id="channelStat">—</strong><span>CHANNELS</span></div>
+          <div><strong id="effectStat">—</strong><span>EFFECTS</span></div>
+          <div><strong id="tempoStat">—</strong><span>EST. BPM</span></div>
+        </div>
+      </div>
+
+      <div class="analysis-banner" id="analysisBanner" role="status">
+        <span class="status-dot"></span><span id="analysisMessage">Open the matching audio to build its waveform and analyze musical events.</span>
+      </div>
+
+      <div class="timeline-workspace">
+        <aside class="labels-viewport" id="labelsViewport">
+          <div id="labelsContent" class="labels-content">
+            <div class="label-ruler">TRACK / TIME</div>
+            <div class="label-wave">AUDIO WAVEFORM</div>
+            <div id="markerLabels"></div>
+            <div id="trackLabels"></div>
+          </div>
+        </aside>
+        <div class="canvas-viewport" id="canvasViewport">
+          <div class="canvas-content" id="canvasContent">
+            <canvas id="rulerCanvas" class="ruler-canvas"></canvas>
+            <canvas id="waveformCanvas" class="waveform-canvas"></canvas>
+            <canvas id="markersCanvas" class="markers-canvas"></canvas>
+            <canvas id="tracksCanvas" class="tracks-canvas"></canvas>
+            <div id="playhead" class="playhead"></div>
+          </div>
+        </div>
+      </div>
+
+      <footer class="bottom-panel">
+        <div class="inspector">
+          <div class="inspector-heading">EVENT INSPECTOR</div>
+          <div id="inspectorContent" class="inspector-content">Select an effect block to inspect its native settings and exact timing.</div>
+        </div>
+        <div class="legend">
+          <span><i class="legend-intensity"></i>Intensity</span>
+          <span><i class="legend-twinkle"></i>Twinkle</span>
+          <span><i class="legend-shimmer"></i>Shimmer</span>
+          <span><i class="legend-beat"></i>Estimated beat</span>
+          <span><i class="legend-downbeat"></i>Estimated downbeat</span>
+        </div>
+        <div class="read-only-note">REFERENCE VIEW · SOURCE FILES ARE READ-ONLY</div>
+      </footer>
+      <audio id="audioPlayer" preload="metadata"></audio>
+    </section>
+  </main>
+</body>
+</html>

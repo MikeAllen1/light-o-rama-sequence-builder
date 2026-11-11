@@ -1,12 +1,13 @@
 # Implementation Plan
 
-**Status:** Phases 0 through 6b are complete and merged. Phase 7 (Planner v1) is in review; its owner S6 playback gate is pending.  
-**Current phase:** Phase 7 — Planner v1 (PR #39, owner playback gate pending).  
-**Next phase:** Phase 8 — Vocals (PR #44), stacked on Phase 7 and to be reviewed only after Phase 7. No later phase is authorized until the required owner gate and approval are recorded.
+**Status:** Phases 0 through 6b are complete. Phase 7 planner code is merged, with the owner S6 playback gate still pending. Phase 8 vocal analysis remains in PR #44. Phase 11A browser workspace is owner-authorized and in progress on a separate branch.
+**Current phase:** Phase 11A — Browser-first professional sequencing workspace (Issue #47; branch `ui/browser-sequencer-foundation`).
+**Parallel engine status:** Phase 8 remains in PR #44, still based on `phase-7/planner-v1`; do not assume its real-vocal or owner playback gates are complete.
+**Delivery boundary:** The browser is the development interface. Desktop packaging remains deferred until the final stage.
 
 ## Product objective and fixed requirements
 
-Build a display-independent CLI that accepts audio plus a required Light-O-Rama .lorprev preview and produces a new native S6 .loredit sequence. The user workflow is analyze the preview → review the report and fix anything wrong in the S6 Preview Editor → generate. Timeline JSON is the single source of truth and is saved beside the output.
+Build a display-independent Python engine and CLI that accept audio plus a required Light-O-Rama .lorprev preview and produce a new native S6 .loredit sequence. Add a browser-based sequencing workspace that opens real S6 sequences and matching audio on a shared, musically aligned timeline. The browser workspace is the development interface; desktop packaging is deferred until the final stage. Timeline JSON remains the single source of truth for generated choreography.
 
 - Preview is mandatory for analyze and generate. Missing, unreadable, malformed, unsupported-version, or zero-prop previews fail clearly.
 - Props, controllers, and channels must originate from the preview. Never invent or silently reassign them.
@@ -16,7 +17,7 @@ Build a display-independent CLI that accepts audio plus a required Light-O-Rama 
 - The preview is the only display input (owner decision, 2026-11-11). There is no separate prop map: the tool reads the preview the way a person would, and corrections are made in the S6 Preview Editor.
 - Rules are configuration; invalid Timelines fail with readable rule, prop/channel, and timestamp details.
 - Never modify/overwrite inputs. Output is a new file.
-- V1 excludes GUI, controller upload, live playback, and editing existing sequences.
+- The browser workspace is in scope; desktop wrappers and packaging are deferred to the final stage. Controller upload and live hardware playback remain out of scope. The first browser workspace is read-only; editing and writing existing sequences are subsequent phases.
 - Python 3.12, uv + committed lockfile, Pydantic, Typer, pytest, Ruff, strict mypy.
 - XML via defusedxml; YAML safe_load; FFmpeg argument list, never shell=True; input size/type/duration limits.
 - No secrets in code; .env gitignored; pin dependencies and run pip-audit.
@@ -145,7 +146,7 @@ Owner request (2026-11-11): an optional step before building where a person can 
 **Not verified:** a live call to the translation service. It needs the owner's API key and is optional.
 
 ### Phase 7 — Planner v1
-**Status: Built; owner playback gate pending.**
+**Status: Merged to master in PR #39; owner playback gate pending.**
 
 Build section-aware choreography with basic effects.
 
@@ -168,9 +169,39 @@ Build motifs, call-and-response, signature moments, and richer dynamics.
 **Done when:** Two different songs produce noticeably different shows; fixed inputs/config produce deterministic planning; owner confirms arrangements are distinct and coherent.
 
 ### Phase 10 — Polish
-Build reports, docs, packaging, example profiles, and installation workflow.
+Build reports, docs, Python package distribution, example profiles, and installation workflow. Desktop wrapping and desktop packaging are not part of this phase; they are final delivery work after the browser sequencing and editing workflows are complete.
 
 **Done when:** A new user can install and run by following README; reports cover generated/used/unused props, unsupported items, rules compliance, and physical-test needs; examples are included; CI is green.
+
+### Phase 11A — Browser-first sequencing workspace
+
+**Status: In progress. Owner-authorized on 2026-11-11.**  
+**Issue:** #47 — Browser-first professional sequencing workspace  
+**Branch:** `ui/browser-sequencer-foundation`
+
+Build the sequencing workspace in the browser using the existing Python engine. This is not a desktop application phase.
+
+**First delivery slice:**
+- Open real native S6 v15 LOREDIT and matching audio using local file selection.
+- Build tracks from actual sequence props, channels, embedded PropGroup membership, and native effect records.
+- Display the full sequence duration with a shared ruler, actual decoded waveform, native timing grids, estimated musical event lanes, and lighting tracks.
+- Run the existing librosa analyzer through a loopback-only local endpoint when audio is selected.
+- Optionally display `vocals-1.0` reports as heuristic vocal regions and syllable candidates; no words or lyrics are inferred.
+- Support synchronized zoom/scroll, audio playback, playhead seeking, track/group collapse, and effect inspection.
+- Keep original files read-only; this first slice does not edit or rewrite sequences.
+- Do not commit owner LOREDIT files, copyrighted audio, or sanitized derivatives.
+
+**Acceptance:** the four owner-provided reference sequences and their corresponding audio open correctly; prop/channel/effect/timing-grid counts and sequence duration match the source; waveform comes from actual audio samples; all musical and lighting lanes remain aligned through zoom/scroll; large sequences remain responsive; tests and CI pass.
+
+**Desktop boundary:** no Electron, Tauri, installer, or desktop wrapper work during Phase 11A. Desktop packaging is reserved for the final delivery stage.
+
+### Final delivery — Desktop wrapper and packaging
+
+This is the final product-delivery stage, not a prerequisite for sequencing development.
+
+Build the desktop wrapper, installer, and platform-specific packaging only after the browser-based sequencing workspace, musical analysis workflow, and editing/export capabilities are complete and accepted. Reuse the browser workspace and existing Python engine; do not fork the sequencing logic into a separate desktop implementation.
+
+**Done when:** the accepted browser sequencing workflow runs as a packaged desktop application, source and generated files remain protected by the same validation rules, installers are reproducible, and owner verification confirms the complete workflow on the target desktop environment.
 
 ## Definition of done for every phase
 
@@ -196,13 +227,14 @@ See [GITHUB_WORKFLOW.md](GITHUB_WORKFLOW.md) for branch, PR, review, merge, and 
 ### Current implementation handoff — 2026-11-11
 This is the authoritative current-state summary; older entries below are chronological implementation history.
 
-- **Phase 0–4b:** complete. Phase 4 rework was accepted in PR #17; the scratch-built sequence writer was completed and S6-checked in PR #23. The earlier stdlib audio-analysis acceptance text is historical and is not a current blocker.
+- **Phase 0–4b:** complete. Phase 4 rework was accepted in PR #17; the scratch-built sequence writer was completed and S6-checked in PR #23.
 - **Phase 5:** complete and owner-accepted; PR #29 merged.
-- **Phase 6:** complete; PR #34 merged. Native S6 verification of fade, TWINKLE, and SHIMMER output remains a known check for the Phase 7 owner playback gate.
-- **Phase 6b:** complete; PR #36 merged. A live translation-provider call remains optional and was not part of automated verification.
-- **Current phase under review — Phase 7, Planner v1:** PR #39 is open against master. Its required owner gate is to generate a real song on the owner's display and open/play it in S6, including the first real S6 check of fade, twinkle, and shimmer effects. Do not call this phase complete until that gate and merge/approval criteria are satisfied.
-- **Phase 8 — Vocals:** PR #44 is open but explicitly stacked on Phase 7's branch. Review it after Phase 7; it is not an independent base-master phase and must not be treated as unblocked or merged.
-- **Next gate:** complete the Phase 7 S6 playback check, record the owner's result, then merge/close Phase 7 under its issue. Phase 8 remains dependent on that outcome. No later phase is authorized by this status entry.
+- **Phase 6:** complete; PR #34 merged. Native S6 verification of fade, TWINKLE, and SHIMMER output remains part of the Phase 7 owner playback gate.
+- **Phase 6b:** complete; PR #36 merged.
+- **Phase 7 — Planner v1:** PR #39 merged to master on 2026-11-11. The real-song S6 playback gate remains pending; the merge does not claim owner verification.
+- **Phase 8 — Vocals:** PR #44 remains open on branch `phase-8/vocals`, with base `phase-7/planner-v1`. It has not been verified against real recorded vocals or owner S6 playback.
+- **Current owner-authorized UI work — Phase 11A:** Issue #47; branch `ui/browser-sequencer-foundation`. Build a browser-first local sequencing workspace. The desktop wrapper and packaging are explicitly deferred until final delivery.
+- **Next UI acceptance gate:** open all four owner reference sequences and matching audio; verify native track/effect/timing-grid counts, waveform derivation, synchronized timebase, and large-sequence responsiveness. Keep copyrighted and owner-derived material out of the repository.
 
 
 ### Repository cleanup — 2026-11-11

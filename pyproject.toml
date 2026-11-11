@@ -18,12 +18,14 @@ dependencies = [
 
 [project.scripts]
 lor-sequence-builder = "lor_sequence_builder.cli:main"
+lor-sequence-ui = "lor_sequence_builder.ui_server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
 "lor_sequence_builder.rules" = ["*.yaml"]
+"lor_sequence_builder" = ["web/*.html", "web/*.js", "web/*.css"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

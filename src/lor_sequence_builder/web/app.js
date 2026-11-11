@@ -1,0 +1,874 @@
+"use strict";
+
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const ROW_HEIGHT = 22;
+  const RULER_HEIGHT = 38;
+  const WAVE_HEIGHT = 94;
+  const MARKER_HEIGHT = 22;
+  const MAX_XML_BYTES = 50 * 1024 * 1024;
+  const MAX_XML_ELEMENTS = 100000;
+  const MAX_XML_DEPTH = 256;
+
+  const state = {
+    sequence: null,
+    audioFile: null,
+    audioBuffer: null,
+    audioUrl: null,
+    analysis: null,
+    vocals: null,
+    rows: [],
+    lanes: [],
+    pxPerSecond: 22,
+    collapsedGroups: new Set(),
+    collapsedProps: new Set(),
+    selectedEffect: null,
+    animationFrame: 0
+  };
+
+  const audio = $("audioPlayer");
+  const canvasViewport = $("canvasViewport");
+  const labelsViewport = $("labelsViewport");
+  const playhead = $("playhead");
+
+  function setBanner(message, kind) {
+    const banner = $("analysisBanner");
+    $("analysisMessage").textContent = message;
+    banner.className = "analysis-banner" + (kind ? " " + kind : "");
+  }
+
+  function formatTime(seconds) {
+    const total = Math.max(0, Math.floor(seconds));
+    return Math.floor(total / 60) + ":" + String(total % 60).padStart(2, "0");
+  }
+
+  function formatCentiseconds(value) {
+    const cs = Math.max(0, Math.floor(value));
+    return formatTime(cs / 100) + "." + String(cs % 100).padStart(2, "0");
+  }
+
+  function parseXmlDocument(text) {
+    if (text.length > MAX_XML_BYTES) throw new Error("Sequence exceeds the 50 MiB input limit.");
+    if (/<!DOCTYPE|<!ENTITY/i.test(text)) throw new Error("DOCTYPE and entity declarations are not accepted.");
+    const doc = new DOMParser().parseFromString(text, "application/xml");
+    if (doc.querySelector("parsererror")) throw new Error("The selected file is not well-formed XML.");
+    const root = doc.documentElement;
+    if (!root || root.localName !== "sequence") throw new Error("Expected a native S6 sequence root element.");
+    if (root.getAttribute("saveFileVersion") !== "15") {
+      throw new Error("Only reviewed S6 LOREDIT saveFileVersion 15 files are supported.");
+    }
+    let count = 0;
+    const stack = [{ node: root, depth: 1 }];
+    while (stack.length) {
+      const item = stack.pop();
+      count += 1;
+      if (count > MAX_XML_ELEMENTS) throw new Error("Sequence exceeds the 100,000-element safety limit.");
+      if (item.depth > MAX_XML_DEPTH) throw new Error("Sequence exceeds the 256-level XML nesting limit.");
+      for (const child of item.node.children) stack.push({ node: child, depth: item.depth + 1 });
+    }
+    return doc;
+  }
+
+  function parseSequence(doc, filename) {
+    const root = doc.documentElement;
+    const durationCs = Number(root.getAttribute("totalCentiseconds"));
+    if (!Number.isSafeInteger(durationCs) || durationCs <= 0 || durationCs > 2160000) {
+      throw new Error("Sequence duration is missing or outside the supported range.");
+    }
+    const propsRoot = root.querySelector(":scope > SequenceProps");
+    if (!propsRoot) throw new Error("Sequence is missing its native SequenceProps section.");
+    const props = [];
+    let effectCount = 0;
+    const effectTypes = {};
+    for (const propNode of propsRoot.children) {
+      if (propNode.localName !== "SeqProp") continue;
+      const prop = {
+        id: propNode.getAttribute("id") || "",
+        name: propNode.getAttribute("name") || "(unnamed prop)",
+        channels: []
+      };
+      for (const channelNode of propNode.children) {
+        if (channelNode.localName !== "channel") continue;
+        const channel = {
+          row: channelNode.getAttribute("row") || "0",
+          col: channelNode.getAttribute("col") || "0",
+          color: channelNode.getAttribute("color") || "0",
+          effects: []
+        };
+        for (const effectNode of channelNode.children) {
+          if (effectNode.localName !== "effect") continue;
+          const start = Number(effectNode.getAttribute("startCentisecond"));
+          const end = Number(effectNode.getAttribute("endCentisecond"));
+          if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) ||
+              start < 0 || end <= start || end > durationCs + 100) {
+            throw new Error("Invalid effect timing found in prop " + prop.name + ".");
+          }
+          const attributes = {};
+          for (const attr of effectNode.attributes) attributes[attr.name] = attr.value;
+          const type = attributes.settings || "UNKNOWN";
+          effectTypes[type] = (effectTypes[type] || 0) + 1;
+          channel.effects.push({ start, end, type, attributes });
+          effectCount += 1;
+        }
+        prop.channels.push(channel);
+      }
+      props.push(prop);
+    }
+    if (!props.length) throw new Error("Sequence contains no SeqProp tracks.");
+
+    const groups = [];
+    const membership = new Map();
+    const preview = root.querySelector(":scope > PreviewClass");
+    if (preview) {
+      for (const groupNode of preview.children) {
+        if (groupNode.localName !== "PropGroup") continue;
+        const group = {
+          id: groupNode.getAttribute("id") || "group-" + groups.length,
+          name: groupNode.getAttribute("Name") || "(unnamed group)",
+          arrangement: groupNode.getAttribute("Arrangement") || "unspecified",
+          memberIds: []
+        };
+        for (const member of groupNode.children) {
+          if (member.localName !== "member") continue;
+          const id = member.getAttribute("id");
+          if (id) {
+            group.memberIds.push(id);
+            if (!membership.has(id)) membership.set(id, group.id);
+          }
+        }
+        groups.push(group);
+      }
+    }
+
+    const timingGrids = [];
+    const gridsRoot = root.querySelector(":scope > TimingGrids");
+    if (gridsRoot) {
+      for (const gridNode of gridsRoot.children) {
+        const name = gridNode.getAttribute("name") || gridNode.localName;
+        if (gridNode.localName === "TimingGridFree") {
+          const marks = [];
+          for (const mark of gridNode.children) {
+            if (mark.localName !== "timing") continue;
+            const cs = Number(mark.getAttribute("centisecond"));
+            if (Number.isSafeInteger(cs) && cs >= 0 && cs <= durationCs) marks.push(cs);
+          }
+          timingGrids.push({ name, kind: "free", marks });
+        } else if (gridNode.localName === "TimingGridFixed") {
+          timingGrids.push({
+            name,
+            kind: "fixed",
+            spacing: Number(gridNode.getAttribute("spacing")) || 0,
+            marks: []
+          });
+        }
+      }
+    }
+
+    const audioName = root.getAttribute("musicFilename") || "";
+    return {
+      filename,
+      name: root.getAttribute("musicTitle") || root.getAttribute("name") || filename,
+      artist: root.getAttribute("musicArtist") || "",
+      audioName,
+      durationCs,
+      durationSeconds: durationCs / 100,
+      props,
+      groups,
+      membership,
+      timingGrids,
+      effectCount,
+      effectTypes,
+      channelCount: props.reduce((sum, prop) => sum + prop.channels.length, 0)
+    };
+  }
+
+  function buildRows() {
+    if (!state.sequence) return [];
+    const sequence = state.sequence;
+    const propsByGroup = new Map();
+    const groupIds = new Set(sequence.groups.map((group) => group.id));
+    for (const group of sequence.groups) propsByGroup.set(group.id, []);
+    const ungrouped = [];
+    for (const prop of sequence.props) {
+      const groupId = sequence.membership.get(prop.id);
+      if (groupId && groupIds.has(groupId)) propsByGroup.get(groupId).push(prop);
+      else ungrouped.push(prop);
+    }
+    const rows = [];
+    function appendProp(prop) {
+      rows.push({ kind: "prop", prop });
+      if (!state.collapsedProps.has(prop.id)) {
+        prop.channels.forEach((channel, index) => rows.push({
+          kind: "channel", prop, channel, channelIndex: index
+        }));
+      }
+    }
+    for (const group of sequence.groups) {
+      const members = propsByGroup.get(group.id) || [];
+      if (!members.length) continue;
+      rows.push({ kind: "group", group, count: members.length });
+      if (!state.collapsedGroups.has(group.id)) members.forEach(appendProp);
+    }
+    if (ungrouped.length) {
+      const id = "__ungrouped__";
+      rows.push({ kind: "group", group: { id, name: "Ungrouped props" }, count: ungrouped.length });
+      if (!state.collapsedGroups.has(id)) ungrouped.forEach(appendProp);
+    }
+    state.rows = rows;
+    return rows;
+  }
+
+  function buildLanes() {
+    const lanes = [];
+    for (const grid of state.sequence ? state.sequence.timingGrids : []) {
+      let marks = grid.marks;
+      if (grid.kind === "fixed" && grid.spacing > 0) {
+        const count = Math.min(50000, Math.floor(state.sequence.durationCs / grid.spacing) + 1);
+        marks = Array.from({ length: count }, (_, index) => index * grid.spacing);
+      }
+      if (marks.length) lanes.push({
+        label: grid.name,
+        source: "LOREDIT",
+        kind: "native",
+        events: marks.map((cs) => ({ time: cs / 100 }))
+      });
+    }
+    const analysis = state.analysis && state.analysis.analysis;
+    if (analysis) {
+      if (analysis.beats && analysis.beats.length) lanes.push({
+        label: "Estimated beats", source: "librosa", kind: "beats", events: analysis.beats
+      });
+      if (analysis.downbeats && analysis.downbeats.length) lanes.push({
+        label: "Estimated downbeats", source: "librosa", kind: "downbeats", events: analysis.downbeats
+      });
+      if (analysis.onsets && analysis.onsets.length) lanes.push({
+        label: "Audio transients", source: "librosa", kind: "onsets", events: analysis.onsets
+      });
+      if (analysis.section_candidates && analysis.section_candidates.length) lanes.push({
+        label: "Section candidates", source: "estimated", kind: "sections", events: analysis.section_candidates
+      });
+      if (analysis.hard_stops && analysis.hard_stops.length) lanes.push({
+        label: "Near-silence candidates", source: "estimated", kind: "stops", events: analysis.hard_stops
+      });
+    }
+    if (state.vocals) {
+      if (state.vocals.regions && state.vocals.regions.length) lanes.push({
+        label: "Vocal regions", source: "heuristic", kind: "vocal-regions", events: state.vocals.regions
+      });
+      if (state.vocals.syllables && state.vocals.syllables.length) lanes.push({
+        label: "Syllable onsets", source: "heuristic", kind: "syllables", events: state.vocals.syllables
+      });
+    }
+    state.lanes = lanes;
+    return lanes;
+  }
+
+  function makeLabel(text, className, source, events) {
+    const div = document.createElement("div");
+    div.className = className;
+    const span = document.createElement("span");
+    span.textContent = text;
+    div.appendChild(span);
+    if (source) {
+      const badge = document.createElement("span");
+      badge.className = "source";
+      const confidences = (events || []).map((event) => Number(event.confidence))
+        .filter((value) => Number.isFinite(value));
+      const average = confidences.length
+        ? confidences.reduce((sum, value) => sum + value, 0) / confidences.length
+        : null;
+      badge.textContent = source + (average == null ? "" : " · " + average.toFixed(2));
+      div.title = source + (average == null ? "" :
+        "; mean heuristic confidence " + average.toFixed(3) + " (not a probability)");
+      div.appendChild(badge);
+    }
+    return div;
+  }
+
+  function renderLabels() {
+    const markerLabels = $("markerLabels");
+    const trackLabels = $("trackLabels");
+    markerLabels.replaceChildren();
+    trackLabels.replaceChildren();
+    state.lanes.forEach((lane) => markerLabels.appendChild(
+      makeLabel(lane.label, "marker-label", lane.source, lane.events)
+    ));
+    state.rows.forEach((row) => {
+      const label = document.createElement("div");
+      label.className = "track-label " + row.kind;
+      if (row.kind === "group") {
+        const button = document.createElement("button");
+        const collapsed = state.collapsedGroups.has(row.group.id);
+        button.textContent = collapsed ? "▸" : "▾";
+        button.setAttribute("aria-label", (collapsed ? "Expand " : "Collapse ") + row.group.name);
+        button.addEventListener("click", () => {
+          if (collapsed) state.collapsedGroups.delete(row.group.id);
+          else state.collapsedGroups.add(row.group.id);
+          refreshTimeline();
+        });
+        label.appendChild(button);
+        const name = document.createElement("span");
+        name.textContent = row.group.name;
+        label.appendChild(name);
+        const meta = document.createElement("span");
+        meta.className = "track-meta";
+        meta.textContent = String(row.count);
+        label.appendChild(meta);
+      } else if (row.kind === "prop") {
+        const button = document.createElement("button");
+        const collapsed = state.collapsedProps.has(row.prop.id);
+        button.textContent = collapsed ? "▸" : "▾";
+        button.setAttribute("aria-label", (collapsed ? "Expand " : "Collapse ") + row.prop.name);
+        button.addEventListener("click", () => {
+          if (collapsed) state.collapsedProps.delete(row.prop.id);
+          else state.collapsedProps.add(row.prop.id);
+          refreshTimeline();
+        });
+        label.appendChild(button);
+        const name = document.createElement("span");
+        name.textContent = row.prop.name;
+        label.appendChild(name);
+        const meta = document.createElement("span");
+        meta.className = "track-meta";
+        meta.textContent = String(row.prop.channels.length) + " ch";
+        label.appendChild(meta);
+      } else {
+        const name = document.createElement("span");
+        name.textContent = "Channel " + (row.channelIndex + 1) + " · r" + row.channel.row +
+          " c" + row.channel.col + " · " + row.channel.color;
+        label.appendChild(name);
+        const meta = document.createElement("span");
+        meta.className = "track-meta";
+        meta.textContent = String(row.channel.effects.length);
+        label.appendChild(meta);
+      }
+      trackLabels.appendChild(label);
+    });
+  }
+
+  function setCanvasSize(canvas, width, height) {
+    canvas.width = Math.max(1, Math.ceil(width));
+    canvas.height = Math.max(1, Math.ceil(height));
+    canvas.style.width = Math.max(1, Math.ceil(width)) + "px";
+    canvas.style.height = Math.max(1, Math.ceil(height)) + "px";
+    return canvas.getContext("2d");
+  }
+
+  function drawRuler(width, duration, pps) {
+    const canvas = $("rulerCanvas");
+    const ctx = setCanvasSize(canvas, width, RULER_HEIGHT);
+    ctx.fillStyle = "#1a2530";
+    ctx.fillRect(0, 0, width, RULER_HEIGHT);
+    const step = pps < 14 ? 10 : pps < 25 ? 5 : 2;
+    ctx.font = "10px Segoe UI, sans-serif";
+    for (let second = 0; second <= duration; second += 1) {
+      const x = second * pps;
+      const major = second % step === 0;
+      ctx.strokeStyle = major ? "#586978" : "#2e3c48";
+      ctx.beginPath();
+      ctx.moveTo(Math.floor(x) + .5, major ? 13 : 25);
+      ctx.lineTo(Math.floor(x) + .5, RULER_HEIGHT);
+      ctx.stroke();
+      if (major) {
+        ctx.fillStyle = "#a8b6c2";
+        ctx.fillText(formatTime(second), x + 4, 11);
+      }
+    }
+    const bars = state.sequence.timingGrids.find((grid) => /^bars?$/i.test(grid.name));
+    if (bars) {
+      ctx.fillStyle = "#b59ce9";
+      bars.marks.forEach((cs, index) => {
+        const x = (cs / 100) * pps;
+        ctx.fillRect(x, 15, 1, RULER_HEIGHT - 15);
+        if (pps >= 16 && index % 1 === 0) ctx.fillText(String(index + 1), x + 3, 27);
+      });
+    }
+  }
+
+  function drawWaveform(width, pps) {
+    const canvas = $("waveformCanvas");
+    const ctx = setCanvasSize(canvas, width, WAVE_HEIGHT);
+    ctx.fillStyle = "#121c25";
+    ctx.fillRect(0, 0, width, WAVE_HEIGHT);
+    ctx.strokeStyle = "#263b48";
+    ctx.beginPath();
+    ctx.moveTo(0, WAVE_HEIGHT / 2);
+    ctx.lineTo(width, WAVE_HEIGHT / 2);
+    ctx.stroke();
+    if (!state.audioBuffer) {
+      ctx.fillStyle = "#657987";
+      ctx.font = "11px Segoe UI, sans-serif";
+      ctx.fillText("Open the matching audio file to render its real waveform", 16, 25);
+      return;
+    }
+    const samples = state.audioBuffer.getChannelData(0);
+    const sampleRate = state.audioBuffer.sampleRate;
+    ctx.fillStyle = "#397f9b";
+    ctx.strokeStyle = "#78bfd0";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = 0; x < width; x++) {
+      const from = Math.floor((x / pps) * sampleRate);
+      if (from >= samples.length) break;
+      const to = Math.min(samples.length, Math.max(from + 1,
+        Math.floor(((x + 1) / pps) * sampleRate)));
+      let min = 1;
+      let max = -1;
+      for (let i = from; i < to; i++) {
+        const value = samples[i];
+        if (value < min) min = value;
+        if (value > max) max = value;
+      }
+      const center = WAVE_HEIGHT / 2;
+      const y1 = center - max * (WAVE_HEIGHT * .43);
+      const y2 = center - min * (WAVE_HEIGHT * .43);
+      ctx.moveTo(x + .5, y1);
+      ctx.lineTo(x + .5, y2);
+    }
+    ctx.stroke();
+    ctx.fillStyle = "rgba(53, 132, 160, .08)";
+    ctx.fillRect(0, 0, width, WAVE_HEIGHT);
+    ctx.fillStyle = "#8bbdca";
+    ctx.font = "9px Segoe UI, sans-serif";
+    ctx.fillText("AUDIO · " + formatTime(state.audioBuffer.duration), 10, WAVE_HEIGHT - 7);
+  }
+
+  function drawMarkers(width, pps) {
+    const canvas = $("markersCanvas");
+    const height = Math.max(MARKER_HEIGHT, state.lanes.length * MARKER_HEIGHT);
+    const ctx = setCanvasSize(canvas, width, height);
+    ctx.fillStyle = "#121a22";
+    ctx.fillRect(0, 0, width, height);
+    const colors = {
+      native: "#8096a6",
+      beats: "#54b88f",
+      downbeats: "#b28be8",
+      onsets: "#d99b56",
+      sections: "#4fa9b7",
+      stops: "#d56e70",
+      "vocal-regions": "#5ea8d9",
+      syllables: "#d48db9"
+    };
+    state.lanes.forEach((lane, laneIndex) => {
+      const y = laneIndex * MARKER_HEIGHT;
+      ctx.fillStyle = laneIndex % 2 ? "#141e27" : "#111a22";
+      ctx.fillRect(0, y, width, MARKER_HEIGHT);
+      ctx.strokeStyle = "#25323d";
+      ctx.beginPath();
+      ctx.moveTo(0, y + MARKER_HEIGHT - .5);
+      ctx.lineTo(width, y + MARKER_HEIGHT - .5);
+      ctx.stroke();
+      const color = colors[lane.kind] || "#8096a6";
+      for (const event of lane.events) {
+        const time = event.time != null ? Number(event.time) : Number(event.start);
+        if (!Number.isFinite(time) || time < 0) continue;
+        const x = time * pps;
+        if (lane.kind === "vocal-regions") {
+          const end = Number(event.end);
+          if (Number.isFinite(end) && end > time) {
+            ctx.fillStyle = "rgba(74, 151, 199, .28)";
+            ctx.fillRect(x, y + 5, Math.max(2, (end - time) * pps), 12);
+            ctx.strokeStyle = color;
+            ctx.strokeRect(x, y + 5, Math.max(2, (end - time) * pps), 12);
+          }
+        } else {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = lane.kind === "downbeats" ? 2 : 1;
+          ctx.beginPath();
+          ctx.moveTo(Math.floor(x) + .5, y + (lane.kind === "onsets" ? 10 : 2));
+          ctx.lineTo(Math.floor(x) + .5, y + MARKER_HEIGHT - 3);
+          ctx.stroke();
+        }
+      }
+    });
+  }
+
+  function effectColor(effect) {
+    if (effect.type === "TWINKLE") return "#a17ce0";
+    if (effect.type === "SHIMMER") return "#d79a4e";
+    if (effect.type === "INTENSITY") return "#419fc7";
+    return "#7f8b96";
+  }
+
+  function drawTracks(width, pps) {
+    const canvas = $("tracksCanvas");
+    const height = Math.max(ROW_HEIGHT, state.rows.length * ROW_HEIGHT);
+    const ctx = setCanvasSize(canvas, width, height);
+    ctx.fillStyle = "#10171f";
+    ctx.fillRect(0, 0, width, height);
+
+    for (let second = 0; second <= state.sequence.durationSeconds; second++) {
+      const x = second * pps;
+      ctx.strokeStyle = second % 5 === 0 ? "#293844" : "#1b2731";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(Math.floor(x) + .5, 0);
+      ctx.lineTo(Math.floor(x) + .5, height);
+      ctx.stroke();
+    }
+    const bars = state.sequence.timingGrids.find((grid) => /^bars?$/i.test(grid.name));
+    if (bars) {
+      ctx.strokeStyle = "rgba(176, 140, 230, .23)";
+      bars.marks.forEach((cs) => {
+        const x = (cs / 100) * pps;
+        ctx.beginPath();
+        ctx.moveTo(Math.floor(x) + .5, 0);
+        ctx.lineTo(Math.floor(x) + .5, height);
+        ctx.stroke();
+      });
+    }
+
+    state.rows.forEach((row, index) => {
+      const y = index * ROW_HEIGHT;
+      if (row.kind === "group") {
+        ctx.fillStyle = "#1b2732";
+        ctx.fillRect(0, y, width, ROW_HEIGHT);
+      } else if (row.kind === "prop") {
+        ctx.fillStyle = "#18212a";
+        ctx.fillRect(0, y, width, ROW_HEIGHT);
+      } else {
+        ctx.fillStyle = index % 2 ? "#111a22" : "#121c25";
+        ctx.fillRect(0, y, width, ROW_HEIGHT);
+        for (const effect of row.channel.effects) {
+          const x1 = effect.start / 100 * pps;
+          const x2 = effect.end / 100 * pps;
+          const blockWidth = Math.max(1.5, x2 - x1);
+          const attrs = effect.attributes;
+          const startIntensity = Number(attrs.startIntensity != null ? attrs.startIntensity :
+            attrs.intensity != null ? attrs.intensity : 100);
+          const endIntensity = Number(attrs.endIntensity != null ? attrs.endIntensity :
+            attrs.intensity != null ? attrs.intensity : startIntensity);
+          const average = Math.max(0, Math.min(100, (startIntensity + endIntensity) / 2));
+          ctx.globalAlpha = .28 + .72 * average / 100;
+          if (effect.type === "INTENSITY" && startIntensity !== endIntensity) {
+            const gradient = ctx.createLinearGradient(x1, 0, x2, 0);
+            gradient.addColorStop(0, "#317fa8");
+            gradient.addColorStop(1, "#8ad0e0");
+            ctx.fillStyle = gradient;
+          } else {
+            ctx.fillStyle = effectColor(effect);
+          }
+          ctx.fillRect(x1, y + 4, blockWidth, ROW_HEIGHT - 8);
+          ctx.globalAlpha = 1;
+          if (effect.type === "TWINKLE") {
+            ctx.strokeStyle = "rgba(238, 225, 255, .65)";
+            ctx.setLineDash([2, 3]);
+            ctx.beginPath();
+            ctx.moveTo(x1, y + 6);
+            ctx.lineTo(x2, y + 6);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          } else if (effect.type === "SHIMMER") {
+            ctx.strokeStyle = "rgba(255, 239, 208, .65)";
+            ctx.beginPath();
+            ctx.moveTo(x1, y + ROW_HEIGHT / 2);
+            ctx.lineTo(x2, y + ROW_HEIGHT / 2);
+            ctx.stroke();
+          }
+          if (state.selectedEffect === effect) {
+            ctx.strokeStyle = "#f3f7fa";
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(x1, y + 3, blockWidth, ROW_HEIGHT - 6);
+          }
+        }
+      }
+      ctx.strokeStyle = "#202d38";
+      ctx.beginPath();
+      ctx.moveTo(0, y + ROW_HEIGHT - .5);
+      ctx.lineTo(width, y + ROW_HEIGHT - .5);
+      ctx.stroke();
+    });
+  }
+
+  function updatePlayhead() {
+    if (!state.sequence) return;
+    const seconds = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+    playhead.style.left = (seconds * state.pxPerSecond) + "px";
+    playhead.style.display = state.audioFile ? "block" : "none";
+  }
+
+  function refreshTimeline() {
+    if (!state.sequence) return;
+    buildRows();
+    buildLanes();
+    renderLabels();
+    const width = Math.max(canvasViewport.clientWidth, Math.ceil(state.sequence.durationSeconds * state.pxPerSecond));
+    $("canvasContent").style.width = width + "px";
+    $("labelsContent").style.height = (RULER_HEIGHT + WAVE_HEIGHT +
+      state.lanes.length * MARKER_HEIGHT + state.rows.length * ROW_HEIGHT) + "px";
+    drawRuler(width, state.sequence.durationSeconds, state.pxPerSecond);
+    drawWaveform(width, state.pxPerSecond);
+    drawMarkers(width, state.pxPerSecond);
+    drawTracks(width, state.pxPerSecond);
+    updatePlayhead();
+  }
+
+  function renderSequenceStats() {
+    const sequence = state.sequence;
+    if (!sequence) return;
+    $("sequenceTitle").textContent = sequence.name;
+    const subtitle = [sequence.artist, sequence.filename].filter(Boolean).join(" · ");
+    $("sequenceSubtitle").textContent = subtitle + (sequence.audioName ? " · S6 audio: " + sequence.audioName : "");
+    $("durationStat").textContent = formatTime(sequence.durationSeconds);
+    $("propStat").textContent = String(sequence.props.length);
+    $("channelStat").textContent = String(sequence.channelCount);
+    $("effectStat").textContent = sequence.effectCount.toLocaleString();
+    const tempo = state.analysis && state.analysis.analysis && state.analysis.analysis.tempo;
+    $("tempoStat").textContent = tempo && tempo.bpm != null ? String(tempo.bpm) : "—";
+    $("tempoStat").title = tempo && tempo.bpm != null
+      ? "Estimated dominant tempo. Heuristic stability confidence: " + tempo.confidence
+      : "No reliable dominant tempo estimate is available.";
+  }
+
+  async function loadSequence(file) {
+    if (!file) return;
+    try {
+      if (file.size > MAX_XML_BYTES) throw new Error("Sequence exceeds the 50 MiB input limit.");
+      const doc = parseXmlDocument(await file.text());
+      state.sequence = parseSequence(doc, file.name);
+      state.collapsedGroups.clear();
+      state.collapsedProps.clear();
+      state.selectedEffect = null;
+      $("welcome").classList.add("hidden");
+      $("editor").classList.remove("hidden");
+      $("inspectorContent").textContent = "Select an effect block to inspect its native settings and exact timing.";
+      renderSequenceStats();
+      refreshTimeline();
+      setBanner("Loaded " + state.sequence.props.length + " native props, " +
+        state.sequence.channelCount + " channels, and " + state.sequence.effectCount.toLocaleString() +
+        " effects. Source sequence remains read-only.", "good");
+      if (state.audioBuffer) compareDurations();
+    } catch (error) {
+      setBanner(error.message || String(error), "error");
+    }
+  }
+
+  async function decodeWaveform(file) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) throw new Error("This browser does not support Web Audio waveform decoding.");
+    const context = new AudioContextClass();
+    try {
+      const buffer = await context.decodeAudioData(await file.arrayBuffer());
+      state.audioBuffer = buffer;
+      if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
+      state.audioUrl = URL.createObjectURL(file);
+      audio.src = state.audioUrl;
+      $("playButton").disabled = false;
+      $("stopButton").disabled = false;
+      if (state.sequence) refreshTimeline();
+      compareDurations();
+      return buffer.duration;
+    } finally {
+      await context.close();
+    }
+  }
+
+  function compareDurations() {
+    if (!state.sequence || !state.audioBuffer) return;
+    const delta = state.audioBuffer.duration - state.sequence.durationSeconds;
+    if (Math.abs(delta) > 0.25) {
+      setBanner("Audio and sequence durations differ by " + delta.toFixed(2) +
+        " seconds. Check that the selected recording matches this sequence.", "warn");
+    }
+  }
+
+  async function analyzeSelectedAudio(file) {
+    if (!file) return;
+    const meter = $("meterSelect").value;
+    setBanner("Analyzing the selected audio locally: tempo, beats, downbeats, transients, sections, and pauses…");
+    try {
+      const response = await fetch("/api/analyze?beats_per_bar=" + meter, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "X-Audio-Filename": encodeURIComponent(file.name)
+        },
+        body: file
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Local analysis failed.");
+      state.analysis = payload.report;
+      renderSequenceStats();
+      refreshTimeline();
+      const analysis = state.analysis.analysis;
+      const bpm = analysis.tempo && analysis.tempo.bpm != null ? analysis.tempo.bpm + " BPM" : "tempo unavailable";
+      const warning = payload.warning ? " " + payload.warning : "";
+      setBanner("Audio analysis complete: " + bpm + "; " + analysis.beats.length +
+        " beat candidates, " + analysis.downbeats.length + " downbeats, " +
+        analysis.onsets.length + " transients, " + analysis.section_candidates.length +
+        " section candidates. Estimates remain editable/reviewable." + warning, "good");
+    } catch (error) {
+      setBanner("Waveform loaded. Automatic analysis unavailable: " +
+        (error.message || String(error)) + " Start the workspace with lor-sequence-ui to enable local analysis, or load a saved analysis JSON.", "warn");
+    }
+  }
+
+  async function loadAudio(file) {
+    if (!file) return;
+    state.audioFile = file;
+    try {
+      const duration = await decodeWaveform(file);
+      setBanner("Waveform decoded from the selected audio (" + formatTime(duration) +
+        "). Starting local musical analysis…", "good");
+      await analyzeSelectedAudio(file);
+    } catch (error) {
+      setBanner("Could not decode the selected audio: " + (error.message || String(error)), "error");
+    }
+  }
+
+  async function loadAnalysis(file) {
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      if (data.schema_version !== "2.0" || !data.analysis || !Array.isArray(data.analysis.beats)) {
+        throw new Error("Expected a supported audio-analysis v2.0 JSON report.");
+      }
+      state.analysis = data;
+      renderSequenceStats();
+      refreshTimeline();
+      setBanner("Loaded saved analysis. Beat, downbeat, onset, section, and silence markers are labeled as estimates.", "good");
+    } catch (error) {
+      setBanner(error.message || String(error), "error");
+    }
+  }
+
+  async function loadVocals(file) {
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      if (data.schema_version !== "vocals-1.0" ||
+          !Array.isArray(data.regions) || !Array.isArray(data.syllables)) {
+        throw new Error("Expected a supported vocals-1.0 JSON report.");
+      }
+      state.vocals = data;
+      refreshTimeline();
+      setBanner("Loaded vocal regions and syllable candidates. This analysis is heuristic and does not identify words or lyrics.", "good");
+    } catch (error) {
+      setBanner(error.message || String(error), "error");
+    }
+  }
+
+  function inspectEffect(effect, row) {
+    state.selectedEffect = effect;
+    const attrs = effect.attributes;
+    const lines = [
+      row.prop.name + " · Channel " + (row.channelIndex + 1),
+      effect.type + " · " + formatCentiseconds(effect.start) +
+        " → " + formatCentiseconds(effect.end),
+      "Duration: " + ((effect.end - effect.start) / 100).toFixed(2) + " s",
+      "Intensity: " + (attrs.intensity != null ? attrs.intensity :
+        (attrs.startIntensity != null ? attrs.startIntensity + " → " + attrs.endIntensity : "not specified")),
+      "Native attributes: " + Object.keys(attrs).map((key) => key + "=" + attrs[key]).join(" · ")
+    ];
+    const inspector = $("inspectorContent");
+    inspector.replaceChildren();
+    lines.forEach((line, index) => {
+      const item = document.createElement("div");
+      if (index < 2) item.className = "inspector-primary";
+      item.textContent = line;
+      inspector.appendChild(item);
+    });
+    drawTracks(Number($("tracksCanvas").width), state.pxPerSecond);
+  }
+
+  function seekFromPointer(event, canvas) {
+    if (!state.sequence) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const seconds = Math.max(0, Math.min(state.sequence.durationSeconds, x / state.pxPerSecond));
+    if (state.audioFile) audio.currentTime = seconds;
+    updatePlayhead();
+  }
+
+  function handleTrackClick(event) {
+    if (!state.sequence) return;
+    const canvas = $("tracksCanvas");
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const rowIndex = Math.floor(y / ROW_HEIGHT);
+    const row = state.rows[rowIndex];
+    const seconds = Math.max(0, x / state.pxPerSecond);
+    if (row && row.kind === "channel") {
+      const cs = seconds * 100;
+      const effect = row.channel.effects.find((item) => cs >= item.start && cs < item.end);
+      if (effect) {
+        inspectEffect(effect, row);
+        return;
+      }
+    }
+    if (state.audioFile) audio.currentTime = Math.min(seconds, state.sequence.durationSeconds);
+    updatePlayhead();
+  }
+
+  function syncScroll() {
+    labelsViewport.scrollTop = canvasViewport.scrollTop;
+    updatePlayhead();
+  }
+
+  function tickPlayback() {
+    updatePlayhead();
+    if (!audio.paused && !audio.ended) state.animationFrame = requestAnimationFrame(tickPlayback);
+  }
+
+  function setup() {
+    const bindFile = (id, handler) => $(id).addEventListener("change", (event) => {
+      const file = event.target.files && event.target.files[0];
+      if (file) handler(file);
+      event.target.value = "";
+    });
+    bindFile("sequenceFile", loadSequence);
+    bindFile("welcomeSequenceFile", loadSequence);
+    bindFile("audioFile", loadAudio);
+    bindFile("welcomeAudioFile", loadAudio);
+    bindFile("analysisFile", loadAnalysis);
+    bindFile("vocalsFile", loadVocals);
+
+    $("zoomSlider").addEventListener("input", (event) => {
+      state.pxPerSecond = Number(event.target.value);
+      refreshTimeline();
+    });
+    $("fitButton").addEventListener("click", () => {
+      if (!state.sequence) return;
+      const available = Math.max(1, canvasViewport.clientWidth - 20);
+      state.pxPerSecond = Math.max(8, Math.min(48, Math.floor(available / state.sequence.durationSeconds)));
+      $("zoomSlider").value = String(state.pxPerSecond);
+      refreshTimeline();
+      canvasViewport.scrollLeft = 0;
+    });
+    $("meterSelect").addEventListener("change", () => {
+      if (state.audioFile) analyzeSelectedAudio(state.audioFile);
+    });
+    $("playButton").addEventListener("click", async () => {
+      if (!state.audioFile) return;
+      if (audio.paused) {
+        try {
+          await audio.play();
+          $("playButton").textContent = "Ⅱ";
+          cancelAnimationFrame(state.animationFrame);
+          state.animationFrame = requestAnimationFrame(tickPlayback);
+        } catch (error) {
+          setBanner("Audio playback could not start: " + (error.message || String(error)), "warn");
+        }
+      } else {
+        audio.pause();
+        $("playButton").textContent = "▶";
+      }
+    });
+    $("stopButton").addEventListener("click", () => {
+      audio.pause();
+      audio.currentTime = 0;
+      $("playButton").textContent = "▶";
+      updatePlayhead();
+    });
+    audio.addEventListener("ended", () => $("playButton").textContent = "▶");
+    audio.addEventListener("pause", () => $("playButton").textContent = "▶");
+    audio.addEventListener("timeupdate", updatePlayhead);
+    canvasViewport.addEventListener("scroll", syncScroll);
+    $("waveformCanvas").addEventListener("click", (event) => seekFromPointer(event, $("waveformCanvas")));
+    $("markersCanvas").addEventListener("click", (event) => seekFromPointer(event, $("markersCanvas")));
+    $("tracksCanvas").addEventListener("click", handleTrackClick);
+  }
+
+  setup();
+})();

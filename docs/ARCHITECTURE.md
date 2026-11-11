@@ -2,7 +2,7 @@
 
 **Status:** Architecture and confirmed design decisions only. Current implementation phase, review state, and next approved work are maintained in [PLAN.md](PLAN.md); do not infer project phase status from this document.  
 **Project:** Light-O-Rama Sequence Builder  
-**V1 interface:** Command line  
+**Current interfaces:** Python CLI and browser-based local sequencing workspace (in development); desktop packaging is deferred to the final stage  
 **Target output:** Native Light-O-Rama S6 `.loredit` sequence  
 **Required display input:** Light-O-Rama `.lorprev` preview
 
@@ -24,7 +24,7 @@ The original audio, preview, and any reference sequence are read-only inputs. Ou
 - The current committed preview fixture is `tests/fixtures/synthetic_display.lorprev`, a small hand-authored fictional XML example. Larger sequence and preview test inputs are generated at test time with fictional identifiers, names, addresses, and geometry.
 - The repository's current fixture policy is synthetic-only. Historical owner-derived and sanitized show material was removed from the current tree in PR #15; do not restore it. Format claims must be supported by documented observations, synthetic regression coverage, and owner-run S6 verification without retaining private source files.
 - RGB/pixel support is a declared V1 limitation, not something to fake or infer. If a preview contains a channel/prop type the current writer cannot safely represent, the tool must report it and must not silently drop it or claim full support.
-- V1 is CLI-only. GUI, controller upload, live playback, and editing existing sequences are out of scope.
+- The sequencing workspace is browser-based during development and runs through a loopback-only local server. Do not introduce a desktop framework or package a desktop app until the final delivery stage. The initial browser workspace is read-only; editing and writing existing sequences are separate later work. Controller upload and live hardware playback remain out of scope.
 
 ## 3. Design principles
 
@@ -182,6 +182,19 @@ Initial universal validators:
 - Prop activation varies by section; not every prop is active at once.
 
 User profiles may add display-specific constraints and adjust tunables such as effect density, intensity ranges, and which props sing which vocal parts. User profiles layer over the default profile using documented merge semantics. Conflicting or invalid rules must be reported, not silently resolved.
+
+### 5.8 Browser sequencing workspace
+
+The browser workspace is a presentation and interaction layer over the existing sequence and analysis contracts; it does not replace the Python engine.
+
+- The user selects a native S6 v15 `.loredit` file and matching audio from the browser. The sequence is parsed in the browser as untrusted XML, with DTD/entity declarations rejected and explicit byte, depth, and element-count limits.
+- The track model is derived from native `SequenceProps/SeqProp/channel/effect` records and embedded `PreviewClass/PropGroup/member` references. Prop names, channel coordinates, event boundaries, and timing-grid marks are source data, not demo content.
+- The waveform is computed from decoded samples in the browser. It is not synthesized from RMS or replaced with a decorative waveform.
+- When launched through `lor-sequence-ui`, audio bytes are posted to a loopback-only endpoint and passed to the existing `analyze_audio` function. Uploads are bounded, held only in a temporary directory, and deleted after analysis. The endpoint is not exposed on a network interface and does not forward audio to a remote service.
+- The UI displays native sequence timing grids separately from estimated beat/downbeat/onset/section/silence events returned by the analyzer. Confidence and method remain available; section candidates are not mislabeled as verse or chorus.
+- Optional `vocals-1.0` reports can be displayed as heuristic vocal regions and syllable candidates. That format does not contain recognized words or lyric timestamps.
+- The first workspace release is read-only. Selection, navigation, playback, track collapse, and effect inspection do not mutate the LOREDIT. Editing and safe export require a later, separately tested phase.
+- Desktop wrapping and installation are final-stage work. The browser workspace remains the development interface until the sequencing and editing workflow is complete.
 
 ### 5.7 `lor_writer`
 
