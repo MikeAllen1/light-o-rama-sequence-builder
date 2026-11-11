@@ -177,7 +177,7 @@ def test_load_analysis_rejects_boolean_and_out_of_duration_timestamps(tmp_path: 
             evaluate(path, sequence, beats_grid="Beats")
 
  
-@pytest.mark.parametrize("centisecond", [-10, 3001])
+@pytest.mark.parametrize("centisecond", [-10, 20926])
 def test_read_timing_grid_rejects_marks_outside_sequence_duration(
     tmp_path: Path, centisecond: int
 ) -> None:
