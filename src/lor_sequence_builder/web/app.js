@@ -1350,6 +1350,7 @@
 
   async function loadAudio(file, presetAnalysis) {
     if (!file) return;
+    if (state.reviewDirty && !window.confirm("Replace the unsaved music review?")) return;
     if (file.size <= 0 || file.size > MAX_AUDIO_BYTES) {
       setBanner("Audio must be non-empty and no larger than 200 MiB.", "error");
       return;
@@ -1539,12 +1540,27 @@
     if (!data || data.schema_version !== "lyrics-1.0" || !Array.isArray(data.lines) ||
         data.lines.length > 5000) throw new Error("Expected a lyrics-1.0 JSON document.");
     for (const line of data.lines) {
-      const start = Number(line && line.start);
-      const end = Number(line && line.end);
-      if (!line || typeof line.text !== "string" || !Number.isFinite(start) ||
-          !Number.isFinite(end) || start < 0 || end <= start || end > 1801 ||
-          (line.words != null && !Array.isArray(line.words))) {
+      const start = line && line.start;
+      const end = line && line.end;
+      if (!line || typeof line.text !== "string" || typeof start !== "number" ||
+          !Number.isFinite(start) || typeof end !== "number" || !Number.isFinite(end) ||
+          start < 0 || end <= start || end > 1801 ||
+          (line.words != null && !Array.isArray(line.words)) ||
+          (line.words && line.words.length > 1000)) {
         throw new Error("Lyrics contain an invalid line.");
+      }
+      for (const word of line.words || []) {
+        const wordStart = word && word.start;
+        const wordEnd = word && word.end;
+        if (!word || typeof word !== "object" || typeof word.text !== "string" ||
+            !word.text.trim() || typeof wordStart !== "number" || !Number.isFinite(wordStart) ||
+            typeof wordEnd !== "number" || !Number.isFinite(wordEnd) ||
+            wordStart < start || wordEnd <= wordStart || wordEnd > end + 0.05 ||
+            (word.confidence != null && (typeof word.confidence !== "number" ||
+              !Number.isFinite(word.confidence) || word.confidence < 0 || word.confidence > 1)) ||
+            (word.verified != null && typeof word.verified !== "boolean")) {
+          throw new Error("Lyrics contain an invalid word event.");
+        }
       }
     }
   }
@@ -1563,6 +1579,7 @@
         data = parseLyricsText(text, file.name);
       }
       checkLyrics(data);
+      if (state.reviewDirty && !window.confirm("Replace the unsaved music review?")) return;
       state.lyrics = data;
       state.reviewSelection = null;
       refreshTimeline();
