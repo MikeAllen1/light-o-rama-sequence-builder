@@ -5,6 +5,8 @@ from __future__ import annotations
 import itertools
 import random
 
+import pytest
+
 from lor_sequence_builder.formation import formation
 from lor_sequence_builder.planner import plan_show
 from lor_sequence_builder.rules import (
@@ -150,3 +152,4 @@ def test_random_invented_yards_plan_without_breaking_a_rule() -> None:
         assert plan.choreography.effects
         planned += 1
     assert planned >= 10
+
