@@ -106,7 +106,7 @@ def test_props_linked_to_a_master_get_no_sequence_prop(tmp_path: Path) -> None:
     assert "Linked to master prop" in reasons[linked.get("id", "")]
 
 
-@pytest.mark.parametrize("master_reference", [None, "", "   ", "\\t\\n"])
+@pytest.mark.parametrize("master_reference", [None, "", "   ", "\t\n"])
 def test_empty_or_whitespace_master_reference_is_treated_as_unlinked(
     tmp_path: Path, master_reference: str | None
 ) -> None:
