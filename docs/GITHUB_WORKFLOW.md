@@ -49,13 +49,13 @@ A merge queue is unnecessary for this low-volume, single-contributor project. Si
 
 Dependabot PRs are not exempt from review. Check the upstream release notes, exact version/SHA, compatibility, and CI. Keep the existing weekly update cadence and small PR limit.
 
-## Current repository audit (2026-11-10)
+## Current repository audit (2026-11-11)
 
 - Tests workflow runs on pushes and pull requests; it executes pytest, Ruff, strict mypy, and pip-audit.
 - CodeQL runs on pushes/PRs to `master` and weekly.
 - Third-party GitHub Actions are pinned to full commit SHAs; checkout credentials are not persisted.
 - Dependabot is enabled for Python dependencies and GitHub Actions.
-- The repository rulesets API currently returns an empty list. The connected GitHub integration cannot read branch-protection settings (403), so actual branch protection on `master` is **not verified**. The recommended settings above are therefore guidance, not a claim that GitHub is enforcing them.
+- GitHub branch metadata reports `master` as `protected: false`. The repository has a `Protect` ruleset, but its enforcement is `disabled`; its pull-request, deletion, and force-push requirements are therefore not active. `master` is currently **not protected**. Enable the ruleset in GitHub Settings → Rules → Rulesets and verify that its target is `master`.
 - An unrelated Dependabot PR (#3, setup-python update) is currently open and should be reviewed separately; it is not part of Phase 1.
 
 ## Phase gate rule

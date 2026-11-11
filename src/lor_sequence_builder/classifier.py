@@ -48,6 +48,7 @@ _SPECIFIC_SHAPES = ("arch", "star", "tree", "icicles", "snowflake", "snow flake"
 # A figure is a few small props drawn on top of each other (a face built from parts).
 _FIGURE_MAX_SIZE = 0.4
 _FIGURE_OVERLAP = 0.3
+_MAX_PREVIEW_COORDINATE = 1_000_000.0
 
 # Ordered: the first matching hint wins ("Mini Arch" is an arch, not a mini tree).
 _NAME_HINTS: tuple[tuple[str, str], ...] = (
@@ -159,6 +160,11 @@ def _float(value: str | None) -> float | None:
         return None
     if not math.isfinite(parsed):
         raise ClassificationError(f"Preview contains a non-finite numeric value: {value!r}")
+    if abs(parsed) > _MAX_PREVIEW_COORDINATE:
+        raise ClassificationError(
+            f"Preview coordinate or scale exceeds the supported magnitude "
+            f"({_MAX_PREVIEW_COORDINATE:g}): {value!r}"
+        )
     return parsed
 
 

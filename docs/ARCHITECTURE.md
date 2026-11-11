@@ -2,7 +2,7 @@
 
 **Status:** Architecture and confirmed design decisions only. Current implementation phase, review state, and next approved work are maintained in [PLAN.md](PLAN.md); do not infer project phase status from this document.  
 **Project:** Light-O-Rama Sequence Builder  
-**Current interfaces:** Python CLI and browser-based local sequencing workspace (in development); desktop packaging is deferred to the final stage  
+**Current interfaces:** Python CLI and browser-based local sequencing workspace for sequence editing, music review, and show creation; desktop packaging is deferred to the final stage  
 **Target output:** Native Light-O-Rama S6 `.loredit` sequence  
 **Required display input:** Light-O-Rama `.lorprev` preview
 
@@ -15,7 +15,7 @@ The workflow has two explicit commands:
 1. `analyze-preview` reads the required preview, classifies its props, and reports each conclusion with its evidence and a review list.
 2. The user reviews the report and corrects anything wrong in the S6 Preview Editor itself (owner decision, 2026-11-11: the preview is the only display input; there is no separate prop map). `generate` reads the audio and preview, classifies the props the same way, analyzes the music, plans choreography, validates the resulting Timeline, and writes a new `.loredit` file plus the Timeline JSON and a report.
 
-The original audio, preview, and any reference sequence are read-only inputs. Output paths must be new paths; the tool must refuse to overwrite an input or an existing output unless a future explicit and separately approved policy says otherwise. V1 does not edit existing sequences.
+The original audio, preview, and any reference sequence are read-only inputs. Output paths must be new paths; the tool must refuse to overwrite an input or an existing output unless a future explicit and separately approved policy says otherwise. The browser editor may modify an in-memory copy of an existing sequence, but exports only a new checked copy and never changes the source.
 
 ## 2. Confirmed project decisions
 
@@ -24,7 +24,7 @@ The original audio, preview, and any reference sequence are read-only inputs. Ou
 - The current committed preview fixture is `tests/fixtures/synthetic_display.lorprev`, a small hand-authored fictional XML example. Larger sequence and preview test inputs are generated at test time with fictional identifiers, names, addresses, and geometry.
 - The repository's current fixture policy is synthetic-only. Historical owner-derived and sanitized show material was removed from the current tree in PR #15; do not restore it. Format claims must be supported by documented observations, synthetic regression coverage, and owner-run S6 verification without retaining private source files.
 - RGB/pixel support is a declared V1 limitation, not something to fake or infer. If a preview contains a channel/prop type the current writer cannot safely represent, the tool must report it and must not silently drop it or claim full support.
-- The sequencing workspace is browser-based during development and runs through a loopback-only local server. Do not introduce a desktop framework or package a desktop app until the final delivery stage. The initial browser workspace is read-only; editing and writing existing sequences are separate later work. Controller upload and live hardware playback remain out of scope.
+- The sequencing workspace is browser-based during development and runs through a loopback-only local server. Do not introduce a desktop framework or package a desktop app until the final delivery stage. The browser workspace supports native effect editing, music review, checked export to a new file, and a guided new-show workflow. It remains a local browser application, not a desktop wrapper. Controller upload and live hardware playback remain out of scope.
 
 ## 3. Design principles
 

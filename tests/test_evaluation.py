@@ -239,3 +239,12 @@ def test_a_music_review_is_read_as_its_corrected_analysis(tmp_path: Path) -> Non
     empty.write_text(json.dumps({"schema_version": "music-review-1.0"}), encoding="utf-8")
     with pytest.raises(EvaluationError, match="no analysis"):
         load_analysis(empty)
+
+
+def test_analysis_json_rejects_energy_events_without_timestamps(tmp_path: Path) -> None:
+    path = _analysis(tmp_path, [1.0, 2.0])
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["analysis"]["energy"] = [{"rms": 0.25, "method": "test"}]
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(EvaluationError, match="invalid time"):
+        load_analysis(path)
