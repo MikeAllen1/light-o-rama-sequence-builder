@@ -301,6 +301,23 @@ def test_sequence_is_rolled_back_when_success_report_cannot_be_published(
     assert not report_path.exists()
 
 
+
+def test_writer_wraps_invalid_direct_choreography_types(
+    tmp_path: Path,
+) -> None:
+    display = classic_yard()
+    preview = _preview(tmp_path, display)
+    invalid = Choreography(
+        duration_centiseconds="1200",  # type: ignore[arg-type]
+        effects=(),
+    )
+    with pytest.raises(SequenceWriteError, match="Invalid choreography data"):
+        build_from_timeline(
+            preview, invalid, load_rule_set(), "song.mp3",
+            tmp_path / "invalid.loredit", tmp_path / "invalid.json",
+        )
+
+
 def test_timeline_writer_reports_excluded_preview_props(tmp_path: Path) -> None:
     display = classic_yard()
     display.add(
