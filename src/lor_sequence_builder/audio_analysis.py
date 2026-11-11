@@ -170,11 +170,13 @@ def _estimate_tempo(
     best_score = max(score for score, _ in candidates)
     if best_score <= 1e-12:
         return None, 0.0, None, None
-    # Prefer the faster candidate when tempo aliases (for example 60/120 BPM)
-    # have nearly equal autocorrelation. The confidence still reflects the best score.
+    # Autocorrelation can favor every second or third beat (for example,
+    # 60 BPM for a 180 BPM pulse train). Prefer a faster periodic candidate
+    # when its score is within 10% of the strongest candidate. This is a
+    # deliberate alias-resolution heuristic, not meter detection.
     best_lag = min(
         lag for score, lag in candidates
-        if score >= best_score * 0.98
+        if score >= best_score * 0.90
     )
     positive = [score for score, _ in candidates if score > 0]
     mean_score = math.fsum(positive) / len(positive) if positive else 0.0
