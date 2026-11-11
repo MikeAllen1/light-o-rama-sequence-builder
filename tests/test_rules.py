@@ -763,7 +763,7 @@ def test_profile_rejects_non_string_requirement_keys(tmp_path: Path) -> None:
 def test_profile_rejects_unhashable_yaml_mapping_keys(tmp_path: Path) -> None:
     path = _profile(
         tmp_path,
-        "schema_version: rules-1.0\\nrules:\\n  ? [not, a, scalar, key]\\n  : value\\n",
+        "schema_version: rules-1.0\nrules:\n  ? [not, a, scalar, key]\n  : value\n",
     )
     with pytest.raises(RuleProfileError, match="mapping keys must be scalar/hashable"):
         load_rule_set((path,))
