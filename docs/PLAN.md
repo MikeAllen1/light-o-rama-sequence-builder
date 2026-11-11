@@ -1,8 +1,8 @@
 # Implementation Plan
 
-**Status:** Phase 3 complete and merged. Phase 4 audio analysis is in progress on `phase-4/audio-analysis` (PR #9).  
-**Current phase:** 4  
-**Next phase:** 5 — prop classification (blocked until Phase 4 is complete, merged, and owner approves).
+**Status:** Phases 0–3 complete and merged. The Phase 4 audio-analysis baseline is merged; its real-song review and confidence-calibration acceptance work remains open.  
+**Current phase:** 4 acceptance review  
+**Next phase:** 5 — prop classification (blocked until Phase 4 acceptance is complete and the owner approves).
 
 ## Product objective and fixed requirements
 
@@ -61,9 +61,15 @@ Build fixed-tempo "pulse every supported prop on the beat" → Timeline → writ
 **Done when:** The fixed-tempo pipeline generates a native v15 sequence and deterministic Timeline; S6 opens the generated file; preview and generated events render; unsupported/excluded props are enumerated.
 
 ### Phase 4 — Audio analysis
-**Status: In progress on PR #9** (`phase-4/audio-analysis`). Build beats, downbeats, onsets, sections, energy, and hard stops.
+**Status: Baseline merged; acceptance review remains open.** PR #9 was squash-merged into `master` as `2b962bd39d51b052c3f97d76876a29176dc627ae` after all required CI checks passed on final head `36a98f824dcd883d032b3a49240aa8957f20d91e`.
 
-**Done when:** Analysis JSON and a debug plot are generated; plot can be eyeballed against the song; synthetic tests cover known tempo/events/energy/sections/stops; uncertainty and limitations are explicit.
+Delivered: bounded FFmpeg normalization; deterministic RMS/positive-energy-flux/autocorrelation analysis; tempo, beat and provisional downbeat candidates; onsets; energy curve; fixed 16-beat phrase candidates; energy-transition candidates; sustained near-silence candidates including leading silence; versioned JSON and formal v1.0 JSON Schema; SVG diagnostic plot; CLI confidence reporting; Linux and Windows tests; CodeQL.
+
+Final-head CI: Tests workflow run `42956005759` passed both Linux (pytest, Ruff, strict mypy, pip-audit) and Windows compatibility jobs. Phase 3 Validation Package run `42956005713` passed. CodeQL run `42956005698` passed. The final hard-stop timestamp test uses a tolerance consistent with the 551-sample frame duration (~49.977 ms), rather than asserting a mathematically exact 3.000-second frame boundary.
+
+**Remaining acceptance:** owner review of diagnostic plots against contrasting real songs (fast/percussive, slower, and a song with tempo or arrangement changes), recording tempo/phase alignment, false/missed candidates, and whether confidence communicates uncertainty usefully. Confidence values remain heuristic and uncalibrated; do not treat them as probabilities or use them as the sole basis for choreography. No real-song review is claimed complete. Phase 5 remains blocked until this human review is complete and the owner explicitly approves moving forward.
+
+**Done when:** Analysis JSON and a debug plot are generated; plot is reviewed against real songs; synthetic tests cover known tempo/events/energy/sections/stops; uncertainty and limitations are explicit; confidence behavior is reviewed; CI is green; owner approves Phase 5.
 
 ### Phase 5 — Classifier
 Build prop roles, orientation/direction, segment order, color capability, analyze command, and editable props.yaml.
@@ -190,4 +196,14 @@ At the start of each fresh phase session: read this plan and active issue; confi
 
 ## Phase 4 implementation boundary
 
-Phase 4 audio analysis is in progress on PR #9. The analyzer emits a versioned JSON report and SVG diagnostic plot using bounded FFmpeg normalization. It estimates a single global tempo and heuristic event candidates; it does not claim semantic section recognition, tempo-change tracking, spectral onset classification, or choreography. Real-song diagnostic review remains an acceptance task.
+The Phase 4 baseline is merged in `2b962bd39d51b052c3f97d76876a29176dc627ae`. The analyzer emits a versioned JSON report and SVG diagnostic plot using bounded FFmpeg normalization. It estimates a single global tempo and heuristic event candidates; it does not claim semantic section recognition, tempo-change tracking, spectral onset classification, or choreography. Real-song diagnostic review and confidence calibration remain acceptance tasks.
+
+### Phase 4 merge and handoff — 2026-11-10/11
+- PR: https://github.com/MikeAllen1/light-o-rama-sequence-builder/pull/9
+- Branch: `phase-4/audio-analysis`
+- Final branch head: `36a98f824dcd883d032b3a49240aa8957f20d91e`
+- Merge: squash commit `2b962bd39d51b052c3f97d76876a29176dc627ae`
+- Final verification: Tests run `42956005759` passed on Linux and Windows; Phase 3 Validation Package run `42956005713` passed; CodeQL run `42956005698` passed.
+- Final hardening: corrected cross-platform frame-time test tolerance; documented leading-silence hard-stop candidates; beat-grid confidence is reported separately from tempo confidence.
+- Human gate: pending real-song review. No user audio or real-song diagnostic outputs have been reviewed in this phase.
+- Next step: complete real-song review and evaluate whether confidence and candidate markers are useful before requesting approval for Phase 5. Do not start classifier work until owner approval.
