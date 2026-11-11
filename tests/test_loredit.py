@@ -4,7 +4,9 @@ import re
 import shutil
 from pathlib import Path
 
-from defusedxml import ElementTree as ET
+import xml.etree.ElementTree as ET
+
+from defusedxml.ElementTree import parse as safe_parse
 import pytest
 
 from lor_sequence_builder.loredit import (
@@ -163,7 +165,7 @@ def test_sequence_prop_missing_from_preview_is_rejected(
     tmp_path: Path, fixture_path: Path
 ) -> None:
     source = tmp_path / "orphan.loredit"
-    tree = ET.parse(fixture_path)
+    tree = safe_parse(fixture_path)
     sequence_props = tree.getroot().find("SequenceProps")
     assert sequence_props is not None
     ET.SubElement(
@@ -182,7 +184,7 @@ def test_sequence_prop_may_reference_native_preview_group_id(
     tmp_path: Path, fixture_path: Path
 ) -> None:
     source = tmp_path / "group-sequence-prop.loredit"
-    tree = ET.parse(fixture_path)
+    tree = safe_parse(fixture_path)
     preview = tree.getroot().find("PreviewClass")
     sequence_props = tree.getroot().find("SequenceProps")
     assert preview is not None
