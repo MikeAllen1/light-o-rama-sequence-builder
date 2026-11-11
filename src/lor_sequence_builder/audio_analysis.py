@@ -474,6 +474,7 @@ def analyze_audio(
         json_temp: Path | None = None
         plot_temp: Path | None = None
         json_published = False
+        plot_published = False
         try:
             with tempfile.NamedTemporaryFile(
                 mode="w", encoding="utf-8", dir=json_path.parent,
@@ -491,6 +492,7 @@ def analyze_audio(
             os.link(json_temp, json_path)
             json_published = True
             os.link(plot_temp, plot_path)
+            plot_published = True
         except FileExistsError as exc:
             raise AudioAnalysisError("Refusing to overwrite an existing analysis output") from exc
         finally:
@@ -498,7 +500,7 @@ def analyze_audio(
                 json_temp.unlink(missing_ok=True)
             if plot_temp is not None:
                 plot_temp.unlink(missing_ok=True)
-            if json_published and not plot_path.exists():
+            if json_published and not plot_published:
                 json_path.unlink(missing_ok=True)
         return report
     except OSError as exc:
