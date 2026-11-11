@@ -835,7 +835,9 @@ def test_direct_movement_with_non_integer_time_raises_domain_error() -> None:
                             "left_to_right", True, 100),),
     )
 
-    with pytest.raises(ChoreographyError, match=r"movements\[0\].start_centisecond must be an integer"):
+    with pytest.raises(
+        ChoreographyError, match=r"movements\[0\].start_centisecond must be an integer"
+    ):
         _check(display, timeline)
 
 
