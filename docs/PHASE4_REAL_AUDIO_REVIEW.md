@@ -78,3 +78,10 @@ A single global tempo is expected to drift whenever the arrangement changes temp
 - Real-world musical usefulness: **not accepted**.
 - Phase 4 follow-up: required.
 - Phase 5: **blocked** until the follow-up is reviewed and the owner explicitly approves the next phase.
+
+
+## Follow-up implementation in PR #12
+
+The first correction removes the previous "shortest local peak retaining 50% of maximum" selection rule. The estimator now selects the strongest local autocorrelation maximum, avoiding the explicit bias toward the fastest qualifying alias. A tempo estimate within 1.5 BPM of either configured search boundary has its confidence capped at 0.1 because the search window may be censoring a stronger candidate outside the requested range.
+
+A regression test covers a 220 BPM synthetic click track analyzed with the default 60–200 BPM range and requires the boundary-pinned result to be marked low confidence. This is a guardrail, not proof that all musical half/double-time ambiguity is solved. The ten real tracks must be reprocessed and compared before this follow-up can be accepted. The test and CodeQL workflows are running on the PR head; results are not yet recorded here.
