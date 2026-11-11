@@ -40,6 +40,8 @@ def _strip_local_background_references(template: Path) -> None:
     """Remove local image paths and isolate the test preview from S6 saved displays."""
     tree = SafeET.parse(template, forbid_dtd=True, forbid_entities=True, forbid_external=True)
     root = tree.getroot()
+    if root is None:
+        raise RuntimeError("The native S6 template has no XML root.")
     removed = 0
     for element in root.iter():
         for attribute in tuple(element.attrib):
@@ -80,6 +82,8 @@ def build_package(destination: Path) -> None:
         template_root = SafeET.parse(
             template, forbid_dtd=True, forbid_entities=True, forbid_external=True
         ).getroot()
+        if template_root is None:
+            raise RuntimeError("The native S6 template has no XML root.")
         embedded_preview = template_root.find("PreviewClass")
         if embedded_preview is None:
             raise RuntimeError("The native S6 template does not contain an embedded PreviewClass.")
