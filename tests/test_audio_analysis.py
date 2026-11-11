@@ -85,8 +85,11 @@ def test_analyze_audio_detects_tempo_beats_onsets_and_hard_stop(tmp_path: Path) 
     report = analyze_audio(audio, report_path, plot_path)
 
     analysis = report["analysis"]
-    assert report["schema_version"] == "1.0"
-    assert report["configuration"]["frame_seconds"] == pytest.approx(551 / 11_025)
+    assert report["schema_version"] == "2.0"
+    assert report["configuration"]["frame_seconds"] == pytest.approx(1_102 / 22_050)
+    assert report["configuration"]["hop_length"] == 512
+    assert report["audio"]["normalized_sample_rate"] == 22_050
+    assert report["tool_versions"]["librosa"] != "unknown"
     assert report["audio"]["duration_seconds"] == pytest.approx(8.0, abs=0.1)
     assert analysis["tempo"]["bpm"] == pytest.approx(120.0, abs=3.0)
     assert len(analysis["beats"]) >= 10
@@ -111,8 +114,8 @@ def test_analyze_audio_detects_tempo_beats_onsets_and_hard_stop(tmp_path: Path) 
     assert plot_path.is_file()
     svg = plot_path.read_text(encoding="utf-8")
     assert "<svg" in svg
-    assert "provisional downbeats" in svg
-    assert "energy transitions" in svg
+    assert "downbeats" in svg
+    assert "section candidates" in svg
 
 
 def test_tempo_estimator_handles_syncopation_and_uneven_beat_accents(
@@ -174,7 +177,14 @@ def test_competing_offbeat_accents_reduce_beat_grid_confidence(tmp_path: Path) -
     analysis = report["analysis"]
     assert analysis["tempo"]["bpm"] == pytest.approx(120.0, abs=5.0)
     assert analysis["beats"]
-    assert analysis["beats"][0]["confidence"] <= 0.05
+    # Strong events between the beats must lower beat-grid confidence well
+    # below that of an unambiguous click track (which scores near 1.0).
+    clean_audio = tmp_path / "clean.wav"
+    _click_track(clean_audio, duration=12.0, bpm=120.0)
+    clean = analyze_audio(clean_audio, tmp_path / "clean.json", tmp_path / "clean.svg")
+    clean_confidence = clean["analysis"]["beats"][0]["confidence"]
+    assert clean_confidence >= 0.9
+    assert analysis["beats"][0]["confidence"] <= 0.5 * clean_confidence
 
 
 def test_analysis_refuses_to_overwrite_outputs(tmp_path: Path) -> None:
@@ -406,24 +416,57 @@ def test_transient_heavy_noisy_audio_remains_bounded_and_finite(tmp_path: Path) 
 
 
 
-def test_analysis_schema_documents_the_emitted_v1_contract() -> None:
+def _schema_violations(value: object, schema: dict[str, object], root: dict[str, object],
+                       path: str = "$") -> list[str]:
+    """Check required keys, closed objects, consts, enums, and nested items."""
+    if "$ref" in schema:
+        name = str(schema["$ref"]).rsplit("/", 1)[-1]
+        definitions = root["$defs"]
+        assert isinstance(definitions, dict)
+        return _schema_violations(value, definitions[name], root, path)
+    problems: list[str] = []
+    if "const" in schema and value != schema["const"]:
+        problems.append(f"{path}: {value!r} != {schema['const']!r}")
+    if "enum" in schema and value not in schema["enum"]:  # type: ignore[operator]
+        problems.append(f"{path}: {value!r} not in {schema['enum']!r}")
+    if isinstance(value, dict):
+        properties = schema.get("properties", {})
+        assert isinstance(properties, dict)
+        for key in schema.get("required", []):  # type: ignore[attr-defined]
+            if key not in value:
+                problems.append(f"{path}: missing {key!r}")
+        if schema.get("additionalProperties") is False:
+            problems.extend(f"{path}: unexpected {key!r}" for key in value if key not in properties)
+        for key, child in value.items():
+            if key in properties:
+                problems.extend(_schema_violations(child, properties[key], root, f"{path}.{key}"))
+    if isinstance(value, list) and isinstance(schema.get("items"), dict):
+        for index, child in enumerate(value):
+            problems.extend(
+                _schema_violations(child, schema["items"], root, f"{path}[{index}]")  # type: ignore[arg-type]
+            )
+    return problems
+
+
+def test_emitted_report_matches_the_v2_schema_contract(tmp_path: Path) -> None:
     import json
 
-    schema_path = Path(__file__).parents[1] / "docs" / "schemas" / "audio-analysis-v1.schema.json"
+    schema_path = Path(__file__).parents[1] / "docs" / "schemas" / "audio-analysis-v2.schema.json"
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
-
     assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
-    assert schema["properties"]["schema_version"]["const"] == "1.0"
-    assert set(schema["required"]) == {
-        "schema_version", "audio", "tool_versions", "configuration", "analysis"
-    }
-    analysis_required = set(schema["properties"]["analysis"]["required"])
-    assert analysis_required == {
-        "method", "provenance", "limitations", "tempo", "beats", "downbeats",
-        "onsets", "energy", "phrase_boundaries", "section_candidates", "hard_stops",
-    }
+    assert schema["properties"]["schema_version"]["const"] == "2.0"
 
+    audio = tmp_path / "contract.wav"
+    _chord_song(
+        audio,
+        [[C_MAJOR, A_MINOR, F_MAJOR, G_MAJOR], [E_MAJOR, D_MINOR, E_MAJOR, D_MINOR]],
+        bars_per_part=10,
+    )
+    report = analyze_audio(audio, tmp_path / "contract.json", tmp_path / "contract.svg")
+    written = json.loads((tmp_path / "contract.json").read_text(encoding="utf-8"))
 
+    assert written == report
+    assert _schema_violations(report, schema, schema) == []
 
 def test_analyzer_accepts_mp3_input_and_recovers_tempo(tmp_path: Path) -> None:
     ffmpeg = shutil.which("ffmpeg")
@@ -464,7 +507,8 @@ def test_default_tempo_range_does_not_double_a_90_bpm_track(tmp_path: Path) -> N
 
     assert report["analysis"]["tempo"]["bpm"] == pytest.approx(90.0, abs=4.0)
     beat_times = [event["time"] for event in report["analysis"]["beats"]]
-    assert len(beat_times) >= 10
+    # Nine clicks fall before the track goes silent at 6 seconds.
+    assert len(beat_times) >= 8
     assert beat_times[1] - beat_times[0] == pytest.approx(2 / 3, abs=0.08)
 
 
@@ -520,7 +564,10 @@ def test_tempo_estimator_handles_a_range_of_common_tempos(
     estimated = report["analysis"]["tempo"]["bpm"]
     assert estimated == pytest.approx(bpm, abs=max(3.0, bpm * 0.035))
     beat_times = [event["time"] for event in report["analysis"]["beats"]]
-    assert len(beat_times) >= int(8 * bpm / 60)
+    # _click_track places clicks from 0.25 s until 6 s, then leaves silence.
+    clicks = [0.25 + i * 60.0 / bpm for i in range(400) if 0.25 + i * 60.0 / bpm + 0.04 < 6.0]
+    assert len(beat_times) >= len(clicks) - 1
+    assert max(beat_times) < 6.3, "beats must not be invented in trailing silence"
     assert all(
         (right - left) == pytest.approx(60.0 / estimated, abs=0.08)
         for left, right in itertools.pairwise(beat_times)
@@ -582,3 +629,113 @@ def test_concurrent_plot_creation_does_not_leave_partial_json(
     assert not json_path.exists()
     assert plot_path.read_text(encoding="utf-8") == "another process won"
     assert not list(tmp_path.glob(".race.*.tmp"))
+
+
+def _write_float_wav(path: Path, samples: list[float], rate: int = 22_050) -> None:
+    import array
+
+    peak = max(1e-9, max(abs(value) for value in samples))
+    scaled = array.array("h", (int(20_000 * value / peak) for value in samples))
+    with wave.open(str(path), "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(rate)
+        output.writeframes(scaled.tobytes())
+
+
+def _chord_song(
+    path: Path,
+    progressions: list[list[tuple[float, ...]]],
+    bars_per_part: int,
+    pickup_beats: int = 1,
+    bpm: float = 120.0,
+) -> float:
+    """Clicks on every beat with chords that change exactly on each downbeat.
+
+    Returns the time of the first downbeat (after the pickup beats).
+    """
+    rate = 22_050
+    beat = 60.0 / bpm
+    start = 0.5
+    total_beats = pickup_beats + 4 * bars_per_part * len(progressions)
+    samples = [0.0] * int(rate * (start + (total_beats + 1) * beat))
+    for index in range(total_beats):
+        onset = start + index * beat
+        bar = (index - pickup_beats) // 4
+        part = max(0, bar) // bars_per_part
+        chords = progressions[min(part, len(progressions) - 1)]
+        chord = chords[max(0, bar) % len(chords)]
+        loudness = 1.0 if part == 0 else 1.8
+        first = int(onset * rate)
+        for offset in range(int(beat * rate)):
+            time = offset / rate
+            value = sum(math.sin(2 * math.pi * f * time) for f in chord) * 0.25 * loudness
+            if time < 0.03:
+                value += 0.9 * math.sin(2 * math.pi * 1_500 * time)
+            if first + offset < len(samples):
+                samples[first + offset] = value
+    _write_float_wav(path, samples)
+    return start + pickup_beats * beat
+
+
+C_MAJOR = (261.6, 329.6, 392.0)
+A_MINOR = (220.0, 261.6, 329.6)
+F_MAJOR = (174.6, 220.0, 261.6)
+G_MAJOR = (196.0, 246.9, 293.7)
+E_MAJOR = (164.8, 207.7, 246.9)
+D_MINOR = (146.8, 174.6, 220.0)
+
+
+def test_downbeats_follow_harmony_changes_not_the_first_beat(tmp_path: Path) -> None:
+    audio = tmp_path / "pickup.wav"
+    first_downbeat = _chord_song(
+        audio, [[C_MAJOR, A_MINOR, F_MAJOR, G_MAJOR]], bars_per_part=12, pickup_beats=1
+    )
+
+    report = analyze_audio(audio, tmp_path / "pickup.json", tmp_path / "pickup.svg")
+
+    downbeats = [event["time"] for event in report["analysis"]["downbeats"]]
+    assert report["analysis"]["downbeats"][0]["confidence"] >= 0.1
+    # The pickup beat at 0.5 s must not be called bar one.
+    assert all(abs(time - 0.5) > 0.1 for time in downbeats[:1])
+    bar_seconds = 2.0
+    assert all(
+        min(abs((time - first_downbeat) % bar_seconds), bar_seconds - (time - first_downbeat) % bar_seconds) < 0.1
+        for time in downbeats
+    )
+
+
+def test_structural_change_is_reported_as_unlabelled_section_candidate(
+    tmp_path: Path,
+) -> None:
+    audio = tmp_path / "two-parts.wav"
+    _chord_song(
+        audio,
+        [[C_MAJOR, A_MINOR, F_MAJOR, G_MAJOR], [E_MAJOR, D_MINOR, E_MAJOR, D_MINOR]],
+        bars_per_part=10,
+        pickup_beats=0,
+    )
+    change_time = 0.5 + 10 * 4 * 0.5
+
+    report = analyze_audio(audio, tmp_path / "parts.json", tmp_path / "parts.svg")
+
+    structural = [
+        candidate for candidate in report["analysis"]["section_candidates"]
+        if candidate["kind"] == "structural_change_candidate"
+    ]
+    assert structural
+    assert min(abs(candidate["time"] - change_time) for candidate in structural) <= 2.0
+    assert all(candidate["label"] is None for candidate in structural)
+
+
+def test_beat_sync_columns_line_up_with_beat_indices() -> None:
+    import numpy as np
+
+    from lor_sequence_builder.audio_analysis import _beat_sync
+
+    frames = np.arange(40, dtype=np.float64)[None, :]
+    late_start = _beat_sync(frames, np.array([5, 10, 15], dtype=np.int64))
+    zero_start = _beat_sync(frames, np.array([0, 5, 10, 15], dtype=np.int64))
+    # Column i averages beat i up to the next beat; the last beat spans one period.
+    assert late_start.tolist() == [[7.0, 12.0, 17.0]]
+    assert zero_start.tolist() == [[2.0, 7.0, 12.0, 17.0]]

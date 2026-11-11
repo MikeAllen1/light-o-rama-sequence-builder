@@ -2,7 +2,7 @@
 
 A display-independent command-line tool for building native Light-O-Rama S6 sequences from music and a required `.lorprev` display preview.
 
-**Project status:** Phases 0–3 are complete and merged. The Phase 4 audio-analysis baseline is merged (PR #9); its real-song review is the open acceptance gate. Prop classification, rules, and intelligent choreography remain future work. See [docs/PLAN.md](docs/PLAN.md) for the authoritative status.
+**Project status:** Phases 0–3 are complete and merged. Phase 4 audio analysis has been reworked on librosa after the first baseline failed real-song review; owner acceptance is open. Prop classification, rules, and intelligent choreography remain future work. See [docs/PLAN.md](docs/PLAN.md) for the authoritative status.
 
 ## Product workflow
 
@@ -56,19 +56,23 @@ The LOREDIT reader currently accepts only `saveFileVersion="15"`, the version re
 
 The preview is the authoritative display map. For LOR props, each `ChannelGrid` row exposes network, Unit ID, and the circuit value present in that row; for DMX props, universe and channel are exposed. These are address fields only: remaining fields are retained verbatim and are not yet semantically interpreted. The original row and source locator are retained. The parser enforces a 20 MiB input limit, 256-level XML nesting limit, and 100,000-element limit, and reports missing or duplicate prop IDs rather than treating them as reliable identities. `PropGroup` and `member` records are parsed into typed group/member models, including prop ID references, arrangement, orientation, top, and left values. The repository's current fixture set is synthetic; larger preview examples are generated at test time.
 
-## Phase 4 audio analysis (baseline merged; acceptance review open)
+## Phase 4 audio analysis (rework under review)
 
-Install FFmpeg and ensure `ffmpeg` is available on PATH. The first analyzer accepts audio formats FFmpeg can decode, normalizes to mono 11.025 kHz signed 16-bit PCM, and writes a versioned JSON report plus an SVG diagnostic plot:
+Install FFmpeg and ensure `ffmpeg` is available on PATH. FFmpeg decodes any supported audio format to mono 22.05 kHz signed 16-bit PCM; librosa then analyzes the decoded samples (it never opens files itself). The command writes a versioned JSON report plus an SVG diagnostic plot:
 
 ```powershell
-uv run lor-sequence-builder analyze-audio .\song.mp3 --output-json .\song.analysis.json --plot .\song.analysis.svg --min-bpm 60 --max-bpm 200
+uv run lor-sequence-builder analyze-audio .\song.mp3 --output-json .\song.analysis.json --plot .\song.analysis.svg
 ```
 
-The current deterministic signal-processing baseline estimates one global tempo from positive energy-flux autocorrelation, derives beat/downbeat candidates, detects energy-flux onsets, reports RMS energy, proposes energy-transition and fixed 16-beat phrase candidates, and flags sustained near-silence as hard-stop candidates. It deliberately does **not** claim semantic verse/chorus recognition, changing-tempo tracking, spectral onset classification, or vocal/syllable detection. Confidence, event provenance, tool versions, and limitations are included in the JSON. The formal v1.0 contract is [audio-analysis-v1.schema.json](docs/schemas/audio-analysis-v1.schema.json). Output files must be new paths and are never overwritten.
+The report contains tempo (with a stability confidence), beats from a dynamic-programming beat tracker, downbeats chosen from harmonic change, onsets, an energy curve, four-bar phrase candidates, unlabelled section candidates (self-similarity plus loudness change at bar starts, and broad energy transitions), and hard-stop candidates. Every inferred event records its method and a heuristic confidence. The formal contract is [audio-analysis-v2.schema.json](docs/schemas/audio-analysis-v2.schema.json). Output files must be new paths and are never overwritten.
 
-This is an initial measurable baseline, not professional choreography. Inspect the SVG against the song and treat low-confidence or musically implausible estimates as unresolved. Follow the [real-song review procedure](docs/AUDIO_ANALYSIS_REVIEW.md) before relying on these estimates for later planning.
+Score the analysis against timing grids you placed by hand in an existing sequence for the same song:
 
+```powershell
+uv run lor-sequence-builder evaluate-analysis --analysis .\song.analysis.json --sequence .\song.loredit --beats-grid "Beats" --bars-grid "Bars" --sections-grid "Sections"
+```
 
+See the [audio analysis review procedure](docs/AUDIO_ANALYSIS_REVIEW.md) for acceptance targets and how to read the results.
 
 ## Phase 3 walking skeleton
 
