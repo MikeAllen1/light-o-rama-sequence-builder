@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from lor_sequence_builder.lorprev import (
+    MAX_LORPREV_BYTES,
     LorprevError,
     UnsupportedLorprevRevisionError,
     read_lorprev,
@@ -248,6 +249,46 @@ def test_excessive_xml_nesting_fails_with_actionable_error(tmp_path: Path) -> No
     with pytest.raises(LorprevError, match="nesting exceeds the maximum depth"):
         read_lorprev(source)
 
+
+
+def test_point_like_elements_outside_shape_are_not_interpreted_as_geometry(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "unrelated-point.lorprev"
+    source.write_text(
+        '<PreviewClass Revision="1"><PropClass id="p">'
+        '<shape><point x="1" y="2" /></shape>'
+        '<ControllerClass><point x="99" y="100" /></ControllerClass>'
+        '</PropClass></PreviewClass>',
+        encoding="utf-8",
+    )
+
+    model = read_lorprev(source)
+    assert len(model.geometry_points) == 1
+    assert model.geometry_points[0].x.value == "1"
+    assert [node.tag for node in model.unrecognized_elements] == [
+        "ControllerClass"
+    ]
+
+
+def test_incomplete_shape_geometry_point_fails_clearly(tmp_path: Path) -> None:
+    source = tmp_path / "incomplete-point.lorprev"
+    source.write_text(
+        '<PreviewClass Revision="1"><PropClass id="p">'
+        '<shape><point x="1" /></shape></PropClass></PreviewClass>',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(LorprevError, match="both x and y attributes are required"):
+        read_lorprev(source)
+
+
+def test_preview_size_limit_is_enforced_while_reading(tmp_path: Path) -> None:
+    source = tmp_path / "oversized.lorprev"
+    source.write_bytes(b"x" * (MAX_LORPREV_BYTES + 1))
+
+    with pytest.raises(LorprevError, match="20 MiB limit"):
+        read_lorprev(source)
 
 def test_owner_supplied_default_preview_is_rejected_as_zero_prop_fixture() -> None:
     with pytest.raises(LorprevError, match="zero PropClass"):
