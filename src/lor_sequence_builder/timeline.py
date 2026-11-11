@@ -1,3 +1,4 @@
+
 """Versioned, deterministic Timeline contract for generated sequences."""
 
 from __future__ import annotations
@@ -8,10 +9,14 @@ from dataclasses import asdict, dataclass
 
 @dataclass(frozen=True, slots=True)
 class TimelineChannel:
-    """A native channel coordinate tied to a preview prop identity."""
+    """A native channel plus its verified preview controller-address mapping."""
 
     prop_id: str
     channel_index: int
+    preview_channel_index: int
+    network: str
+    unit_id: str
+    circuit: str
     row: str
     col: str
     color: str
