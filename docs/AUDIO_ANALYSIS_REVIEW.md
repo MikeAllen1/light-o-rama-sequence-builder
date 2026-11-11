@@ -29,14 +29,14 @@ The command creates a machine-readable JSON report and an SVG diagnostic plot. O
 - **Teal dashed lines:** energy-transition candidates. They are not verse, chorus, bridge, or drop labels.
 - **Red lines:** sustained near-silence candidates. Quiet breakdowns and intentional pauses may be included.
 
-Confidence values are heuristic and uncalibrated. Treat them as relative evidence, not probabilities.
+Confidence values are heuristic and uncalibrated. Tempo confidence describes the autocorrelation signal, while beat/downbeat confidence is additionally reduced when a competing beat/offbeat phase has similar onset energy. A low beat confidence means the analyzer cannot reliably choose which repeating accent is the metrical beat; it does not mean the tempo estimate itself is necessarily wrong. Treat all confidence values as relative evidence, not probabilities.
 
 ## Review checklist
 
 Listen to the song while following the plot. Record:
 
 1. Whether the beat markers stay aligned from the beginning through the end, or gradually drift.
-2. Whether the estimated BPM is the perceived tempo or a half/double-time interpretation, especially where strong backbeats, syncopation, or subdivisions compete with the main pulse.
+2. Whether the estimated BPM is the perceived tempo or a half/double-time interpretation, especially where strong backbeats, syncopation, or subdivisions compete with the main pulse. Compare tempo confidence with beat confidence; a lower beat confidence flags competing phase interpretations.
 3. Whether the provisional downbeats land on actual bar starts. Do not assume 4/4.
 4. Whether amber onset marks correspond to meaningful audible attacks, and whether important attacks are missed.
 5. Whether teal transitions correspond to audible changes in arrangement or dynamics.
