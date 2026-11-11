@@ -107,14 +107,18 @@ def _nearest_distances(points: list[tuple[float, float]]) -> list[float]:
             continue
         best = math.inf
 
-        def visit(node: _KDNode | None) -> None:
+        def visit(
+            node: _KDNode | None,
+            target_index: int = target,
+            target_point: tuple[float, float] = point,
+        ) -> None:
             nonlocal best
-            if node is None or box_distance(point, node.bounds) >= best:
+            if node is None or box_distance(target_point, node.bounds) >= best:
                 return
-            if node.index != target:
-                best = min(best, math.dist(point, points[node.index]))
+            if node.index != target_index:
+                best = min(best, math.dist(target_point, points[node.index]))
             children = [child for child in (node.left, node.right) if child is not None]
-            children.sort(key=lambda child: box_distance(point, child.bounds))
+            children.sort(key=lambda child: box_distance(target_point, child.bounds))
             for child in children:
                 visit(child)
 
