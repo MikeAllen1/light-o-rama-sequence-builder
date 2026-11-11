@@ -38,6 +38,9 @@ jobs:
       - name: Sync locked project environment
         run: uv sync --locked
 
+      - name: Check browser workspace JavaScript syntax
+        run: node --check src/lor_sequence_builder/web/app.js
+
       - name: Run tests
         run: uv run --no-sync --with pytest==9.2.0 python -m pytest
 

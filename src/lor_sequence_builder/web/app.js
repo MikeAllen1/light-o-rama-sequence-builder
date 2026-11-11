@@ -366,6 +366,14 @@
     return canvas.getContext("2d");
   }
 
+  function getTimelineDurationSeconds() {
+    if (!state.sequence) return 0;
+    return Math.max(
+      state.sequence.durationSeconds,
+      state.audioBuffer ? state.audioBuffer.duration : 0
+    );
+  }
+
   function drawRuler(width, duration, pps) {
     const canvas = $("rulerCanvas");
     const ctx = setCanvasSize(canvas, width, RULER_HEIGHT);
@@ -569,7 +577,7 @@
     ctx.fillStyle = "#10171f";
     ctx.fillRect(0, 0, width, height);
 
-    for (let second = 0; second <= state.sequence.durationSeconds; second++) {
+    for (let second = 0; second <= getTimelineDurationSeconds(); second++) {
       const x = second * pps;
       ctx.strokeStyle = second % 5 === 0 ? "#293844" : "#1b2731";
       ctx.lineWidth = 1;
@@ -655,7 +663,7 @@
   function updatePlayhead() {
     if (!state.sequence) return;
     const seconds = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
-    const visibleTime = Math.min(seconds, state.sequence.durationSeconds);
+    const visibleTime = Math.min(seconds, getTimelineDurationSeconds());
     playhead.style.left = (visibleTime * state.pxPerSecond) + "px";
     playhead.style.display = state.audioBuffer ? "block" : "none";
   }
@@ -671,11 +679,12 @@
     buildRows();
     buildLanes();
     renderLabels();
-    const width = Math.max(canvasViewport.clientWidth, Math.ceil(state.sequence.durationSeconds * state.pxPerSecond));
+    const duration = getTimelineDurationSeconds();
+    const width = Math.max(canvasViewport.clientWidth, Math.ceil(duration * state.pxPerSecond));
     $("canvasContent").style.width = width + "px";
     $("labelsContent").style.height = (RULER_HEIGHT + WAVE_HEIGHT +
       state.lanes.length * MARKER_HEIGHT + state.rows.length * ROW_HEIGHT) + "px";
-    drawRuler(width, state.sequence.durationSeconds, state.pxPerSecond);
+    drawRuler(width, duration, state.pxPerSecond);
     drawWaveform(width, state.pxPerSecond);
     drawMarkers(width, state.pxPerSecond);
     drawTracks(width, state.pxPerSecond);
@@ -755,13 +764,18 @@
     }
   }
 
-  function compareDurations() {
-    if (!state.sequence || !state.audioBuffer) return;
+  function durationMismatchMessage() {
+    if (!state.sequence || !state.audioBuffer) return "";
     const delta = state.audioBuffer.duration - state.sequence.durationSeconds;
-    if (Math.abs(delta) > 0.25) {
-      setBanner("Audio and sequence durations differ by " + delta.toFixed(2) +
-        " seconds. Check that the selected recording matches this sequence.", "warn");
-    }
+    if (Math.abs(delta) <= 0.25) return "";
+    const direction = delta > 0 ? "longer" : "shorter";
+    return "Selected audio is " + Math.abs(delta).toFixed(2) + " seconds " + direction +
+      " than the sequence; the timeline shows the full duration of both.";
+  }
+
+  function compareDurations() {
+    const message = durationMismatchMessage();
+    if (message) setBanner(message + " Check that the selected recording matches this sequence.", "warn");
   }
 
   async function analyzeSelectedAudio(file) {
@@ -787,13 +801,17 @@
         "\nLimitations: " + analysis.limitations.join(" ");
       const bpm = analysis.tempo && analysis.tempo.bpm != null ? analysis.tempo.bpm + " BPM" : "tempo unavailable";
       const warning = payload.warning ? " " + payload.warning : "";
+      const mismatch = durationMismatchMessage();
       setBanner("Audio analysis complete: " + bpm + "; " + analysis.beats.length +
         " beat candidates, " + analysis.downbeats.length + " downbeats, " +
         analysis.onsets.length + " transients, " + analysis.section_candidates.length +
-        " section candidates. Estimates remain editable/reviewable." + warning, "good");
+        " section candidates. Estimates remain editable/reviewable." + warning +
+        (mismatch ? " " + mismatch : ""), mismatch ? "warn" : "good");
     } catch (error) {
+      const mismatch = durationMismatchMessage();
       setBanner("Waveform loaded. Automatic analysis unavailable: " +
-        (error.message || String(error)) + " Start the workspace with lor-sequence-ui to enable local analysis, or load a saved analysis JSON.", "warn");
+        (error.message || String(error)) + " Start the workspace with lor-sequence-ui to enable local analysis, or load a saved analysis JSON." +
+        (mismatch ? " " + mismatch : ""), "warn");
     }
   }
 
@@ -935,7 +953,7 @@
     if (!state.sequence) return;
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
-    const seconds = Math.max(0, Math.min(state.sequence.durationSeconds, x / state.pxPerSecond));
+    const seconds = Math.max(0, Math.min(getTimelineDurationSeconds(), x / state.pxPerSecond));
     seekAudio(seconds);
   }
 
