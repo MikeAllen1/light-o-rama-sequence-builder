@@ -447,6 +447,7 @@ def gather_requirements(
     # state the caller explicitly asked to bypass (including malformed YAML).
     saved = () if fresh else load_saved_requirements(preview_path)
     existing = () if fresh else saved
+    fresh_start = fresh
     if existing:
         _show(say, f"Saved requirements for this display ({len(existing)}):", existing)
         choice = ask("[K]eep them, [a]dd more, or start [f]resh? ").strip().lower()[:1]
@@ -454,9 +455,10 @@ def gather_requirements(
             return existing
         if choice == "f":
             existing = ()
+            fresh_start = True
 
     def finish(result: tuple[Requirement, ...]) -> tuple[Requirement, ...]:
-        if fresh:
+        if fresh_start:
             if not result:
                 # Completing a fresh intake with no accepted requirements must
                 # clear the old sidecar too; otherwise the next build resurrects it.
