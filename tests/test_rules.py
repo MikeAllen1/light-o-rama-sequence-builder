@@ -749,14 +749,14 @@ def test_timeline_json_rejects_duplicate_object_keys_at_any_depth(tmp_path: Path
 def test_profile_rejects_non_string_requirement_keys(tmp_path: Path) -> None:
     path = _profile(
         tmp_path,
-        "schema_version: rules-1.0\\n"
-        "requirements:\\n"
-        "  - type: never_use\\n"
-        "    props: {all: true}\\n"
-        "    7: value\\n",
+        "schema_version: rules-1.0\n"
+        "requirements:\n"
+        "  - type: never_use\n"
+        "    props: {all: true}\n"
+        "    7: value\n",
     )
 
-    with pytest.raises(RuleProfileError, match=r"requirements\\[0\\].*field names must be text"):
+    with pytest.raises(RuleProfileError, match=r"requirements\[0\].*field names must be text"):
         load_rule_set((path,))
 
 
@@ -781,7 +781,7 @@ def test_direct_choreography_rejects_malformed_numeric_fields_cleanly() -> None:
         effects=(Effect(_ids(display)["Arch 1"], 0, 0, 100,
                         start_intensity=cast(int, "high")),),
     )
-    with pytest.raises(ChoreographyError, match=r"effects\\[0\\].start_intensity must be an integer"):
+    with pytest.raises(ChoreographyError, match=r"effects\[0\].start_intensity must be an integer"):
         _check(display, invalid_intensity)
 
     invalid_timestamp = Choreography(
@@ -789,7 +789,7 @@ def test_direct_choreography_rejects_malformed_numeric_fields_cleanly() -> None:
         effects=(Effect(_ids(display)["Arch 1"], 0,
                         cast(int, "0"), 100),),
     )
-    with pytest.raises(ChoreographyError, match=r"effects\\[0\\].start_centisecond must be an integer"):
+    with pytest.raises(ChoreographyError, match=r"effects\[0\].start_centisecond must be an integer"):
         _check(display, invalid_timestamp)
 
 
