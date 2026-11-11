@@ -6,7 +6,7 @@ This is the manual review procedure for Phase 4. Automated tests use synthetic a
 
 Requirements: Python 3.12, the project environment installed with `uv sync --locked`, and FFmpeg available on `PATH`.
 
-Use a copy of a song you are permitted to analyze. The analyzer does not modify the source audio. Both output paths must be new files.
+Use a copy of a song you are permitted to analyze. The analyzer does not modify the source audio. Feature extraction uses overlapping 20 ms windows on a 10 ms hop; transient and beat timestamps are window-centered. Both output paths must be new files.
 
 ```powershell
 uv run lor-sequence-builder analyze-audio .\song.mp3 --output-json .\song.analysis.json --plot .\song.analysis.svg
@@ -35,7 +35,7 @@ Confidence values are heuristic and uncalibrated. Tempo confidence describes the
 
 Listen to the song while following the plot. Record:
 
-1. Whether the beat markers stay aligned from the beginning through the end, or gradually drift.
+1. Whether the beat markers stay aligned from the beginning through the end, or gradually drift. The 10 ms hop improves timestamp granularity but does not make the grid sample-accurate.
 2. Whether the estimated BPM is the perceived tempo or a half/double-time interpretation, especially where strong backbeats, syncopation, or subdivisions compete with the main pulse. Compare tempo confidence with beat confidence; a lower beat confidence flags competing phase interpretations.
 3. Whether the provisional downbeats land on actual bar starts. Do not assume 4/4.
 4. Whether amber onset marks correspond to meaningful audible attacks, and whether important attacks are missed.

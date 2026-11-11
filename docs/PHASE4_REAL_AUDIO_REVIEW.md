@@ -90,7 +90,7 @@ A single global tempo is expected to drift whenever the arrangement changes temp
 
 ## Follow-up implementation in PR #12
 
-The report contract is now version 1.1 and includes an explicit `beat_grid_status`: `unavailable` when no grid is emitted, `ambiguous` when tempo confidence multiplied by phase confidence is below 0.20, and `provisional` otherwise. The CLI prints this status separately from average beat-grid confidence. `provisional` is deliberately not called `usable` or `verified`; the threshold is a conservative routing hint, not a calibrated quality guarantee. Consumers should require review before treating the grid as authoritative.
+The initial report contract introduced in this follow-up was version 1.1 and included an explicit `beat_grid_status`: `unavailable` when no grid is emitted, `ambiguous` when tempo confidence multiplied by phase confidence is below 0.20, and `provisional` otherwise. The CLI prints this status separately from average beat-grid confidence. `provisional` is deliberately not called `usable` or `verified`; the threshold is a conservative routing hint, not a calibrated quality guarantee. Consumers should require review before treating the grid as authoritative.
 
 
 The first attempted correction replaced the shortest qualifying local autocorrelation peak with the strongest local peak. CI exposed a clear regression: synthetic 120, 140, and 180 BPM material was returned as approximately 60–70 BPM, and the 220 BPM out-of-range case was returned as approximately 109 BPM. The same four failures reproduced on Linux and Windows.
@@ -98,3 +98,22 @@ The first attempted correction replaced the shortest qualifying local autocorrel
 That change has been reverted. The current implementation restores the previous shortest-local-peak heuristic, which avoids the newly introduced slow-tempo regression but retains a known risk of selecting double-time aliases on real music. The configured-range confidence cap remains in place for estimates pinned near a search boundary. The boundary regression test uses a 220 BPM click track with a deliberately narrow 100–110 BPM search range. The existing alias heuristic returns approximately 109 BPM in that range, allowing the test to verify that an estimate pinned near the configured ceiling is marked low confidence. An earlier attempt to test a 180 BPM track with a 180 BPM ceiling was invalid: the heuristic returned 171.51 BPM, outside the boundary guard band.
 
 This is a rollback, not a completed tempo fix. The ten real tracks have not been reprocessed against a validated replacement algorithm. The next implementation must compare tempo aliases using additional evidence and explicitly represent ambiguity rather than assuming that either the strongest or shortest autocorrelation peak is always musically correct.
+
+
+## Production-sequence reference set supplied by the owner
+
+The owner supplied seven finalized 2026 display sequences as examples of the actual production style. These are reference material, not a claim that every event is perfect and not a replacement for the written display rules. They are kept outside the repository because the native files contain the owner's complete preview and channel programming.
+
+| Sequence | Duration | Events | Active props |
+|---|---:|---:|---:|
+| Christmas Vacation Intro | 48.57 s | 2,643 | 48 |
+| Merry Christmas | 209.25 s | 35,360 | 48 |
+| Curse of the Ice Queen | 111.49 s | 18,870 | 47 |
+| Underneath the Tree | 230.68 s | 39,506 | 48 |
+| First Snow | 231.69 s | 31,549 | 47 |
+| Christmas Eve / Sarajevo 12/24 | 203.17 s | 46,125 | 47 |
+| Rudolph the Red-Nosed Reindeer | 188.31 s | 20,947 | 48 |
+
+The seven sequences contain 195,000 light events. Their event densities vary substantially, so raw event count is not a quality score. They are useful for studying prop distribution, effect density, short-event timing, and the owner's established visual style. Only Christmas Vacation Intro and Underneath the Tree have matching audio files in the separate ten-track analysis set; the other five are not treated as matched audio/sequence pairs.
+
+The sequence files use centisecond timestamps. Their short-event distributions make the previous 50 ms audio-frame hop unsuitable for evaluating the owner's stated approximately 30 ms light lead. The analyzer therefore moves to a 10 ms hop with overlapping 20 ms RMS/energy-flux windows. This is a timing-resolution improvement only; it does not resolve tempo aliases, identify musical sections, or prove that any generated light event is musically correct. The JSON contract is version 1.3 and records both hop and window durations. All seven production sequences remain owner-authored examples and are not automatically normalized or rewritten by the analyzer.

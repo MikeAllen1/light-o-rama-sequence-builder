@@ -20,10 +20,13 @@ from array import array
 from pathlib import Path
 from typing import Any
 
-ANALYSIS_SCHEMA_VERSION = "1.2"
+ANALYSIS_SCHEMA_VERSION = "1.3"
 SAMPLE_RATE = 11_025
-FRAME_SAMPLES = round(SAMPLE_RATE * 0.05)
-FRAME_SECONDS = FRAME_SAMPLES / SAMPLE_RATE
+FRAME_HOP_SAMPLES = round(SAMPLE_RATE * 0.01)
+FRAME_WINDOW_SAMPLES = round(SAMPLE_RATE * 0.02)
+FRAME_SECONDS = FRAME_HOP_SAMPLES / SAMPLE_RATE
+FRAME_WINDOW_SECONDS = FRAME_WINDOW_SAMPLES / SAMPLE_RATE
+FRAME_CENTER_SECONDS = FRAME_WINDOW_SECONDS / 2.0
 MAX_INPUT_BYTES = 200 * 1024 * 1024
 MAX_DURATION_SECONDS = 30 * 60
 MIN_DURATION_SECONDS = 2.0
@@ -91,26 +94,40 @@ def _read_features(wav_path: Path) -> tuple[list[float], list[float], float]:
                 raise AudioAnalysisError("Audio must be at least 2 seconds long")
             if duration > MAX_DURATION_SECONDS or frames_total > MAX_DECODED_SAMPLES:
                 raise AudioAnalysisError("Audio exceeds the 30-minute analysis limit")
-            window = FRAME_SAMPLES
+            samples = array("h")
+            samples.frombytes(source.readframes(frames_total))
+            if struct.pack("=h", 1) != struct.pack("<h", 1):
+                samples.byteswap()
+            window = FRAME_WINDOW_SAMPLES
+            hop = FRAME_HOP_SAMPLES
+            if len(samples) < window:
+                raise AudioAnalysisError("Normalized audio is shorter than one analysis window")
+            window_energy = math.fsum(
+                float(samples[index]) * samples[index] for index in range(window)
+            )
             rms_values: list[float] = []
-            previous_energy = 0.0
             flux_values: list[float] = []
-            while True:
-                raw = source.readframes(window)
-                if not raw:
-                    break
-                samples = array("h")
-                samples.frombytes(raw[: len(raw) - (len(raw) % 2)])
-                if not samples:
-                    continue
-                if struct.pack("=h", 1) != struct.pack("<h", 1):
-                    samples.byteswap()
-                mean_square = math.fsum(float(sample) * sample for sample in samples) / len(samples)
+            previous_energy = 0.0
+            start = 0
+            while start + window <= len(samples):
+                mean_square = max(0.0, window_energy) / window
                 rms = math.sqrt(mean_square) / 32768.0
                 energy = rms * rms
                 rms_values.append(rms)
                 flux_values.append(max(0.0, energy - previous_energy))
                 previous_energy = energy
+                next_start = start + hop
+                if next_start + window > len(samples):
+                    break
+                # Update the overlapping window in O(hop) rather than
+                # recalculating every 20 ms window from all its samples.
+                for index in range(start, next_start):
+                    sample = samples[index]
+                    window_energy -= float(sample) * sample
+                for index in range(start + window, next_start + window):
+                    sample = samples[index]
+                    window_energy += float(sample) * sample
+                start = next_start
     except (OSError, wave.Error) as exc:
         raise AudioAnalysisError(f"Cannot read normalized PCM audio: {exc}") from exc
     return rms_values, flux_values, duration
@@ -139,7 +156,7 @@ def _detect_onsets(flux: list[float]) -> list[dict[str, Any]]:
         value = flux[index]
         if value >= threshold and value >= flux[index - 1] and value > flux[index + 1]:
             peaks.append({
-                "time": round(index * FRAME_SECONDS, 3),
+                "time": round(index * FRAME_SECONDS + FRAME_CENTER_SECONDS, 3),
                 "strength": round(value, 8),
                 "confidence": round(min(1.0, value / maximum), 4),
                 "method": "local_peak_in_positive_frame_energy_flux",
@@ -152,7 +169,7 @@ def _estimate_tempo(
 ) -> tuple[float | None, float, float | None, int | None, float, list[dict[str, float]]]:
     if len(flux) < 40:
         return None, 0.0, None, None, 0.0, []
-    # Autocorrelation of onset strength; frame spacing is 50 ms.
+    # Autocorrelation of onset strength; frame hop is 10 ms.
     mean = math.fsum(flux) / len(flux)
     centered = [value - mean for value in flux]
     candidates: list[tuple[float, int]] = []
@@ -308,7 +325,7 @@ def _phrase_boundaries(
         return []
     beat_seconds = beat_lag * FRAME_SECONDS
     phrase_seconds = beat_seconds * 16
-    first_beat = phase_frames * FRAME_SECONDS
+    first_beat = phase_frames * FRAME_SECONDS + FRAME_CENTER_SECONDS
     result: list[dict[str, Any]] = []
     index = 0
     time = first_beat
@@ -449,7 +466,7 @@ def analyze_audio(
         downbeats: list[float] = []
         if lag is not None and phase is not None and bpm is not None:
             period = lag * FRAME_SECONDS
-            time = phase * FRAME_SECONDS
+            time = phase * FRAME_SECONDS + FRAME_CENTER_SECONDS
             index = 0
             while time < duration:
                 rounded = round(time, 3)
@@ -483,6 +500,7 @@ def analyze_audio(
             },
             "configuration": {
                 "frame_seconds": FRAME_SECONDS,
+                "frame_window_seconds": FRAME_WINDOW_SECONDS,
                 "minimum_bpm": min_bpm,
                 "maximum_bpm": max_bpm,
                 "minimum_duration_seconds": MIN_DURATION_SECONDS,
@@ -492,7 +510,7 @@ def analyze_audio(
             },
             "analysis": {
                 "method": "FFmpeg normalization + deterministic RMS/positive-energy-flux/autocorrelation",
-                "provenance": "All timestamps are relative to the decoded audio stream start; frame features use 551-sample windows at 11025 Hz.",
+                "provenance": "All timestamps are relative to the decoded audio stream start; RMS and positive energy flux use 220-sample (20 ms) windows every 110 samples (approximately 10 ms), with transient and beat timestamps centered on the analysis window.",
                 "limitations": [
                     "Tempo is a single global estimate; tempo changes are not modeled.",
                     "Strong repeating accents, syncopation, and subdivisions can create half-time or double-time ambiguity; candidate peaks are exposed but not musically ranked.",
@@ -501,7 +519,8 @@ def analyze_audio(
                     "Downbeats assume the first detected beat is beat one and group every four beats.",
                     "Phrase boundaries are fixed 16-beat candidates, not semantic phrase detection.",
                     "Section candidates are energy transitions only; verse/chorus labels are not inferred.",
-                    "Onsets are spectral-unaware positive energy-flux peaks and may miss soft or overlapping events.",
+                    "Onsets are spectral-unaware positive energy-flux peaks from overlapping 20 ms windows on a 10 ms hop; timestamps are window-centered and remain approximate, not sample-accurate musical attacks.",
+                    "The 10 ms hop improves timing resolution but does not by itself validate a 30 ms lighting lead; real-song alignment still requires listening and comparison with finished sequences.",
                     "Hard stops are sustained near-silence candidates and may include intentional pauses.",
                 ],
                 "beat_grid_status": beat_grid_status,

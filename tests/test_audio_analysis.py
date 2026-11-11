@@ -85,9 +85,10 @@ def test_analyze_audio_detects_tempo_beats_onsets_and_hard_stop(tmp_path: Path) 
     report = analyze_audio(audio, report_path, plot_path)
 
     analysis = report["analysis"]
-    assert report["schema_version"] == "1.2"
+    assert report["schema_version"] == "1.3"
     assert analysis["beat_grid_status"] == "ambiguous"
-    assert report["configuration"]["frame_seconds"] == pytest.approx(551 / 11_025)
+    assert report["configuration"]["frame_seconds"] == pytest.approx(110 / 11_025)
+    assert report["configuration"]["frame_window_seconds"] == pytest.approx(220 / 11_025)
     assert report["audio"]["duration_seconds"] == pytest.approx(8.0, abs=0.1)
     assert analysis["tempo"]["bpm"] == pytest.approx(120.0, abs=3.0)
     assert analysis["tempo"]["candidates"]
@@ -99,6 +100,7 @@ def test_analyze_audio_detects_tempo_beats_onsets_and_hard_stop(tmp_path: Path) 
     assert analysis["downbeats"][0]["time"] == pytest.approx(0.25, abs=0.12)
     assert analysis["downbeats"][1]["time"] == pytest.approx(2.25, abs=0.15)
     assert len(analysis["onsets"]) >= 8
+    assert analysis["onsets"][0]["time"] == pytest.approx(0.25, abs=0.02)
     assert all(0.0 <= event["confidence"] <= 1.0 for event in analysis["onsets"])
     assert all(event["method"] for event in analysis["beats"])
     assert all(event["method"] for event in analysis["downbeats"])
@@ -284,14 +286,14 @@ def test_cli_reports_reduced_beat_grid_confidence(
 def test_hard_stop_detection_includes_leading_silence_but_not_silent_files() -> None:
     from lor_sequence_builder.audio_analysis import _hard_stops
 
-    leading_silence = [0.0] * 20 + [0.2] * 40 + [0.0] * 20
+    leading_silence = [0.0] * 100 + [0.2] * 200 + [0.0] * 100
     stops = _hard_stops(leading_silence)
 
     assert len(stops) == 2
     assert stops[0]["time"] == 0.0
     assert stops[0]["method"] == "leading_near_silence_relative_to_track_peak"
     assert stops[0]["silence_duration"] == pytest.approx(1.0)
-    assert stops[1]["time"] == pytest.approx(3.0, abs=0.01)
+    assert stops[1]["time"] == pytest.approx(3.0, abs=0.02)
     assert _hard_stops([0.0] * 100) == []
 
 
@@ -454,7 +456,7 @@ def test_analysis_schema_documents_the_emitted_v1_contract() -> None:
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
 
     assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
-    assert schema["properties"]["schema_version"]["const"] == "1.2"
+    assert schema["properties"]["schema_version"]["const"] == "1.3"
     assert set(schema["required"]) == {
         "schema_version", "audio", "tool_versions", "configuration", "analysis"
     }
