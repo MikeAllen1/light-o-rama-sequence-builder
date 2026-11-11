@@ -7,6 +7,7 @@ matching template sequence is still supported but deprecated.
 from __future__ import annotations
 
 import hashlib
+import math
 import os
 import tempfile
 import xml.etree.ElementTree as ET
@@ -100,11 +101,17 @@ def _elements_equivalent(left: ET.Element, right: ET.Element) -> bool:
         right_value = right.attrib[name]
         if name in {"x", "y", "top", "left"}:
             try:
-                if abs(float(left_value) - float(right_value)) > 1e-6:
+                left_coordinate = float(left_value)
+                right_coordinate = float(right_value)
+                if (
+                    not math.isfinite(left_coordinate)
+                    or not math.isfinite(right_coordinate)
+                    or abs(left_coordinate - right_coordinate) > 1e-6
+                ):
                     return False
                 continue
             except ValueError:
-                pass
+                return False
         if left_value != right_value:
             return False
     if (left.text or "").strip() != (right.text or "").strip():
@@ -275,6 +282,7 @@ def _build_timeline(
         name = _attribute(prop, "Name") or prop_id
         device_type = _attribute(prop, "DeviceType")
         traditional_type = _attribute(prop, "TraditionalType")
+        string_type = prop.attrib.get("StringType", "Traditional")
 
         if device_type in {"AC", "DC"}:
             excluded.append(
@@ -296,6 +304,18 @@ def _build_timeline(
                     reason=(
                         f"DeviceType {device_type!r} is outside the verified "
                         "walking-skeleton support boundary (LOR only)"
+                    ),
+                )
+            )
+            continue
+        if string_type != "Traditional":
+            excluded.append(
+                ExcludedProp(
+                    prop_id=prop_id,
+                    name=name,
+                    reason=(
+                        f"StringType {string_type!r} is outside the verified "
+                        "walking-skeleton support boundary (Traditional only)"
                     ),
                 )
             )
