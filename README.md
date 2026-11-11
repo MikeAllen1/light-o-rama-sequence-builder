@@ -43,7 +43,7 @@ uv run lor-sequence-builder inspect .\path\to\show.loredit
 Inspect a standalone S6 display preview:
 
 ```powershell
-uv run lor-sequence-builder inspect-preview .\\path\\to\\display.lorprev
+uv run lor-sequence-builder inspect-preview .\path\to\display.lorprev
 ```
 
 Write a new round-trip copy (the destination must not already exist):
