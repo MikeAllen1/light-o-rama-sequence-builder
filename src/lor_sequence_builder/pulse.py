@@ -185,6 +185,21 @@ def _build_timeline(
             f"missing from template={missing[:8]}, extra in template={extra[:8]}"
         )
 
+    embedded_prop_map = {
+        prop_id: prop
+        for prop in embedded_nodes
+        if (prop_id := _attribute(prop, "id")) is not None
+    }
+    for preview_prop in preview_nodes:
+        prop_id = _attribute(preview_prop, "id")
+        assert prop_id is not None
+        template_prop = embedded_prop_map[prop_id]
+        for attribute in ("DeviceType", "TraditionalType", "ChannelGrid"):
+            if _attribute(preview_prop, attribute) != _attribute(template_prop, attribute):
+                raise PulseGenerationError(
+                    f"Prop {prop_id!r} has mismatched {attribute} between preview and template"
+                )
+
     sequence_prop_nodes = sequence_props.findall("SeqProp")
     sequence_prop_map: dict[str, ET.Element] = {}
     for sequence_prop_node in sequence_prop_nodes:
