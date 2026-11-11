@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
-from typing import cast
 from collections.abc import MutableMapping
+from typing import cast
 
 import pytest
 
