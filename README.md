@@ -90,7 +90,7 @@ The command writes a deterministic, versioned Timeline JSON and a new `.loredit`
 
 ## Development checks
 
-Pinned developer tools are defined in the `dev` dependency group in `pyproject.toml`; the matching `uv.lock` update is being completed. CI tests Python 3.12, 3.13, and 3.14 on Windows and Linux. Once the updated lock is committed, use `uv sync --locked --group dev`, then run:
+Pinned developer tools are defined in the `dev` dependency group in `pyproject.toml` and committed in `uv.lock`. CI tests Python 3.12, 3.13, and 3.14 on Windows and Linux. Once the updated lock is committed, use `uv sync --locked --group dev`, then run:
 
 ```powershell
 uv run --no-sync coverage run --branch --source=lor_sequence_builder -m pytest
