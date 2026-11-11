@@ -92,6 +92,25 @@ A requirement that matches no sequenceable prop is reported as a warning, becaus
 
 See `examples/rules-sample-a.yaml` and `examples/rules-sample-b.yaml` for fictional examples.
 
+## Telling the builder your requirements
+
+You don't have to write YAML. Run:
+
+```powershell
+uv run lor-sequence-builder requirements .\display.lorprev
+```
+
+It asks: "Before we build this for you: do you have any specific requirements?" Press Enter to skip, or describe them in your own words, like "arches stay white, keep the star on, mega tree no brighter than 80%".
+
+- **Plain English.** When the `ANTHROPIC_API_KEY` environment variable holds an API key, your text is translated into requirements by a language model (set `LOR_REQUIREMENTS_MODEL` to choose the model). Before anything is sent, the tool tells you that your text and your prop names, roles, groups and colors go to the translation service, and asks to continue.
+- **Guided questions.** Without a key, or with `--guided`, or if you decline sending, it asks a few questions about the props your preview actually has: chase direction for rows, colors for props that can show them alone, mega tree brightness, props that should never light. Nothing leaves your computer.
+
+Either way it shows you how it understood each requirement, what it could not express, and anything it left out (for example a prop name that is not in the preview). Nothing is saved until you confirm.
+
+Confirmed requirements are saved as `display.requirements.yaml` next to the preview, an ordinary rule profile you can also edit by hand. `check-timeline`, `build-from-timeline` and `list-rules --preview` use it automatically and say so; pass `--ignore-saved-requirements` to leave it out for one run. Running `requirements` again offers to keep them, add more, or start fresh (with the option to remove the saved file). `build-from-timeline --ask-requirements` asks before building.
+
+The saved file describes your display, so keep it on your own computer. The repository ignores `*.requirements.yaml`.
+
 ## Timeline format
 
 The planner (Phase 7) writes this JSON. You can also write one by hand to try the rules and the writer.
@@ -123,7 +142,8 @@ The planner (Phase 7) writes this JSON. You can also write one by hand to try th
 ## Commands
 
 ```powershell
-uv run lor-sequence-builder list-rules --rules .\my-display.yaml
+uv run lor-sequence-builder requirements .\display.lorprev
+uv run lor-sequence-builder list-rules --preview .\display.lorprev --rules .\my-display.yaml
 uv run lor-sequence-builder check-timeline .\display.lorprev .\plan.json --rules .\my-display.yaml --report .\plan.rules.json
 uv run lor-sequence-builder build-from-timeline --preview .\display.lorprev --timeline .\plan.json --music-filename "Song.mp3" --output .\song.loredit --report .\song.rules.json --rules .\my-display.yaml
 ```

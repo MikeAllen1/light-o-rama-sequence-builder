@@ -876,7 +876,7 @@ _REQUIREMENTS: dict[str, Callable[[_Context, Requirement, list[str]], str | None
 }
 
 
-def _describe_requirement(req: Requirement) -> str:
+def describe_requirement(req: Requirement) -> str:
     words = {
         "keep_on": "stay on" + (f" during {', '.join(req.params['during'])}"
                                 if req.params.get("during") else ""),
@@ -887,7 +887,8 @@ def _describe_requirement(req: Requirement) -> str:
         "move_direction": f"{req.params.get('movement', 'chase')} "
                           f"{str(req.params.get('direction', '')).replace('_', ' ')}",
     }[req.type]
-    title = f"{req.props.describe().capitalize()} {words}"
+    chosen = req.props.describe()
+    title = f"{chosen[:1].upper()}{chosen[1:]} {words}"
     return f"{title}: {req.note}" if req.note else title
 
 
@@ -912,7 +913,7 @@ def check_choreography(
         results.append(_result(rule_id, spec.title, settings.severity, reason, ctx,
                                 "default.yaml"))
     for req in rule_set.requirements:
-        title = _describe_requirement(req)
+        title = describe_requirement(req)
         if req.severity == "off":
             results.append(RuleResult(req.requirement_id, title, "off", "off",
                                       "turned off by a profile", source=req.source))

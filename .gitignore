@@ -76,3 +76,6 @@ exports/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Display requirements saved next to a preview describe a real display
+*.requirements.yaml

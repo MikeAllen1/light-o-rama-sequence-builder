@@ -20,10 +20,17 @@ from lor_sequence_builder.evaluation import EvaluationError, evaluate
 from lor_sequence_builder.loredit import LoreditError, read_loredit, write_loredit
 from lor_sequence_builder.lorprev import LorprevError, read_lorprev
 from lor_sequence_builder.pulse import PulseGenerationError, build_pulse_sequence, preview_element
+from lor_sequence_builder.requirements_intake import (
+    IntakeError,
+    gather_requirements,
+    saved_requirements_path,
+    translator_from_environment,
+)
 from lor_sequence_builder.rules import (
     RULE_SPECS,
     RuleProfileError,
     check_choreography,
+    display_from_preview,
     load_rule_set,
 )
 from lor_sequence_builder.sequence_writer import (
@@ -33,6 +40,24 @@ from lor_sequence_builder.sequence_writer import (
 )
 
 _RULES_HELP = "rule profile to layer over the built-in rules; repeat to stack, later wins"
+_IGNORE_HELP = "do not use the requirements saved next to the preview"
+
+
+def _profiles(preview: str | None, rules: list[str], ignore_saved: bool = False) -> tuple[str, ...]:
+    """Saved requirements for this preview first, then explicit --rules files (later wins)."""
+    layers: list[str] = []
+    if preview is not None and not ignore_saved:
+        saved = saved_requirements_path(preview)
+        if saved.exists():
+            print(f"Using your saved requirements: {saved.name}")
+            layers.append(str(saved))
+    return (*layers, *rules)
+
+
+def _run_intake(preview: str, fresh: bool, guided: bool) -> None:
+    display = display_from_preview(preview_element(read_lorprev(preview)))
+    gather_requirements(preview, display, input, print, translator_from_environment(),
+                        fresh=fresh, guided=guided)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -112,6 +137,7 @@ def _build_parser() -> argparse.ArgumentParser:
     check.add_argument("timeline", help="choreography Timeline .json")
     check.add_argument("--rules", action="append", default=[], help=_RULES_HELP)
     check.add_argument("--report", help="optional new JSON rule report path")
+    check.add_argument("--ignore-saved-requirements", action="store_true", help=_IGNORE_HELP)
     build = commands.add_parser(
         "build-from-timeline",
         help="write a native S6 sequence from a Timeline that passes the rules",
@@ -125,17 +151,34 @@ def _build_parser() -> argparse.ArgumentParser:
     build.add_argument("--output", required=True, help="new output .loredit path")
     build.add_argument("--report", required=True, help="new JSON rule report path")
     build.add_argument("--rules", action="append", default=[], help=_RULES_HELP)
+    build.add_argument("--ignore-saved-requirements", action="store_true", help=_IGNORE_HELP)
+    build.add_argument(
+        "--ask-requirements", action="store_true",
+        help="ask about specific requirements before building",
+    )
     listing = commands.add_parser(
         "list-rules", help="show the rules and requirements that would apply"
     )
     listing.add_argument("--rules", action="append", default=[], help=_RULES_HELP)
+    listing.add_argument("--preview", help="include the requirements saved for this preview")
+    intake = commands.add_parser(
+        "requirements",
+        help="tell the builder your specific requirements for a display, and save them",
+    )
+    intake.add_argument("preview", help="input .lorprev file (read only)")
+    intake.add_argument("--guided", action="store_true",
+                        help="answer questions instead of describing requirements")
+    intake.add_argument("--fresh", action="store_true",
+                        help="ignore saved requirements and start over")
     return parser
 
 
-def _check_timeline(preview: str, timeline: str, rules: list[str], report_path: str | None) -> int:
+def _check_timeline(
+    preview: str, timeline: str, rules: list[str], report_path: str | None, ignore_saved: bool
+) -> int:
     if report_path is not None and Path(report_path).exists():
         raise RuleProfileError(f"Report already exists: {report_path}")
-    rule_set = load_rule_set(tuple(rules))
+    rule_set = load_rule_set(_profiles(preview, rules, ignore_saved))
     report = check_choreography(
         preview_element(read_lorprev(preview)), load_choreography(timeline), rule_set
     )
@@ -147,8 +190,8 @@ def _check_timeline(preview: str, timeline: str, rules: list[str], report_path: 
     return 0 if report.ok else 1
 
 
-def _list_rules(rules: list[str]) -> int:
-    rule_set = load_rule_set(tuple(rules))
+def _list_rules(rules: list[str], preview: str | None) -> int:
+    rule_set = load_rule_set(_profiles(preview, rules))
     print("Profiles: " + ", ".join(rule_set.sources))
     print("\nBuilt-in rules")
     for rule_id, spec in RULE_SPECS.items():
@@ -276,15 +319,24 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _analyze_preview(options.preview, options.report)
         if options.command == "check-timeline":
             return _check_timeline(options.preview, options.timeline, options.rules,
-                                   options.report)
+                                   options.report, options.ignore_saved_requirements)
         if options.command == "list-rules":
-            return _list_rules(options.rules)
+            return _list_rules(options.rules, options.preview)
+        if options.command == "requirements":
+            _run_intake(options.preview, options.fresh, options.guided)
+            return 0
         if options.command == "build-from-timeline":
+            timeline = load_choreography(options.timeline)
+            if options.ask_requirements:
+                _run_intake(options.preview, fresh=False, guided=False)
+            rule_set = load_rule_set(
+                _profiles(options.preview, options.rules, options.ignore_saved_requirements)
+            )
             try:
                 written = build_from_timeline(
                     options.preview,
-                    load_choreography(options.timeline),
-                    load_rule_set(tuple(options.rules)),
+                    timeline,
+                    rule_set,
                     options.music_filename,
                     options.output,
                     options.report,
@@ -329,6 +381,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ChoreographyError,
         ClassificationError,
         EvaluationError,
+        IntakeError,
         RuleProfileError,
         SequenceWriteError,
         LoreditError,
