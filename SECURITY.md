@@ -17,7 +17,7 @@ Do not include real credentials, copyrighted media, private display previews, or
 - Never commit passwords, API keys, access tokens, private keys, certificates, or real `.env` files.
 - Use environment variables or a local, untracked configuration file for future credentials. Do not add secrets to example configuration files.
 - Treat audio, sequence, and preview files as user data. They may contain copyrighted media references, local file paths, GUIDs, names, and display details.
-- Keep test fixtures synthetic or sanitized. Do not upload a user's original show files to issues or pull requests.
+- Keep test fixtures fictional and synthetic, either hand-authored or generated at test time. Do not commit original or sanitized user show files, and do not upload a user's show files to issues or pull requests.
 - Parse imported XML as untrusted input. Avoid executing content from sequence files, resolving external entities, or trusting embedded paths.
 - Keep dependencies current and review Dependabot and code-scanning alerts.
 - Use least-privilege GitHub Actions permissions. Workflows should not receive write permissions unless a specific job requires them.
