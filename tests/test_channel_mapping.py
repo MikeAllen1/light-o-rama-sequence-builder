@@ -85,3 +85,22 @@ def test_channel_layout_rejects_unsupported_hardware_before_mapping() -> None:
     )
 
     assert "DeviceType DMX" in (channel_layout_problem(prop) or "")
+
+
+def test_raw_element_attributes_are_deeply_read_only() -> None:
+    from lor_sequence_builder.lorprev import RawElement, SourceValue
+
+    source = {"id": SourceValue("prop-1", "sample.lorprev", "/PreviewClass/PropClass[0]")}
+    raw = RawElement(
+        tag="PropClass",
+        attributes=source,
+        children=(),
+        text=None,
+        tail=None,
+        locator="/PreviewClass/PropClass[0]",
+    )
+
+    source.clear()
+    assert raw.attributes["id"].value == "prop-1"
+    with pytest.raises(TypeError):
+        raw.attributes["other"] = SourceValue("x", "sample.lorprev", "/")
