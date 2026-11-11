@@ -360,3 +360,26 @@ def test_analyzer_rejects_audio_over_30_minutes(tmp_path: Path) -> None:
 
     with pytest.raises(AudioAnalysisError, match="30-minute analysis limit"):
         analyze_audio(audio, tmp_path / "long.json", tmp_path / "long.svg")
+
+
+
+@pytest.mark.parametrize("bpm", [60.0, 75.0, 100.0, 140.0, 180.0])
+def test_tempo_estimator_handles_a_range_of_common_tempos(
+    tmp_path: Path, bpm: float
+) -> None:
+    audio = tmp_path / f"known-{int(bpm)}-bpm.wav"
+    _click_track(audio, duration=12.0, bpm=bpm)
+
+    report = analyze_audio(
+        audio, tmp_path / f"{int(bpm)}.json", tmp_path / f"{int(bpm)}.svg",
+        min_bpm=50, max_bpm=200,
+    )
+
+    estimated = report["analysis"]["tempo"]["bpm"]
+    assert estimated == pytest.approx(bpm, abs=max(3.0, bpm * 0.035))
+    beat_times = [event["time"] for event in report["analysis"]["beats"]]
+    assert len(beat_times) >= int(8 * bpm / 60)
+    assert all(
+        (right - left) == pytest.approx(60.0 / estimated, abs=0.08)
+        for left, right in zip(beat_times, beat_times[1:])
+    )
