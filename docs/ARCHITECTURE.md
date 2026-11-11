@@ -144,7 +144,7 @@ The YAML must preserve stable preview identifiers and distinguish inferred value
 - Keep beat, downbeat, onset, vocal, and section events as distinct concepts. Mouth animation follows detected vocal syllables, not the beat.
 - Report unavailable or low-confidence analysis rather than inventing events.
 
-**Implementation notes:** Librosa is the initial analysis foundation. Demucs may be used for vocal separation. Madmom is an alternative only if its Python/runtime compatibility and maintenance are validated. Vocal separation and syllable detection are computationally expensive and must have explicit dependency, runtime, and failure behavior. If vocal analysis is unavailable, singing-face mouth animation must be disabled or flagged for user review; it must not fall back to beat-driven mouth movement.
+**Implementation notes:** The merged Phase 4 baseline uses the Python standard library after bounded FFmpeg normalization; it does not currently depend on librosa and does not provide semantic section labels, tempo-change tracking, or vocal analysis. A future phase may evaluate librosa or other maintained tools for richer analysis. Demucs or another separator may be evaluated for vocal separation only when that phase is approved. Any heavier dependency must have explicit compatibility, runtime, resource, and failure behavior. If vocal analysis is unavailable, singing-face mouth animation must be disabled or flagged for user review; it must not fall back to beat-driven mouth movement.
 
 **Output:** Typed musical feature models with timestamps, confidence, and provenance.
 
