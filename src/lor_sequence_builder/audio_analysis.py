@@ -125,7 +125,7 @@ def _median(values: list[float]) -> float:
     return (ordered[middle - 1] + ordered[middle]) / 2.0
 
 
-def _detect_onsets(flux: list[float]) -> list[dict[str, float]]:
+def _detect_onsets(flux: list[float]) -> list[dict[str, Any]]:
     if len(flux) < 3:
         return []
     baseline = _median(flux)
@@ -133,7 +133,7 @@ def _detect_onsets(flux: list[float]) -> list[dict[str, float]]:
     mad = _median(deviations)
     maximum = max(flux)
     threshold = max(baseline + 3.0 * mad, maximum * 0.08, 1e-8)
-    peaks: list[dict[str, float]] = []
+    peaks: list[dict[str, Any]] = []
     for index in range(1, len(flux) - 1):
         value = flux[index]
         if value >= threshold and value >= flux[index - 1] and value > flux[index + 1]:
@@ -190,8 +190,8 @@ def _estimate_tempo(
     return round(bpm, 2), round(confidence, 4), best_lag, phase
 
 
-def _energy_curve(rms: list[float]) -> list[dict[str, float]]:
-    result: list[dict[str, float]] = []
+def _energy_curve(rms: list[float]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
     frames_per_second = round(1.0 / FRAME_SECONDS)
     for start in range(0, len(rms), frames_per_second):
         chunk = rms[start:start + frames_per_second]
@@ -206,10 +206,10 @@ def _energy_curve(rms: list[float]) -> list[dict[str, float]]:
 
 def _hard_stops(
     rms: list[float], minimum_silence_seconds: float = 0.75
-) -> list[dict[str, float]]:
+) -> list[dict[str, Any]]:
     threshold = max(1e-5, max(rms, default=0.0) * 0.025)
     required_frames = max(1, round(minimum_silence_seconds / FRAME_SECONDS))
-    stops: list[dict[str, float]] = []
+    stops: list[dict[str, Any]] = []
     index = 1
     while index < len(rms):
         if rms[index] <= threshold and rms[index - 1] > threshold:
@@ -253,7 +253,7 @@ def _phrase_boundaries(
     return result
 
 
-def _section_candidates(energy: list[dict[str, float]]) -> list[dict[str, Any]]:
+def _section_candidates(energy: list[dict[str, Any]]) -> list[dict[str, Any]]:
     # Compare broad context windows, then localize the candidate to the strongest
     # adjacent one-second energy change. Never assign verse/chorus labels.
     result: list[dict[str, Any]] = []
@@ -289,12 +289,12 @@ def _section_candidates(energy: list[dict[str, float]]) -> list[dict[str, Any]]:
 def _svg_plot(
     path: Path,
     duration: float,
-    energy: list[dict[str, float]],
+    energy: list[dict[str, Any]],
     beats: list[float],
     downbeats: list[float],
-    onsets: list[dict[str, float]],
+    onsets: list[dict[str, Any]],
     sections: list[dict[str, Any]],
-    stops: list[dict[str, float]],
+    stops: list[dict[str, Any]],
 ) -> None:
     width, height = 1400, 520
     left, right, top, bottom = 70, 20, 35, 55
