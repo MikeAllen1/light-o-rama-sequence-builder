@@ -285,8 +285,9 @@ def test_incomplete_native_channel_is_explicitly_excluded(
     assert prop_id not in timeline["supported_prop_ids"]
 
 
+@pytest.mark.parametrize("device_type", ["AC", "DC"])
 def test_ac_and_dc_device_types_are_recognized_but_explicitly_excluded(
-    tmp_path: Path, matching_inputs: tuple[Path, Path]
+    tmp_path: Path, matching_inputs: tuple[Path, Path], device_type: str
 ) -> None:
     preview, template = matching_inputs
     preview_tree = ET.parse(preview)
@@ -299,17 +300,17 @@ def test_ac_and_dc_device_types_are_recognized_but_explicitly_excluded(
     )
     prop_id = preview_prop.get("id")
     assert prop_id is not None
-    preview_prop.set("DeviceType", "AC")
+    preview_prop.set("DeviceType", device_type)
     embedded = template_tree.getroot().find("PreviewClass")
     assert embedded is not None
     template_prop = embedded.find(f"PropClass[@id='{prop_id}']")
     assert template_prop is not None
-    template_prop.set("DeviceType", "AC")
+    template_prop.set("DeviceType", device_type)
     preview_tree.write(preview, encoding="utf-8", xml_declaration=True)
     template_tree.write(template, encoding="utf-8", xml_declaration=True)
 
-    output = tmp_path / "legacy-ac.loredit"
-    timeline_path = tmp_path / "legacy-ac.json"
+    output = tmp_path / f"legacy-{device_type.lower()}.loredit"
+    timeline_path = tmp_path / f"legacy-{device_type.lower()}.json"
     build_pulse_sequence(preview, template, output, timeline_path, bpm=120)
     timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
     excluded = next(item for item in timeline["excluded_props"] if item["prop_id"] == prop_id)
@@ -400,6 +401,12 @@ def test_independent_s6_preview_and_native_template_prove_channel_mapping(
             assert channel["color"] == native.get("color")
     generated = read_loredit(output)
     assert len(generated.root.findall("./SequenceProps/SeqProp/channel/effect")) == result.event_count
+    per_color_events = [
+        event for event in timeline["events"]
+        if preview_props[event["channel"]["prop_id"]].get("TraditionalType") == "Channel_per_color"
+    ]
+    assert per_color_events
+    assert any(event["channel"]["color"] == "1" for event in per_color_events)
 
 
 def test_geometry_mismatch_between_independent_preview_and_template_is_rejected(
