@@ -25,6 +25,10 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath, PureWindowsPath
 
 from lor_sequence_builder.loredit import LoreditDocument
+from lor_sequence_builder.channel_mapping import (
+    channel_layout_problem,
+    parse_channel_grid,
+)
 from lor_sequence_builder.lorprev import (
     MAX_CHANNEL_GRID_ENTRIES_PER_PROP,
     MAX_CHANNEL_GRID_ENTRIES_TOTAL,
@@ -35,8 +39,6 @@ SAVE_FILE_VERSION = "15"
 DEFAULT_APP_VERSION = "6.6.0.12"
 MAX_SEQUENCE_CENTISECONDS = 30 * 60 * 100
 SUPPORTED_DEVICE_TYPES = frozenset({"LOR"})
-COLUMN_LAYOUT_TYPES = frozenset({"Single Color", "Multicolor_string_1_ch"})
-COLOR_LAYOUT_TYPES = frozenset({"Channel_per_color"})
 
 # Interface defaults observed identically in every native S6 6.6.0.12 sequence
 # examined. They control the editor view, not the show.
@@ -81,45 +83,12 @@ class NewSequence:
 
 
 def _channel_count(prop: ET.Element) -> int:
-    value = prop.attrib.get("ChannelGrid", "")
-    if not value:
-        return 0
-    entry_count = value.count(";") + 1
-    if entry_count > MAX_CHANNEL_GRID_ENTRIES_PER_PROP:
-        raise NewSequenceError(
-            f"Prop ChannelGrid exceeds the {MAX_CHANNEL_GRID_ENTRIES_PER_PROP} entry limit"
-        )
-    entries = value.split(";")
-    if any(not entry.strip() for entry in entries):
-        raise NewSequenceError("ChannelGrid contains an empty assignment; channel indices cannot be compacted")
-    return len(entries)
+    try:
+        return len(parse_channel_grid(prop.attrib.get("ChannelGrid")))
+    except ValueError as exc:
+        raise NewSequenceError(str(exc)) from exc
 
 
-def channel_layout_problem(prop: ET.Element) -> str | None:
-    """Why a prop's channels cannot be written natively yet, or None when they can."""
-    device_type = prop.attrib.get("DeviceType", "")
-    traditional_type = prop.attrib.get("TraditionalType", "")
-    if device_type not in SUPPORTED_DEVICE_TYPES:
-        return f"DeviceType {device_type or '(missing)'} has no verified native channel layout"
-    string_type = prop.attrib.get("StringType", "Traditional")
-    if string_type != "Traditional":
-        return f"StringType {string_type!r} has no verified native channel layout"
-    if traditional_type not in COLUMN_LAYOUT_TYPES | COLOR_LAYOUT_TYPES:
-        return (
-            f"TraditionalType {traditional_type or '(missing)'} has no verified native "
-            "channel layout"
-        )
-    value = prop.attrib.get("ChannelGrid", "")
-    entries = value.split(";") if value else []
-    for index, entry in enumerate(entries):
-        fields = entry.split(",")
-        if not entry.strip():
-            return f"ChannelGrid entry {index} is empty; channel indices cannot be compacted"
-        if len(fields) < 3 or not all(field.strip() for field in fields[:3]):
-            return f"ChannelGrid entry {index} lacks a complete LOR network, Unit ID, and circuit"
-    if not entries:
-        return "ChannelGrid has no controller assignments"
-    return None
 
 
 def _sequence_id(preview: ET.Element, total_centiseconds: int, music_filename: str) -> str:
