@@ -36,7 +36,9 @@ local.settings.json
 
 # Light-O-Rama show files and user media (keep original files local)
 *.loredit
-!tests/fixtures/*.loredit
+!tests/fixtures/synthetic_*.loredit
+*.lorprev
+!tests/fixtures/synthetic_*.lorprev
 *.lms
 *.las
 *.wav
