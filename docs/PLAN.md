@@ -97,9 +97,15 @@ Review audio, sequences, and results stay local and are never committed.
 **Done when:** on at least three contrasting songs with trusted grids, beats F ≥ 0.85 and bars F ≥ 0.85 via `evaluate-analysis`; section recall is reported; synthetic tests cover tempo, beats, downbeats, sections, stops, and the schema contract; CI is green; owner approves moving to Phase 4b.
 
 ### Phase 4b — Scratch-built sequence writer
+**Status: Implemented; owner S6 open-test pending.**
+
 Build a native S6 v15 `.loredit` from a parsed `.lorprev` alone, with no template sequence: sequence metadata, embedded preview, one `SeqProp` and native channel record per supported preview channel, timing grid, duration, and audio reference. Replace the Phase 3 template requirement in `pulse` with this writer.
 
-**Evidence first:** Before writing code, collect native fixtures that show how S6 represents a brand-new sequence created from a preview: at minimum, a new empty sequence created in S6 from a fixture preview, and the same sequence after adding audio. Compare them against the existing v15 fixtures and document every field the writer must produce in `docs/S6_FORMAT.md`. Ask the owner for any field the fixtures do not explain; never fill gaps from memory.
+**Evidence used:** native S6 6.6.0.12 musical sequences examined locally; none of their content is committed. The structure is recorded in `docs/S6_FORMAT.md` under "New sequence structure". S6 cannot create a musical sequence without choosing audio, so "new empty sequence" means a new sequence with audio, saved with no edits.
+
+**Delivered:** `new_sequence.py` builds the eleven-section skeleton, embeds the preview, creates sequence props for non-linked props in preview order with verified channel layouts, excludes and reports unverified prop types, adds the 0.05 s fixed grid and optional free timing grids, and derives a deterministic sequence id. `pulse` builds from the preview alone (`--duration-seconds`, `--music-filename`); `--template` is deprecated. Rebuilding examined sequences from their embedded previews matched every sequence prop, channel coordinate, empty section, and shared root setting. The Timeline field `template_xml_sha256` keeps its name for schema stability; without a template it fingerprints the newly built base sequence.
+
+**Remaining:** owner opens a scratch-built pulse sequence in S6 and confirms it loads without a repair prompt, the preview renders, events appear, and the editor view is usable (new sequences have an empty `PropViews`). The test sequence for this gate must be built from a synthetic preview, not the owner's display.
 
 **Done when:** A scratch-built sequence for every committed fixture preview is semantically equal to its S6-created reference fixture (props, channel coordinates, addresses, timing, metadata); unsupported props are enumerated, never silently dropped; `pulse` works with only a preview, audio duration or explicit duration, and BPM; the template path is removed or explicitly deprecated; inputs are never modified; the owner opens a scratch-built sequence in S6, confirms it loads, the preview renders, and events appear. Mandatory human gate.
 

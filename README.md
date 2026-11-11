@@ -76,15 +76,17 @@ uv run lor-sequence-builder evaluate-analysis --analysis .\song.analysis.json --
 
 See the [audio analysis review procedure](docs/AUDIO_ANALYSIS_REVIEW.md) for acceptance targets and how to read the results.
 
-## Phase 3 walking skeleton
+## Pulse sequences (engineering harness)
 
-The temporary engineering command `pulse` proves the preview → Timeline → native S6 writer path using a fixed BPM. It does not analyze audio or create intelligent choreography. It requires a native S6 v15 `.loredit` template whose embedded prop IDs and per-prop `DeviceType`, `TraditionalType`, and `ChannelGrid` declarations match the supplied standalone preview exactly.
-
-Example:
+The `pulse` command proves the preview → Timeline → native S6 writer path using a fixed BPM. It does not analyze audio or create intelligent choreography. It builds a brand-new native S6 v15 sequence from the preview alone; no template sequence is needed:
 
 ```powershell
-uv run lor-sequence-builder pulse --preview .\display.lorprev --template .\template.loredit --bpm 120 --output .\pulse-test.loredit --timeline-output .\pulse-test.timeline.json
+uv run lor-sequence-builder pulse --preview .\display.lorprev --bpm 120 --duration-seconds 180 --music-filename "Show\song.mp3" --output .\pulse-test.loredit --timeline-output .\pulse-test.timeline.json
 ```
+
+`--music-filename` is stored in the sequence the way S6 records it (S6 always attaches an audio file to a musical sequence). Props linked to a master prop are driven by their master and get no sequence prop of their own; props without a verified channel layout (pixel/RGB, DMX, legacy AC/DC, unassigned) are excluded and listed in the output. See the new-sequence structure in [docs/S6_FORMAT.md](docs/S6_FORMAT.md).
+
+The older template mode (`--template`, a native S6 v15 sequence whose embedded preview matches the standalone preview exactly) still works but is deprecated. The rules below apply to it.
 
 The verified Phase 3 boundary is `DeviceType=LOR` with `TraditionalType=Single Color`, `Multicolor_string_1_ch`, or `Channel_per_color`. The standalone preview and embedded template must have identical prop subtrees (all attributes and nested data, including geometry and master-prop references) and identical `PropGroup` membership/layout. Numeric geometry and group coordinates allow only a 1e-6 tolerance. Preview edit revisions are ignored, since they only count saves.
 

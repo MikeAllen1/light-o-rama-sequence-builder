@@ -27,10 +27,23 @@ def _build_parser() -> argparse.ArgumentParser:
     roundtrip.add_argument("sequence", help="input .loredit file")
     roundtrip.add_argument("output", help="new output .loredit path (must not exist)")
     pulse = commands.add_parser(
-        "pulse", help="build a fixed-tempo beat-pulse walking-skeleton sequence"
+        "pulse", help="build a fixed-tempo beat-pulse sequence from a preview"
     )
     pulse.add_argument("--preview", required=True, help="required standalone .lorprev file")
-    pulse.add_argument("--template", required=True, help="matching native S6 .loredit template")
+    pulse.add_argument(
+        "--duration-seconds",
+        type=float,
+        help="sequence length in seconds (required unless --template is given)",
+    )
+    pulse.add_argument(
+        "--music-filename",
+        help="audio file name to store in the sequence, as S6 records it "
+        "(required unless --template is given)",
+    )
+    pulse.add_argument(
+        "--template",
+        help="deprecated: matching native S6 .loredit to copy instead of building from scratch",
+    )
     pulse.add_argument("--bpm", required=True, type=int, help="fixed tempo in beats per minute")
     pulse.add_argument("--output", required=True, help="new output .loredit path")
     pulse.add_argument("--timeline-output", required=True, help="new deterministic Timeline .json path")
@@ -108,6 +121,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"Hard stops: {len(analysis['hard_stops'])}")
             return 0
         if options.command == "pulse":
+            total_centiseconds = (
+                round(options.duration_seconds * 100)
+                if options.duration_seconds is not None
+                else None
+            )
             result = build_pulse_sequence(
                 preview_path=options.preview,
                 template_path=options.template,
@@ -115,6 +133,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 timeline_path=options.timeline_output,
                 bpm=options.bpm,
                 pulse_duration_centiseconds=options.pulse_duration_cs,
+                total_centiseconds=total_centiseconds,
+                music_filename=options.music_filename,
             )
             print(f"Sequence: {result.sequence_path}")
             print(f"Timeline: {result.timeline_path}")
