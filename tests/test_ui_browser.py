@@ -167,6 +167,12 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                         }"""
                     )
                     assert waveform_pixels > 0
+                    page.locator("#canvasViewport").evaluate("(element) => { element.scrollLeft = 0; }")
+                    page.locator("#waveformCanvas").click(position={"x": 88, "y": 45})
+                    playhead_left = page.locator("#playhead").evaluate(
+                        "(element) => Number.parseFloat(element.style.left)"
+                    )
+                    assert abs(playhead_left - 88) < 1
                 finally:
                     browser.close()
     finally:
