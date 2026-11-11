@@ -405,7 +405,10 @@ def _rows(
 ) -> dict[str, tuple[str, str, int, int]]:
     """Rows come from the user's groups first, then from look-alike props side by side.
 
-    Values are (row key, group name, position, size). Parts of a figure are never a row.
+    Values are (row key, group name, position, size). Parts drawn on top of each other
+    (a face's mouth shapes) are never a row: row members must stand side by side. A
+    prop that merely overlaps something else (an arch with a train drawn in front of
+    it) can still belong to the row of its look-alikes.
     """
     rows: dict[str, tuple[str, str, int, int]] = {}
     for group in preview.findall("PropGroup"):
@@ -416,7 +419,7 @@ def _rows(
     by_signature: dict[tuple[str, int, str], list[str]] = {}
     for prop in props:
         pid = prop.get("id", "")
-        if pid in rows or pid in figures or prop.get("MasterPropId", "").strip() or geometries[pid] is None:
+        if pid in rows or prop.get("MasterPropId", "").strip() or geometries[pid] is None:
             continue
         signature = (_shape_name(prop), len(_channel_entries(prop)), prop.get("TraditionalType", ""))
         by_signature.setdefault(signature, []).append(pid)
@@ -442,7 +445,11 @@ def _rows(
                     for x, y in ((g.width, seed.width), (g.height, seed.height))
                 )
                 level = abs(g.center_y - seed.center_y) <= max(0.04, 0.6 * seed.height)
-                if similar_size and level:
+                beside = all(
+                    abs(g.center_x - other.center_x) >= 0.5 * min(g.width, other.width)
+                    for other in (geometries[m] for m in row) if other is not None
+                )
+                if similar_size and level and beside:
                     row.append(pid)
             row_set = set(row)
             remaining = [pid for pid in remaining if pid not in row_set]
