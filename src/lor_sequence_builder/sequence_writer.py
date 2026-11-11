@@ -31,6 +31,8 @@ from lor_sequence_builder.pulse import preview_element
 from lor_sequence_builder.rules import RuleReport, RuleSet, check_choreography
 from lor_sequence_builder.timeline import ExcludedProp
 
+__all__ = ["NewSequenceError", "build_from_timeline", "build_new_sequence"]
+
 _SETTINGS = {"on": "INTENSITY", "fade": "INTENSITY", "twinkle": "TWINKLE", "shimmer": "SHIMMER"}
 
 
