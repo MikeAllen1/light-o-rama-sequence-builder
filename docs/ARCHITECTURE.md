@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** Phases 0–3 merged; Phase 4 audio-analysis baseline merged with real-song acceptance review open. See PLAN.md for authoritative status.  
+**Status:** Phases 0 through 4 merged; Phase 4b (scratch-built writer) is next. See PLAN.md for authoritative status.  
 **Project:** Light-O-Rama Sequence Builder  
 **V1 interface:** Command line  
 **Target output:** Native Light-O-Rama S6 `.loredit` sequence  
@@ -144,7 +144,7 @@ The YAML must preserve stable preview identifiers and distinguish inferred value
 - Keep beat, downbeat, onset, vocal, and section events as distinct concepts. Mouth animation follows detected vocal syllables, not the beat.
 - Report unavailable or low-confidence analysis rather than inventing events.
 
-**Implementation notes:** The merged Phase 4 baseline uses the Python standard library after bounded FFmpeg normalization; it does not currently depend on librosa and does not provide semantic section labels, tempo-change tracking, or vocal analysis. A future phase may evaluate librosa or other maintained tools for richer analysis. Demucs or another separator may be evaluated for vocal separation only when that phase is approved. Any heavier dependency must have explicit compatibility, runtime, resource, and failure behavior. If vocal analysis is unavailable, singing-face mouth animation must be disabled or flagged for user review; it must not fall back to beat-driven mouth movement.
+**Implementation notes:** Librosa is the analysis foundation (adopted in the Phase 4 rework); it receives only FFmpeg-decoded sample arrays and never opens files. Demucs may be used for vocal separation. Madmom is an alternative only if its Python/runtime compatibility and maintenance are validated. Vocal separation and syllable detection are computationally expensive and must have explicit dependency, runtime, and failure behavior. If vocal analysis is unavailable, singing-face mouth animation must be disabled or flagged for user review; it must not fall back to beat-driven mouth movement.
 
 **Output:** Typed musical feature models with timestamps, confidence, and provenance.
 
@@ -424,11 +424,12 @@ No phase-specific implementation is considered complete merely because a scaffol
 
 ## Phase 4 implementation boundary
 
-The initial Phase 4 analyzer is implemented in `audio_analysis.py` and exposed as `analyze-audio`. FFmpeg is an external runtime requirement and normalizes the first audio stream to mono 11.025 kHz signed 16-bit PCM. Inputs are limited to 200 MiB and 30 minutes; clips shorter than two seconds are rejected. The pipeline uses the Python standard library only after normalization, avoiding a heavyweight machine-learning dependency at this stage.
+The analyzer is implemented in `audio_analysis.py` and exposed as `analyze-audio`. FFmpeg is the only decoder: it normalizes the first audio stream to mono 22.05 kHz signed 16-bit PCM, and librosa analyzes the resulting sample array. Inputs are limited to 200 MiB and 30 minutes; clips shorter than two seconds are rejected.
 
-The CLI exposes configurable minimum and maximum tempo bounds (30–300 BPM, with defaults of 60–200 BPM). The versioned JSON records these configuration values and keeps tempo, beats, downbeats, onsets, RMS energy, phrase candidates, section candidates, and hard-stop candidates as separate fields. Tempo uses autocorrelation over positive frame-energy flux; downbeats are provisional beat-one/every-fourth-beat assumptions; phrase candidates are fixed 16-beat groupings; section candidates are energy-change points without verse/chorus labels; hard stops are sustained near-silence candidates. These are deliberately conservative estimates, not semantic music understanding. The SVG diagnostic overlays energy, beat positions, onsets, and stop candidates.
+- **Tempo and beats:** librosa global tempo seeds the dynamic-programming beat tracker; beats without a nearby transient (lead-in or trailing silence) are dropped; tempo is a least-squares fit across all beats to cancel frame quantization. Tempo confidence is the share of local tempo estimates agreeing with the result (or its half/double); beat confidence compares onset strength on beats against midpoints.
+- **Beat-synchronous features:** `_beat_sync` keeps column *i* equal to beat *i* (librosa adds a leading column when the first beat is not frame 0) and closes the last beat after one period.
+- **Downbeats:** four beats per bar; the bar position with the highest median harmonic (chroma) change wins. With fewer than four bars or a margin below 0.1, the first beat is used and confidence reports the weak evidence.
+- **Sections:** checkerboard novelty on a beat-level self-similarity matrix (chroma plus MFCC) plus loudness change, evaluated only at downbeats, local peaks at least four bars apart. Broad energy transitions are added when no structural candidate is nearby. No labels are inferred.
+- **Evaluation:** `evaluation.py` and `evaluate-analysis` score a report against named free timing grids in a sequence opened read only through the LOREDIT reader (70 ms for beats and bars, 2 s for sections).
 
-The current baseline is useful for validating signal extraction and exposing timing hypotheses, but it is not yet sufficient to drive professional choreography. Phase 4 acceptance still requires broader synthetic coverage, manual inspection of debug plots, confidence calibration, and CI. It does not perform prop classification, planning, vocal separation, or syllable detection.
-
-
-The machine-readable v1.0 output contract is maintained at `docs/schemas/audio-analysis-v1.schema.json`. Changes to report structure must increment the schema version and update the contract and tests together. Each inferred event includes its heuristic method and confidence; measured RMS samples include their measurement method. Tool versions and analysis configuration are recorded for reproducibility.
+The machine-readable contract is `docs/schemas/audio-analysis-v2.schema.json`; v1 remains for the historical baseline. Changes to report structure must increment the schema version and update the contract and the contract test together.

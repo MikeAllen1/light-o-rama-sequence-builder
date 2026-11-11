@@ -1,8 +1,8 @@
 # Implementation Plan
 
-**Status:** Phases 0–3 complete and merged. The Phase 4 audio-analysis baseline is merged; its real-song review and confidence-calibration acceptance work remains open.  
-**Current phase:** 4 acceptance review  
-**Next phase:** 5 — prop classification (blocked until Phase 4 acceptance is complete and the owner approves).
+**Status:** Phases 0 through 4 complete and merged. Phase 4 was accepted by the owner on 2026-11-11 with swung and rubato songs as a known limitation.  
+**Current phase:** none active  
+**Next phase:** 4b, the scratch-built sequence writer (requires owner approval to start), then 5, prop classification.
 
 ## Product objective and fixed requirements
 
@@ -29,7 +29,7 @@ These differ from the original stack proposal. They are intentional and accepted
 
 - **Models:** frozen `dataclasses` are used for stage models instead of Pydantic. Pydantic remains the expected choice for user-edited inputs (`props.yaml`, rules profiles) where schema validation and error messages matter; adopt it in the phase that first parses those files.
 - **CLI:** `argparse` is used instead of Typer. Acceptable for v1; revisit only if CLI complexity grows.
-- **Audio:** the Phase 4 baseline uses the Python standard library after FFmpeg normalization, with no librosa dependency. This keeps installation and the dependency surface small, but it cannot provide semantic section labels, tempo-change tracking, or vocal analysis. Phase 8 (and possibly section work in Phase 7) will require heavier dependencies such as librosa and Demucs; adding them must be recorded here.
+- **Audio (reversed 2026-11-11):** the stdlib-only baseline was replaced by librosa after real-song review showed its beat placement was near chance (about 30% of beats within 70 ms of the owner's grids). librosa analyzes FFmpeg-decoded samples only; FFmpeg remains the only decoder. Demucs or similar is still expected for Phase 8 vocals and must be recorded here when added.
 
 ## Open decisions (owner input required before the phase that depends on them)
 
@@ -76,15 +76,39 @@ Build fixed-tempo "pulse every supported prop on the beat" → Timeline → writ
 **Done when:** The fixed-tempo pipeline generates a native v15 sequence and deterministic Timeline; S6 opens the generated file; preview and generated events render; unsupported/excluded props are enumerated.
 
 ### Phase 4 — Audio analysis
-**Status: Baseline merged; acceptance review remains open.** PR #9 was squash-merged into `master` as `2b962bd39d51b052c3f97d76876a29176dc627ae` after all required CI checks passed on final head `36a98f824dcd883d032b3a49240aa8957f20d91e`.
+**Status: Complete. Accepted by the owner on 2026-11-11** after the librosa rework (PR #17). The original baseline (PR #9) failed real-song review; its history follows. PR #9 was squash-merged into `master` as `2b962bd39d51b052c3f97d76876a29176dc627ae` after all required CI checks passed on final head `36a98f824dcd883d032b3a49240aa8957f20d91e`.
 
 Delivered: bounded FFmpeg normalization; deterministic RMS/positive-energy-flux/autocorrelation analysis; tempo, beat and provisional downbeat candidates; onsets; energy curve; fixed 16-beat phrase candidates; energy-transition candidates; sustained near-silence candidates including leading silence; versioned JSON and formal v1.0 JSON Schema; SVG diagnostic plot; CLI confidence reporting; Linux and Windows tests; CodeQL.
 
 Final-head CI: Tests workflow run `42956005759` passed both Linux (pytest, Ruff, strict mypy, pip-audit) and Windows compatibility jobs. Phase 3 Validation Package run `42956005713` passed. CodeQL run `42956005698` passed. The final hard-stop timestamp test uses a tolerance consistent with the 551-sample frame duration (~49.977 ms), rather than asserting a mathematically exact 3.000-second frame boundary.
 
-**Remaining acceptance:** owner review of diagnostic plots against contrasting real songs (fast/percussive, slower, and a song with tempo or arrangement changes), recording tempo/phase alignment, false/missed candidates, and whether confidence communicates uncertainty usefully. Confidence values remain heuristic and uncalibrated; do not treat them as probabilities or use them as the sole basis for choreography. No real-song review is claimed complete. Phase 5 remains blocked until this human review is complete and the owner explicitly approves moving forward.
+**Superseded by the rework below.** Original remaining acceptance: owner review of diagnostic plots against contrasting real songs (fast/percussive, slower, and a song with tempo or arrangement changes), recording tempo/phase alignment, false/missed candidates, and whether confidence communicates uncertainty usefully. Confidence values remain heuristic and uncalibrated; do not treat them as probabilities or use them as the sole basis for choreography. No real-song review is claimed complete. Phase 5 remains blocked until this human review is complete and the owner explicitly approves moving forward.
 
-**Done when:** Analysis JSON and a debug plot are generated; plot is reviewed against real songs; synthetic tests cover known tempo/events/energy/sections/stops; uncertainty and limitations are explicit; confidence behavior is reviewed; CI is green; owner approves Phase 5.
+**Real-song review (2026-11-11), baseline:** scored with the owner's hand-placed timing grids. Song A (113 BPM): tempo correct, beats 30%, bars 1%, sections 1 of 11. Song B (162 BPM): tempo 4% low, beats 34%, bars 11%, sections 2 of 13. Song E (~161 BPM, no grid): tempo reported 98.6, wrong. Chance level for beats is about 26%. Result: **failed**.
+
+**Rework (branch `phase-4/librosa-rework`, PR #17):** librosa beat tracking with transient-supported beats and regression tempo; downbeats from beat-synchronous harmonic change with a no-evidence fallback and a `--beats-per-bar` option (3 or 4; meter is not detected); structural section candidates from self-similarity plus loudness change at bar starts; `evaluate-analysis` command scoring analyses against grids in the owner's own sequences; schema v2.0.
+
+Rework results on five owner songs (bars shown as detected, and after shifting one beat later to match how the owner's bar grids were built):
+
+| Song | Feel | Tempo (grid) | Beats F | Bars F (shifted) | Sections recall |
+|---|---|---|---|---|---|
+| Song A | mid-tempo pop | 112.4 (113.2) | 0.96 | 0.01 (0.92) | 0.27 |
+| Song B | fast rock | 161.5 (162.2) | 0.97 | 0.00 (0.97) | 0.46 |
+| Song C | free intro, then fast | 152.0 (150.0) | 0.98 | 0.00 (0.87) | 0.47 |
+| Song D | slow swing, counted in 3 | 107.6 (107.1) | 0.81 | 0.44 at 3/bar, low confidence | 0.35 to 0.45 |
+| Song E | fast | 161.5 (no grid) | no grid | no grid | no grid |
+
+**Bar grid offset:** on all three gridded songs in 4, the owner's bar marks sit exactly one beat after the analyzer's, for the whole song. The owner's bar grids land on every Nth mark of the beat grid from a fixed start, and two independent cues (harmonic change and low-frequency hits) agree with the analyzer, so the grids are treated as offset by one beat. The owner has not confirmed this by ear.
+
+**Song D:** the owner's two beat grids agree with each other only 82%, and an independent tracker also scores 0.82 against them, so beat ground truth is itself uncertain on this loosely swung recording. Its harmony does not clearly mark bars, and the analyzer correctly reports low bar confidence (0.07).
+
+**Acceptance (owner, 2026-11-11):** accepted for songs in 4 (beats 0.96 to 0.98, bars 0.87 to 0.97 after the grid offset). Known limitation: swung or rubato recordings, where the band follows the singer's phrasing, reach about 0.81 beat agreement (0.90 against beats where the owner's two grids agree), and their bars are unreliable. Later phases must use bar confidence and allow a reviewed bar offset or meter override rather than trusting downbeats blindly.
+
+**Swing investigation (before acceptance):** on Song D, none of these improved beat agreement without hurting the steady songs: stiffer or looser tempo tracking, a drifting local tempo, drum-only (percussive) or bass-band onset envelopes, re-spacing weak stretches between confident beats, snapping beats to nearby onsets (with and without a late-onset penalty), predominant-local-pulse beats, and a neural beat and downbeat tracker (beat_this; it scored lower on every song, added about 900 MB, and called Song D 2 or 4, not 3). Zooming into the misses showed the owner's beats following vocal phrasing with spacing between 0.40 and 0.72 s while onsets alone cannot separate beats from swung notes. The planned fix is vocal-guided beat placement in Phase 8.
+
+Owner songs and sequences used for review are kept local and never committed.
+
+**Done when:** on at least three contrasting owner songs with trusted grids, beats F ≥ 0.85 and bars F ≥ 0.85 via `evaluate-analysis`; section recall is reported; synthetic tests cover tempo, beats, downbeats, sections, stops, and the schema contract; CI is green; owner approves moving to Phase 4b.
 
 ### Phase 4b — Scratch-built sequence writer
 Build a native S6 v15 `.loredit` from a parsed `.lorprev` alone, with no template sequence: sequence metadata, embedded preview, one `SeqProp` and native channel record per supported preview channel, timing grid, duration, and audio reference. Replace the Phase 3 template requirement in `pulse` with this writer.
@@ -109,7 +133,7 @@ Build section-aware choreography with basic effects.
 **Done when:** Real song produces a Timeline and sequence passing rules; owner opens and plays it in LOR and confirms it looks intentional, not random or merely beat-flashing; effects feel integrated into the arrangement. Mandatory human gate.
 
 ### Phase 8 — Vocals
-Build vocal separation, vocal regions, syllable onsets, and singing-face choreography.
+Build vocal separation, vocal regions, syllable onsets, and singing-face choreography. Also use vocal phrasing to guide beat placement where the band follows the singer (rubato or loosely swung stretches), and re-score swung, singer-led songs with `evaluate-analysis` to confirm the gain without regressing steady songs.
 
 **Done when:** A supported singing face lip-syncs to words/syllables, rests during instrumentals, and keeps outline on whenever mouth channels are active; owner opens/plays result in LOR and confirms visual behavior. Mandatory human gate.
 

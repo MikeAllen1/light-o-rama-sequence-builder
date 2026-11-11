@@ -1,8 +1,10 @@
-"""Deterministic first-pass audio feature extraction for Phase 4.
+"""Audio feature extraction for Phase 4.
 
-The analyzer normalizes input through FFmpeg to mono 11.025 kHz PCM WAV, then
-uses bounded, dependency-free signal processing. Estimates are intentionally
-labelled as estimates; this is not source separation or semantic music tagging.
+FFmpeg decodes and normalizes every input to mono 22.05 kHz signed 16-bit PCM;
+librosa never opens a file. Rhythm and structure come from librosa signal
+processing on the decoded samples. Every inferred event carries its method and
+a heuristic confidence. Estimates are labelled as estimates: this is not
+source separation or semantic music tagging.
 """
 from __future__ import annotations
 
@@ -12,16 +14,20 @@ import math
 import os
 import platform
 import shutil
-import struct
 import subprocess
 import tempfile
 import wave
-from array import array
+from importlib import metadata
 from pathlib import Path
 from typing import Any
 
-ANALYSIS_SCHEMA_VERSION = "1.0"
-SAMPLE_RATE = 11_025
+import librosa
+import numpy as np
+import numpy.typing as npt
+
+ANALYSIS_SCHEMA_VERSION = "2.0"
+SAMPLE_RATE = 22_050
+HOP_LENGTH = 512
 FRAME_SAMPLES = round(SAMPLE_RATE * 0.05)
 FRAME_SECONDS = FRAME_SAMPLES / SAMPLE_RATE
 MAX_INPUT_BYTES = 200 * 1024 * 1024
@@ -30,6 +36,24 @@ MIN_DURATION_SECONDS = 2.0
 MAX_DECODED_SAMPLES = SAMPLE_RATE * MAX_DURATION_SECONDS
 MIN_BPM = 60
 MAX_BPM = 200
+SUPPORTED_BEATS_PER_BAR = (3, 4)
+
+# Structural segmentation tunables, chosen against owner-made section grids.
+SECTION_KERNEL_BEATS = 16
+SECTION_THRESHOLD = 0.5
+SECTION_MIN_SPACING_BARS = 4
+SECTION_LOUDNESS_SPAN_BEATS = 4
+TEMPO_STABILITY_TOLERANCE = 0.04
+# A beat must have onset strength nearby of at least this share of the median.
+BEAT_SUPPORT_FRAMES = 4
+BEAT_SUPPORT_RATIO = 0.2
+# Below this harmonic-change margin the bar phase is treated as unknown.
+DOWNBEAT_MIN_EVIDENCE = 0.1
+# Fewer bars than this is too little evidence to infer the bar phase.
+DOWNBEAT_MIN_BARS = 4
+
+FloatArray = npt.NDArray[np.float64]
+IntArray = npt.NDArray[np.int64]
 
 
 class AudioAnalysisError(ValueError):
@@ -61,8 +85,9 @@ def _normalize(path: Path, output: Path) -> str:
     ffmpeg_version = version_result.stdout.splitlines()[0].strip()
     command = [
         ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
-        "-i", str(path.resolve()), "-t", str(MAX_DURATION_SECONDS + 1), "-map", "0:a:0", "-vn", "-ac", "1",
-        "-ar", str(SAMPLE_RATE), "-c:a", "pcm_s16le", "-f", "wav", str(output),
+        "-i", str(path.resolve()), "-t", str(MAX_DURATION_SECONDS + 1), "-map", "0:a:0",
+        "-vn", "-ac", "1", "-ar", str(SAMPLE_RATE), "-c:a", "pcm_s16le", "-f", "wav",
+        str(output),
     ]
     try:
         completed = subprocess.run(
@@ -77,7 +102,7 @@ def _normalize(path: Path, output: Path) -> str:
     return ffmpeg_version
 
 
-def _read_features(wav_path: Path) -> tuple[list[float], list[float], float]:
+def _read_samples(wav_path: Path) -> tuple[npt.NDArray[np.float32], float]:
     try:
         with wave.open(str(wav_path), "rb") as source:
             channels = source.getnchannels()
@@ -86,142 +111,269 @@ def _read_features(wav_path: Path) -> tuple[list[float], list[float], float]:
             frames_total = source.getnframes()
             duration = frames_total / rate if rate else 0.0
             if channels != 1 or width != 2 or rate != SAMPLE_RATE:
-                raise AudioAnalysisError("Normalized audio must be mono 16-bit PCM at 11025 Hz")
+                raise AudioAnalysisError(
+                    f"Normalized audio must be mono 16-bit PCM at {SAMPLE_RATE} Hz"
+                )
             if duration < MIN_DURATION_SECONDS:
                 raise AudioAnalysisError("Audio must be at least 2 seconds long")
             if duration > MAX_DURATION_SECONDS or frames_total > MAX_DECODED_SAMPLES:
                 raise AudioAnalysisError("Audio exceeds the 30-minute analysis limit")
-            window = FRAME_SAMPLES
-            rms_values: list[float] = []
-            previous_energy = 0.0
-            flux_values: list[float] = []
-            while True:
-                raw = source.readframes(window)
-                if not raw:
-                    break
-                samples = array("h")
-                samples.frombytes(raw[: len(raw) - (len(raw) % 2)])
-                if not samples:
-                    continue
-                if struct.pack("=h", 1) != struct.pack("<h", 1):
-                    samples.byteswap()
-                mean_square = math.fsum(float(sample) * sample for sample in samples) / len(samples)
-                rms = math.sqrt(mean_square) / 32768.0
-                energy = rms * rms
-                rms_values.append(rms)
-                flux_values.append(max(0.0, energy - previous_energy))
-                previous_energy = energy
+            raw = source.readframes(frames_total)
     except (OSError, wave.Error) as exc:
         raise AudioAnalysisError(f"Cannot read normalized PCM audio: {exc}") from exc
-    return rms_values, flux_values, duration
+    pcm = np.frombuffer(raw[: len(raw) - (len(raw) % 2)], dtype="<i2")
+    return (pcm.astype(np.float32) / 32768.0), duration
 
 
-def _median(values: list[float]) -> float:
-    if not values:
-        return 0.0
-    ordered = sorted(values)
-    middle = len(ordered) // 2
-    if len(ordered) % 2:
-        return ordered[middle]
-    return (ordered[middle - 1] + ordered[middle]) / 2.0
+def _frame_rms(samples: npt.NDArray[np.float32]) -> list[float]:
+    usable = len(samples) - (len(samples) % FRAME_SAMPLES)
+    frames = samples[:usable].astype(np.float64).reshape(-1, FRAME_SAMPLES)
+    values = np.sqrt(np.mean(frames * frames, axis=1))
+    if usable < len(samples):
+        tail = samples[usable:].astype(np.float64)
+        values = np.append(values, math.sqrt(float(np.mean(tail * tail))))
+    return [float(value) for value in values]
 
 
-def _detect_onsets(flux: list[float]) -> list[dict[str, Any]]:
-    if len(flux) < 3:
-        return []
-    baseline = _median(flux)
-    deviations = [abs(value - baseline) for value in flux]
-    mad = _median(deviations)
-    maximum = max(flux)
-    threshold = max(baseline + 3.0 * mad, maximum * 0.08, 1e-8)
-    peaks: list[dict[str, Any]] = []
-    for index in range(1, len(flux) - 1):
-        value = flux[index]
-        if value >= threshold and value >= flux[index - 1] and value > flux[index + 1]:
-            peaks.append({
-                "time": round(index * FRAME_SECONDS, 3),
-                "strength": round(value, 8),
-                "confidence": round(min(1.0, value / maximum), 4),
-                "method": "local_peak_in_positive_frame_energy_flux",
-            })
-    return peaks
-
-
-def _estimate_tempo(
-    flux: list[float], min_bpm: int, max_bpm: int
-) -> tuple[float | None, float, float | None, int | None, float]:
-    if len(flux) < 40:
-        return None, 0.0, None, None, 0.0
-    # Autocorrelation of onset strength; frame spacing is 50 ms.
-    mean = math.fsum(flux) / len(flux)
-    centered = [value - mean for value in flux]
-    candidates: list[tuple[float, int]] = []
-    for lag in range(
-        round(60.0 / max_bpm / FRAME_SECONDS),
-        round(60.0 / min_bpm / FRAME_SECONDS) + 1,
-    ):
-        overlap = len(centered) - lag
-        if overlap <= 0:
-            continue
-        score = math.fsum(centered[i] * centered[i + lag] for i in range(overlap))
-        score /= max(1, overlap)
-        candidates.append((score, lag))
-    if not candidates:
-        return None, 0.0, None, None, 0.0
-    best_score = max(score for score, _ in candidates)
-    if best_score <= 1e-12:
-        return None, 0.0, None, None, 0.0
-    # Frame quantization can make the true beat lag score materially lower
-    # than a multiple of that lag. Restrict alias selection to local peaks,
-    # then prefer the shortest peak retaining half the strongest correlation.
-    # This remains a heuristic, not meter detection.
-    scores_by_lag = {lag: score for score, lag in candidates}
-    local_peaks = [
-        lag for score, lag in candidates
-        if score >= scores_by_lag.get(lag - 1, float("-inf"))
-        and score >= scores_by_lag.get(lag + 1, float("-inf"))
-        and score >= best_score * 0.50
-    ]
-    best_lag = min(local_peaks) if local_peaks else max(candidates)[1]
-    # Parabolic interpolation around the discrete correlation peak reduces
-    # BPM quantization error for tempos whose beat period is not an integer
-    # number of 50 ms analysis frames.
-    left_score = scores_by_lag.get(best_lag - 1)
-    center_score = scores_by_lag.get(best_lag)
-    right_score = scores_by_lag.get(best_lag + 1)
-    refined_lag = float(best_lag)
-    if left_score is not None and right_score is not None and center_score is not None:
-        denominator = left_score - 2.0 * center_score + right_score
-        if denominator < -1e-12:
-            offset = 0.5 * (left_score - right_score) / denominator
-            if abs(offset) <= 0.5:
-                refined_lag += offset
-    positive = [score for score, _ in candidates if score > 0]
-    mean_score = math.fsum(positive) / len(positive) if positive else 0.0
-    confidence = max(0.0, min(1.0, (best_score - mean_score) / (abs(best_score) + 1e-12)))
-    bpm = 60.0 / (refined_lag * FRAME_SECONDS)
-    # Phase maximizes onset strength sampled at the candidate beat period.
-    period = best_lag
-    phase_scores = [
-        math.fsum(flux[index] for index in range(phase, len(flux), period))
-        for phase in range(period)
-    ]
-    phase = max(range(period), key=lambda item: phase_scores[item])
-    # Adjacent frame offsets often represent the same transient smeared across
-    # neighboring analysis windows. Compare the winning phase with the strongest
-    # genuinely separate phase, not merely the second-highest adjacent frame.
-    separation = max(2, round(period * 0.2))
-    alternatives = [
-        score for offset, score in enumerate(phase_scores)
-        if min((offset - phase) % period, (phase - offset) % period) >= separation
-    ]
-    alternate_score = max(alternatives, default=0.0)
-    winning_score = phase_scores[phase]
-    phase_confidence = (
-        max(0.0, min(1.0, (winning_score - alternate_score) / (winning_score + 1e-12)))
-        if winning_score > 1e-12 else 0.0
+def _frames_to_times(frames: IntArray | FloatArray) -> FloatArray:
+    return np.asarray(
+        librosa.frames_to_time(frames, sr=SAMPLE_RATE, hop_length=HOP_LENGTH),
+        dtype=np.float64,
     )
-    return round(bpm, 2), round(confidence, 4), refined_lag, phase, round(phase_confidence, 4)
+
+
+def _onset_envelope(samples: npt.NDArray[np.float32]) -> FloatArray:
+    return np.asarray(
+        librosa.onset.onset_strength(y=samples, sr=SAMPLE_RATE, hop_length=HOP_LENGTH),
+        dtype=np.float64,
+    )
+
+
+def _has_pulse(envelope: FloatArray) -> bool:
+    """Reject audio with no transient structure (silence, steady tones)."""
+    if envelope.size < 8:
+        return False
+    peak = float(np.max(envelope))
+    if peak <= 1e-3:
+        return False
+    # A pulse needs repeated strong transients standing well above the median.
+    median = float(np.median(envelope))
+    strong = int(np.count_nonzero(envelope > max(median * 4.0, peak * 0.25)))
+    return strong >= 4
+
+
+def _detect_onsets(envelope: FloatArray) -> list[dict[str, Any]]:
+    frames = np.asarray(
+        librosa.onset.onset_detect(
+            onset_envelope=envelope, sr=SAMPLE_RATE, hop_length=HOP_LENGTH, units="frames"
+        ),
+        dtype=np.int64,
+    )
+    if frames.size == 0:
+        return []
+    peak = float(np.max(envelope)) or 1.0
+    times = _frames_to_times(frames)
+    return [
+        {
+            "time": round(float(time), 3),
+            "strength": round(float(envelope[frame]), 6),
+            "confidence": round(min(1.0, float(envelope[frame]) / peak), 4),
+            "method": "librosa_onset_detect_on_spectral_flux_envelope",
+        }
+        for frame, time in zip(frames, times, strict=True)
+    ]
+
+
+def _fit_tempo_bounds(bpm: float, min_bpm: int, max_bpm: int) -> float:
+    while bpm < min_bpm and bpm * 2 <= max_bpm:
+        bpm *= 2
+    while bpm > max_bpm and bpm / 2 >= min_bpm:
+        bpm /= 2
+    return bpm
+
+
+def _drop_unsupported_beats(envelope: FloatArray, frames: IntArray) -> IntArray:
+    """Remove grid-filler beats with no transient nearby (lead-in or trailing silence)."""
+    if frames.size == 0:
+        return frames
+    support = np.array(
+        [float(np.max(envelope[max(0, f - BEAT_SUPPORT_FRAMES):f + BEAT_SUPPORT_FRAMES + 1]))
+         for f in frames],
+        dtype=np.float64,
+    )
+    floor = float(np.median(support)) * BEAT_SUPPORT_RATIO
+    return frames[support >= floor]
+
+
+def _track_beats(
+    envelope: FloatArray, min_bpm: int, max_bpm: int
+) -> tuple[float | None, IntArray, float, float]:
+    """Return (bpm, beat frames, tempo stability, beat-grid contrast)."""
+    empty = np.zeros(0, dtype=np.int64)
+    if not _has_pulse(envelope):
+        return None, empty, 0.0, 0.0
+    global_tempo = float(
+        np.atleast_1d(
+            librosa.feature.tempo(
+                onset_envelope=envelope, sr=SAMPLE_RATE, hop_length=HOP_LENGTH,
+                max_tempo=float(max_bpm),
+            )
+        )[0]
+    )
+    if not math.isfinite(global_tempo) or global_tempo <= 0:
+        return None, empty, 0.0, 0.0
+    global_tempo = _fit_tempo_bounds(global_tempo, min_bpm, max_bpm)
+    _, frames_any = librosa.beat.beat_track(
+        onset_envelope=envelope, sr=SAMPLE_RATE, hop_length=HOP_LENGTH,
+        bpm=global_tempo, units="frames", trim=False,
+    )
+    frames = _drop_unsupported_beats(envelope, np.asarray(frames_any, dtype=np.int64))
+    if frames.size < 4:
+        return None, empty, 0.0, 0.0
+    # Fit one period across all beats: frame quantization makes individual
+    # intervals alternate, so a least-squares slope beats a median interval.
+    times = _frames_to_times(frames)
+    rough_period = float(np.median(np.diff(times)))
+    beat_numbers = np.round((times - times[0]) / rough_period)
+    period = float(np.polyfit(beat_numbers, times, 1)[0])
+    if not math.isfinite(period) or period <= 0:
+        return None, empty, 0.0, 0.0
+    bpm = _fit_tempo_bounds(60.0 / period, min_bpm, max_bpm)
+
+    # Tempo stability: share of local tempo estimates agreeing with the global
+    # tempo (or its half/double, which describe the same pulse).
+    local = np.asarray(
+        librosa.feature.tempo(
+            onset_envelope=envelope, sr=SAMPLE_RATE, hop_length=HOP_LENGTH,
+            max_tempo=float(max_bpm), aggregate=None,
+        ),
+        dtype=np.float64,
+    )
+    agree = np.zeros(local.shape, dtype=bool)
+    for factor in (0.5, 1.0, 2.0):
+        target = bpm * factor
+        agree |= np.abs(local - target) <= target * TEMPO_STABILITY_TOLERANCE
+    stability = float(np.mean(agree)) if local.size else 0.0
+
+    # Beat-grid contrast: onset strength on the beats versus halfway between.
+    on_beat = float(np.mean(envelope[frames]))
+    midpoints = ((frames[:-1] + frames[1:]) // 2).astype(np.int64)
+    off_beat = float(np.mean(envelope[midpoints]))
+    contrast = max(0.0, (on_beat - off_beat) / (on_beat + off_beat + 1e-12))
+    return round(bpm, 2), frames, round(stability, 4), round(contrast, 4)
+
+
+def _beat_sync(features: Any, beat_frames: IntArray, aggregate: Any = None) -> FloatArray:
+    """Aggregate frame features per beat, with column i covering beat i up to beat i+1.
+
+    librosa.util.sync adds a leading column for audio before the first beat when
+    the first beat is not frame 0; anchoring at frame 0 and dropping that column
+    keeps column indices equal to beat indices.
+    """
+    frames = [int(f) for f in beat_frames]
+    # Close the final beat after one typical beat length so its column does not
+    # absorb an outro or trailing silence.
+    period = int(np.median(np.diff(frames))) if len(frames) > 1 else 1
+    boundaries = [0, *[f for f in frames if f > 0], frames[-1] + max(1, period)]
+    synced = np.asarray(
+        librosa.util.sync(features, boundaries, aggregate=aggregate or np.mean),
+        dtype=np.float64,
+    )
+    if frames[0] > 0:
+        synced = synced[:, 1:]
+    return synced[:, : len(frames)]
+
+
+def _beat_chroma(samples: npt.NDArray[np.float32], beat_frames: IntArray) -> FloatArray:
+    chroma = librosa.feature.chroma_cqt(y=samples, sr=SAMPLE_RATE, hop_length=HOP_LENGTH)
+    return _beat_sync(chroma, beat_frames, aggregate=np.median)
+
+
+def _downbeat_phase(
+    beat_chroma: FloatArray, beat_count: int, beats_per_bar: int = 4
+) -> tuple[int, float]:
+    """Pick the bar phase where harmony changes most for the given beats per bar."""
+    if beat_count < DOWNBEAT_MIN_BARS * beats_per_bar or beat_chroma.shape[1] < 2:
+        return 0, 0.0
+    change = np.r_[0.0, np.linalg.norm(np.diff(beat_chroma, axis=1), axis=0)][:beat_count]
+    # Median per bar position: real bar structure repeats; one odd beat should not decide.
+    scores = [
+        float(np.median(change[phase::beats_per_bar])) for phase in range(beats_per_bar)
+    ]
+    phase = int(np.argmax(scores))
+    ordered = sorted(scores)
+    confidence = (ordered[-1] - ordered[-2]) / ordered[-1] if ordered[-1] > 1e-12 else 0.0
+    if confidence < DOWNBEAT_MIN_EVIDENCE:
+        # No harmonic evidence for any bar phase: default to the first beat.
+        return 0, round(max(0.0, confidence), 4)
+    return phase, round(min(1.0, confidence), 4)
+
+
+def _checkerboard_novelty(recurrence: FloatArray, half_width: int) -> FloatArray:
+    size = 2 * half_width
+    positions = np.arange(size, dtype=np.float64) - (size - 1) / 2.0
+    taper = np.exp(-0.5 * (positions / (half_width / 2.0)) ** 2)
+    signs = np.kron(np.array([[1.0, -1.0], [-1.0, 1.0]]), np.ones((half_width, half_width)))
+    kernel = signs * np.outer(taper, taper)
+    padded = np.pad(recurrence, half_width)
+    count = recurrence.shape[0]
+    return np.array(
+        [float(np.sum(padded[i:i + size, i:i + size] * kernel)) for i in range(count)],
+        dtype=np.float64,
+    )
+
+
+def _structural_sections(
+    samples: npt.NDArray[np.float32],
+    beat_frames: IntArray,
+    beat_chroma: FloatArray,
+    downbeat_indices: IntArray,
+) -> list[tuple[int, float]]:
+    """Return (beat index, score) for structural change candidates at downbeats."""
+    beat_count = len(beat_frames)
+    if beat_count < SECTION_KERNEL_BEATS * 2 or downbeat_indices.size < 3:
+        return []
+    mfcc = librosa.feature.mfcc(y=samples, sr=SAMPLE_RATE, hop_length=HOP_LENGTH, n_mfcc=13)
+    features = np.vstack([
+        np.asarray(librosa.util.normalize(beat_chroma, axis=0), dtype=np.float64),
+        np.asarray(
+            librosa.util.normalize(_beat_sync(mfcc, beat_frames), axis=1),
+            dtype=np.float64,
+        ),
+    ])
+    recurrence = np.asarray(
+        librosa.segment.recurrence_matrix(features, mode="affinity", sym=True, width=3),
+        dtype=np.float64,
+    )
+    novelty = np.maximum(_checkerboard_novelty(recurrence, SECTION_KERNEL_BEATS), 0.0)
+    novelty = novelty[:beat_count]
+    rms = np.asarray(librosa.feature.rms(y=samples, hop_length=HOP_LENGTH), dtype=np.float64)
+    loudness = _beat_sync(np.log1p(rms * 100.0), beat_frames)[0]
+    loudness_change = np.zeros(beat_count, dtype=np.float64)
+    span = min(SECTION_LOUDNESS_SPAN_BEATS, loudness.size // 2)
+    if span > 0 and loudness.size > 2 * span:
+        delta = np.abs(loudness[2 * span:] - loudness[:-2 * span])
+        loudness_change[span:span + delta.size] = delta[: beat_count - span]
+    score = novelty / (float(np.percentile(novelty, 95)) + 1e-12)
+    score = score + loudness_change / (float(np.percentile(loudness_change, 95)) + 1e-12)
+    candidate_scores = score[downbeat_indices]
+    # Only strict local maxima can be boundaries; then keep the strongest peaks
+    # at least SECTION_MIN_SPACING_BARS apart.
+    padded = np.r_[-np.inf, candidate_scores, -np.inf]
+    peaks = [
+        i for i in range(len(candidate_scores))
+        if candidate_scores[i] >= SECTION_THRESHOLD
+        and padded[i + 1] > padded[i] and padded[i + 1] >= padded[i + 2]
+    ]
+    chosen: list[int] = []
+    for position in sorted(peaks, key=lambda i: (-candidate_scores[i], i)):
+        if all(abs(position - other) >= SECTION_MIN_SPACING_BARS for other in chosen):
+            chosen.append(position)
+    chosen.sort()
+    return [
+        (int(downbeat_indices[position]), float(candidate_scores[position]))
+        for position in chosen
+    ]
 
 
 def _energy_curve(rms: list[float]) -> list[dict[str, Any]]:
@@ -273,30 +425,6 @@ def _hard_stops(
         else:
             index += 1
     return stops
-
-
-def _phrase_boundaries(
-    duration: float, bpm: float | None, phase_frames: int | None, beat_lag: float | None
-) -> list[dict[str, Any]]:
-    if bpm is None or beat_lag is None or phase_frames is None:
-        return []
-    beat_seconds = beat_lag * FRAME_SECONDS
-    phrase_seconds = beat_seconds * 16
-    first_beat = phase_frames * FRAME_SECONDS
-    result: list[dict[str, Any]] = []
-    index = 0
-    time = first_beat
-    while time < duration:
-        result.append({
-            "time": round(time, 3),
-            "kind": "estimated_16_beat_phrase",
-            "confidence": 0.35,
-            "basis": "fixed 16-beat grouping from estimated tempo; not semantic section recognition",
-            "method": "estimated_global_tempo_grid",
-        })
-        index += 1
-        time = first_beat + index * phrase_seconds
-    return result
 
 
 def _section_candidates(energy: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -378,11 +506,41 @@ def _svg_plot(
         x = left + tick / duration * plot_width
         parts.append(f'<text x="{x:.1f}" y="{height-20}" text-anchor="middle" font-family="sans-serif" font-size="11">{tick}s</text>')
     parts.extend([
-        '<text x="70" y="500" font-family="sans-serif" font-size="11">Blue: RMS energy | Green: beats | Purple: provisional downbeats | Amber: onsets | Teal: energy transitions | Red: hard stops</text>',
+        '<text x="70" y="500" font-family="sans-serif" font-size="11">Blue: RMS energy | Green: beats | Purple: downbeats | Amber: onsets | Teal: section candidates | Red: hard stops</text>',
         '</svg>',
     ])
     with path.open("x", encoding="utf-8") as stream:
         stream.write("\n".join(parts))
+
+
+def _phrase_boundaries(downbeats: list[float], bar_confidence: float) -> list[dict[str, Any]]:
+    return [
+        {
+            "time": time,
+            "kind": "estimated_4_bar_phrase",
+            "confidence": round(0.5 * bar_confidence, 4),
+            "basis": "every fourth detected downbeat; not semantic phrase detection",
+            "method": "four_bar_grouping_of_detected_downbeats",
+        }
+        for time in downbeats[::4]
+    ]
+
+
+def _merge_sections(
+    structural: list[dict[str, Any]], energy: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    merged = list(structural)
+    for candidate in energy:
+        if all(abs(candidate["time"] - other["time"]) >= 4.0 for other in structural):
+            merged.append(candidate)
+    return sorted(merged, key=lambda item: item["time"])
+
+
+def _library_version(name: str) -> str:
+    try:
+        return metadata.version(name)
+    except metadata.PackageNotFoundError:
+        return "unknown"
 
 
 def analyze_audio(
@@ -391,6 +549,7 @@ def analyze_audio(
     plot_output: str | Path,
     min_bpm: int = MIN_BPM,
     max_bpm: int = MAX_BPM,
+    beats_per_bar: int = 4,
 ) -> dict[str, Any]:
     """Analyze audio and write a versioned JSON report and an SVG diagnostic plot."""
     source = Path(audio_path)
@@ -399,6 +558,8 @@ def analyze_audio(
     try:
         if not 30 <= min_bpm < max_bpm <= 300:
             raise AudioAnalysisError("Tempo bounds must satisfy 30 <= min BPM < max BPM <= 300")
+        if beats_per_bar not in SUPPORTED_BEATS_PER_BAR:
+            raise AudioAnalysisError("Beats per bar must be 3 or 4")
         if not source.is_file():
             raise AudioAnalysisError(f"Audio input is not a regular file: {source}")
         size = source.stat().st_size
@@ -414,29 +575,42 @@ def analyze_audio(
         with tempfile.TemporaryDirectory(prefix="lor-audio-") as directory:
             normalized = Path(directory) / "normalized.wav"
             ffmpeg_version = _normalize(source, normalized)
-            rms, flux, duration = _read_features(normalized)
-        onsets = _detect_onsets(flux)
-        bpm, tempo_confidence, lag, phase, phase_confidence = _estimate_tempo(
-            flux, min_bpm, max_bpm
+            samples, duration = _read_samples(normalized)
+
+        rms = _frame_rms(samples)
+        envelope = _onset_envelope(samples)
+        onsets = _detect_onsets(envelope)
+        bpm, beat_frames, tempo_stability, beat_contrast = _track_beats(
+            envelope, min_bpm, max_bpm
         )
-        beat_times: list[float] = []
+        beat_times = [round(float(t), 3) for t in _frames_to_times(beat_frames)]
+        beat_confidence = round(beat_contrast, 4)
+
         downbeats: list[float] = []
-        if lag is not None and phase is not None and bpm is not None:
-            period = lag * FRAME_SECONDS
-            time = phase * FRAME_SECONDS
-            index = 0
-            while time < duration:
-                rounded = round(time, 3)
-                beat_times.append(rounded)
-                if index % 4 == 0:
-                    downbeats.append(rounded)
-                time += period
-                index += 1
+        bar_confidence = 0.0
+        structural: list[dict[str, Any]] = []
+        if bpm is not None and len(beat_times) >= 2 * beats_per_bar:
+            beat_chroma = _beat_chroma(samples, beat_frames)
+            phase, bar_confidence = _downbeat_phase(beat_chroma, len(beat_times), beats_per_bar)
+            downbeat_indices = np.arange(phase, len(beat_times), beats_per_bar, dtype=np.int64)
+            downbeats = [beat_times[int(i)] for i in downbeat_indices]
+            for beat_index, score in _structural_sections(
+                samples, beat_frames, beat_chroma, downbeat_indices
+            ):
+                structural.append({
+                    "time": beat_times[beat_index],
+                    "kind": "structural_change_candidate",
+                    "relative_change": round(score, 4),
+                    "confidence": round(min(0.75, 0.25 + 0.15 * score), 3),
+                    "label": None,
+                    "method": "self_similarity_novelty_plus_loudness_change_at_downbeats",
+                })
+
         energy = _energy_curve(rms)
         minimum_stop_silence = max(0.75, (60.0 / bpm) * 1.5) if bpm else 0.75
         stops = _hard_stops(rms, minimum_stop_silence)
-        phrases = _phrase_boundaries(duration, bpm, phase, lag)
-        sections = _section_candidates(energy)
+        phrases = _phrase_boundaries(downbeats, bar_confidence)
+        sections = _merge_sections(structural, _section_candidates(energy))
         report: dict[str, Any] = {
             "schema_version": ANALYSIS_SCHEMA_VERSION,
             "audio": {
@@ -451,44 +625,49 @@ def analyze_audio(
                 "analyzer_schema": ANALYSIS_SCHEMA_VERSION,
                 "ffmpeg": ffmpeg_version,
                 "python": platform.python_version(),
+                "librosa": _library_version("librosa"),
+                "numpy": _library_version("numpy"),
             },
             "configuration": {
                 "frame_seconds": FRAME_SECONDS,
+                "hop_length": HOP_LENGTH,
                 "minimum_bpm": min_bpm,
                 "maximum_bpm": max_bpm,
+                "beats_per_bar": beats_per_bar,
                 "minimum_duration_seconds": MIN_DURATION_SECONDS,
                 "maximum_duration_seconds": MAX_DURATION_SECONDS,
                 "maximum_input_bytes": MAX_INPUT_BYTES,
                 "confidence_values": "heuristic and uncalibrated",
             },
             "analysis": {
-                "method": "FFmpeg normalization + deterministic RMS/positive-energy-flux/autocorrelation",
-                "provenance": "All timestamps are relative to the decoded audio stream start; frame features use 551-sample windows at 11025 Hz.",
+                "method": "FFmpeg normalization + librosa onset, beat, chroma, and self-similarity analysis",
+                "provenance": (
+                    f"All timestamps are relative to the decoded audio stream start; spectral "
+                    f"features use {HOP_LENGTH}-sample hops and energy frames use "
+                    f"{FRAME_SAMPLES}-sample windows at {SAMPLE_RATE} Hz."
+                ),
                 "limitations": [
-                    "Tempo is a single global estimate; tempo changes are not modeled.",
-                    "Strong repeating accents, syncopation, and subdivisions can create half-time or double-time ambiguity; tempo confidence is heuristic.",
-                    "Beat phase is selected from repeating onset energy; competing beat/offbeat phases reduce beat confidence and cannot be resolved reliably without musical context.",
-                    "Downbeats assume the first detected beat is beat one and group every four beats.",
-                    "Phrase boundaries are fixed 16-beat candidates, not semantic phrase detection.",
-                    "Section candidates are energy transitions only; verse/chorus labels are not inferred.",
-                    "Onsets are spectral-unaware positive energy-flux peaks and may miss soft or overlapping events.",
+                    "Beat tracking assumes one dominant tempo; tempo stability reports how much of the song agrees with it.",
+                    "Half-time and double-time readings describe the same pulse and cannot always be told apart.",
+                    "Downbeats use the configured beats per bar (3 or 4, default 4; meter is not detected) and choose the bar phase where harmony changes most.",
+                    "Phrase boundaries group every four detected bars; they are not semantic phrase detection.",
+                    "Section candidates are structural or energy changes; verse/chorus labels are not inferred, and section placement is partly a matter of taste.",
                     "Hard stops are sustained near-silence candidates and may include intentional pauses.",
+                    "Vocals are not separated or detected.",
                 ],
                 "tempo": {
                     "bpm": bpm,
-                    "confidence": tempo_confidence,
-                    "method": "onset-envelope autocorrelation",
+                    "confidence": tempo_stability,
+                    "method": "librosa_global_tempo_with_local_tempo_agreement",
                 },
                 "beats": [
-                    {"time": value, "confidence": round(tempo_confidence * phase_confidence, 4),
-                     "method": "global_onset_envelope_autocorrelation_grid_with_phase_separation"}
+                    {"time": value, "confidence": beat_confidence,
+                     "method": "librosa_dynamic_programming_beat_tracker"}
                     for value in beat_times
                 ],
                 "downbeats": [
-                    {"time": value, "confidence": round(
-                        tempo_confidence * phase_confidence * 0.7, 4
-                     ),
-                     "method": "provisional_first_beat_plus_four_beat_meter_assumption"}
+                    {"time": value, "confidence": bar_confidence,
+                     "method": "bar_phase_from_beat_synchronous_chroma_change"}
                     for value in downbeats
                 ],
                 "onsets": onsets,
