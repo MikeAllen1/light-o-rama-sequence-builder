@@ -754,6 +754,21 @@ def test_profile_rejects_unhashable_yaml_mapping_keys(tmp_path: Path) -> None:
         load_rule_set((path,))
 
 
+
+def test_direct_movement_with_no_props_fails_without_crashing() -> None:
+    display = classic_yard()
+    timeline = Choreography(
+        duration_centiseconds=SONG,
+        effects=(),
+        movements=(Movement("empty-fall", "fall", (), "left_to_right", 0, 100),),
+    )
+    report = _check(display, timeline)
+    _, findings = _result(report, "effects_well_formed")
+    assert not report.ok
+    assert any("Movement 'empty-fall' must contain at least one prop" in item
+               for item in findings)
+
+
 def test_duplicate_group_names_union_members_for_name_selectors() -> None:
     builder = classic_yard()
     root = builder.element()
