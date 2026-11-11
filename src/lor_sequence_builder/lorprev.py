@@ -81,6 +81,7 @@ class PropModel:
     scenes: tuple[RawElement, ...]
     prop_views: tuple[RawElement, ...]
     unrecognized_top_level: tuple[RawElement, ...]
+    unrecognized_elements: tuple[RawElement, ...]
     unsupported_constructs: tuple[UnsupportedConstruct, ...]
     channel_grid_entries: tuple[ChannelGridEntry, ...]
     geometry_points: tuple[GeometryPoint, ...]
@@ -122,6 +123,15 @@ def _iter_raw_elements(element: RawElement, tag: str) -> tuple[RawElement, ...]:
         matches.append(element)
     for child in element.children:
         matches.extend(_iter_raw_elements(child, tag))
+    return tuple(matches)
+
+
+
+def _walk_raw_elements(element: RawElement) -> tuple[RawElement, ...]:
+    """Return the element and all descendants in source order."""
+    matches = [element]
+    for child in element.children:
+        matches.extend(_walk_raw_elements(child))
     return tuple(matches)
 
 
@@ -171,6 +181,12 @@ def read_lorprev(path: str | Path) -> PropModel:
     prop_views = tuple(child for child in display.children if child.tag == "PropViews")
     known = {"PropClass", "Scene", "PropViews"}
     unknown = tuple(child for child in display.children if child.tag not in known)
+    # Only these tags have been observed in committed native fixtures. Preserve
+    # and surface every other tag at any depth without guessing its meaning.
+    known_tags = {"PreviewClass", "PropClass", "Scene", "PropViews", "shape", "point"}
+    unrecognized_elements = tuple(
+        node for node in _walk_raw_elements(display) if node.tag not in known_tags
+    )
 
     # Surface unfamiliar prop/device declarations explicitly. Preserve the raw
     # source unchanged; these checks do not attempt to classify a prop.
@@ -224,6 +240,7 @@ def read_lorprev(path: str | Path) -> PropModel:
         scenes=scenes,
         prop_views=prop_views,
         unrecognized_top_level=unknown,
+        unrecognized_elements=unrecognized_elements,
         unsupported_constructs=tuple(unsupported),
         channel_grid_entries=tuple(channel_entries),
         geometry_points=tuple(geometry_points),
