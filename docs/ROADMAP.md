@@ -1,49 +1,17 @@
 # Development Roadmap
 
-## Phase 1 — Native format foundation
+This roadmap follows the authoritative phase order and acceptance gates in [PLAN.md](PLAN.md). It is intentionally aligned to the implementation plan rather than the earlier, superseded feature roadmap.
 
-- [x] Establish the project and package structure.
-- [x] Define a format-independent sequence model.
-- [x] Add structural and timing validation.
-- [x] Add a read-only XML inspection command.
-- [x] Inspect a real S6 6.6.0.12 LOREDIT file.
-- [x] Document the observed XML sections, props, channels, effects, and timing grids.
-- [x] Add semantic inspection tests and automated test workflow.
-- [ ] Collect additional S6 fixtures for RGB, multi-channel, and motion-effect sequences.
-- [ ] Document the supported XML structures and version requirements across fixtures.
-- [ ] Implement a minimal native LOREDIT writer.
-- [ ] Verify generated files in S6.
+- [x] Phase 0 — Repository scaffold and CI
+- [x] Phase 1 — Native S6 LOREDIT v15 reader/writer; owner confirmed the round-trip file opens in S6
+- [x] Phase 2 — Standalone/embedded LORPREV parser, prop groups, channel-address provenance, and hardening; merged in PR #6
+- [ ] Phase 3 — Fixed-tempo Timeline walking skeleton; PR #7 in progress; owner S6 playback verification pending
+- [ ] Phase 4 — Audio analysis (beats, downbeats, onsets, sections, energy, hard stops)
+- [ ] Phase 5 — Prop classifier and editable `props.yaml`
+- [ ] Phase 6 — Rules engine and user-profile layering
+- [ ] Phase 7 — Section-aware choreography planner v1; owner playback gate
+- [ ] Phase 8 — Vocal separation, syllable timing, and singing-face choreography; owner playback gate
+- [ ] Phase 9 — Planner v2 (motifs, call-and-response, signature moments, dynamics)
+- [ ] Phase 10 — Reporting, packaging, documentation, and installation polish
 
-## Phase 2 — Music analysis
-
-- [x] Load common audio formats through the optional librosa audio dependency.
-- [x] Detect an initial tempo estimate and beat candidates.
-- [x] Detect onset candidates and a relative per-second energy curve.
-- [ ] Evaluate beat/downbeat candidates against manually verified timing.
-- [ ] Identify phrase boundaries and likely song sections.
-- [ ] Provide editable timing and section markers.
-
-## Phase 3 — Display and sequencing
-
-- [x] Extract prop, channel, and group mappings from an existing S6 sequence.
-- [ ] Preserve and reuse the complete original preview XML when generating a new sequence.
-- [ ] Import or map the user's display preview.
-- [ ] Model props, groups, element types, and colors.
-- [ ] Define musical roles for props and prop groups.
-- [ ] Generate coherent phrases, transitions, and coordinated effects.
-- [ ] Add density, repetition, and variation controls.
-
-## Phase 4 — Desktop application
-
-- [ ] Build a Windows desktop interface.
-- [ ] Add audio and timeline views.
-- [ ] Add prop mapping and effect editing.
-- [ ] Add sequence preview and validation feedback.
-- [ ] Export native S6 LOREDIT files.
-
-## Phase 5 — Quality and compatibility
-
-- [ ] Add fixture-based regression tests.
-- [ ] Test generated files in the target S6 release.
-- [ ] Test large displays and long sequences.
-- [ ] Document supported effects and known limitations.
+A phase is complete only when its issue acceptance criteria, automated checks, required owner verification, PR merge, and explicit approval are all satisfied. See [PLAN.md](PLAN.md) for the full scope and handoff log.
