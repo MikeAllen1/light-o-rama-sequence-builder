@@ -13,7 +13,7 @@ The first release is a read-only reference workspace. It opens a native S6 v15 `
 - Native effect intervals and settings from channel `effect` elements.
 - Native free timing grids and fixed grid spacing.
 - A waveform decoded from the selected audio file.
-- Estimated beat, downbeat, transient, section-change, and near-silence lanes from the existing audio analyzer.
+- Estimated beat, downbeat, transient, RMS energy, four-bar phrase, section-change, and near-silence lanes from the existing audio analyzer.
 - Optional vocal-region and syllable-candidate lanes from `vocals-1.0` JSON.
 
 All timeline elements use the sequence's centisecond timebase. Audio analysis timestamps are seconds from the decoded audio start and are mapped to the same timebase for display. Native timing grids and inferred audio-analysis events remain visually and semantically distinct.

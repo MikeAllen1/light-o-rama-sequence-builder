@@ -110,7 +110,7 @@ main { height: calc(100% - 66px); }
 .marker-label { height: 22px; color: #9eacb8; font-size: 9px; background: #151e27; }
 .marker-label .source { color: #647687; margin-left: auto; font-size: 8px; }
 .track-label { height: 22px; font-size: 10px; color: #9aa9b6; gap: 7px; }
-.track-label.group { height: 25px; background: #1b2732; color: #d0dbe4; font-weight: 750; letter-spacing: .25px; }
+.track-label.group { height: 22px; background: #1b2732; color: #d0dbe4; font-weight: 750; letter-spacing: .25px; }
 .track-label.prop { color: #d3dce4; padding-left: 19px; background: #18212a; }
 .track-label.channel { padding-left: 38px; color: #8797a5; background: #141c24; font-size: 9px; }
 .track-label button {
