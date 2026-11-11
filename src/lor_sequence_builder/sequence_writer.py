@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +29,7 @@ from lor_sequence_builder.new_sequence import (
 )
 from lor_sequence_builder.pulse import preview_element
 from lor_sequence_builder.rules import RuleReport, RuleSet, check_choreography
+from lor_sequence_builder.timeline import ExcludedProp
 
 _SETTINGS = {"on": "INTENSITY", "fade": "INTENSITY", "twinkle": "TWINKLE", "shimmer": "SHIMMER"}
 
@@ -54,6 +56,71 @@ class WriteResult:
     report_path: Path
     effect_count: int
     report: RuleReport
+    excluded_props: tuple[ExcludedProp, ...] = ()
+
+
+def _write_build_report(
+    path: Path,
+    report: RuleReport,
+    output: Path,
+    *,
+    status: str,
+    sequence_written: bool,
+    failure_stage: str | None = None,
+    error: str | None = None,
+    excluded_props: tuple[ExcludedProp, ...] = (),
+) -> None:
+    payload = report.to_dict()
+    payload.update({
+        "ok": report.ok and status == "success",
+        "rules_ok": report.ok,
+        "build_report_version": 1,
+        "build_status": status,
+        "sequence_written": sequence_written,
+        "sequence_output": str(output.resolve()),
+        "failure_stage": failure_stage,
+        "error": error,
+        "excluded_props": [
+            {"prop_id": item.prop_id, "name": item.name, "reason": item.reason}
+            for item in excluded_props
+        ],
+    })
+    content = json.dumps(payload, indent=2) + "\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        try:
+            previous = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise SequenceWriteError(
+                f"Report already exists; refusing to overwrite: {path}"
+            ) from exc
+        owned_failed_attempt = (
+            isinstance(previous, dict)
+            and previous.get("build_report_version") == 1
+            and previous.get("build_status") == "failed"
+            and previous.get("sequence_output") == str(output.resolve())
+        )
+        if not owned_failed_attempt:
+            raise SequenceWriteError(f"Report already exists; refusing to overwrite: {path}")
+        temporary: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.",
+                suffix=".tmp", delete=False, newline="\n",
+            ) as stream:
+                temporary = Path(stream.name)
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+            temporary = None
+        except OSError as exc:
+            raise SequenceWriteError(f"Cannot update build report: {path}") from exc
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+        return
+    _write_new_text(path, content)
 
 
 def _effect_attributes(effect: Effect) -> dict[str, str]:
@@ -133,8 +200,11 @@ def build_from_timeline(
         )
     preview = preview_element(preview_model)
     report = check_choreography(preview, choreography, rule_set)
-    _write_new_text(report_output, json.dumps(report.to_dict(), indent=2) + "\n")
     if not report.ok:
+        _write_build_report(
+            report_output, report, output, status="failed", sequence_written=False,
+            failure_stage="rules", error=f"{len(report.errors)} rule error(s)",
+        )
         raise RulesFailedError(report, report_output)
 
     sections = tuple(sorted({s.start_centisecond for s in choreography.sections}))
@@ -146,6 +216,10 @@ def build_from_timeline(
             timing_grids=(FreeTimingGrid("Sections", sections),) if sections else (),
         )
     except NewSequenceError as exc:
+        _write_build_report(
+            report_output, report, output, status="failed", sequence_written=False,
+            failure_stage="native_sequence", error=str(exc),
+        )
         raise SequenceWriteError(str(exc)) from exc
 
     sequence_props = built.document.root.find("SequenceProps")
@@ -161,19 +235,40 @@ def build_from_timeline(
         targets = channels.get(effect.prop_id)
         # The locked rules already guarantee this; refuse rather than guess if not.
         if targets is None or not 0 <= effect.channel_index < len(targets):
-            raise SequenceWriteError(
-                f"Effect on prop {effect.prop_id!r} channel {effect.channel_index} has no "
-                "native channel"
+            message = (
+                f"Effect on prop {effect.prop_id!r} channel {effect.channel_index} "
+                "has no native channel"
             )
+            _write_build_report(
+                report_output, report, output, status="failed", sequence_written=False,
+                failure_stage="channel_mapping", error=message,
+                excluded_props=built.excluded_props,
+            )
+            raise SequenceWriteError(message)
         ET.SubElement(targets[effect.channel_index], "effect", _effect_attributes(effect))
 
     try:
         write_loredit(built.document, output)
     except LoreditError as exc:
+        output.unlink(missing_ok=True)
+        _write_build_report(
+            report_output, report, output, status="failed", sequence_written=False,
+            failure_stage="sequence_write", error=str(exc),
+            excluded_props=built.excluded_props,
+        )
         raise SequenceWriteError(f"Could not write the sequence safely: {exc}") from exc
     try:
         read_loredit(output)
     except LoreditError as exc:
         output.unlink(missing_ok=True)
+        _write_build_report(
+            report_output, report, output, status="failed", sequence_written=False,
+            failure_stage="readback_validation", error=str(exc),
+            excluded_props=built.excluded_props,
+        )
         raise SequenceWriteError(f"Could not write the sequence safely: {exc}") from exc
-    return WriteResult(output, report_output, len(ordered), report)
+    _write_build_report(
+        report_output, report, output, status="success", sequence_written=True,
+        excluded_props=built.excluded_props,
+    )
+    return WriteResult(output, report_output, len(ordered), report, built.excluded_props)
