@@ -624,8 +624,13 @@ def build_pulse_sequence(
     _validate_paths(preview_source, template_source, output, timeline_output)
 
     preview_model = read_lorprev(preview_source)
-    if any(item.kind == "prop identity" for item in preview_model.unsupported_constructs):
-        raise PulseGenerationError("Preview contains missing or duplicate prop identities")
+    if any(
+        item.kind in {"prop identity", "prop group identity"}
+        for item in preview_model.unsupported_constructs
+    ):
+        raise PulseGenerationError(
+            "Preview contains missing or duplicate prop/group identities"
+        )
     preview_root = _element_from_raw(preview_model.display)
     if template_source is None:
         if total_centiseconds is None or music_filename is None:
