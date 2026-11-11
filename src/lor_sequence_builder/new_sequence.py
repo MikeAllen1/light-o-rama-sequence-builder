@@ -26,6 +26,8 @@ from pathlib import PurePosixPath, PureWindowsPath
 
 from lor_sequence_builder.loredit import LoreditDocument
 from lor_sequence_builder.channel_mapping import (
+    COLOR_LAYOUT_TYPES,
+    COLUMN_LAYOUT_TYPES,
     channel_layout_problem,
     parse_channel_grid,
 )
