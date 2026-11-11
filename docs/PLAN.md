@@ -160,7 +160,7 @@ See [GITHUB_WORKFLOW.md](GITHUB_WORKFLOW.md) for branch, PR, review, merge, and 
 - Implementation: secure `defusedxml` parsing with DTDs/entities/external references forbidden; v15-only support boundary; opaque XML-tree preservation; `inspect` and `roundtrip` CLI; atomic create-if-absent writer; sequence-prop/preview referential-integrity validation on read and write.
 - Test data: the current test suite uses synthetic or runtime-generated XML with fictional identifiers and values. No owner sequence fixture is required as a test input in the current tree.
 - Local tests: `PYTHONPATH=src python -m pytest -q` — 17 passed.
-- Local CLI: `inspect` reports S6 v15, 20,925 centiseconds, 48 sequence props, and 8 timing grids; `roundtrip` output is semantically equal to the source fixture.
+- Local CLI: `inspect` and `roundtrip` smoke tests passed against the then-current local test input; owner-derived input data is not retained in the repository.
 - Human gate: complete. Owner opened the writer-generated round-trip output in S6 and explicitly confirmed it was fine.
 - Local quality-tool limitation: Ruff and mypy executables are unavailable in this runtime. `uv lock --check --offline` passes. `uv sync --locked --offline` cannot install registry packages without network access. GitHub Tests run https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42917498988 passed locked sync, 17 pytest tests, Ruff, strict mypy (with pinned `types-defusedxml` stubs), and pip-audit. CodeQL run https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42917499008 passed.
 - Scope boundary: no preview parser, audio analysis, Timeline, or choreography work has been started.
