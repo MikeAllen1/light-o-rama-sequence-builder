@@ -105,7 +105,33 @@ def build_from_timeline(
         if path.exists():
             raise SequenceWriteError(f"{label} already exists; refusing to overwrite: {path}")
 
-    preview = preview_element(read_lorprev(preview_source))
+    preview_model = read_lorprev(preview_source)
+    invalid_identities = [
+        item for item in preview_model.unsupported_constructs
+        if item.kind in {"prop identity", "prop group identity"}
+    ]
+    if invalid_identities:
+        raise SequenceWriteError(
+            "Preview contains invalid prop/group identities: "
+            + "; ".join(item.detail for item in invalid_identities[:5])
+        )
+    malformed_lor_assignments = [
+        item for item in preview_model.unsupported_constructs
+        if item.kind == "channel assignment"
+        and any(
+            prop.attributes.get("DeviceType") is not None
+            and prop.attributes["DeviceType"].value == "LOR"
+            and item.source.locator == f"{prop.locator}/@ChannelGrid"
+            for prop in preview_model.props
+        )
+    ]
+    if malformed_lor_assignments:
+        raise SequenceWriteError(
+            "Preview contains malformed LOR channel assignments; refusing to "
+            "generate a sequence with shifted or ambiguous channel indices: "
+            + "; ".join(item.detail for item in malformed_lor_assignments[:5])
+        )
+    preview = preview_element(preview_model)
     report = check_choreography(preview, choreography, rule_set)
     _write_new_text(report_output, json.dumps(report.to_dict(), indent=2) + "\n")
     if not report.ok:
