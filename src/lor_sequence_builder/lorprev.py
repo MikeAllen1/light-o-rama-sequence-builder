@@ -10,7 +10,6 @@ from pathlib import Path
 from defusedxml import ElementTree as SafeET
 from defusedxml.common import DefusedXmlException
 
-SUPPORTED_PREVIEW_REVISIONS = frozenset({"0", "1", "56", "58"})
 MAX_LORPREV_BYTES = 20 * 1024 * 1024
 MAX_XML_DEPTH = 256
 MAX_LORPREV_ELEMENTS = 100_000
@@ -18,10 +17,6 @@ MAX_LORPREV_ELEMENTS = 100_000
 
 class LorprevError(ValueError):
     """Base error for invalid or unsupported LORPREV documents."""
-
-
-class UnsupportedLorprevRevisionError(LorprevError):
-    """Raised when a preview revision has not been verified."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,7 +100,10 @@ class PropModel:
     """Raw display model; interpretation/classification is deliberately deferred."""
 
     source_file: str
-    revision: SourceValue
+    # PreviewClass/@Revision is an edit counter that S6 increments each time the
+    # preview is saved. It is recorded as metadata only and never used to accept,
+    # reject, or interpret a preview; compatibility is judged by structure.
+    revision: SourceValue | None
     display: RawElement
     props: tuple[RawElement, ...]
     scenes: tuple[RawElement, ...]
@@ -156,7 +154,7 @@ def _walk_raw_elements(element: RawElement) -> tuple[RawElement, ...]:
 
 
 def read_lorprev(path: str | Path) -> PropModel:
-    """Read a standalone S6 preview for verified Revision 0, 1, and 56 formats."""
+    """Read a standalone S6 preview. Compatibility is judged by structure, not Revision."""
     source = Path(path)
     try:
         with source.open("rb") as preview_file:
@@ -211,14 +209,6 @@ def read_lorprev(path: str | Path) -> PropModel:
         raise LorprevError("LORPREV root element must be <PreviewClass>")
 
     revision = root.attrib.get("Revision")
-    if revision is None:
-        raise LorprevError("LORPREV is missing the PreviewClass Revision attribute")
-    if revision not in SUPPORTED_PREVIEW_REVISIONS:
-        supported = ", ".join(sorted(SUPPORTED_PREVIEW_REVISIONS))
-        raise UnsupportedLorprevRevisionError(
-            f"Unsupported LORPREV Revision {revision!r}; "
-            f"verified revisions are {supported}"
-        )
 
     props = tuple(root.findall("PropClass"))
     if not props:
@@ -404,8 +394,12 @@ def read_lorprev(path: str | Path) -> PropModel:
 
     return PropModel(
         source_file=str(source),
-        revision=SourceValue(
-            value=revision, file=str(source), locator="/PreviewClass/@Revision"
+        revision=(
+            None
+            if revision is None
+            else SourceValue(
+                value=revision, file=str(source), locator="/PreviewClass/@Revision"
+            )
         ),
         display=display,
         props=prop_nodes,

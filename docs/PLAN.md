@@ -12,7 +12,7 @@ Build a display-independent CLI that accepts audio plus a required Light-O-Rama 
 - Props, controllers, and channels must originate from the preview or reviewed user prop map. Never invent or silently reassign them.
 - Classification combines prop type, shape, grouping, position, channel count, color, and name hints; never names alone.
 - Product target includes legacy AC/DC single-color and LOR multi-color/single-circuit props. Phase 3 is intentionally narrower: it generates only verified `DeviceType=LOR` mappings for `Single Color`, `Multicolor_string_1_ch`, and `Channel_per_color`. AC/DC remains parseable but excluded until its native S6 channel mapping is independently verified; see the Phase 3 boundary in ARCHITECTURE.md.
-- RGB/pixel is outside v1 because the user's display does not use pixels. Detect and report unsupported pixel props; never silently drop or fake support.
+- RGB/pixel is outside v1. Detect and report unsupported pixel props; never silently drop or fake support.
 - Physical overrides in props.yaml win over inferred preview interpretation but cannot create channel identities.
 - Rules are configuration; invalid Timelines fail with readable rule, prop/channel, and timestamp details.
 - Never modify/overwrite inputs. Output is a new file.
@@ -22,6 +22,21 @@ Build a display-independent CLI that accepts audio plus a required Light-O-Rama 
 - No secrets in code; .env gitignored; pin dependencies and run pip-audit.
 - CI uses least privilege and third-party Actions pinned to full commit SHAs. Never use pull_request_target to execute untrusted PR code.
 - Synthetic audio tests only; never commit copyrighted audio.
+
+## Recorded stack deviations
+
+These differ from the original stack proposal. They are intentional and accepted unless the owner reopens them:
+
+- **Models:** frozen `dataclasses` are used for stage models instead of Pydantic. Pydantic remains the expected choice for user-edited inputs (`props.yaml`, rules profiles) where schema validation and error messages matter; adopt it in the phase that first parses those files.
+- **CLI:** `argparse` is used instead of Typer. Acceptable for v1; revisit only if CLI complexity grows.
+- **Audio:** the Phase 4 baseline uses the Python standard library after FFmpeg normalization, with no librosa dependency. This keeps installation and the dependency surface small, but it cannot provide semantic section labels, tempo-change tracking, or vocal analysis. Phase 8 (and possibly section work in Phase 7) will require heavier dependencies such as librosa and Demucs; adding them must be recorded here.
+
+## Open decisions (owner input required before the phase that depends on them)
+
+1. **Sequence creation without a template.** The writer currently requires an existing native `.loredit` whose embedded preview exactly matches the `.lorprev`, then clears its effects. The planned `generate` command takes only audio, preview, and props.yaml, so a typical user has no matching template. Decide before Phase 5 is approved: (a) build a blank native v15 sequence from a preview (requires new fixtures and an S6 open-test human gate), or (b) make a matching sequence file an official `generate` input. Phases 6 and 7 build on this decision.
+2. **Preview Revision (resolved 2026-11-11).** Owner clarified that `PreviewClass/@Revision` is an edit counter incremented on each save, not a format version. The parser's revision allowlist (which rejected any preview not at revision 0, 1, 56, or 58) was removed; the value is now optional metadata. Compatibility is judged by structure. Do not reintroduce revision-based gating.
+3. **Fixture diversity before Phase 5.** All current real fixtures derive from the same 51-prop display. Classifier golden tests need 2 to 3 previews from materially different displays (different size, messy naming, legacy AC/DC) before Phase 5 can claim display independence.
+4. **License.** An MIT `LICENSE` was added in the docs-cleanup PR as a proposed default. The owner should confirm or replace it before merge.
 
 ## Mandatory engineering workflow
 
@@ -37,7 +52,7 @@ Build a display-independent CLI that accepts audio plus a required Light-O-Rama 
 ## Phase order
 
 ### Phase 0 — Scaffold
-Build/audit repository structure, CLAUDE.md, ARCHITECTURE.md, PLAN.md, CI (Ruff, strict mypy, pytest), uv + lockfile, and an empty/minimal CLI.
+Build/audit repository structure, CONTRIBUTING.md, ARCHITECTURE.md, PLAN.md, CI (Ruff, strict mypy, pytest), uv + lockfile, and an empty/minimal CLI.
 
 **Done when:** CLI installs and shows help; CI is green on the minimal project; Python 3.12 and uv workflow is established; Ruff, strict mypy, pytest run in CI; Actions are SHA-pinned and least-privilege; dependency audit is included; Phase 0 PR is merged.
 
@@ -51,7 +66,7 @@ Build fixture-driven sequence reader/writer for native .loredit.
 ### Phase 2 — Preview parser
 Build .lorprev / embedded PreviewClass → raw PropModel plus display/channel/controller/group data.
 
-**Done when:** Golden tests pass on every fixture preview; revision detection and unsupported-version errors work; missing/unreadable/malformed/zero-prop previews fail; every entity has source provenance; unsupported types are explicitly reported.
+**Done when:** Golden tests pass on every fixture preview; preview edit revision is recorded as metadata but never gates parsing; missing/unreadable/malformed/zero-prop previews fail; every entity has source provenance; unsupported types are explicitly reported.
 
 ### Phase 3 — Walking skeleton
 Build fixed-tempo "pulse every supported prop on the beat" → Timeline → writer.
@@ -177,7 +192,7 @@ At the start of each fresh phase session: read this plan and active issue; confi
 
 ## Phase 3 — Fixed-tempo Timeline walking skeleton
 
-- Status: Implementation in progress; PR #7 is draft/open. No merge and no S6 playback verification have occurred.
+- Status: **Complete and merged** (see the Phase 3 entry under Phase order for the accepted gate). The bullets below are the historical implementation log from while PR #7 was open; where they conflict with the current Phase 3 boundary (for example, `Channel_per_color` is now supported), the Phase order section and ARCHITECTURE.md are authoritative.
 - Issue: https://github.com/MikeAllen1/light-o-rama-sequence-builder/issues/7
 - PR: https://github.com/MikeAllen1/light-o-rama-sequence-builder/pull/7
 - Branch: `phase-3/walking-skeleton`
@@ -189,9 +204,9 @@ At the start of each fresh phase session: read this plan and active issue; confi
 - Writer behavior: clear old effects in the in-memory template copy, add only generated intensity pulses, write a new LOREDIT and Timeline JSON, re-read the generated LOREDIT, and refuse output/input aliasing and overwrites. The template's duration defines sequence duration. Beat allocation is capped at 50,000 beats and Timeline events at 250,000.
 - Test fixture note: the compact LOREDIT fixture has 51 preview props but only 48 SeqProps. The Phase 3 test derives a matched preview subset from the 48 existing SeqProp identities; it does not invent channel mappings. The production command requires exact preview/template prop-ID equality and fails if any prop inside the supported type boundary lacks an existing SeqProp/channel mapping.
 - Tests added: fixture-backed end-to-end pipeline, deterministic Timeline output, exact preview/template identity and channel-declaration matching, BPM and pulse-duration validation, no-overwrite/input-alias checks, native output re-read, fail-closed missing/incomplete native channel mapping, complete per-beat/per-channel event coverage, oversized-duration protection, and explicit unsupported-prop reporting.
-- Human gate: pending. Owner must open and play a generated file in Light-O-Rama S6 and confirm beat synchronization and correct physical/display mapping. Automated tests cannot satisfy this gate.
+- Human gate (historical, now complete): owner opened the generated package in S6 and confirmed it loads and its events render. Physical controller output was not independently verified.
 - Latest code-bearing commit: `b0872b46292276d97b0eb42ba1eb4d8ebb4ec8b5`. Tests workflow: https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42941298309 — 65 pytest tests passed, Ruff passed, strict mypy passed, and pip-audit passed. CodeQL: https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42941303887 — passed. The subsequent handoff-log-only update was also validated: Tests https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42941442561 and CodeQL https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42941442362 both passed.
-- Remaining Phase 3 work: owner must run the command with a matching local preview/template pair, open the generated `.loredit` in S6, and confirm pulse timing plus display mapping. Do not merge or begin Phase 4 before the human gate and explicit approval.
+- Remaining Phase 3 work: none. Superseded by the completed gate above.
 
 
 ## Phase 4 implementation boundary
