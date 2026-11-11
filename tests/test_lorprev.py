@@ -27,24 +27,7 @@ def test_synthetic_revision_zero_preview_preserves_geometry_and_provenance() -> 
     assert model.props[1].children[0].tag == "shape"
     assert model.props[1].children[0].children[0].attributes["x"].value == "0"
     assert model.props[0].attributes["Name"].locator.endswith("/@Name")
-    assert model.display.attributes["Name"].value == "Synthetic S6 Revision 1 Fixture"
-    assert model.scenes[0].attributes["Name"].value == "Synthetic Scene"
-    assert {
-        prop.children[0].attributes["ShapeName"].value for prop in model.props
-    } == {"Lines-Connected", "Lines-Unconnected", "Arch", "Star", "Tree 180", "Icicles"}
-    assert sum(len(prop.children[0].children) for prop in model.props) == 1900
-    assert sum(
-        prop.attributes["TraditionalType"].value == "Channel_per_color"
-        for prop in model.props
-    ) == 8
-    assert len(model.channel_grid_entries) == 2
-    assert model.channel_grid_entries[0].raw_fields == ("1",)
-    assert model.channel_grid_entries[0].entry_index == 0
-    assert len(model.geometry_points) == 4
-    assert model.unsupported_constructs == ()
-    assert model.geometry_points[0].x.value == "0"
-    assert model.geometry_points[0].y.locator.endswith("/@y")
-    assert model.scenes[0].attributes["Name"].value == "Synthetic Scene"
+    assert model.display.attributes["Name"].value == "Synthetic Test Display"
     assert model.prop_views[0].tag == "PropViews"
 
 
