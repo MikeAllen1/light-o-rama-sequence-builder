@@ -8,6 +8,8 @@ from typing import Any
 
 import pytest
 
+import lor_sequence_builder.choreography as choreography_module
+
 from lor_sequence_builder.choreography import (
     Choreography,
     ChoreographyError,
@@ -672,3 +674,35 @@ def test_requirement_type_must_be_text(tmp_path: Path, kind: str) -> None:
                                  f"  - type: {kind}\n    props: {{all: true}}\n")
     with pytest.raises(RuleProfileError, match=r"requirements\[0\]\.type"):
         load_rule_set((profile,))
+
+
+def test_timeline_movement_count_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(choreography_module, "MAX_MOVEMENTS", 1)
+    data = {
+        "schema_version": "1.0",
+        "duration_centiseconds": SONG,
+        "effects": [],
+        "movements": [
+            {"movement_id": f"m{i}", "kind": "chase", "prop_ids": ["a"],
+             "direction": "left_to_right", "start_centisecond": 0,
+             "end_centisecond": 100}
+            for i in range(2)
+        ],
+    }
+    with pytest.raises(ChoreographyError, match="more than 1 movements"):
+        parse_choreography(data)
+
+
+def test_duplicate_movement_ids_are_reported() -> None:
+    display = classic_yard()
+    timeline = Choreography(
+        duration_centiseconds=SONG,
+        movements=(
+            Movement("duplicate", "chase", ("a",), "left_to_right", 0, 100),
+            Movement("duplicate", "chase", ("b",), "left_to_right", 100, 200),
+        ),
+    )
+    report = _check(display, timeline)
+    _, findings = _result(report, "effects_well_formed")
+    assert any("Movement id 'duplicate' is used more than once" in item
+               for item in findings)
