@@ -189,6 +189,7 @@ def test_pulse_cli_builds_sequence_and_timeline(
     captured = capsys.readouterr().out
     assert "Supported props:" in captured
     assert "Pulse events:" in captured
+    assert "Excluded prop " in captured
     assert output.exists()
     assert timeline.exists()
 
