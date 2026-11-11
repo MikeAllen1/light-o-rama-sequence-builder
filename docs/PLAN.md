@@ -236,3 +236,14 @@ The Phase 4 baseline is merged in `2b962bd39d51b052c3f97d76876a29176dc627ae`. Th
 - Replaced the base64-wrapped Revision 1 preview with readable sanitized `s6_revision_1_export.lorprev`.
 - Updated tests and Phase 3 package generation to consume plain XML directly. The fixture test now rejects `.gz` and `.b64` wrappers and scans readable XML for `C:\\Users`, `/Users/`, and `Background*File=` attributes.
 - This sanitizes the current PR tree. It does not remove the old path from already-published Git history or from `master`; history rewriting is a separate destructive operation requiring coordinated approval.
+
+### Repository hardening follow-up — 2026-11-11
+
+- Corrected four test assumptions identified by the previous Linux/Windows CI run: unsupported audio extension versus decoder failure, the portable file publisher concurrency path, the sanitized Revision 1 fixture name, and geometry lookup when the first prop has no point.
+- Added the `.gitignore` exception for sanitized lowercase `.loredit` fixtures.
+- Centralized pinned developer tools in `requirements-dev.txt`; CI now exports and audits locked production dependencies separately instead of auditing an environment containing the developer tools.
+- Expanded the test matrix to Python 3.12 and 3.13 on Windows and Linux.
+- Refreshed README, roadmap, architecture status, and security workflow documentation. GitHub currently reports the `Protect` ruleset as disabled and `master` as unprotected.
+- All new commits after the owner's email privacy change are authored and committed with the GitHub noreply address. Earlier published commit metadata is unchanged and still requires a separately coordinated history rewrite.
+- **Verification limitation:** the GitHub integration's API-created commits are not triggering a new Actions run for the latest head. The last available Tests run is still on the earlier commit `3484391`; do not claim the new head is CI-green until the workflow is run against the current branch head.
+- Remaining items: include developer dependencies in `uv.lock` once a full lock can be generated; pin FFmpeg distributions; add measured coverage reporting and a justified threshold; split the large audio-analysis module; consolidate historical plan logs; activate branch protection and repository security controls; remove stale remote branches; and decide whether to rewrite published history containing the local path and earlier personal email metadata.
