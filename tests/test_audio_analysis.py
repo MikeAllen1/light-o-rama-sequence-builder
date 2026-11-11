@@ -203,7 +203,7 @@ def test_analysis_refuses_to_overwrite_outputs(tmp_path: Path) -> None:
 def test_analysis_rejects_invalid_audio(tmp_path: Path) -> None:
     audio = tmp_path / "not-audio.bin"
     audio.write_bytes(b"not audio")
-    with pytest.raises(AudioAnalysisError, match="FFmpeg could not decode"):
+    with pytest.raises(AudioAnalysisError, match="Unsupported audio file extension"):
         analyze_audio(audio, tmp_path / "out.json", tmp_path / "out.svg")
 
 
