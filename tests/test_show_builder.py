@@ -199,19 +199,32 @@ def test_session_cleanup_defers_folder_removal_until_active_work_finishes(
     folder = session.path
     started = threading.Event()
     release = threading.Event()
+    close_started = threading.Event()
+    close_finished = threading.Event()
 
     def active_operation() -> None:
         with sessions.locked(token):
             started.set()
-            assert release.wait(timeout=2)
+            assert release.wait(timeout=5)
+
+    def close_sessions() -> None:
+        close_started.set()
+        sessions.close()
+        close_finished.set()
 
     worker = threading.Thread(target=active_operation)
     worker.start()
     assert started.wait(timeout=2)
-    sessions.close()
+    closer = threading.Thread(target=close_sessions)
+    closer.start()
+    assert close_started.wait(timeout=2)
+    assert not close_finished.wait(timeout=0.1)
     assert folder.exists()
     release.set()
     worker.join(timeout=2)
+    closer.join(timeout=2)
+    assert not worker.is_alive() and not closer.is_alive()
+    assert close_finished.is_set()
     assert not folder.exists()
 
 
@@ -287,3 +300,39 @@ def test_stale_requirement_updates_cannot_overwrite_a_newer_submission(
     assert newest["requirements"] == []
     assert stale == {"stale": True}
     sessions.close()
+
+
+def test_session_eviction_waits_for_an_active_operation(tmp_path: Path) -> None:
+    sessions = show_builder.ShowSessions()
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    tokens = [sessions.start(preview, "yard.lorprev")["token"]
+              for _ in range(show_builder.MAX_SESSIONS)]
+    active_path = sessions.get(tokens[0]).path
+    started = threading.Event()
+    finished = threading.Event()
+
+    def expire_sessions() -> None:
+        with sessions._lock:
+            started.set()
+            sessions._expire()
+        finished.set()
+
+    worker: threading.Thread | None = None
+    try:
+        with sessions.locked(tokens[0]) as active:
+            # Make this active session the next eviction candidate.
+            active.last_used = 0
+            worker = threading.Thread(target=expire_sessions)
+            worker.start()
+            assert started.wait(timeout=2)
+            assert not finished.wait(timeout=0.1)
+            assert active_path.exists()
+        assert worker is not None
+        worker.join(timeout=2)
+        assert not worker.is_alive()
+        assert finished.is_set()
+        assert not active_path.exists()
+    finally:
+        if worker is not None and worker.is_alive():
+            worker.join(timeout=2)
+        sessions.close()

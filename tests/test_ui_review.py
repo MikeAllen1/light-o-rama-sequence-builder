@@ -200,3 +200,28 @@ def test_music_review_corrects_and_saves(workspace: str, tmp_path: Path) -> None
     assert loaded["analysis"]["crashes"][0]["time"] == 8.5
     sections = _sections(_music(loaded))
     assert any(section.label == "chorus" for section in sections)
+
+
+def test_lyrics_loader_rejects_malformed_word_objects(workspace: str) -> None:
+    with playwright_api.sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page()
+        try:
+            page.goto(workspace, wait_until="networkidle")
+            malformed = {
+                "schema_version": "lyrics-1.0",
+                "source": "transcribed",
+                "lines": [{
+                    "start": 1.0, "end": 2.0, "text": "hello",
+                    "words": [None],
+                }],
+            }
+            page.locator("#lyricsFile").set_input_files({
+                "name": "malformed.lyrics.json",
+                "mimeType": "application/json",
+                "buffer": json.dumps(malformed).encode("utf-8"),
+            })
+            assert "invalid word event" in page.locator("#analysisMessage").inner_text()
+            assert "Loaded 1 lyric lines" not in page.locator("#analysisMessage").inner_text()
+        finally:
+            browser.close()
