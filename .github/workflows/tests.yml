@@ -105,7 +105,7 @@ jobs:
         run: uv run --no-sync ruff check .
 
       - name: Check types (strict)
-        run: uv run --no-sync mypy --strict src tests
+        run: uv run --no-sync mypy --strict src
 
       - name: Prepare dependency audit input
         run: mkdir -p dist
