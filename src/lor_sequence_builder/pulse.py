@@ -21,7 +21,6 @@ from lor_sequence_builder.loredit import (
 )
 from lor_sequence_builder.lorprev import (
     MAX_LORPREV_BYTES,
-    LorprevError,
     read_lorprev,
 )
 from lor_sequence_builder.timeline import (
