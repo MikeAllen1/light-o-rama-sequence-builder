@@ -399,7 +399,7 @@ def test_builds_use_saved_requirements_automatically(
 
 def test_guided_chase_direction_is_asked_for_each_group_in_a_role() -> None:
     props = {}
-    groups = {"Arches": (), "Porch Arches": ()}
+    groups: dict[str, tuple[str, ...]] = {"Arches": (), "Porch Arches": ()}
     for group in groups:
         members = []
         for index in range(3):
