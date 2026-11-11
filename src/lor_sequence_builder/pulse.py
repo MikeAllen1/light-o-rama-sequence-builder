@@ -1,4 +1,8 @@
-"""Fixed-tempo pulse generator for the Phase 3 walking skeleton."""
+"""Fixed-tempo pulse generator: preview to Timeline to native sequence.
+
+By default the sequence is built from the preview alone (Phase 4b). Passing a
+matching template sequence is still supported but deprecated.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +20,7 @@ from lor_sequence_builder.loredit import (
     write_loredit,
 )
 from lor_sequence_builder.lorprev import RawElement, read_lorprev
+from lor_sequence_builder.new_sequence import NewSequenceError, build_new_sequence
 from lor_sequence_builder.timeline import (
     ExcludedProp,
     PulseEvent,
@@ -131,20 +136,23 @@ def _beat_positions(duration: int, bpm: int) -> tuple[int, ...]:
 
 def _validate_paths(
     preview_path: Path,
-    template_path: Path,
+    template_path: Path | None,
     output_path: Path,
     timeline_path: Path,
 ) -> None:
     paths = {
         "preview": preview_path.resolve(),
-        "template": template_path.resolve(),
         "sequence output": output_path.resolve(),
         "Timeline output": timeline_path.resolve(),
     }
+    if template_path is not None:
+        paths["template"] = template_path.resolve()
     if paths["sequence output"] == paths["Timeline output"]:
         raise PulseGenerationError("Sequence and Timeline outputs must be different paths")
     for output_name in ("sequence output", "Timeline output"):
         for input_name in ("preview", "template"):
+            if input_name not in paths:
+                continue
             if paths[output_name] == paths[input_name]:
                 raise PulseGenerationError(
                     f"{output_name} must not alias the {input_name} input"
@@ -292,8 +300,8 @@ def _build_timeline(
                     name=name,
                     reason=(
                         f"TraditionalType {traditional_type!r} is outside the "
-                        "verified support boundary (Single Color and "
-                        "Multicolor_string_1_ch)"
+                        "verified support boundary (Single Color, "
+                        "Multicolor_string_1_ch, and Channel_per_color)"
                     ),
                 )
             )
@@ -325,11 +333,17 @@ def _build_timeline(
 
         sequence_prop = sequence_prop_map.get(prop_id)
         if sequence_prop is None:
+            master_id = _attribute(prop, "MasterPropId")
             excluded.append(
                 ExcludedProp(
                     prop_id=prop_id,
                     name=name,
-                    reason="No matching native SeqProp exists; no sequence channel can be targeted",
+                    reason=(
+                        f"Linked to master prop {master_id}; S6 drives it through the "
+                        "master's channels, so it has no sequence channels of its own"
+                        if master_id
+                        else "No matching native SeqProp exists; no sequence channel can be targeted"
+                    ),
                 )
             )
             continue
@@ -551,15 +565,22 @@ def _validate_timeline(
 
 def build_pulse_sequence(
     preview_path: str | Path,
-    template_path: str | Path,
+    template_path: str | Path | None,
     output_path: str | Path,
     timeline_path: str | Path,
     bpm: int,
     pulse_duration_centiseconds: int = 10,
+    total_centiseconds: int | None = None,
+    music_filename: str | None = None,
 ) -> PulseGenerationResult:
-    """Build a deterministic beat-pulse sequence from a matching preview/template pair."""
+    """Build a deterministic beat-pulse sequence.
+
+    Without a template, a new native sequence is built from the preview alone
+    and ``total_centiseconds`` and ``music_filename`` are required. With a
+    template (deprecated), the template's embedded preview must match exactly.
+    """
     preview_source = Path(preview_path)
-    template_source = Path(template_path)
+    template_source = Path(template_path) if template_path is not None else None
     output = Path(output_path)
     timeline_output = Path(timeline_path)
 
@@ -579,7 +600,23 @@ def build_pulse_sequence(
     if any(item.kind == "prop identity" for item in preview_model.unsupported_constructs):
         raise PulseGenerationError("Preview contains missing or duplicate prop identities")
     preview_root = _element_from_raw(preview_model.display)
-    document = read_loredit(template_source)
+    if template_source is None:
+        if total_centiseconds is None or music_filename is None:
+            raise PulseGenerationError(
+                "Without a template, a sequence duration and an audio file name are required"
+            )
+        try:
+            document = build_new_sequence(
+                preview_root, total_centiseconds, music_filename
+            ).document
+        except NewSequenceError as exc:
+            raise PulseGenerationError(str(exc)) from exc
+    else:
+        if total_centiseconds is not None or music_filename is not None:
+            raise PulseGenerationError(
+                "Duration and audio file name come from the template; do not pass both"
+            )
+        document = read_loredit(template_source)
 
     timeline, mapped_channels = _build_timeline(
         preview_root,
