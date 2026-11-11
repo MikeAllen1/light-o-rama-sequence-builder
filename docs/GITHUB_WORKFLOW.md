@@ -51,7 +51,7 @@ Dependabot PRs are not exempt from review. Check the upstream release notes, exa
 
 ## Current repository audit (2026-11-10)
 
-- Tests workflow runs on pushes to `master` and pull requests targeting `master`; it executes pytest, Ruff, strict mypy, and a production-dependency `pip-audit` scan. Developer tools are pinned in `requirements-dev.txt` but are not yet included in `uv.lock`.
+- Tests workflow runs on pushes to `master` and pull requests targeting `master`; it executes pytest, Ruff, strict mypy, and a `pip-audit` scan of the exported locked production dependencies. Developer tools are pinned in the locked `dev` dependency group in `pyproject.toml` and `uv.lock`.
 - CodeQL runs on pushes/PRs to `master` and weekly.
 - Third-party GitHub Actions are pinned to full commit SHAs; checkout credentials are not persisted.
 - Dependabot is enabled for Python dependencies and GitHub Actions.
