@@ -2,7 +2,7 @@
 
 A display-independent command-line tool for building native Light-O-Rama S6 sequences from music and a required `.lorprev` display preview.
 
-**Project status:** Phases 1–3 are complete and merged. Phase 3's generated native sequence opens in S6 and its fixture preview/events render. Phase 4 audio analysis is in progress on PR #9. Prop classification, rules, and intelligent choreography remain future work.
+**Project status:** Phases 0–3 are complete and merged. The Phase 4 audio-analysis baseline is merged (PR #9); its real-song review is the open acceptance gate. Prop classification, rules, and intelligent choreography remain future work. See [docs/PLAN.md](docs/PLAN.md) for the authoritative status.
 
 ## Product workflow
 
@@ -52,11 +52,11 @@ Write a new round-trip copy (the destination must not already exist):
 uv run lor-sequence-builder roundtrip .\path\to\show.loredit .\output\roundtrip.loredit
 ```
 
-The LOREDIT reader currently accepts only `saveFileVersion="15"`, the version represented by the reviewed fixture. The preview parser supports internal `Revision` values `0`, `1`, and `56`; these are distinct from the LOREDIT save-file version. XML is parsed with `defusedxml`, with DTDs, entities, and external references forbidden. The writer preserves the parsed XML tree opaquely and atomically creates a new output without overwriting the input or an existing destination.
+The LOREDIT reader currently accepts only `saveFileVersion="15"`, the version represented by the reviewed fixture. The preview parser accepts internal `Revision` values `0`, `1`, `56`, and `58` (`58` is accepted in code but not yet backed by a committed fixture; see PLAN.md open decisions); these are distinct from the LOREDIT save-file version. XML is parsed with `defusedxml`, with DTDs, entities, and external references forbidden. The writer preserves the parsed XML tree opaquely and atomically creates a new output without overwriting the input or an existing destination.
 
 The preview is the authoritative display map. For LOR props, each `ChannelGrid` row exposes network, Unit ID, and the circuit value present in that row; for DMX props, universe and channel are exposed. These are address fields only: remaining fields are retained verbatim and are not yet semantically interpreted. The original row and source locator are retained. The parser enforces a 20 MiB input limit, 256-level XML nesting limit, and 100,000-element limit, and reports missing or duplicate prop IDs rather than treating them as reliable identities. `PropGroup` and `member` records are parsed into typed group/member models, including prop ID references, arrangement, orientation, top, and left values. The supplied Revision 56 fixture contains 51 props and one group with five members.
 
-## Phase 4 audio analysis (in progress)
+## Phase 4 audio analysis (baseline merged; acceptance review open)
 
 Install FFmpeg and ensure `ffmpeg` is available on PATH. The first analyzer accepts audio formats FFmpeg can decode, normalizes to mono 11.025 kHz signed 16-bit PCM, and writes a versioned JSON report plus an SVG diagnostic plot:
 
@@ -80,7 +80,7 @@ Example:
 uv run lor-sequence-builder pulse --preview .\display.lorprev --template .\template.loredit --bpm 120 --output .\pulse-test.loredit --timeline-output .\pulse-test.timeline.json
 ```
 
-The verified Phase 3 boundary is `DeviceType=LOR` with `TraditionalType=Single Color`, `Multicolor_string_1_ch`, or `Channel_per_color`. The standalone preview and embedded template must have identical prop subtrees (all attributes and nested data, including geometry and master-prop references) and identical `PropGroup` membership/layout. Numeric geometry and group coordinates allow only a 1e-6 tolerance. Revision markers may differ; the independent S6 fixture pairs standalone Revision 58 with embedded Revision 56.
+The verified Phase 3 boundary is `DeviceType=LOR` with `TraditionalType=Single Color`, `Multicolor_string_1_ch`, or `Channel_per_color`. The standalone preview and embedded template must have identical prop subtrees (all attributes and nested data, including geometry and master-prop references) and identical `PropGroup` membership/layout. Numeric geometry and group coordinates allow only a 1e-6 tolerance. Revision markers may differ. The independent S6 fixture derives its standalone preview from the template's embedded Revision 56 PreviewClass, so both sides are currently Revision 56.
 
 Physical mapping is deliberately strict. Each LOR `ChannelGrid` entry must have a complete network/Unit ID/circuit address, and the number of entries must equal the native `SeqProp/channel` count. Entry order is mapped to native channel coordinates using observed S6 v15 patterns: `Single Color` and `Multicolor_string_1_ch` use row 0 and sequential columns; `Channel_per_color` uses row 0, column 0, and sequential color coordinates. These addresses are included in each Timeline channel reference. A prop with no native `SeqProp`, incomplete address, count mismatch, or unverified native coordinates is explicitly listed as excluded with a reason; no mapping is invented. Legacy `DeviceType=AC` and `DC` values remain parseable for preview compatibility but are explicitly excluded from Phase 3 because their native mapping is not verified. Unsupported prop types are also listed in the Timeline.
 
@@ -107,13 +107,15 @@ tests/                     Unit tests and sanitized fixtures
 docs/                      Architecture, format evidence, and phased plan
 .github/workflows/         CI and CodeQL workflows
 SECURITY.md                Security policy
+CLAUDE.md                  Instructions for AI coding sessions
+LICENSE                    MIT license
 ```
 
 ## Scope and safety
 
 - The `.lorprev` preview will be mandatory for both analysis and generation.
 - Props, channels, and controller identities must come from the preview or an explicitly reviewed prop map; never invent or silently reassign them.
-- The user's display does not use pixel props. Pixel/RGB choreography is outside v1 and unsupported props must be reported, not faked or silently omitted.
+- V1 does not support pixel/RGB props. Unsupported props must be reported, not faked or silently omitted.
 - Source audio, previews, and sequence files are read-only. Generated output must be a new file.
 - Never commit original show files, private previews, copyrighted audio, local machine paths, or secrets. Use sanitized fixtures only after review.
 - No GUI, controller upload, live playback, or editing existing sequences in v1.

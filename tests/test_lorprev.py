@@ -131,8 +131,8 @@ def test_synthetic_revision_one_preview_preserves_full_prop_model(tmp_path: Path
 def test_s6_exported_revision_one_golden_fixture_preserves_all_source_data(
     tmp_path: Path,
 ) -> None:
-    # The committed fixture is a gzip transport wrapper around the sanitized S6 XML export.
-    fixture = FIXTURES / "s6_revision_1_export.lorprev.gz"
+    # The committed fixture is a base64-encoded gzip transport wrapper around the sanitized S6 XML export.
+    fixture = FIXTURES / "s6_revision_1_export.lorprev.gz.b64"
     source = tmp_path / "s6_revision_1_export.lorprev"
     compressed = base64.b64decode(fixture.read_bytes(), validate=True)
     source.write_bytes(gzip.decompress(compressed))
