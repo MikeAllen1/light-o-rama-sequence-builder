@@ -179,7 +179,7 @@ def test_s6_exported_revision_one_golden_fixture_preserves_all_source_data(
         for prop in model.props
         for value in prop.attributes.values()
     )
-    assert model.display.attributes["Name"].value == "Synthetic S6 Export Fixture"
+    assert model.display.attributes["Name"].value == "Synthetic S6 Revision 1 Fixture"
     assert model.scenes[0].attributes["Name"].value == "Synthetic Test Scene"
 
 
