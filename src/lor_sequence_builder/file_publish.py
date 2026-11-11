@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 
-def write_new_file(path: Path, writer: Callable[[BinaryIO], None]) -> Path:
+def write_new_file(path: Path, writer: Callable[[BinaryIO], object]) -> Path:
     """Create a new file exclusively, fsync it, and remove partial output on failure."""
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
