@@ -5,6 +5,7 @@ import math
 from pathlib import Path
 from typing import Any
 
+
 def _svg_plot(
     path: Path,
     duration: float,
