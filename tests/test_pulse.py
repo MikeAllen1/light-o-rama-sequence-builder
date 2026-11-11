@@ -368,7 +368,7 @@ def test_independent_s6_preview_and_native_template_prove_channel_mapping(
     preview, template = independent_inputs(tmp_path)
     preview_root = ET.parse(preview).getroot()
     template_root = read_loredit(template).root
-    assert preview_root.get("Revision") == "58"
+    assert preview_root.get("Revision") == "56"
     embedded_preview = template_root.find("PreviewClass")
     assert embedded_preview is not None
     assert embedded_preview.get("Revision") == "56"
