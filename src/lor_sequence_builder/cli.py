@@ -9,17 +9,15 @@ from collections.abc import Sequence
 from lor_sequence_builder.audio_analysis import (
     MAX_BPM as MAX_AUDIO_BPM,
     MIN_BPM as MIN_AUDIO_BPM,
-    AudioAnalysisError,
-    analyze_audio,
 )
+from lor_sequence_builder.audio_analysis import AudioAnalysisError, analyze_audio
 from lor_sequence_builder.loredit import LoreditError, read_loredit, write_loredit
 from lor_sequence_builder.lorprev import LorprevError, read_lorprev
 from lor_sequence_builder.pulse import (
     MAX_BPM as MAX_PULSE_BPM,
     MIN_BPM as MIN_PULSE_BPM,
-    PulseGenerationError,
-    build_pulse_sequence,
 )
+from lor_sequence_builder.pulse import PulseGenerationError, build_pulse_sequence
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -46,7 +44,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--bpm",
         required=True,
         type=float,
-        help=f"fixed tempo in beats per minute ({MIN_PULSE_BPM}–{MAX_PULSE_BPM}, decimals allowed)",
+        help=f"fixed tempo in beats per minute ({MIN_PULSE_BPM}-{MAX_PULSE_BPM}, decimals allowed)",
     )
     pulse.add_argument("--output", required=True, help="new output .loredit path")
     pulse.add_argument(
