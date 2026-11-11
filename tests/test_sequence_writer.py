@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -316,6 +317,25 @@ def test_writer_wraps_invalid_direct_choreography_types(
             preview, invalid, load_rule_set(), "song.mp3",
             tmp_path / "invalid.loredit", tmp_path / "invalid.json",
         )
+
+
+
+def test_writer_converts_malformed_direct_numeric_data_to_sequence_write_error(
+    tmp_path: Path,
+) -> None:
+    display = classic_yard()
+    preview = _preview(tmp_path, display)
+    output = tmp_path / "invalid.loredit"
+    report = tmp_path / "invalid.json"
+    malformed = Choreography(duration_centiseconds=cast(int, "1200"), effects=())
+
+    with pytest.raises(SequenceWriteError, match="Invalid choreography data"):
+        build_from_timeline(
+            preview, malformed, load_rule_set(), "song.mp3", output, report
+        )
+
+    assert not output.exists()
+    assert not report.exists()
 
 
 def test_timeline_writer_reports_excluded_preview_props(tmp_path: Path) -> None:
