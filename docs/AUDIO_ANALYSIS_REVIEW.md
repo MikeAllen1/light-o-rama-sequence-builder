@@ -14,6 +14,8 @@ uv run lor-sequence-builder analyze-audio .\song.mp3 --output-json .\song.analys
 
 Both output paths must be new files. The source audio is never modified.
 
+For songs counted in 3 (waltz time), add `--beats-per-bar 3`. The default is 4. Meter is not detected automatically.
+
 ## 2. Score it against your own timing grids
 
 Use a sequence for the same audio file that contains free timing grids you placed or corrected by ear. Pass the grid names exactly as they appear in the Sequencer:
@@ -31,6 +33,8 @@ Each line reports how many of your marks were matched, how many events the analy
 - **Precision** is the share of the analyzer's events that landed on one of your marks. **Recall** is the share of your marks that the analyzer found. **F-measure** combines them.
 
 Grid quality matters. A grid made by an automatic tool and never corrected may drift; score against the grid you trust.
+
+If beats score well but bars score near zero, check whether your bar grid is offset by a whole beat. A bar grid built by counting every fourth beat mark from the wrong starting beat is shifted for the entire song. Shifting the analyzer's downbeats by one beat and re-scoring makes this visible.
 
 ## 3. Acceptance targets
 
@@ -67,6 +71,7 @@ Do not commit audio, real show files, or analysis outputs from copyrighted songs
 
 - One dominant tempo per song; tempo changes lower tempo confidence rather than being tracked.
 - Half-time and double-time readings describe the same pulse and cannot always be distinguished.
-- Downbeats assume four beats per bar.
+- Downbeats use the configured beats per bar (4 by default); meter is not detected.
+- Loosely swung recordings can lower beat agreement, and songs whose harmony does not mark the bar give low downbeat confidence.
 - Section candidates are not labelled and agree only moderately with human section marks.
 - Vocals, syllables, instruments, and lyrics are not detected.
