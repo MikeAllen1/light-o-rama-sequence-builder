@@ -6,7 +6,7 @@ import hashlib
 import math
 import tempfile
 from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
-import xml.etree.ElementTree as ET
+from defusedxml import ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
