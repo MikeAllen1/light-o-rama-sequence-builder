@@ -118,11 +118,12 @@ def build_package(destination: Path) -> None:
         if not timeline["events"] or not timeline["beat_positions_centiseconds"]:
             raise RuntimeError("Generated Timeline contains no pulse events or beat positions.")
 
-        with destination.open("xb") as package_stream:
-            with zipfile.ZipFile(package_stream, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-                archive.write(sequence, "Phase3-Test.loredit")
-                archive.write(timeline_path, "Phase3-Test.timeline.json")
-                archive.writestr("README-FIRST.txt", PACKAGE_README)
+        with destination.open("xb") as package_stream, zipfile.ZipFile(
+            package_stream, "w", compression=zipfile.ZIP_DEFLATED
+        ) as archive:
+            archive.write(sequence, "Phase3-Test.loredit")
+            archive.write(timeline_path, "Phase3-Test.timeline.json")
+            archive.writestr("README-FIRST.txt", PACKAGE_README)
 
         print(f"Package: {destination}")
         print(f"Native LOREDIT version: {document.save_file_version}")
