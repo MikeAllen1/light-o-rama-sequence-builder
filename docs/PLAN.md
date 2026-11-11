@@ -273,7 +273,7 @@ At the start of each fresh phase session: read this plan and active issue; confi
 
 ## Phase 4 implementation boundary
 
-The Phase 4 baseline is merged in `2b962bd39d51b052c3f97d76876a29176dc627ae`. The analyzer emits a versioned JSON report and SVG diagnostic plot using bounded FFmpeg normalization. It estimates a single global tempo and heuristic event candidates; it does not claim semantic section recognition, tempo-change tracking, spectral onset classification, or choreography. Real-song diagnostic review and confidence calibration remain acceptance tasks.
+The original Phase 4 baseline was merged in `2b962bd39d51b052c3f97d76876a29176dc627ae` and then superseded after it failed real-song review. PR #17 delivered the librosa rework, which the owner accepted on 2026-11-11 for steady songs. The known limitation is swung/rubato singer-led passages; Phase 8 is intended to address those using vocal phrasing. Confidence values remain heuristic, not probabilities.
 
 ### Phase 4 merge and handoff — 2026-11-10/11
 - PR: https://github.com/MikeAllen1/light-o-rama-sequence-builder/pull/9
@@ -282,5 +282,5 @@ The Phase 4 baseline is merged in `2b962bd39d51b052c3f97d76876a29176dc627ae`. Th
 - Merge: squash commit `2b962bd39d51b052c3f97d76876a29176dc627ae`
 - Final verification: Tests run `42956005759` passed on Linux and Windows; Phase 3 Validation Package run `42956005713` passed; CodeQL run `42956005698` passed.
 - Final hardening: corrected cross-platform frame-time test tolerance; documented leading-silence hard-stop candidates; beat-grid confidence is reported separately from tempo confidence.
-- Human gate: pending real-song review. No user audio or real-song diagnostic outputs have been reviewed in this phase.
-- Next step: complete real-song review and evaluate whether confidence and candidate markers are useful before requesting approval for Phase 5. Do not start classifier work until owner approval.
+- Historical state at the close of PR #9: real-song review was pending and the stdlib baseline was not accepted. This was superseded by PR #17 and the owner acceptance recorded in the Phase 4 section above.
+- Current Phase 4 status: complete and accepted for steady songs, with the swung/rubato limitation explicitly retained.
