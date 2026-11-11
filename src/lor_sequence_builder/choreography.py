@@ -253,6 +253,16 @@ def _reject_constant(value: str) -> Any:
     raise ChoreographyError(f"Timeline contains a non-finite number {value!r}")
 
 
+def _reject_duplicate_object_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject duplicate JSON names instead of silently keeping the last value."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ChoreographyError(f"Timeline JSON contains duplicate object key {key!r}")
+        result[key] = value
+    return result
+
+
 def load_choreography(path: str | Path) -> Choreography:
     source = Path(path)
     try:
@@ -262,7 +272,11 @@ def load_choreography(path: str | Path) -> Choreography:
     except (OSError, UnicodeError) as exc:
         raise ChoreographyError(f"Cannot read Timeline JSON: {source}") from exc
     try:
-        data = json.loads(text, parse_constant=_reject_constant)
+        data = json.loads(
+            text,
+            parse_constant=_reject_constant,
+            object_pairs_hook=_reject_duplicate_object_keys,
+        )
     except json.JSONDecodeError as exc:
         raise ChoreographyError(f"Timeline JSON is not valid JSON: {exc}") from exc
     return parse_choreography(data)
