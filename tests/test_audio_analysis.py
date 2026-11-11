@@ -333,7 +333,7 @@ def test_analyzer_rejects_audio_shorter_than_two_seconds(tmp_path: Path) -> None
         output.setnchannels(1)
         output.setsampwidth(2)
         output.setframerate(11_025)
-        output.writeframes(b"\\x00\\x00" * 11_025)
+        output.writeframes(b"\x00\x00" * 11_025)
 
     with pytest.raises(AudioAnalysisError, match="at least 2 seconds"):
         analyze_audio(audio, tmp_path / "short.json", tmp_path / "short.svg")
@@ -350,7 +350,7 @@ def test_analyzer_rejects_input_over_200_mib_before_decoding(tmp_path: Path) -> 
 
 def test_analyzer_rejects_audio_over_30_minutes(tmp_path: Path) -> None:
     audio = tmp_path / "over-limit.wav"
-    silence = b"\\x00\\x00" * 11_025
+    silence = b"\x00\x00" * 11_025
     with wave.open(str(audio), "wb") as output:
         output.setnchannels(1)
         output.setsampwidth(2)
