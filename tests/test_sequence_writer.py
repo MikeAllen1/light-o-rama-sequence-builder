@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
+import lor_sequence_builder.sequence_writer as sequence_writer_module
 from lor_sequence_builder.choreography import (
     Choreography,
     Effect,
@@ -15,6 +18,7 @@ from lor_sequence_builder.choreography import (
 )
 from lor_sequence_builder.cli import main
 from lor_sequence_builder.loredit import read_loredit
+from lor_sequence_builder.new_sequence import NewSequenceError, build_new_sequence
 from lor_sequence_builder.rules import load_rule_set
 from lor_sequence_builder.sequence_writer import (
     RulesFailedError,
@@ -62,6 +66,13 @@ def test_a_passing_timeline_becomes_a_native_sequence(tmp_path: Path) -> None:
         tmp_path / "out.loredit", tmp_path / "out.rules.json",
     )
     assert result.effect_count == 7 and result.report.ok
+    assert result.excluded_props == ()
+    persisted_report = json.loads(result.report_path.read_text(encoding="utf-8"))
+    assert persisted_report["ok"] is True
+    assert persisted_report["rules_ok"] is True
+    assert persisted_report["build_status"] == "success"
+    assert persisted_report["sequence_written"] is True
+    assert persisted_report["excluded_props"] == []
     assert preview.read_bytes() == before
 
     document = read_loredit(result.sequence_path)
@@ -112,6 +123,10 @@ def test_a_timeline_that_breaks_the_rules_never_reaches_the_file(tmp_path: Path)
     assert "1 rule error(s); the sequence was not written" in str(caught.value)
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["ok"] is False
+    assert report["rules_ok"] is False
+    assert report["build_status"] == "failed"
+    assert report["failure_stage"] == "rules"
+    assert report["sequence_written"] is False
     finding = next(r for r in report["results"] if r["rule_id"] == "no_overlapping_effects")[
         "findings"][0]
     assert (finding["prop_name"], finding["channel_index"], finding["time"]) == (
@@ -191,3 +206,182 @@ def test_cli_check_build_and_list(tmp_path: Path, capsys: pytest.CaptureFixture[
     timeline.write_text("{}", encoding="utf-8")
     assert main(["check-timeline", str(preview), str(timeline)]) == 2
     assert "missing" in capsys.readouterr().err
+
+
+def test_timeline_writer_rejects_sparse_lor_channel_grid_without_compacting(
+    tmp_path: Path,
+) -> None:
+    display = classic_yard()
+    preview = _preview(tmp_path, display)
+    tree = ET.parse(preview)
+    prop = tree.getroot().find("./PropClass[@Name='Arch 1']")
+    assert prop is not None
+    prop.set("ChannelGrid", "Regular,99,01,01,0,White;;Regular,99,01,03,0,White")
+    tree.write(preview, encoding="utf-8", xml_declaration=True)
+
+    output = tmp_path / "sparse.loredit"
+    report = tmp_path / "sparse.json"
+    with pytest.raises(SequenceWriteError, match="malformed LOR channel assignments"):
+        build_from_timeline(preview, _good(display), load_rule_set(), "song.mp3", output, report)
+    assert not output.exists()
+    assert not report.exists()
+
+
+def test_timeline_writer_rejects_missing_preview_group_identity(tmp_path: Path) -> None:
+    display = classic_yard()
+    preview = _preview(tmp_path, display)
+    tree = ET.parse(preview)
+    root = tree.getroot()
+    group = ET.SubElement(root, "PropGroup", {"Name": "Ambiguous"})
+    ET.SubElement(group, "member", {"id": _ids(display)["Arch 1"]})
+    tree.write(preview, encoding="utf-8", xml_declaration=True)
+
+    with pytest.raises(SequenceWriteError, match="invalid prop/group identities"):
+        build_from_timeline(
+            preview, _good(display), load_rule_set(), "song.mp3",
+            tmp_path / "invalid.loredit", tmp_path / "invalid.json",
+        )
+
+
+def test_failed_native_build_report_is_truthful_and_same_attempt_can_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    display = classic_yard()
+    preview = _preview(tmp_path, display)
+    output = tmp_path / "retry.loredit"
+    report_path = tmp_path / "retry.json"
+    original_builder = build_new_sequence
+
+    def fail_native_build(*args: object, **kwargs: object) -> object:
+        raise NewSequenceError("synthetic native build failure")
+
+    monkeypatch.setattr("lor_sequence_builder.sequence_writer.build_new_sequence", fail_native_build)
+    with pytest.raises(SequenceWriteError, match="synthetic native build failure"):
+        build_from_timeline(
+            preview, _good(display), load_rule_set(), "song.mp3", output, report_path
+        )
+    failed = json.loads(report_path.read_text(encoding="utf-8"))
+    assert failed["ok"] is False
+    assert failed["rules_ok"] is True
+    assert failed["build_status"] == "failed"
+    assert failed["failure_stage"] == "native_sequence"
+    assert failed["sequence_written"] is False
+    assert not output.exists()
+
+    monkeypatch.setattr("lor_sequence_builder.sequence_writer.build_new_sequence", original_builder)
+    result = build_from_timeline(
+        preview, _good(display), load_rule_set(), "song.mp3", output, report_path
+    )
+    succeeded = json.loads(report_path.read_text(encoding="utf-8"))
+    assert result.sequence_path.exists()
+    assert succeeded["ok"] is True
+    assert succeeded["build_status"] == "success"
+    assert succeeded["sequence_written"] is True
+
+
+def test_sequence_is_rolled_back_when_success_report_cannot_be_published(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    display = classic_yard()
+    preview = _preview(tmp_path, display)
+    output = tmp_path / "rollback.loredit"
+    report_path = tmp_path / "rollback.json"
+    original = sequence_writer_module._write_build_report
+
+    def fail_success_report(*args: object, **kwargs: object) -> None:
+        if kwargs.get("status") == "success":
+            raise SequenceWriteError("synthetic report publication failure")
+        original(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(sequence_writer_module, "_write_build_report", fail_success_report)
+    with pytest.raises(SequenceWriteError, match="sequence was removed"):
+        build_from_timeline(
+            preview, _good(display), load_rule_set(), "song.mp3", output, report_path
+        )
+
+    assert not output.exists()
+    assert not report_path.exists()
+
+
+
+def test_writer_wraps_invalid_direct_choreography_types(
+    tmp_path: Path,
+) -> None:
+    display = classic_yard()
+    preview = _preview(tmp_path, display)
+    invalid = Choreography(
+        duration_centiseconds="1200",  # type: ignore[arg-type]
+        effects=(),
+    )
+    with pytest.raises(SequenceWriteError, match="Invalid choreography data"):
+        build_from_timeline(
+            preview, invalid, load_rule_set(), "song.mp3",
+            tmp_path / "invalid.loredit", tmp_path / "invalid.json",
+        )
+
+
+
+def test_writer_converts_malformed_direct_numeric_data_to_sequence_write_error(
+    tmp_path: Path,
+) -> None:
+    display = classic_yard()
+    preview = _preview(tmp_path, display)
+    output = tmp_path / "invalid.loredit"
+    report = tmp_path / "invalid.json"
+    malformed = Choreography(duration_centiseconds=cast(int, "1200"), effects=())
+
+    with pytest.raises(SequenceWriteError, match="Invalid choreography data"):
+        build_from_timeline(
+            preview, malformed, load_rule_set(), "song.mp3", output, report
+        )
+
+    assert not output.exists()
+    assert not report.exists()
+
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("effects", None),
+        ("movements", None),
+        ("sections", None),
+        ("hard_stops_centiseconds", None),
+        ("vocal_regions", []),
+    ],
+)
+def test_writer_wraps_invalid_direct_choreography_collections(
+    tmp_path: Path, field: str, value: object
+) -> None:
+    display = classic_yard()
+    preview = _preview(tmp_path, display)
+    base = Choreography(duration_centiseconds=2000, effects=())
+    invalid = dataclasses.replace(base, **{field: cast(Any, value)})
+
+    with pytest.raises(SequenceWriteError, match="Invalid choreography data"):
+        build_from_timeline(
+            preview, invalid, load_rule_set(), "song.mp3",
+            tmp_path / f"invalid-{field}.loredit",
+            tmp_path / f"invalid-{field}.json",
+        )
+
+
+def test_timeline_writer_reports_excluded_preview_props(tmp_path: Path) -> None:
+    display = classic_yard()
+    display.add(
+        "Unverified DMX Prop", "unknown", shape="Square", channels=1,
+        device="DMX",
+    )
+    preview = _preview(tmp_path, display)
+    result = build_from_timeline(
+        preview, _good(display), load_rule_set(), "song.mp3",
+        tmp_path / "with-exclusion.loredit", tmp_path / "with-exclusion.json",
+    )
+
+    assert len(result.excluded_props) == 1
+    assert result.excluded_props[0].name == "Unverified DMX Prop"
+    report = json.loads(result.report_path.read_text(encoding="utf-8"))
+    assert report["ok"] is True
+    assert report["build_status"] == "success"
+    assert report["excluded_props"][0]["name"] == "Unverified DMX Prop"
+    assert "no verified native channel layout" in report["excluded_props"][0]["reason"]
