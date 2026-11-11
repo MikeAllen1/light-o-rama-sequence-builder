@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import re
 import shutil
-from defusedxml import ElementTree as ET
 from pathlib import Path
 
+from defusedxml import ElementTree as ET
 import pytest
-
-from tests.fixture_builders import write_synthetic_loredit
 
 from lor_sequence_builder.loredit import (
     LoreditError,
@@ -16,6 +14,9 @@ from lor_sequence_builder.loredit import (
     semantic_xml,
     write_loredit,
 )
+
+from tests.fixture_builders import write_synthetic_loredit
+
 
 @pytest.fixture
 def fixture_path(tmp_path: Path) -> Path:
