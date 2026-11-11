@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from lor_sequence_builder.audio_analysis import AudioAnalysisError, analyze_audio
+from lor_sequence_builder.audio_analysis import AudioAnalysisError, analyze_audio, _drop_unsupported_beats
 from lor_sequence_builder.cli import main
 
 
@@ -203,7 +203,7 @@ def test_analysis_refuses_to_overwrite_outputs(tmp_path: Path) -> None:
 def test_analysis_rejects_invalid_audio(tmp_path: Path) -> None:
     audio = tmp_path / "not-audio.bin"
     audio.write_bytes(b"not audio")
-    with pytest.raises(AudioAnalysisError, match="FFmpeg could not decode"):
+    with pytest.raises(AudioAnalysisError, match="Unsupported audio file extension"):
         analyze_audio(audio, tmp_path / "out.json", tmp_path / "out.svg")
 
 
@@ -786,3 +786,65 @@ def test_tempo_stays_exact_over_a_long_steady_track(tmp_path: Path, bpm: float) 
     report = analyze_audio(audio, tmp_path / "long.json", tmp_path / "long.svg")
 
     assert report["analysis"]["tempo"]["bpm"] == pytest.approx(bpm, abs=0.3)
+
+
+def test_beat_filter_does_not_keep_zero_support_grid_positions() -> None:
+    import numpy as np
+
+    envelope = np.zeros(100, dtype=np.float64)
+    envelope[[10, 20, 30, 40]] = 1.0
+    frames = np.asarray([10, 20, 30, 40, 50, 60, 70], dtype=np.int64)
+
+    kept = _drop_unsupported_beats(envelope, frames)
+
+    assert kept.tolist() == [10, 20, 30, 40]
+
+
+def test_beat_filter_returns_empty_when_no_candidate_has_support() -> None:
+    import numpy as np
+
+    kept = _drop_unsupported_beats(
+        np.zeros(100, dtype=np.float64),
+        np.asarray([10, 20, 30, 40], dtype=np.int64),
+    )
+    assert kept.size == 0
+
+
+def test_ffmpeg_normalization_restricts_protocol_and_demuxer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+    from lor_sequence_builder import audio_analysis
+
+    calls: list[list[str]] = []
+    monkeypatch.setattr(audio_analysis.shutil, "which", lambda _: "ffmpeg")
+
+    def fake_run(command: list[str], **_: object) -> SimpleNamespace:
+        calls.append(command)
+        if "-version" in command:
+            return SimpleNamespace(returncode=0, stdout="ffmpeg version test", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(audio_analysis.subprocess, "run", fake_run)
+    audio_analysis._normalize(tmp_path / "sample.wav", tmp_path / "normalized.wav")
+
+    decode = calls[1]
+    assert decode[decode.index("-protocol_whitelist") + 1] == "file,pipe"
+    assert decode[decode.index("-f") + 1] == "wav"
+
+
+def test_ffmpeg_normalization_rejects_unknown_demuxer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+    from lor_sequence_builder import audio_analysis
+
+    monkeypatch.setattr(audio_analysis.shutil, "which", lambda _: "ffmpeg")
+    monkeypatch.setattr(
+        audio_analysis.subprocess, "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0, stdout="ffmpeg version test", stderr=""
+        ),
+    )
+    with pytest.raises(AudioAnalysisError, match="Unsupported audio file extension"):
+        audio_analysis._normalize(tmp_path / "playlist.m3u", tmp_path / "normalized.wav")
