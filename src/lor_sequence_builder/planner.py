@@ -412,6 +412,7 @@ class _Planner:
     sections: list[PlannedSection]
     canvas: _Canvas
     movement_counter: int = 0
+    turns: dict[frozenset[str], int] = field(default_factory=dict)
 
     def channels(self, pid: str, section_index: int) -> list[int]:
         """Channels to light: all of them, or one color at a time for per-color props."""
@@ -436,7 +437,7 @@ class _Planner:
                                       self.color(pid, ch), movement)
         return placed
 
-    def direction_for(self, row: _Row, kind: str, flip: bool) -> tuple[tuple[str, ...], str]:
+    def direction_for(self, row: _Row, kind: str) -> tuple[tuple[str, ...], str]:
         props, natural = row.props, row.direction
         for chosen, movement_kind, required in self.constraints.directions:
             if movement_kind == kind and set(props) <= chosen:
@@ -445,7 +446,11 @@ class _Planner:
                 if required == _OPPOSITE.get(natural):
                     return tuple(reversed(props)), required
                 raise _CannotHonor(required)
-        if flip:
+        # Each new chase or fill on this row runs the other way from the last one.
+        key = frozenset(props)
+        turn = self.turns.get(key, 0)
+        self.turns[key] = turn + 1
+        if turn % 2 == 1:
             return tuple(reversed(props)), _OPPOSITE[natural]
         return props, natural
 
@@ -459,10 +464,10 @@ class _Planner:
     # -- row looks
 
     def chase(self, row: _Row, props: list[str], window: _Window, every: int,
-              intensity: int, flip: bool) -> bool:
+              intensity: int) -> bool:
         try:
             order, direction = self.direction_for(_Row(row.role, tuple(props), row.direction),
-                                                  "chase", flip)
+                                                  "chase")
         except _CannotHonor:
             return False
         beats = window.beats
@@ -486,10 +491,10 @@ class _Planner:
             index += n * every
         return placed
 
-    def fill(self, row: _Row, props: list[str], window: _Window, flip: bool) -> bool:
+    def fill(self, row: _Row, props: list[str], window: _Window) -> bool:
         try:
             order, direction = self.direction_for(_Row(row.role, tuple(props), row.direction),
-                                                  "fill", flip)
+                                                  "fill")
         except _CannotHonor:
             return False
         placed = False
@@ -523,12 +528,20 @@ class _Planner:
             self.light(pid, window.section_index, t, min(window.end, t + length),
                        intensity=intensity)
 
+    def breathe(self, pid: str, window: _Window, intensity: int) -> None:
+        """Swell on each bar and fade away by the next one."""
+        for start, end in _bars(window):
+            self.light(pid, window.section_index, start, end, "fade", intensity, 0)
+
     def steady(self, pid: str, window: _Window, intensity: int, kind: str = "on") -> None:
         self.light(pid, window.section_index, window.start, window.end, kind, intensity)
 
-    def rotate(self, pid: str, window: _Window, intensity: int, per_beat: int) -> None:
+    def rotate(self, pid: str, window: _Window, intensity: int, per_beat: int,
+               reverse: bool = False) -> None:
         """Step through a multi-segment prop's channels in order, like a spinning tree."""
-        allowed = self.constraints.channels[pid]
+        allowed = list(self.constraints.channels[pid])
+        if reverse:
+            allowed.reverse()
         count = len(allowed)
         times: list[int] = []
         for b, beat in enumerate(window.beats):
@@ -548,10 +561,13 @@ class _CannotHonor(Exception):
 
 
 def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[str],
-          active: set[str]) -> None:
-    section = planner.sections[window.section_index]
-    level = section.level
-    flip = (window.section_index % 2) == 1
+          active: set[str], variant: int, flip: bool) -> None:
+    """One phrase of one section: what each kind of prop does at this energy level.
+
+    ``variant`` alternates between phrases so a long section keeps changing;
+    ``flip`` spins multi-segment props the other way.
+    """
+    level = planner.sections[window.section_index].level
 
     for row in rows:
         members = [pid for pid in row.props if pid in active]
@@ -562,25 +578,37 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
             continue
         moved = True
         if row.role == "mini_tree":
-            if level == MID:
+            if level == MID and variant == 0 or level == HIGH and variant == 1:
                 planner.alternate(members, window)
+            elif level == MID:
+                moved = planner.chase(row, members, window, every=1, intensity=90)
             elif level == HIGH:
                 for pid in members:
                     planner.pulse(pid, window)
         elif row.role == "arch":
-            if level == LOW:
-                moved = planner.chase(row, members, window, every=2, intensity=80, flip=flip)
+            if level == LOW and variant == 0:
+                moved = planner.chase(row, members, window, every=2, intensity=80)
+            elif level == LOW:
+                for pid in members:
+                    planner.breathe(pid, window, 70)
+            elif level == MID and variant == 0 or level == HIGH and variant == 1:
+                moved = planner.chase(row, members, window, every=1, intensity=100)
             elif level == MID:
-                moved = planner.chase(row, members, window, every=1, intensity=100, flip=flip)
+                planner.alternate(members, window)
             else:
-                moved = planner.fill(row, members, window, flip=flip)
+                moved = planner.fill(row, members, window)
         elif level == LOW:
             for pid in members:
                 planner.steady(pid, window, 60)
+        elif level == MID and variant == 0:
+            moved = planner.chase(row, members, window, every=1, intensity=100)
         elif level == MID:
-            moved = planner.chase(row, members, window, every=1, intensity=100, flip=flip)
+            planner.alternate(members, window)
+        elif variant == 0:
+            moved = planner.fill(row, members, window)
         else:
-            moved = planner.fill(row, members, window, flip=flip)
+            for pid in members:
+                planner.pulse(pid, window)
         if not moved:
             for pid in members:
                 planner.steady(pid, window, 60 if level == LOW else 90)
@@ -592,33 +620,58 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
         channels = len(planner.constraints.channels[pid])
         multi = channels >= 3 and prop.color_kind != "color_per_channel"
         if prop.role == "mega_tree" or (multi and prop.role in {"icicles", "outline"}):
-            speed = {LOW: 1, MID: 1, HIGH: 2}[level]
-            planner.rotate(pid, window, {LOW: 60, MID: 100, HIGH: 100}[level], speed)
-        elif prop.role == "star":
-            if level == HIGH:
-                planner.steady(pid, window, 100, "twinkle")
+            if level == HIGH and variant == 1:
+                planner.pulse(pid, window)
             else:
-                planner.steady(pid, window, 100)
+                planner.rotate(pid, window, 60 if level == LOW else 100,
+                               2 if level == HIGH else 1, reverse=flip)
+        elif prop.role == "star":
+            planner.steady(pid, window, 100, "twinkle" if level == HIGH else "on")
         elif prop.role == "snowflake":
-            if level == MID:
+            if level == MID and variant == 0:
                 planner.pulse(pid, window, "bars")
+            elif level == MID or level == HIGH and variant == 1:
+                planner.pulse(pid, window, intensity=70 if level == MID else 100)
             elif level == HIGH:
                 planner.steady(pid, window, 100, "twinkle")
         elif prop.role == "outline":
-            if level == HIGH:
+            if level == HIGH and variant == 0:
                 planner.pulse(pid, window)
             else:
-                planner.steady(pid, window, 50 if level == LOW else 80)
+                planner.steady(pid, window, {LOW: 50, MID: 80, HIGH: 100}[level])
         elif prop.role == "singing_face":
             if level >= MID:
                 planner.steady(pid, window, 100)
         elif prop.role == "decor":
-            if level == HIGH:
+            if level == HIGH and variant == 0:
                 planner.pulse(pid, window, "bars")
             else:
-                planner.steady(pid, window, 70 if level == LOW else 100)
+                planner.steady(pid, window, {LOW: 70, MID: 100, HIGH: 100}[level])
         elif level >= MID:
             planner.steady(pid, window, 60 if level == MID else 80)
+
+
+BARS_PER_PHRASE = 4
+# The intro brings props in a few kinds at a time, one phrase after another.
+_INTRO_TIERS: tuple[frozenset[str], ...] = (
+    frozenset({"star", "outline", "snowflake"}),
+    frozenset({"star", "outline", "snowflake", "mega_tree", "singing_face", "decor"}),
+)
+
+
+def _phrases(window: _Window) -> list[_Window]:
+    marks = [d for d in window.downbeats if d > window.start]
+    cuts = [window.start, *marks[BARS_PER_PHRASE - 1::BARS_PER_PHRASE], window.end]
+    if len(marks) < BARS_PER_PHRASE:
+        cuts = [window.start, window.end]
+    phrases = []
+    for a, b in itertools.pairwise(cuts):
+        if b - a < 50:
+            continue
+        phrases.append(_Window(window.section_index, a, b,
+                               tuple(t for t in window.beats if a <= t < b),
+                               tuple(t for t in window.downbeats if a <= t < b), False))
+    return phrases
 
 
 def _accent(planner: _Planner, window: _Window, active: set[str]) -> int:
@@ -629,6 +682,26 @@ def _accent(planner: _Planner, window: _Window, active: set[str]) -> int:
     for pid in sorted(active):
         planner.light(pid, window.section_index, window.start, end, "fade", 100, 0)
     return end
+
+
+def _joined(effects: list[Effect]) -> list[Effect]:
+    """Join back-to-back holds with the same look, so a long hold is one effect in S6."""
+    out: list[Effect] = []
+    for effect in sorted(effects, key=lambda e: e.start_centisecond):
+        previous = out[-1] if out else None
+        if (
+            previous is not None and effect.kind in {"on", "twinkle", "shimmer"}
+            and previous.end_centisecond == effect.start_centisecond
+            and (previous.kind, previous.start_intensity, previous.color)
+            == (effect.kind, effect.start_intensity, effect.color)
+            and previous.movement_id is None and effect.movement_id is None
+        ):
+            out[-1] = Effect(previous.prop_id, previous.channel_index,
+                             previous.start_centisecond, effect.end_centisecond, previous.kind,
+                             previous.start_intensity, previous.end_intensity, previous.color)
+        else:
+            out.append(effect)
+    return out
 
 
 def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet) -> Plan:
@@ -656,8 +729,10 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet) -> 
 
     usable = set(constraints.channels)
     rows, singles = _rows(display, usable)
+    last_window = windows[-1] if windows else None
     for window in windows:
-        label = sections[window.section_index].label.lower()
+        section = sections[window.section_index]
+        label = section.label.lower()
         active = {
             pid for pid in usable
             if label not in constraints.quiet.get(pid, set())
@@ -665,13 +740,30 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet) -> 
                         for a, b in keep_spans.get(pid, []))
         }
         start = _accent(planner, window, active)
-        body = _Window(window.section_index, start, window.end,
-                       tuple(b for b in window.beats if b >= start),
-                       tuple(d for d in window.downbeats if d >= start), False)
-        _look(planner, body, rows, singles, active)
+        end = window.end
+        closing: int | None = None
+        if window is last_window and window.section_index == len(sections) - 1:
+            final_bar = max((d for d in window.downbeats if d > start), default=None)
+            if final_bar is not None and end - final_bar >= 100:
+                closing = final_bar
+                end = final_bar
+        body = _Window(window.section_index, start, end,
+                       tuple(b for b in window.beats if start <= b < end),
+                       tuple(d for d in window.downbeats if start <= d < end), False)
+        for index, phrase in enumerate(_phrases(body)):
+            phrase_active = active
+            if window.section_index == 0 and label == "intro" and index < len(_INTRO_TIERS):
+                tier = _INTRO_TIERS[index]
+                phrase_active = {p for p in active if display.props[p].role in tier}
+            _look(planner, phrase, rows, singles, phrase_active, variant=index % 2,
+                  flip=(window.section_index + index) % 2 == 1)
+        if closing is not None:
+            # The song's last bar: everything still in use fades out together.
+            for pid in sorted(active):
+                planner.light(pid, window.section_index, closing, window.end, "fade", 100, 0)
 
     effects = tuple(sorted(
-        (e for items in canvas.effects.values() for e in items),
+        (e for items in canvas.effects.values() for e in _joined(items)),
         key=lambda e: (e.start_centisecond, e.prop_id, e.channel_index),
     ))
     used = {e.prop_id for e in effects}

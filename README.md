@@ -73,6 +73,7 @@ uv run lor-sequence-builder generate --preview .\display.lorprev --audio .\Song.
 Before building, it asks whether you have any specific requirements (skipped when you have saved ones; `--ask-requirements` always asks, `--no-ask` never does). It then analyzes the song, splits it into sections by energy, plans each kind of prop (rows of arches and mini trees chase or fill in their real order, a mega tree rotates, outlines and decorations hold or pulse), checks the plan against every rule and requirement, and writes:
 
 - `Song.loredit`: the sequence. Put the song in your S6 audio folder; `--music-filename` sets the stored name (default: the audio file's name).
+- `Song.plan.svg`: a picture of the whole show, one lane per prop, that opens in any browser or on a phone.
 - `Song.timeline.json`, `Song.plan.json`, `Song.rules.json`: every decision, the section plan with props used and left out, and the rule report.
 - `Song.analysis.json` and `Song.analysis.svg`: the music analysis. Pass `--analysis` instead of `--audio` to reuse one.
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import json
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
@@ -261,7 +262,98 @@ def test_cli_generate_from_audio(tmp_path: Path, capsys: pytest.CaptureFixture[s
                  "--output", str(tmp_path / "show.loredit"), "--no-ask"]) == 0
     out = capsys.readouterr().out
     assert "Sections:" in out and "Sequence:" in out and "Analysis:" in out
-    for name in ("show.loredit", "show.timeline.json", "show.plan.json", "show.rules.json",
+    for name in ("show.loredit", "show.timeline.json", "show.plan.json", "show.plan.svg",
+                 "show.rules.json",
                  "show.analysis.json", "show.analysis.svg"):
         assert (tmp_path / name).exists(), name
     assert read_loredit(tmp_path / "show.loredit").root.attrib["musicFilename"] == "beat.wav"
+
+
+def test_long_sections_change_look_from_phrase_to_phrase() -> None:
+    display = classic_yard()
+    ids = _ids(display)
+    analysis = synthetic_analysis(duration=64.0, sections=((0.0, 0.1), (8.0, 0.9)))
+    plan, report = _plan(display, analysis)
+    assert report.ok
+    arches = {ids[f"Arch {i}"] for i in range(1, 5)}
+    # 120 BPM: one phrase is four bars, 8 seconds; the loud section starts at 8 s.
+    first = {m.kind for m in plan.choreography.movements
+             if 800 <= m.start_centisecond < 1600}
+    second = {m.kind for m in plan.choreography.movements
+              if 1600 <= m.start_centisecond < 2400}
+    assert first and second and first != second
+    assert all(set(m.prop_ids) == arches for m in plan.choreography.movements)
+
+
+def test_the_intro_builds_and_the_song_ends_with_a_fade() -> None:
+    display = roofline_house()
+    ids = _ids(display)
+    analysis = synthetic_analysis(duration=60.0, sections=((0.0, 0.1), (24.0, 0.9)))
+    plan, report = _plan(display, analysis)
+    assert report.ok, report.format_text()
+    first_phrase = {e.prop_id for e in plan.choreography.effects if e.start_centisecond < 800}
+    roles = {display_from_preview(display.element()).props[p].role for p in first_phrase}
+    assert roles <= {"star", "outline", "snowflake"}
+    assert ids["Front Icicles"] not in first_phrase
+    ending = [e for e in plan.choreography.effects if e.end_centisecond == 6000]
+    assert ending and all(e.kind == "fade" and e.end_intensity == 0 for e in ending)
+
+
+def test_back_to_back_holds_become_one_effect() -> None:
+    display = roofline_house()
+    ids = _ids(display)
+    plan, _ = _plan(display, synthetic_analysis(duration=48.0, sections=((0.0, 0.5),)))
+    holds = sorted((e for e in plan.choreography.effects
+                    if e.prop_id == ids["Upper Roof"] and e.channel_index == 0),
+                   key=lambda e: e.start_centisecond)
+    assert holds
+    # Several phrases hold the roof at the same level; S6 gets one long effect, not many.
+    assert any(e.end_centisecond - e.start_centisecond > 800 for e in holds)
+    for a, b in itertools.pairwise(holds):
+        assert not (a.end_centisecond == b.start_centisecond and a.kind == b.kind == "on"
+                    and a.start_intensity == b.start_intensity)
+
+
+def test_plan_picture_draws_every_used_prop_and_section() -> None:
+    from lor_sequence_builder.plan_preview import plan_svg
+
+    display = classic_yard()
+    plan, _ = _plan(display, synthetic_analysis(stops=((40.0, 2.0),)))
+    svg = plan_svg(plan, display_from_preview(display.element()), "Fictional <yard>")
+    ET.fromstring(svg)  # well-formed
+    assert "Fictional &lt;yard&gt;" in svg
+    for name in plan.used_props:
+        assert f">{name}</text>" in svg
+    for section in plan.sections:
+        assert f">{section.label} <tspan" in svg
+    assert 'stroke="#ff5d5d"' in svg
+
+
+def test_a_big_display_and_a_full_song_plan_quickly() -> None:
+    import time
+
+    display = DisplayBuilder("Big Fictional Yard")
+    names = [f"Arch {i}" for i in range(12)]
+    for i, name in enumerate(names):
+        display.add(name, "arch", shape="Arch", box=(-0.9 + 0.1 * i, -0.6, 0.06, 0.05),
+                    unit="30")
+    display.group("Arches", names)
+    for i in range(16):
+        display.add(f"Mini Tree {i}", "mini_tree", shape="Tree 180",
+                    traditional="Multicolor_string_1_ch", colors=("Red", "Green"),
+                    box=(-0.9 + 0.11 * i, -0.4, 0.04, 0.08), unit="31")
+    display.add("Mega Tree", "mega_tree", shape="Tree 180", channels=32,
+                traditional="Multicolor_string_1_ch", colors=("Red", "Green"),
+                box=(0.5, 0.1, 0.3, 0.6), unit="32", start="Left")
+    levels = (0.1, 0.3, 0.6, 0.9, 0.4, 0.95, 0.2, 0.5, 0.9, 0.6, 0.95, 0.3)
+    analysis = synthetic_analysis(
+        duration=240.0, bpm=140.0,
+        sections=tuple((20.0 * i, level) for i, level in enumerate(levels)),
+        stops=((150.0, 1.5),),
+    )
+    started = time.perf_counter()
+    plan, report = _plan(display, analysis)
+    elapsed = time.perf_counter() - started
+    assert report.ok, report.format_text()
+    assert len(plan.choreography.effects) > 5000
+    assert elapsed < 30

@@ -19,6 +19,7 @@ from lor_sequence_builder.audio_analysis import analyze_audio
 from lor_sequence_builder.choreography import choreography_json
 from lor_sequence_builder.evaluation import load_analysis
 from lor_sequence_builder.lorprev import read_lorprev
+from lor_sequence_builder.plan_preview import plan_svg
 from lor_sequence_builder.planner import Plan, plan_show
 from lor_sequence_builder.pulse import preview_element
 from lor_sequence_builder.rules import RuleReport, RuleSet, display_from_preview
@@ -34,6 +35,7 @@ class GeneratedShow:
     sequence_path: Path
     timeline_path: Path
     plan_path: Path
+    picture_path: Path
     report_path: Path
     analysis_path: Path | None
     plan: Plan
@@ -47,6 +49,7 @@ def output_paths(output_path: str | Path) -> dict[str, Path]:
         "sequence": output,
         "timeline": stem.with_name(stem.name + ".timeline.json"),
         "plan": stem.with_name(stem.name + ".plan.json"),
+        "picture": stem.with_name(stem.name + ".plan.svg"),
         "report": stem.with_name(stem.name + ".rules.json"),
         "analysis": stem.with_name(stem.name + ".analysis.json"),
         "plot": stem.with_name(stem.name + ".analysis.svg"),
@@ -87,7 +90,7 @@ def generate_show(
     paths = output_paths(output_path)
     if paths["sequence"].suffix.lower() != ".loredit":
         raise SequenceWriteError("Sequence output must use the .loredit extension")
-    needed = ["sequence", "timeline", "plan", "report"]
+    needed = ["sequence", "timeline", "plan", "picture", "report"]
     if audio_path is not None:
         needed += ["analysis", "plot"]
     for name in needed:
@@ -113,6 +116,7 @@ def generate_show(
     plan = plan_show(analysis, display, rule_set)
     paths["sequence"].parent.mkdir(parents=True, exist_ok=True)
     _write_new(paths["timeline"], choreography_json(plan.choreography))
+    _write_new(paths["picture"], plan_svg(plan, display, f"{paths['sequence'].stem}: planned show"))
     try:
         written = build_from_timeline(
             preview_path, plan.choreography, rule_set, music_filename or default_music,
@@ -122,5 +126,5 @@ def generate_show(
         _write_new(paths["plan"], _plan_document(plan, failed.report, analysis))
         raise
     _write_new(paths["plan"], _plan_document(plan, written.report, analysis))
-    return GeneratedShow(paths["sequence"], paths["timeline"], paths["plan"], paths["report"],
-                         written_analysis, plan, written.report)
+    return GeneratedShow(paths["sequence"], paths["timeline"], paths["plan"], paths["picture"],
+                         paths["report"], written_analysis, plan, written.report)
