@@ -29,7 +29,7 @@ If these documents disagree, `docs/PLAN.md` wins. If PLAN.md is ambiguous or sta
 uv sync --locked
 uv run --no-sync --with pytest==9.2.0 python -m pytest
 uv run --no-sync --with ruff==0.17.4 ruff check .
-uv run --no-sync --with mypy==1.18.2 --with types-defusedxml==0.7.0.20260504 --with pytest==9.2.0 mypy --strict src tests
+uv run --no-sync --with mypy==1.18.2 --with types-defusedxml==0.7.0.20260504 --with types-PyYAML==6.0.12.20260906 --with pytest==9.2.0 mypy --strict src tests
 ```
 
 ## End of every session

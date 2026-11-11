@@ -2,7 +2,7 @@
 
 A display-independent command-line tool for building native Light-O-Rama S6 sequences from music and a required `.lorprev` display preview.
 
-**Project status:** Phases 0 through 5 are complete and merged. Phase 4 audio analysis runs on librosa and is accepted for songs in 4; swung and rubato recordings are a known limitation. Prop classification, rules, and intelligent choreography remain future work. See [docs/PLAN.md](docs/PLAN.md) for the authoritative status.
+**Project status:** Phases 0 through 5 are complete and merged; Phase 6 (rules) is in review. Phase 4 audio analysis runs on librosa and is accepted for songs in 4; swung and rubato recordings are a known limitation. Intelligent choreography remains future work. See [docs/PLAN.md](docs/PLAN.md) for the authoritative status.
 
 ## Product workflow
 
@@ -64,6 +64,18 @@ uv run lor-sequence-builder analyze-preview .\display.lorprev --report .\display
 
 Reads the preview only (never modifies it) and lists each prop as confident, needs review, or unknown, with its role, row position, direction, color capability, and whether v1 can sequence its channels. Evidence comes from the S6 shape type and parameters, geometry, channel count and type, groups and their order, links to master props, and the string start location. When the S6 shape type is specific (Arch, Star, Tree...), it wins over the name; when a prop is drawn as plain lines, its name decides and the prop is flagged for review. To correct a conclusion, fix the prop in the S6 Preview Editor and run the command again.
 
+## Rules and display requirements
+
+Every choreography Timeline is checked against built-in rules (no overlapping effects, movements that finish, falls that go down, a face outline whenever a mouth is on, and more) plus any requirements you add in your own rule profile. A Timeline with rule errors is never written to a sequence.
+
+```powershell
+uv run lor-sequence-builder list-rules --rules .\my-display.yaml
+uv run lor-sequence-builder check-timeline .\display.lorprev .\plan.json --rules .\my-display.yaml
+uv run lor-sequence-builder build-from-timeline --preview .\display.lorprev --timeline .\plan.json --music-filename "Song.mp3" --output .\song.loredit --report .\song.rules.json
+```
+
+See [docs/RULES.md](docs/RULES.md) for every rule, the profile format, and the Timeline format.
+
 ## Phase 4 audio analysis
 
 Install FFmpeg and ensure `ffmpeg` is available on PATH. FFmpeg decodes any supported audio format to mono 22.05 kHz signed 16-bit PCM; librosa then analyzes the decoded samples (it never opens files itself). The command writes a versioned JSON report plus an SVG diagnostic plot:
@@ -109,10 +121,10 @@ The command writes a deterministic, versioned Timeline JSON and a new `.loredit`
 The CI workflow pins the development tools and runs:
 
 ```powershell
-uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 python -m pytest
-uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 ruff check .
-uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 mypy --strict src tests
-uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 --with setuptools==84.1.0 pip-audit --skip-editable
+uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 --with types-PyYAML==6.0.12.20260906 python -m pytest
+uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 --with types-PyYAML==6.0.12.20260906 ruff check .
+uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 --with types-PyYAML==6.0.12.20260906 mypy --strict src tests
+uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 --with types-PyYAML==6.0.12.20260906 --with setuptools==84.1.0 pip-audit --skip-editable
 ```
 
 ## Repository structure
