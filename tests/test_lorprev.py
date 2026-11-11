@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 import lor_sequence_builder.lorprev as lorprev_module
-
 from lor_sequence_builder.lorprev import (
     MAX_LORPREV_BYTES,
     LorprevError,
