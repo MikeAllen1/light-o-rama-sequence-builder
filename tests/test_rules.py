@@ -792,6 +792,29 @@ def test_direct_choreography_rejects_malformed_numeric_fields_cleanly() -> None:
     with pytest.raises(ChoreographyError, match=r"effects\[0\].start_centisecond must be an integer"):
         _check(display, invalid_timestamp)
 
+    invalid_channel = Choreography(
+        duration_centiseconds=SONG,
+        effects=(Effect(_ids(display)["Arch 1"], cast(int, "0"), 0, 100),),
+    )
+    with pytest.raises(ChoreographyError, match=r"effects\\[0\\].channel_index must be an integer"):
+        _check(display, invalid_channel)
+
+    invalid_end = Choreography(
+        duration_centiseconds=SONG,
+        effects=(Effect(_ids(display)["Arch 1"], 0, 0, cast(int, "100")),),
+    )
+    with pytest.raises(ChoreographyError, match=r"effects\\[0\\].end_centisecond must be an integer"):
+        _check(display, invalid_end)
+
+    invalid_end_intensity = Choreography(
+        duration_centiseconds=SONG,
+        effects=(Effect(_ids(display)["Arch 1"], 0, 0, 100,
+                        end_intensity=cast(int, True)),),
+    )
+    with pytest.raises(ChoreographyError, match=r"effects\\[0\\].end_intensity must be an integer"):
+        _check(display, invalid_end_intensity)
+
+
 
 def test_direct_movement_with_no_props_fails_without_crashing() -> None:
     display = classic_yard()
