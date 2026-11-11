@@ -2,27 +2,7 @@ name: Phase 3 Validation Package
 
 on:
   push:
-    branches:
-      - master
-    paths:
-      - ".github/workflows/phase3-validation-package.yml"
-      - "scripts/build_phase3_validation.py"
-      - "src/lor_sequence_builder/**"
-      - "tests/fixtures/s6_revision_58_independent.lorprev.gz.b64"
-      - "tests/fixtures/s6_revision_56_independent_template.loredit.gz.b64"
-      - "pyproject.toml"
-      - "uv.lock"
-  pull_request:
-    branches:
-      - master
-    paths:
-      - ".github/workflows/phase3-validation-package.yml"
-      - "scripts/build_phase3_validation.py"
-      - "src/lor_sequence_builder/**"
-      - "tests/fixtures/s6_revision_58_independent.lorprev.gz.b64"
-      - "tests/fixtures/s6_revision_56_independent_template.loredit.gz.b64"
-      - "pyproject.toml"
-      - "uv.lock"
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -36,19 +16,22 @@ jobs:
   build-package:
     name: Generate ready-to-open S6 test ZIP
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Check out source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
         with:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v5.6.0
         with:
           python-version: "3.12"
 
       - name: Install uv
-        run: python -m pip install uv==0.10.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.10.0"
 
       - name: Install locked project environment
         run: uv sync --locked
@@ -61,5 +44,6 @@ jobs:
         with:
           name: Phase3-S6-Validation
           path: dist/Phase3-S6-Validation.zip
+          retention-days: 30
           if-no-files-found: error
           retention-days: 90
