@@ -11,7 +11,6 @@ import lor_sequence_builder.lorprev as lorprev_module
 from lor_sequence_builder.lorprev import (
     MAX_LORPREV_BYTES,
     LorprevError,
-    UnsupportedLorprevRevisionError,
     read_lorprev,
 )
 
@@ -20,6 +19,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 def test_synthetic_revision_zero_preview_preserves_geometry_and_provenance() -> None:
     model = read_lorprev(FIXTURES / "synthetic_display.lorprev")
+    assert model.revision is not None
     assert model.revision.value == "0"
     assert len(model.props) == 2
     assert model.props[0].attributes["Name"].value == "Test Roofline"
@@ -99,6 +99,7 @@ def test_synthetic_revision_one_preview_preserves_full_prop_model(tmp_path: Path
     ET.ElementTree(root).write(source, encoding="utf-8", xml_declaration=True)
 
     model = read_lorprev(source)
+    assert model.revision is not None
     assert model.revision.value == "1"
     assert len(model.props) == 51
     assert len(model.channel_grid_entries) == 69
@@ -138,6 +139,7 @@ def test_s6_exported_revision_one_golden_fixture_preserves_all_source_data(
     source.write_bytes(gzip.decompress(compressed))
 
     model = read_lorprev(source)
+    assert model.revision is not None
     assert model.revision.value == "1"
     assert len(model.props) == 51
     assert len(model.geometry_points) == 1900
@@ -388,6 +390,7 @@ def test_owner_supplied_s6_revision_56_preview_parses_native_prop_group(
     source.write_bytes(gzip.decompress(compressed))
 
     model = read_lorprev(source)
+    assert model.revision is not None
     assert model.revision.value == "56"
     assert len(model.props) == 51
     assert len(model.groups) == 1
@@ -436,18 +439,32 @@ def test_missing_preview_fails_with_actionable_error(tmp_path: Path) -> None:
         read_lorprev(tmp_path / "missing.lorprev")
 
 
-def test_unsupported_revision_fails_clearly(tmp_path: Path) -> None:
-    source = tmp_path / "future.lorprev"
+@pytest.mark.parametrize("revision", ["2", "12", "58", "999"])
+def test_any_edit_revision_is_accepted_and_recorded(tmp_path: Path, revision: str) -> None:
+    # Revision is an edit counter, not a format version; it must never gate parsing.
+    source = tmp_path / "edited.lorprev"
     source.write_text(
-        '<PreviewClass id="x" Name="Future" Revision="999">'
+        f'<PreviewClass id="x" Name="Edited" Revision="{revision}">'
         '<PropClass id="p" Name="Test" /></PreviewClass>',
         encoding="utf-8",
     )
-    with pytest.raises(
-        UnsupportedLorprevRevisionError,
-        match="verified revisions are 0, 1, 56",
-    ):
-        read_lorprev(source)
+    model = read_lorprev(source)
+    assert model.revision is not None
+    assert model.revision.value == revision
+    assert model.revision.locator == "/PreviewClass/@Revision"
+    assert len(model.props) == 1
+
+
+def test_missing_revision_is_accepted(tmp_path: Path) -> None:
+    source = tmp_path / "no_revision.lorprev"
+    source.write_text(
+        '<PreviewClass id="x" Name="No Revision">'
+        '<PropClass id="p" Name="Test" /></PreviewClass>',
+        encoding="utf-8",
+    )
+    model = read_lorprev(source)
+    assert model.revision is None
+    assert len(model.props) == 1
 
 
 @pytest.mark.parametrize(
@@ -458,7 +475,6 @@ def test_unsupported_revision_fails_clearly(tmp_path: Path) -> None:
         b"<Other />",
         b'<!DOCTYPE x [<!ENTITY e "boom">]><PreviewClass Revision="0" />',
         b'<PreviewClass Revision="0" />',
-        b'<PreviewClass><PropClass id="p" /></PreviewClass>',
     ],
 )
 def test_invalid_or_unsafe_previews_fail(content: bytes, tmp_path: Path) -> None:
