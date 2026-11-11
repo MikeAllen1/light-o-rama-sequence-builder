@@ -104,7 +104,6 @@ def test_mp3_signature_detection_handles_id3_and_mpeg_frames() -> None:
     assert not _looks_like_mp3(bytes([0, 0, 0, 24]) + b"ftypmp42")
 
 
-
 def test_audio_filename_extension_maps_to_fixed_allowlisted_suffix() -> None:
     assert _safe_audio_suffix("../../outside/song.mp3", b"audio") == (".mp3", None)
     assert _safe_audio_suffix("intro.mp4", bytes([73, 68, 51, 3])) == (
