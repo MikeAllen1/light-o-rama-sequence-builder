@@ -241,6 +241,7 @@ def test_cli_reports_reduced_beat_grid_confidence(
         "audio": {"duration_seconds": 8.0},
         "analysis": {
             "tempo": {"bpm": 120.0, "confidence": 0.9},
+            "beat_grid_status": "provisional",
             "beats": [{"confidence": 0.2}, {"confidence": 0.4}],
             "downbeats": [],
             "onsets": [],
@@ -257,6 +258,7 @@ def test_cli_reports_reduced_beat_grid_confidence(
     output = capsys.readouterr().out
     assert result == 0
     assert "Estimated tempo: 120.0 BPM (confidence 0.9)" in output
+    assert "Beat grid status: provisional" in output
     assert "Beat grid confidence: 0.3000" in output
 
 
