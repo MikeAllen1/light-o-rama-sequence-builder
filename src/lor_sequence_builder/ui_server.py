@@ -6,9 +6,10 @@ import argparse
 import json
 import tempfile
 import webbrowser
+from collections.abc import Sequence
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Sequence, cast
+from typing import Any, cast
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from lor_sequence_builder.audio_analysis import (

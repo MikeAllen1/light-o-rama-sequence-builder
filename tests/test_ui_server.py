@@ -9,8 +9,8 @@ from urllib.request import Request, urlopen
 import pytest
 
 from lor_sequence_builder.ui_server import (
-    SequencerRequestHandler,
     _WEB_ROOT,
+    SequencerRequestHandler,
     _looks_like_mp3,
 )
 
