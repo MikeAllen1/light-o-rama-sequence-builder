@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import json
-from defusedxml import ElementTree as ET
 from pathlib import Path
 
+from defusedxml import ElementTree as ET
 import pytest
-
-from tests.fixture_builders import write_synthetic_loredit
 
 from lor_sequence_builder.loredit import read_loredit
 from lor_sequence_builder.pulse import PulseGenerationError, build_pulse_sequence
+
+from tests.fixture_builders import write_synthetic_loredit
+
 
 def independent_inputs(tmp_path: Path) -> tuple[Path, Path]:
     preview_path = tmp_path / "independent.lorprev"
