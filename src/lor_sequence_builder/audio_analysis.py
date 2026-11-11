@@ -202,7 +202,8 @@ def _hard_stops(rms: list[float]) -> list[dict[str, float]]:
                 stops.append({
                     "time": round(index * FRAME_SECONDS, 3),
                     "silence_duration": round((end - index) * FRAME_SECONDS, 3),
-                    "confidence": 0.8,\n                    "method": "sustained near-silence threshold",
+                    "confidence": 0.8,
+                    "method": "sustained near-silence threshold",
                 })
             index = end
         else:
@@ -347,7 +348,17 @@ def analyze_audio(
                 "duration_seconds": round(duration, 3),
                 "normalized_sample_rate": SAMPLE_RATE,
                 "channels": 1,
-                "sample_format": "signed 16-bit PCM",\n            },\n            "configuration": {\n                "frame_seconds": FRAME_SECONDS,\n                "minimum_bpm": MIN_BPM,\n                "maximum_bpm": MAX_BPM,\n                "minimum_duration_seconds": MIN_DURATION_SECONDS,\n                "maximum_duration_seconds": MAX_DURATION_SECONDS,\n                "maximum_input_bytes": MAX_INPUT_BYTES,\n                "confidence_values": "heuristic and uncalibrated",\n            },
+                "sample_format": "signed 16-bit PCM",
+            },
+            "configuration": {
+                "frame_seconds": FRAME_SECONDS,
+                "minimum_bpm": MIN_BPM,
+                "maximum_bpm": MAX_BPM,
+                "minimum_duration_seconds": MIN_DURATION_SECONDS,
+                "maximum_duration_seconds": MAX_DURATION_SECONDS,
+                "maximum_input_bytes": MAX_INPUT_BYTES,
+                "confidence_values": "heuristic and uncalibrated",
+            },
             "analysis": {
                 "method": "FFmpeg normalization + deterministic RMS/positive-energy-flux/autocorrelation",
                 "limitations": [
