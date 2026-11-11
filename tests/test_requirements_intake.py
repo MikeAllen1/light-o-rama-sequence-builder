@@ -151,6 +151,30 @@ def test_fresh_requirements_bypass_malformed_saved_sidecar(tmp_path: Path) -> No
     assert [item.type for item in load_saved_requirements(preview)] == ["never_use"]
 
 
+
+def test_fresh_intake_with_no_new_requirements_clears_old_saved_sidecar(
+    tmp_path: Path,
+) -> None:
+    preview = _preview(tmp_path, classic_yard())
+    sidecar = saved_requirements_path(preview)
+    sidecar.write_text(
+        "schema_version: rules-1.0\\nrequirements:\\n"
+        "  - type: never_use\\n    props: {names: [Santa]}\\n",
+        encoding="utf-8",
+    )
+    script = Script({
+        "Describe them": "",
+        "Answer a few quick questions": "n",
+    })
+
+    result = gather_requirements(
+        preview, _display(classic_yard()), script.ask, script.say, None, fresh=True
+    )
+
+    assert result == ()
+    assert not sidecar.exists()
+
+
 def test_nothing_is_saved_without_confirmation(tmp_path: Path) -> None:
     preview = _preview(tmp_path, classic_yard())
     translator = FakeTranslator(Translation(
