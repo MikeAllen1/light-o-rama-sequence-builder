@@ -15,6 +15,7 @@ def test_cli_without_arguments_displays_available_commands(
     assert "inspect" in output
     assert "inspect-preview" in output
     assert "roundtrip" in output
+    assert "pulse" in output
 
 
 def test_cli_help_exits_successfully(capsys: pytest.CaptureFixture[str]) -> None:
