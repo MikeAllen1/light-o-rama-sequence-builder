@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import math
 import shutil
 import subprocess
@@ -381,5 +382,5 @@ def test_tempo_estimator_handles_a_range_of_common_tempos(
     assert len(beat_times) >= int(8 * bpm / 60)
     assert all(
         (right - left) == pytest.approx(60.0 / estimated, abs=0.08)
-        for left, right in zip(beat_times, beat_times[1:])
+        for left, right in itertools.pairwise(beat_times)
     )
