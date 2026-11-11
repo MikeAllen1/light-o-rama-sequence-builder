@@ -13,9 +13,9 @@ from typing import Any, cast
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from lor_sequence_builder.audio_analysis import (
-    AudioAnalysisError,
     INPUT_DEMUXERS,
     MAX_INPUT_BYTES,
+    AudioAnalysisError,
     analyze_audio,
 )
 
