@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 ANALYSIS_SCHEMA_VERSION = "1.3"
 SAMPLE_RATE = 11_025
 FRAME_HOP_SAMPLES = round(SAMPLE_RATE * 0.01)
