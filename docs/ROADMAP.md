@@ -1,17 +1,17 @@
 # Development Roadmap
 
-This roadmap follows the authoritative phase order and acceptance gates in [PLAN.md](PLAN.md). It is intentionally aligned to the implementation plan rather than the earlier, superseded feature roadmap.
+This is a short phase index. [PLAN.md](PLAN.md) is the authoritative implementation status, acceptance criteria, and handoff log. [ARCHITECTURE.md](ARCHITECTURE.md) is the design reference.
 
 - [x] Phase 0 — Repository scaffold and CI
-- [x] Phase 1 — Native S6 LOREDIT v15 reader/writer; owner confirmed the round-trip file opens in S6
-- [x] Phase 2 — Standalone/embedded LORPREV parser, prop groups, channel-address provenance, and hardening; merged in PR #6
-- [ ] Phase 3 — Fixed-tempo Timeline walking skeleton; PR #7 in progress; owner S6 playback verification pending
-- [ ] Phase 4 — Audio analysis (beats, downbeats, onsets, sections, energy, hard stops)
+- [x] Phase 1 — Native S6 LOREDIT v15 reader/writer
+- [x] Phase 2 — LORPREV parser, prop groups, channel-address provenance, and parser hardening
+- [x] Phase 3 — Fixed-tempo Timeline walking skeleton; owner confirmed native output opens and renders in S6
+- [ ] Phase 4 — Audio analysis and real-song acceptance; PR #12 remains open/draft and unmerged
 - [ ] Phase 5 — Prop classifier and editable `props.yaml`
 - [ ] Phase 6 — Rules engine and user-profile layering
-- [ ] Phase 7 — Section-aware choreography planner v1; owner playback gate
-- [ ] Phase 8 — Vocal separation, syllable timing, and singing-face choreography; owner playback gate
+- [ ] Phase 7 — Section-aware choreography planner v1
+- [ ] Phase 8 — Vocal separation, syllable timing, and singing-face choreography
 - [ ] Phase 9 — Planner v2 (motifs, call-and-response, signature moments, dynamics)
 - [ ] Phase 10 — Reporting, packaging, documentation, and installation polish
 
-A phase is complete only when its issue acceptance criteria, automated checks, required owner verification, PR merge, and explicit approval are all satisfied. See [PLAN.md](PLAN.md) for the full scope and handoff log.
+A phase is complete only after its acceptance criteria, automated checks, required owner verification, merge, and explicit owner approval are recorded.
