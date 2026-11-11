@@ -2,7 +2,7 @@
 
 A display-independent command-line tool for building native Light-O-Rama S6 sequences from music and a required `.lorprev` display preview.
 
-**Project status:** Phases 0 through 6 are complete and merged; Phase 6b (the requirements step) is in review. Phase 4 audio analysis runs on librosa and is accepted for songs in 4; swung and rubato recordings are a known limitation. Intelligent choreography remains future work. See [docs/PLAN.md](docs/PLAN.md) for the authoritative status.
+**Project status:** Phases 0 through 6b are complete and merged. Phase 7 (the first full show planner) is built and waiting for an owner playback check in S6. Phase 4 audio analysis runs on librosa and is accepted for songs in 4; swung and rubato recordings are a known limitation. Singing-face lip sync is future work (Phase 8). See [docs/PLAN.md](docs/PLAN.md) for the authoritative status.
 
 ## Product workflow
 
@@ -63,6 +63,21 @@ uv run lor-sequence-builder analyze-preview .\display.lorprev --report .\display
 ```
 
 Reads the preview only (never modifies it) and lists each prop as confident, needs review, or unknown, with its role, row position, direction, color capability, and whether v1 can sequence its channels. Evidence comes from the S6 shape type and parameters, geometry, channel count and type, groups and their order, links to master props, and the string start location. When the S6 shape type is specific (Arch, Star, Tree...), it wins over the name; when a prop is drawn as plain lines, its name decides and the prop is flagged for review. To correct a conclusion, fix the prop in the S6 Preview Editor and run the command again.
+
+## Build a show
+
+```powershell
+uv run lor-sequence-builder generate --preview .\display.lorprev --audio .\Song.mp3 --output .\Song.loredit
+```
+
+Before building, it asks whether you have any specific requirements (skipped when you have saved ones; `--ask-requirements` always asks, `--no-ask` never does). It then analyzes the song, splits it into sections by energy, plans each kind of prop (rows of arches and mini trees chase or fill in their real order, a mega tree rotates, outlines and decorations hold or pulse), checks the plan against every rule and requirement, and writes:
+
+- `Song.loredit`: the sequence. Put the song in your S6 audio folder; `--music-filename` sets the stored name (default: the audio file's name).
+- `Song.plan.svg`: a picture of the whole show, one lane per prop, that opens in any browser or on a phone.
+- `Song.timeline.json`, `Song.plan.json`, `Song.rules.json`: every decision, the section plan with props used and left out, and the rule report.
+- `Song.analysis.json` and `Song.analysis.svg`: the music analysis. Pass `--analysis` instead of `--audio` to reuse one.
+
+Singing-face mouths are not animated yet; that needs vocal analysis (Phase 8).
 
 ## Rules and display requirements
 

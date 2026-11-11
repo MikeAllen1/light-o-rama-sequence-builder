@@ -10,7 +10,7 @@ This roadmap follows the authoritative phase order and acceptance gates in [PLAN
 - [x] Phase 4b: scratch-built native sequence writer (no template required); owner S6 open-test passed
 - [x] Phase 5: prop classifier and `analyze-preview` (preview is the only input); owner confirmed on a real display
 - [x] Phase 6 — Rules engine and user-profile layering
-- [ ] Phase 6b — Optional "any specific requirements?" step, remembered per display
+- [x] Phase 6b — Optional "any specific requirements?" step, remembered per display
 - [ ] Phase 7 — Section-aware choreography planner v1; owner playback gate
 - [ ] Phase 8 — Vocal separation, syllable timing, and singing-face choreography; owner playback gate
 - [ ] Phase 9 — Planner v2 (motifs, call-and-response, signature moments, dynamics)
