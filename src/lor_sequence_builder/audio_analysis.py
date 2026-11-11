@@ -9,7 +9,6 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import os
 import platform
 import shutil
 import struct
@@ -18,6 +17,8 @@ import tempfile
 import wave
 from array import array
 from pathlib import Path
+
+from lor_sequence_builder.file_publish import publish_new_files
 from typing import Any
 
 ANALYSIS_SCHEMA_VERSION = "1.3"
@@ -607,40 +608,21 @@ def analyze_audio(
             },
         }
         serialized = json.dumps(report, indent=2, sort_keys=True) + "\n"
-        # Build both artifacts beside their destinations, then publish with
-        # atomic no-overwrite links. If either publication fails, remove the
-        # other so callers never receive a half-published report/plot pair.
-        json_temp: Path | None = None
-        plot_temp: Path | None = None
-        json_published = False
-        plot_published = False
         try:
-            with tempfile.NamedTemporaryFile(
-                mode="w", encoding="utf-8", dir=json_path.parent,
-                prefix=f".{json_path.name}.", suffix=".tmp", delete=False,
-            ) as stream:
-                json_temp = Path(stream.name)
-                stream.write(serialized)
-            with tempfile.NamedTemporaryFile(
-                mode="w", encoding="utf-8", dir=plot_path.parent,
-                prefix=f".{plot_path.name}.", suffix=".tmp", delete=False,
-            ) as stream:
-                plot_temp = Path(stream.name)
-            plot_temp.unlink()
-            _svg_plot(plot_temp, duration, energy, beat_times, downbeats, onsets, sections, stops)
-            os.link(json_temp, json_path)
-            json_published = True
-            os.link(plot_temp, plot_path)
-            plot_published = True
+            with tempfile.TemporaryDirectory(
+                prefix=".lor-analysis-json-", dir=json_path.parent
+            ) as json_directory, tempfile.TemporaryDirectory(
+                prefix=".lor-analysis-plot-", dir=plot_path.parent
+            ) as plot_directory:
+                json_temp = Path(json_directory) / "analysis.json"
+                plot_temp = Path(plot_directory) / "analysis.svg"
+                json_temp.write_text(serialized, encoding="utf-8")
+                _svg_plot(
+                    plot_temp, duration, energy, beat_times, downbeats, onsets, sections, stops
+                )
+                publish_new_files([(json_temp, json_path), (plot_temp, plot_path)])
         except FileExistsError as exc:
             raise AudioAnalysisError("Refusing to overwrite an existing analysis output") from exc
-        finally:
-            if json_temp is not None:
-                json_temp.unlink(missing_ok=True)
-            if plot_temp is not None:
-                plot_temp.unlink(missing_ok=True)
-            if json_published and not plot_published:
-                json_path.unlink(missing_ok=True)
         return report
     except OSError as exc:
         raise AudioAnalysisError(f"Audio analysis I/O failure: {exc}") from exc

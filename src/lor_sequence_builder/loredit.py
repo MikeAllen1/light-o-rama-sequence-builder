@@ -1,20 +1,21 @@
-"""Loss-preserving reader and writer for the observed S6 LOREDIT v15 format.
+"""Semantically preserving reader and writer for the observed S6 LOREDIT v15 format.
 
 The implementation intentionally treats the sequence as an opaque XML document:
 unknown elements and attributes are retained rather than interpreted or rebuilt.
+XML serialization does not preserve original bytes, comments, BOMs, or line endings.
 """
 
 from __future__ import annotations
 
 import io
-import os
-import tempfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
 from defusedxml import ElementTree as SafeET
 from defusedxml.common import DefusedXmlException
+
+from lor_sequence_builder.file_publish import write_new_file
 
 SUPPORTED_SAVE_FILE_VERSION = "15"
 MAX_LOREDIT_BYTES = 50 * 1024 * 1024
@@ -157,7 +158,7 @@ def _validate_sequence_prop_references(root: ET.Element) -> None:
 
 
 def write_loredit(document: LoreditDocument, output_path: str | Path) -> Path:
-    """Atomically write a new LOREDIT file without replacing an existing path."""
+    """Create a new LOREDIT file without replacing an existing path."""
     output = Path(output_path)
     if document.root.tag != "sequence":
         raise LoreditError("Cannot write a document whose root is not <sequence>")
@@ -178,31 +179,16 @@ def write_loredit(document: LoreditDocument, output_path: str | Path) -> Path:
         except OSError as exc:
             raise LoreditError(f"Cannot resolve output path: {output}") from exc
 
-    temporary: Path | None = None
     try:
-        output.parent.mkdir(parents=True, exist_ok=True)
         tree = ET.ElementTree(document.root)
-        with tempfile.NamedTemporaryFile(
-            mode="wb",
-            dir=output.parent,
-            prefix=f".{output.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as stream:
-            temporary = Path(stream.name)
-            tree.write(stream, encoding="utf-8", xml_declaration=True)
-            stream.flush()
-            os.fsync(stream.fileno())
-        # A hard link is an atomic create-if-absent operation on the same volume.
-        # Unlike replace/rename, it cannot overwrite an existing destination.
-        os.link(temporary, output)
+        write_new_file(
+            output,
+            lambda stream: tree.write(stream, encoding="utf-8", xml_declaration=True),
+        )
     except FileExistsError as exc:
         raise LoreditError(f"Output already exists; refusing to overwrite: {output}") from exc
     except OSError as exc:
-        raise LoreditError(f"Cannot write LOREDIT output atomically: {output}") from exc
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
+        raise LoreditError(f"Cannot create LOREDIT output: {output}") from exc
     return output
 
 
