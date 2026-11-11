@@ -1,8 +1,8 @@
 # Implementation Plan
 
-**Status:** Phases 0 through 6 complete and merged. Phase 6b (requirements intake) is built and in review.  
-**Current phase:** Phase 6b — requirements intake review.  
-**Next phase:** Phase 7 — Planner v1; Phase 8 — Vocals follows Phase 7. See the phase sections and linked GitHub issues/PRs below for acceptance gates.
+**Status:** Phases 0 through 6b are complete and merged. Phase 7 (Planner v1) is in review; its owner S6 playback gate is pending.  
+**Current phase:** Phase 7 — Planner v1 (PR #39, owner playback gate pending).  
+**Next phase:** Phase 8 — Vocals (PR #44), stacked on Phase 7 and to be reviewed only after Phase 7. No later phase is authorized until the required owner gate and approval are recorded.
 
 ## Product objective and fixed requirements
 
@@ -35,7 +35,7 @@ These differ from the original stack proposal. They are intentional and accepted
 
 1. **Sequence creation without a template (resolved 2026-11-11).** Owner chose to build sequences from scratch: `generate` takes audio and preview only, and the tool creates a new native sequence itself. A template is not a required input. This becomes Phase 4b, scheduled after Phase 4 acceptance and before Phase 5 because it is the largest remaining format unknown.
 2. **Preview Revision (resolved 2026-11-11).** Owner clarified that `PreviewClass/@Revision` is an edit counter incremented on each save, not a format version. The parser's revision allowlist (which rejected any preview not at revision 0, 1, 56, or 58) was removed; the value is now optional metadata. Compatibility is judged by structure. Do not reintroduce revision-based gating.
-3. **Fixture diversity before Phase 5.** Current committed fixtures are synthetic and intentionally limited. Classifier golden tests need 2 to 3 previews from materially different displays (different size, messy naming, legacy AC/DC) before Phase 5 can claim display independence. Any additional owner-provided examples must remain local; do not commit original or sanitized owner show material.
+3. **Fixture diversity before Phase 5 (resolved for Phase 5 acceptance, 2026-11-11).** Phase 5 passed its five fictional-display regression suite and the owner confirmed the classifier conclusions against a real display locally. The real display and all derivatives remain private and are not committed. This records the Phase 5 acceptance evidence; it does not claim broad validation across every display or legacy AC/DC configuration.
 4. **License.** An MIT `LICENSE` was added in the docs-cleanup PR as a proposed default. The owner should confirm or replace it before merge.
 
 ## Mandatory engineering workflow
