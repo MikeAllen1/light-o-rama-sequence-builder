@@ -19,7 +19,7 @@ import tempfile
 import wave
 from importlib import metadata
 from pathlib import Path
-from typing import Any, IO
+from typing import IO, Any
 
 import librosa
 import numpy as np
