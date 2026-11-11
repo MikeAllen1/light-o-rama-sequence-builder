@@ -12,10 +12,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
-from lor_sequence_builder.loredit import (
-    read_loredit,
-    strip_local_preview_background_references,
-)
+from lor_sequence_builder.loredit import read_loredit
 from lor_sequence_builder.pulse import build_pulse_sequence
 
 ROOT = Path(__file__).resolve().parents[1]
