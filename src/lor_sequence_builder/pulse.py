@@ -5,11 +5,10 @@ from __future__ import annotations
 import hashlib
 import math
 import tempfile
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
 from pathlib import Path
-
-import xml.etree.ElementTree as ET
 
 from defusedxml.ElementTree import parse as safe_parse
 
