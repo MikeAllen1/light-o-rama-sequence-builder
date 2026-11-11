@@ -8,13 +8,13 @@ from pathlib import Path
 
 import pytest
 
+from lor_sequence_builder.channel_mapping import channel_layout_problem
 from lor_sequence_builder.classifier import (
     ClassificationError,
     PropClassification,
     classification_report,
     classify_preview,
 )
-from lor_sequence_builder.channel_mapping import channel_layout_problem
 from lor_sequence_builder.cli import main
 from tests.display_builders import (
     ALL_DISPLAYS,
