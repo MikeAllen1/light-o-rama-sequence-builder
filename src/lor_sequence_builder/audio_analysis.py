@@ -134,15 +134,19 @@ def _detect_onsets(flux: list[float]) -> list[dict[str, float]]:
     return peaks
 
 
-def _estimate_tempo(\n    flux: list[float], min_bpm: int, max_bpm: int\n) -> tuple[float | None, float, int | None, int | None]:
+def _estimate_tempo(
+    flux: list[float], min_bpm: int, max_bpm: int
+) -> tuple[float | None, float, int | None, int | None]:
     if len(flux) < 40:
         return None, 0.0, None, None
     # Autocorrelation of onset strength; frame spacing is 50 ms.
     mean = math.fsum(flux) / len(flux)
     centered = [value - mean for value in flux]
     candidates: list[tuple[float, int]] = []
-    for lag in range(round(60.0 / MAX_BPM / FRAME_SECONDS),
-                     round(60.0 / MIN_BPM / FRAME_SECONDS) + 1):
+    for lag in range(
+        round(60.0 / max_bpm / FRAME_SECONDS),
+        round(60.0 / min_bpm / FRAME_SECONDS) + 1,
+    ):
         overlap = len(centered) - lag
         if overlap <= 0:
             continue
@@ -309,13 +313,19 @@ def _svg_plot(
 
 
 def analyze_audio(
-    audio_path: str | Path, json_output: str | Path, plot_output: str | Path
+    audio_path: str | Path,
+    json_output: str | Path,
+    plot_output: str | Path,
+    min_bpm: int = MIN_BPM,
+    max_bpm: int = MAX_BPM,
 ) -> dict[str, Any]:
     """Analyze audio and write a versioned JSON report and an SVG diagnostic plot."""
     source = Path(audio_path)
     json_path = Path(json_output)
     plot_path = Path(plot_output)
     try:
+        if not 30 <= min_bpm < max_bpm <= 300:
+            raise AudioAnalysisError("Tempo bounds must satisfy 30 <= min BPM < max BPM <= 300")
         if not source.is_file():
             raise AudioAnalysisError(f"Audio input is not a regular file: {source}")
         size = source.stat().st_size
@@ -363,8 +373,8 @@ def analyze_audio(
             },
             "configuration": {
                 "frame_seconds": FRAME_SECONDS,
-                "minimum_bpm": MIN_BPM,
-                "maximum_bpm": MAX_BPM,
+                "minimum_bpm": min_bpm,
+                "maximum_bpm": max_bpm,
                 "minimum_duration_seconds": MIN_DURATION_SECONDS,
                 "maximum_duration_seconds": MAX_DURATION_SECONDS,
                 "maximum_input_bytes": MAX_INPUT_BYTES,
