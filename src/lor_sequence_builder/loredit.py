@@ -49,6 +49,26 @@ class LoreditDocument:
         return value
 
 
+def strip_local_preview_background_references(root: ET.Element) -> int:
+    """Remove workstation-local preview background image paths from a sequence.
+
+    S6 stores scene backgrounds as local paths. A distributable test fixture
+    must not retain a developer's path, because another machine may resolve it
+    to a private photo at the same location.
+    """
+    removed = 0
+    for element in root.iter():
+        for attribute in tuple(element.attrib):
+            if attribute.casefold() in {
+                "backgroundfile",
+                "backgroundimage",
+                "backgroundimagefile",
+            }:
+                del element.attrib[attribute]
+                removed += 1
+    return removed
+
+
 def read_loredit(path: str | Path) -> LoreditDocument:
     """Read and validate an observed S6 LOREDIT v15 XML document."""
     source = Path(path)
