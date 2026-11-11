@@ -1,35 +1,23 @@
 from __future__ import annotations
 
 import json
-import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
 
+from tests.fixture_builders import write_synthetic_loredit
+
 from lor_sequence_builder.loredit import read_loredit
 from lor_sequence_builder.pulse import PulseGenerationError, build_pulse_sequence
 
-FIXTURE_DIR = Path(__file__).parent / "fixtures"
-FIXTURE = FIXTURE_DIR / "basic_show.loredit"
-INDEPENDENT_TEMPLATE = FIXTURE
-
-
 def independent_inputs(tmp_path: Path) -> tuple[Path, Path]:
     preview_path = tmp_path / "independent.lorprev"
-    template_path = tmp_path / "independent-template.loredit"
-    shutil.copyfile(INDEPENDENT_TEMPLATE, template_path)
-    template_root = ET.parse(template_path).getroot()
-    preview_root = template_root.find("PreviewClass")
+    template_path = write_synthetic_loredit(
+        tmp_path / "independent-template.loredit"
+    )
+    preview_root = ET.parse(template_path).getroot().find("PreviewClass")
     assert preview_root is not None
-    for element in preview_root.iter():
-        for attribute in tuple(element.attrib):
-            if attribute.casefold() in {
-                "backgroundfile",
-                "backgroundimage",
-                "backgroundimagefile",
-            }:
-                del element.attrib[attribute]
     ET.ElementTree(preview_root).write(
         preview_path, encoding="utf-8", xml_declaration=True
     )
@@ -39,7 +27,7 @@ def independent_inputs(tmp_path: Path) -> tuple[Path, Path]:
 @pytest.fixture
 def matching_inputs(tmp_path: Path) -> tuple[Path, Path]:
     template = tmp_path / "template.loredit"
-    shutil.copyfile(FIXTURE, template)
+    write_synthetic_loredit(template)
 
     tree = ET.parse(template)
     root = tree.getroot()
