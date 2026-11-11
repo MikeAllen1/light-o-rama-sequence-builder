@@ -107,7 +107,7 @@ tests/                     Unit tests and sanitized fixtures
 docs/                      Architecture, format evidence, and phased plan
 .github/workflows/         CI and CodeQL workflows
 SECURITY.md                Security policy
-CLAUDE.md                  Instructions for AI coding sessions
+CONTRIBUTING.md            Contribution rules and phase workflow
 LICENSE                    MIT license
 ```
 
