@@ -92,3 +92,18 @@ def test_cli_exposes_audio_analysis_command(capsys: pytest.CaptureFixture[str]) 
         main(["analyze-audio", "--help"])
     assert exc_info.value.code == 0
     assert "output-json" in capsys.readouterr().out
+
+
+def test_silence_does_not_fabricate_a_tempo(tmp_path: Path) -> None:
+    audio = tmp_path / "silence.wav"
+    with wave.open(str(audio), "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(11_025)
+        output.writeframes(b"\x00\x00" * (11_025 * 3))
+
+    report = analyze_audio(audio, tmp_path / "silence.json", tmp_path / "silence.svg")
+
+    assert report["analysis"]["tempo"]["bpm"] is None
+    assert report["analysis"]["beats"] == []
+    assert report["analysis"]["downbeats"] == []
