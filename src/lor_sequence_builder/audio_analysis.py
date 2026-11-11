@@ -207,12 +207,15 @@ def _estimate_tempo(
     # Keep distinct periodicity peaks visible: autocorrelation alone cannot
     # determine which metrical level a listener would count as the beat.
     ranked_peaks = sorted(local_peaks, key=lambda lag: scores_by_lag[lag], reverse=True)
+    # The selected tempo must always be visible, even when it is not among the
+    # six strongest correlation peaks because the alias heuristic chose it.
+    candidate_lags = [best_lag, *[lag for lag in ranked_peaks if lag != best_lag][:5]]
     tempo_candidates = [
         {
             "bpm": round(60.0 / (candidate_lag * FRAME_SECONDS), 2),
             "relative_score": round(max(0.0, scores_by_lag[candidate_lag]) / best_score, 4),
         }
-        for candidate_lag in ranked_peaks[:6]
+        for candidate_lag in candidate_lags
     ]
     # Parabolic interpolation around the discrete correlation peak reduces
     # BPM quantization error for tempos whose beat period is not an integer
