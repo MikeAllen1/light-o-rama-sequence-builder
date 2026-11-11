@@ -64,7 +64,7 @@ Install FFmpeg and ensure `ffmpeg` is available on PATH. The first analyzer acce
 uv run lor-sequence-builder analyze-audio .\song.mp3 --output-json .\song.analysis.json --plot .\song.analysis.svg --min-bpm 60 --max-bpm 200
 ```
 
-The current deterministic signal-processing baseline estimates one global tempo from positive energy-flux autocorrelation, derives beat/downbeat candidates, detects energy-flux onsets, reports RMS energy, proposes energy-transition and fixed 16-beat phrase candidates, and flags sustained near-silence as hard-stop candidates. It deliberately does **not** claim semantic verse/chorus recognition, changing-tempo tracking, spectral onset classification, or vocal/syllable detection. Confidence and limitations are included in the JSON. Output files must be new paths and are never overwritten.
+The current deterministic signal-processing baseline estimates one global tempo from positive energy-flux autocorrelation, derives beat/downbeat candidates, detects energy-flux onsets, reports RMS energy, proposes energy-transition and fixed 16-beat phrase candidates, and flags sustained near-silence as hard-stop candidates. It deliberately does **not** claim semantic verse/chorus recognition, changing-tempo tracking, spectral onset classification, or vocal/syllable detection. Confidence, event provenance, tool versions, and limitations are included in the JSON. The formal v1.0 contract is [audio-analysis-v1.schema.json](docs/schemas/audio-analysis-v1.schema.json). Output files must be new paths and are never overwritten.
 
 This is an initial measurable baseline, not professional choreography. Inspect the SVG against the song and treat low-confidence or musically implausible estimates as unresolved.
 
