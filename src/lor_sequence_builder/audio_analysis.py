@@ -286,7 +286,8 @@ def _svg_plot(
         '<text x="70" y="500" font-family="sans-serif" font-size="11">Blue: RMS energy | Green: estimated beats | Amber: detected onsets | Red: hard-stop candidates</text>',
         '</svg>',
     ])
-    path.write_text("\n".join(parts), encoding="utf-8")
+    with path.open("x", encoding="utf-8") as stream:
+        stream.write("\n".join(parts))
 
 
 def analyze_audio(
@@ -368,7 +369,8 @@ def analyze_audio(
             },
         }
         serialized = json.dumps(report, indent=2, sort_keys=True) + "\n"
-        with json_path.open("x", encoding="utf-8") as stream:\n            stream.write(serialized)
+        with json_path.open("x", encoding="utf-8") as stream:
+            stream.write(serialized)
         try:
             _svg_plot(plot_path, duration, energy, beat_times, onsets, stops)
         except OSError:
