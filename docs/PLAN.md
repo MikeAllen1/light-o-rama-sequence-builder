@@ -123,7 +123,17 @@ Identify each prop from the preview alone: role (arch, mini tree, mega tree, sta
 **Done when:** classifications match the known answers on all fictional displays; low-confidence and unknown props are flagged with reasons; renaming props never switches a prop to a different role; color capability and sequencing support agree with the sequence builder; the preview is never modified; the owner runs `analyze-preview` on a preview of their choice and agrees the conclusions are useful.
 
 ### Phase 6 — Rules engine
+**Status: Built; in review.**
+
 Build universal defaults and user profile layering.
+
+**Delivered:** a versioned choreography Timeline (`choreography.py`, schema `choreography-1.0`: effects on preview channels, movements, sections, hard stops, vocal regions); the built-in profile `src/lor_sequence_builder/rules/default.yaml` (kept inside the package so installs ship it); profile loading and layering (`rules/profile.py`); eleven built-in rules and six requirement types (`rules/engine.py`); and a writer (`sequence_writer.py`) that runs the rules itself and writes only a report when there are errors. Commands: `list-rules`, `check-timeline`, `build-from-timeline`. Documented in `docs/RULES.md`. Example profiles: `examples/rules-sample-a.yaml`, `examples/rules-sample-b.yaml`.
+
+**Decisions (owner, 2026-11-11):** a rule about a kind of prop applies only when the display has that prop and otherwise reports not applicable, never passed; the singing-face outline rule applies only when a face has a separate outline prop. Profiles are validated by explicit code instead of Pydantic, to avoid a dependency for one small format. PyYAML is a new runtime dependency; profiles use a safe loader that rejects duplicate keys and reads `on`/`off`/`yes`/`no` as words. The three rules that protect the file (well-formed effects, real channels, no overlaps) are locked.
+
+**Not yet verified in S6:** fade (`startIntensity`/`endIntensity`), `TWINKLE` and `SHIMMER` effects written by `build-from-timeline`. These attributes were observed in native sequences, but no sequence written by this tool with them has been opened in S6 yet. The `pulse` harness keeps its own Phase 3 validation and does not use the rules engine.
+
+**Next (Phase 6b, owner request 2026-11-11):** an optional "any specific requirements?" step before building. Plain-English requirements are translated by an AI model when an API key is configured, with guided questions from the preview as the offline fallback; either way the user confirms the result, which becomes requirements in this profile format. Requirements are remembered per display in a local profile next to the preview, never committed, with an option to start fresh.
 
 **Done when:** rules/default.yaml and two example profiles exist; schemas and merge behavior are validated; deliberately bad Timelines are rejected with readable rule/prop/channel/timestamp errors; invalid Timelines cannot reach writer.
 

@@ -1,0 +1,32 @@
+# Example rule profile A: a fictional yard with arches, mini trees and a mega tree.
+# Illustrative only; it is not tied to any real display. Use it as a pattern
+# for your own profile and pass it with --rules.
+schema_version: rules-1.0
+name: Sample A (fictional classic yard)
+description: White arches that chase left to right, a gentle mega tree, star always lit.
+
+rules:
+  # Allow longer full-display moments than the built-in 8 seconds.
+  not_everything_at_once:
+    max_seconds: 12
+    allow_sections: [finale, final chorus]
+
+requirements:
+  - id: arches-white
+    type: colors_only
+    props: {role: arch}
+    colors: [White]
+    note: The arches are white strands.
+  - id: arches-chase-left-to-right
+    type: move_direction
+    props: {group: Arches}
+    movement: chase
+    direction: left_to_right
+  - id: star-always-on
+    type: keep_on
+    props: {names: [Tree Topper]}
+  - id: gentle-mega-tree
+    type: max_intensity
+    props: {role: mega_tree}
+    max: 80
+    severity: warning

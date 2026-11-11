@@ -13,6 +13,7 @@ dependencies = [
     "defusedxml>=0.7.1,<0.8",
     "librosa>=0.11,<2",
     "numpy>=2,<3",
+    "pyyaml>=6.0.2,<7",
 ]
 
 [project.scripts]
@@ -20,6 +21,9 @@ lor-sequence-builder = "lor_sequence_builder.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"lor_sequence_builder.rules" = ["*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

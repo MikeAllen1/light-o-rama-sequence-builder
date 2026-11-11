@@ -191,6 +191,12 @@ def _geometry(prop: ET.Element) -> _Geometry | None:
     )
 
 
+def prop_center(prop: ET.Element) -> tuple[float, float] | None:
+    """Center of a prop in preview space (y increases upward), when its shape has one."""
+    geometry = _geometry(prop)
+    return None if geometry is None else (geometry.center_x, geometry.center_y)
+
+
 def _channel_entries(prop: ET.Element) -> list[list[str]]:
     return [entry.split(",") for entry in prop.get("ChannelGrid", "").split(";") if entry]
 

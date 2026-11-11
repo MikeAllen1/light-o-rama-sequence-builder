@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from lor_sequence_builder.audio_analysis import AudioAnalysisError, analyze_audio
+from lor_sequence_builder.choreography import ChoreographyError, load_choreography
 from lor_sequence_builder.classifier import (
     ClassificationError,
     classification_report,
@@ -18,7 +19,20 @@ from lor_sequence_builder.classifier import (
 from lor_sequence_builder.evaluation import EvaluationError, evaluate
 from lor_sequence_builder.loredit import LoreditError, read_loredit, write_loredit
 from lor_sequence_builder.lorprev import LorprevError, read_lorprev
-from lor_sequence_builder.pulse import PulseGenerationError, build_pulse_sequence
+from lor_sequence_builder.pulse import PulseGenerationError, build_pulse_sequence, preview_element
+from lor_sequence_builder.rules import (
+    RULE_SPECS,
+    RuleProfileError,
+    check_choreography,
+    load_rule_set,
+)
+from lor_sequence_builder.sequence_writer import (
+    RulesFailedError,
+    SequenceWriteError,
+    build_from_timeline,
+)
+
+_RULES_HELP = "rule profile to layer over the built-in rules; repeat to stack, later wins"
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -91,7 +105,62 @@ def _build_parser() -> argparse.ArgumentParser:
     score.add_argument("--beats-grid", help="name of the free timing grid marking beats")
     score.add_argument("--bars-grid", help="name of the free timing grid marking bar starts")
     score.add_argument("--sections-grid", help="name of the free timing grid marking sections")
+    check = commands.add_parser(
+        "check-timeline", help="check a choreography Timeline against the rules"
+    )
+    check.add_argument("preview", help="input .lorprev file (read only)")
+    check.add_argument("timeline", help="choreography Timeline .json")
+    check.add_argument("--rules", action="append", default=[], help=_RULES_HELP)
+    check.add_argument("--report", help="optional new JSON rule report path")
+    build = commands.add_parser(
+        "build-from-timeline",
+        help="write a native S6 sequence from a Timeline that passes the rules",
+    )
+    build.add_argument("--preview", required=True, help="required standalone .lorprev file")
+    build.add_argument("--timeline", required=True, help="choreography Timeline .json")
+    build.add_argument(
+        "--music-filename", required=True,
+        help="audio file name to store in the sequence, inside the S6 audio folder",
+    )
+    build.add_argument("--output", required=True, help="new output .loredit path")
+    build.add_argument("--report", required=True, help="new JSON rule report path")
+    build.add_argument("--rules", action="append", default=[], help=_RULES_HELP)
+    listing = commands.add_parser(
+        "list-rules", help="show the rules and requirements that would apply"
+    )
+    listing.add_argument("--rules", action="append", default=[], help=_RULES_HELP)
     return parser
+
+
+def _check_timeline(preview: str, timeline: str, rules: list[str], report_path: str | None) -> int:
+    if report_path is not None and Path(report_path).exists():
+        raise RuleProfileError(f"Report already exists: {report_path}")
+    rule_set = load_rule_set(tuple(rules))
+    report = check_choreography(
+        preview_element(read_lorprev(preview)), load_choreography(timeline), rule_set
+    )
+    print(report.format_text())
+    if report_path is not None:
+        with Path(report_path).open("x", encoding="utf-8") as stream:
+            stream.write(json.dumps(report.to_dict(), indent=2) + "\n")
+        print(f"Report: {report_path}")
+    return 0 if report.ok else 1
+
+
+def _list_rules(rules: list[str]) -> int:
+    rule_set = load_rule_set(tuple(rules))
+    print("Profiles: " + ", ".join(rule_set.sources))
+    print("\nBuilt-in rules")
+    for rule_id, spec in RULE_SPECS.items():
+        settings = rule_set.rules[rule_id]
+        lock = ", locked" if spec.locked else ""
+        tunables = "".join(f"; {key}={value}" for key, value in settings.params.items())
+        print(f"  {rule_id} [{settings.severity}{lock}]: {spec.title}{tunables}")
+    print(f"\nDisplay requirements ({len(rule_set.requirements)})")
+    for requirement in rule_set.requirements:
+        print(f"  {requirement.requirement_id} [{requirement.severity}] {requirement.type}: "
+              f"{requirement.props.describe()} (from {requirement.source})")
+    return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -205,6 +274,30 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if options.command == "analyze-preview":
             return _analyze_preview(options.preview, options.report)
+        if options.command == "check-timeline":
+            return _check_timeline(options.preview, options.timeline, options.rules,
+                                   options.report)
+        if options.command == "list-rules":
+            return _list_rules(options.rules)
+        if options.command == "build-from-timeline":
+            try:
+                written = build_from_timeline(
+                    options.preview,
+                    load_choreography(options.timeline),
+                    load_rule_set(tuple(options.rules)),
+                    options.music_filename,
+                    options.output,
+                    options.report,
+                )
+            except RulesFailedError as failed:
+                print(failed.report.format_text())
+                print(f"error: {failed}", file=sys.stderr)
+                return 1
+            print(written.report.format_text())
+            print(f"Sequence: {written.sequence_path}")
+            print(f"Report: {written.report_path}")
+            print(f"Effects: {written.effect_count}")
+            return 0
         if options.command == "evaluate-analysis":
             results = evaluate(
                 options.analysis,
@@ -233,8 +326,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     except (
         AudioAnalysisError,
+        ChoreographyError,
         ClassificationError,
         EvaluationError,
+        RuleProfileError,
+        SequenceWriteError,
         LoreditError,
         LorprevError,
         PulseGenerationError,
@@ -249,8 +345,6 @@ if __name__ == "__main__":
 
 
 def _analyze_preview(preview_path: str, report_path: str | None) -> int:
-    from lor_sequence_builder.pulse import preview_element
-
     model = read_lorprev(preview_path)
     if report_path is not None and Path(report_path).exists():
         raise ClassificationError(f"Report already exists: {report_path}")

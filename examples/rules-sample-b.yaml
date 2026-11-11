@@ -1,0 +1,26 @@
+# Example rule profile B: a fictional roofline house with icicles and windows.
+# Illustrative only; it is not tied to any real display.
+schema_version: rules-1.0
+name: Sample B (fictional roofline house)
+description: Calm verses, no flashing windows, icicles only fall downward.
+
+rules:
+  # Treat a busy display as a hard error on this house.
+  not_everything_at_once:
+    severity: error
+    max_share: 0.75
+  # This display has no singing face; the face rules report "not applicable" anyway.
+
+requirements:
+  - id: windows-never-flash
+    type: never_use
+    props: {names: ["Window *"]}
+    note: Window lights are left off in every song.
+  - id: quiet-verses-roof
+    type: quiet_during
+    props: {role: outline}
+    sections: [verse]
+  - id: flake-on-in-chorus
+    type: keep_on
+    props: {names: [Big Flake]}
+    during: [chorus]
