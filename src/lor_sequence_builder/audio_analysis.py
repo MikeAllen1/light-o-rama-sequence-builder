@@ -19,7 +19,7 @@ import tempfile
 import wave
 from importlib import metadata
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 import librosa
 import numpy as np
@@ -474,7 +474,7 @@ def _section_candidates(energy: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 def _svg_plot(
-    path: Path,
+    stream: TextIO,
     duration: float,
     energy: list[dict[str, Any]],
     beats: list[float],
@@ -522,10 +522,11 @@ def _svg_plot(
         '<text x="70" y="500" font-family="sans-serif" font-size="11">Blue: RMS energy | Green: beats | Purple: downbeats | Amber: onsets | Teal: section candidates | Red: hard stops</text>',
         '</svg>',
     ])
-    # The caller creates this path with NamedTemporaryFile(delete=False), which
-    # reserves it atomically. Reopen the owned file without unlink/recreate races.
-    with path.open("w", encoding="utf-8") as stream:
-        stream.write("\n".join(parts))
+    # Write through the NamedTemporaryFile handle; never close and reopen a
+    # reserved path in a potentially shared output directory.
+    stream.write("\n".join(parts))
+    stream.flush()
+    os.fsync(stream.fileno())
 
 
 def _phrase_boundaries(downbeats: list[float], bar_confidence: float) -> list[dict[str, Any]]:
@@ -712,7 +713,7 @@ def analyze_audio(
                 prefix=f".{plot_path.name}.", suffix=".tmp", delete=False,
             ) as stream:
                 plot_temp = Path(stream.name)
-            _svg_plot(plot_temp, duration, energy, beat_times, downbeats, onsets, sections, stops)
+                _svg_plot(stream, duration, energy, beat_times, downbeats, onsets, sections, stops)
             os.link(json_temp, json_path)
             json_published = True
             os.link(plot_temp, plot_path)
