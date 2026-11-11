@@ -247,7 +247,7 @@ def test_api_translator_sends_the_display_and_reads_the_tool_answer() -> None:
         return json.dumps({"content": [
             {"type": "text", "text": "ignored"},
             {"type": "tool_use", "name": "record_requirements", "input": {
-                "requirements": [{"type": "keep_on", "props": {"role": "arch"}}, "junk"],
+                "requirements": [{"type": "keep_on", "props": {"role": "arch"}}],
                 "not_supported": ["sparkle more"],
             }},
         ]}).encode()
@@ -270,6 +270,27 @@ def test_api_translator_sends_the_display_and_reads_the_tool_answer() -> None:
 
     with pytest.raises(IntakeError, match="cannot read"):
         ApiTranslator("k", transport=garbage).translate("x", _display(classic_yard()))
+
+
+
+def test_translator_rejects_mixed_valid_and_malformed_requirement_entries() -> None:
+    def transport(url: str, headers: dict[str, str], body: bytes) -> bytes:
+        return json.dumps({"content": [{
+            "type": "tool_use",
+            "name": "record_requirements",
+            "input": {
+                "requirements": [
+                    {"type": "keep_on", "props": {"role": "arch"}},
+                    "malformed entry",
+                ],
+                "not_supported": [],
+            },
+        }]}).encode()
+
+    with pytest.raises(IntakeError, match="malformed requirement"):
+        ApiTranslator("key", transport=transport).translate(
+            "arches stay on", _display(classic_yard())
+        )
 
 
 def test_translator_comes_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
