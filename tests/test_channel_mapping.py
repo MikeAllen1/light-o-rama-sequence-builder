@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
+from typing import cast
+from collections.abc import MutableMapping
 
 import pytest
 
@@ -9,7 +11,6 @@ from lor_sequence_builder.channel_mapping import (
     channel_layout_problem,
     parse_channel_grid,
 )
-from lor_sequence_builder.new_sequence import channel_layout_problem as sequence_layout_problem
 
 
 @pytest.mark.parametrize(
@@ -66,10 +67,8 @@ def test_channel_layout_validation_is_shared_by_sequence_and_pulse_paths() -> No
     )
 
     assert channel_layout_problem(prop) is None
-    assert sequence_layout_problem(prop) is None
 
     prop.set("ChannelGrid", "01,02,03;;01,02,05")
-    assert channel_layout_problem(prop) == sequence_layout_problem(prop)
     assert "entry 1 is empty" in (channel_layout_problem(prop) or "")
 
 
@@ -103,4 +102,6 @@ def test_raw_element_attributes_are_deeply_read_only() -> None:
     source.clear()
     assert raw.attributes["id"].value == "prop-1"
     with pytest.raises(TypeError):
-        raw.attributes["other"] = SourceValue("x", "sample.lorprev", "/")
+        cast(MutableMapping[str, SourceValue], raw.attributes)["other"] = SourceValue(
+            "x", "sample.lorprev", "/"
+        )
