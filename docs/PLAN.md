@@ -1,8 +1,8 @@
 # Implementation Plan
 
-**Status:** Phase 2 — standalone LORPREV parser in progress  
-**Current phase:** 2  
-**Next phase:** 3 — walking skeleton (blocked until Phase 2 is merged and owner approves)
+**Status:** Phase 3 — fixed-tempo Timeline walking skeleton in progress  
+**Current phase:** 3  
+**Next phase:** 4 — audio analysis (blocked until Phase 3 is merged, its S6 human playback gate is complete, and owner approves)
 
 ## Product objective and fixed requirements
 
@@ -143,7 +143,7 @@ At the start of each fresh phase session: read this plan and active issue; confi
 
 ## Phase 2 — Preview parser
 
-- Status: Parser implementation now covers the supplied native S6 PreviewClass including its PropGroup; PR #6 remains draft/open and is not merged. The earlier assertion that group evidence was missing was incorrect.
+- Status: Complete and merged. PR #6 was squash-merged into master on 2026-11-10. The supplied native S6 PreviewClass group evidence is covered; the earlier assertion that group evidence was missing was incorrect.
 - Issue: https://github.com/MikeAllen1/light-o-rama-sequence-builder/issues/5
 - PR: https://github.com/MikeAllen1/light-o-rama-sequence-builder/pull/6
 - Branch: `phase-2/lorprev-parser`
@@ -152,11 +152,11 @@ At the start of each fresh phase session: read this plan and active issue; confi
 - Observed standalone Revision 1 data: 51 PropClass entries; one Scene; one empty PropViews; 1,900 geometry points; 46 Square and 5 Hexagon props; six shape names; eight Channel_per_color props. Its controller/channel assignments are in each prop's ChannelGrid. The embedded Revision 56 PreviewClass in `fixture_candidate.loredit` has 51 PropClass entries and one PropGroup named `Fixture Group 01`, with five member references resolving to Fixture Props 011, 010, 009, 008, and 007. Group arrangement is `Preview`; each member retains orientation/top/left values. Controller assignments expose LOR network + Unit ID + circuit, while DMX exposes universe + channel. All source fields and locators are retained.
 - Parser: secure defusedxml parsing; Revision 0, 1, and 56 support; raw attributes, element text, child-tail text, and XML descendants retained; per-attribute file/element locator provenance; unknown elements at any depth preserved and surfaced with source provenance; unfamiliar DeviceType and TraditionalType values surfaced as UnsupportedConstruct records with provenance; ChannelGrid rows are typed by DeviceType (LOR network/Unit ID/circuit; DMX universe/channel) while all remaining raw fields are retained; `Undetermined` remains an explicit unassigned device type; legacy `AC` and `DC` values remain recognized for Revision 0 fixture compatibility; geometry points are typed with x/y provenance and only read from direct prop shape children; explicit missing/malformed/unsafe/unsupported-revision/zero-prop errors; 20 MiB input and 256-level nesting limits. PropGroup and member references are parsed into typed group/member models; IDs are checked against the prop set and dangling references are surfaced as unsupported constructs.
 - Tests: 44 tests on the current branch, including Revision 0 fixture and runtime-generated synthetic Revision 1 coverage, golden parse test for the S6-exported Revision 1 fixture, typed LOR/DMX channel address assertions against the native S6 golden fixture and synthetic DMX fixture, incomplete assignment reporting, legacy/undetermined device handling, CLI controller-address and group summary output, native Revision 56 group/member golden assertions, geometry point values, unsupported-construct reporting, provenance assertions, nested unknown controller/group-shaped element reporting, mixed-content preservation, excessive-nesting rejection, geometry-context isolation, incomplete-point rejection, and bounded file reads.
-- Current PR head: `0afae4298f474a0ee48883ee8c1e96b0d6ce9cda` (latest documentation update). Latest fully successful code-bearing run: https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42936156503 — 44 pytest tests, Ruff, strict mypy, and pip-audit all passed. CodeQL passed on that same code-bearing head: https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42936159766. Checks for the current documentation-only head are running: Tests https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42936321319; CodeQL https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42936321648.
+- Final PR head: `43ddf25a41d40e5529acdd80d0af027f77dc3723`. Latest successful Tests workflow: https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42939566052 — 47 pytest tests, Ruff, strict mypy, and pip-audit passed. CodeQL passed: https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42939565986. Squash merge commit: `519f081e1eedbc2cf4bf520f5a4bfc289811b123`.
 - Human verification: complete. On 2026-11-10, the owner opened the sanitized Revision 1 `.lorprev` fixture supplied for S6 import and confirmed that it loads successfully. This satisfies the independent-import acceptance gate; no further preview import is requested.
 
 - Remaining acceptance work: no new group export is required. The supplied embedded PreviewClass in `fixture_candidate.loredit` provides native S6 group evidence and is now committed as a sanitized extracted golden fixture. The parser covers Revision 56, PropGroup, member ID references, arrangement, orientation, top, and left. The original standalone Revision 1 fixture remains covered separately. The exact S6 build is recorded in the source sequence as 6.6.0.12; parser compatibility is keyed to each preview's internal Revision marker.
-- Scope remains Phase 2 only. Audio analysis, classification, props.yaml, Timeline, rules, and choreography have not been started.
+- Scope was Phase 2 only. Phase 3 began only after the owner explicitly approved it.
 
 
 ### Phase 2 hardening follow-up — 2026-11-10
@@ -164,4 +164,21 @@ At the start of each fresh phase session: read this plan and active issue; confi
 - Added explicit unsupported-construct reporting for missing/blank and duplicate PropClass IDs. Source props remain preserved; invalid identities are not treated as reliable keys.
 - Clarified that ChannelGrid parsing currently exposes address fields only (LOR network/Unit ID/circuit and DMX universe/channel). Other fields remain raw and must not be assumed semantically interpreted by later phases.
 - Updated CLI summary wording so its unsupported-construct count includes group and channel-assignment issues, not only prop/device declarations.
-- Added three regression tests. Latest successful Tests workflow on head `0293fc2678dea9220636a36e44f202b25a6cfa1c`: 47 passed, Ruff passed, strict mypy passed, and pip-audit passed. CodeQL is running on this head.
+- Added three regression tests. Latest successful Tests workflow on head `43ddf25a41d40e5529acdd80d0af027f77dc3723`: 47 passed, Ruff passed, strict mypy passed, and pip-audit passed. CodeQL passed on that head.
+
+
+## Phase 3 — Fixed-tempo Timeline walking skeleton
+
+- Status: Implementation in progress; PR #7 is draft/open. No merge and no S6 playback verification have occurred.
+- Issue: https://github.com/MikeAllen1/light-o-rama-sequence-builder/issues/7
+- PR: https://github.com/MikeAllen1/light-o-rama-sequence-builder/pull/7
+- Branch: `phase-3/walking-skeleton`
+- Scope: Required standalone preview + exact-ID-matching native S6 v15 template → fixed-BPM beat positions → deterministic versioned Timeline → native LOREDIT with intensity pulses.
+- CLI: `lor-sequence-builder pulse --preview display.lorprev --template template.loredit --bpm 120 --output pulse.loredit --timeline-output pulse.timeline.json`.
+- Support boundary: only `DeviceType=LOR` with `TraditionalType=Single Color` or `Multicolor_string_1_ch`, complete LOR ChannelGrid addresses, and existing native channel records in the template. Unsupported types are enumerated in Timeline JSON. A prop inside the supported type boundary that lacks a preview address or native channel mapping fails closed with its prop ID.
+- Native channel identity: existing template `channel` row/col/color coordinates are preserved as the channel reference; no channel coordinate is invented from ChannelGrid.
+- Timeline: schema version 1.0; integer centiseconds; fixed integer BPM; deterministic rounded beat positions; SHA-256 source fingerprints; supported/excluded prop lists; per-channel pulse events.
+- Writer behavior: clear old effects in the in-memory template copy, add only generated intensity pulses, write a new LOREDIT and Timeline JSON, re-read the generated LOREDIT, and refuse output/input aliasing and overwrites. The template's duration defines sequence duration.
+- Tests added: fixture-backed end-to-end pipeline, deterministic Timeline output, exact preview/template identity matching, BPM validation, no-overwrite/input-alias checks, native output re-read, fail-closed missing/incomplete native channel mapping, and explicit unsupported-prop reporting.
+- Human gate: pending. Owner must open and play a generated file in Light-O-Rama S6 and confirm beat synchronization and correct physical/display mapping. Automated tests cannot satisfy this gate.
+- Remaining Phase 3 work: resolve CI, review support-boundary behavior, document actual generated counts and command usage, and complete the owner S6 playback gate. Do not begin Phase 4 before merge and explicit approval.
