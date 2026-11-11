@@ -11,6 +11,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from defusedxml import ElementTree as SafeET
 from defusedxml.common import DefusedXmlException
@@ -66,7 +67,7 @@ def read_loredit(path: str | Path) -> LoreditDocument:
         )
 
     try:
-        iterator = SafeET.iterparse(
+        iterator: Any = SafeET.iterparse(
             source,
             events=("start", "end"),
             forbid_dtd=True,
