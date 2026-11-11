@@ -7,6 +7,7 @@
   const WAVE_HEIGHT = 94;
   const MARKER_HEIGHT = 22;
   const MAX_XML_BYTES = 50 * 1024 * 1024;
+  const MAX_AUDIO_BYTES = 200 * 1024 * 1024;
   const MAX_XML_ELEMENTS = 100000;
   const MAX_JSON_BYTES = 5 * 1024 * 1024;
   const MAX_XML_DEPTH = 256;
@@ -736,6 +737,9 @@
         ? new Blob([audioBytes], { type: "audio/mpeg" })
         : file;
       const buffer = await context.decodeAudioData(audioBytes.slice(0));
+      if (buffer.duration < 2 || buffer.duration > 1800) {
+        throw new Error("Audio duration must be between 2 seconds and 30 minutes.");
+      }
       state.audioBuffer = buffer;
       state.waveformPeaks = buildWaveformPeaks(buffer);
       if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
@@ -795,6 +799,10 @@
 
   async function loadAudio(file) {
     if (!file) return;
+    if (file.size <= 0 || file.size > MAX_AUDIO_BYTES) {
+      setBanner("Audio must be non-empty and no larger than 200 MiB.", "error");
+      return;
+    }
     state.audioFile = file;
     state.audioBuffer = null;
     state.waveformPeaks = null;
@@ -819,6 +827,9 @@
         "). Starting local musical analysis…", "good");
       await analyzeSelectedAudio(file);
     } catch (error) {
+      state.audioFile = null;
+      state.audioBuffer = null;
+      state.waveformPeaks = null;
       setBanner("Could not decode the selected audio: " + (error.message || String(error)), "error");
     }
   }
