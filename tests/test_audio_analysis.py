@@ -765,3 +765,24 @@ def test_unsupported_beats_per_bar_is_rejected(tmp_path: Path) -> None:
     _click_track(audio)
     with pytest.raises(AudioAnalysisError, match="3 or 4"):
         analyze_audio(audio, tmp_path / "bad.json", tmp_path / "bad.svg", beats_per_bar=5)
+
+
+@pytest.mark.parametrize("bpm", [113.0, 120.0, 150.0, 162.0])
+def test_tempo_stays_exact_over_a_long_steady_track(tmp_path: Path, bpm: float) -> None:
+    """Frame quantization must not accumulate into a tempo bias over minutes."""
+    rate = 22_050
+    duration = 90.0
+    beat = 60.0 / bpm
+    samples = [0.0] * int(rate * duration)
+    onset = 0.25
+    while onset + 0.03 < duration:
+        start = int(onset * rate)
+        for offset in range(int(0.03 * rate)):
+            samples[start + offset] = math.sin(2 * math.pi * 1_500 * offset / rate)
+        onset += beat
+    audio = tmp_path / "long-click.wav"
+    _write_float_wav(audio, samples)
+
+    report = analyze_audio(audio, tmp_path / "long.json", tmp_path / "long.svg")
+
+    assert report["analysis"]["tempo"]["bpm"] == pytest.approx(bpm, abs=0.3)
