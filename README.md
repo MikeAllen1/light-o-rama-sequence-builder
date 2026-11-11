@@ -18,7 +18,7 @@ See [docs/PLAN.md](docs/PLAN.md) for the phase order, acceptance criteria, and h
 
 ## Requirements
 
-- Python 3.12
+- Python 3.12 or newer (CI compatibility matrix: 3.12, 3.13, and 3.14)
 - `uv`
 
 Install uv using the official instructions: https://docs.astral.sh/uv/getting-started/installation/
