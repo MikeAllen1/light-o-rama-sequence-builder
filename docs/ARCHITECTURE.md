@@ -240,7 +240,7 @@ This is a temporary engineering harness, not the final user workflow. It current
 
 ## 6. Domain models and artifact contracts
 
-Use Pydantic models for public configuration/stage boundaries; small internal immutable Timeline value objects may use frozen dataclasses with explicit validation. Initial model families:
+Use typed, validated models for public configuration/stage boundaries. Current internal immutable Timeline value objects use dataclasses with explicit validation; Pydantic is not a runtime dependency. Initial model families:
 
 - `InputManifest`: paths, file metadata, hashes, detected formats, configured target version, and resource limits.
 - `RawDisplayModel`, `RawPropModel`, `RawChannelModel`, `RawControllerModel`: faithful preview-derived structures and source identifiers.
@@ -320,7 +320,7 @@ Owner-supplied examples have informed parser development but remain outside the 
 
 ## 10. V1 channel support and declared limitation
 
-V1 will prioritize the channel types actually present in the user's display and confirmed by fixtures:
+V1 will prioritize channel types supported by the current fixture evidence:
 
 - Single-color AC/DC channels.
 - Multi-color props whose colors share a single circuit, with correct handling so they are not treated as independent single-color channels.
@@ -335,7 +335,7 @@ Any other unsupported channel or effect type follows the same explicit-report-an
 - Parse XML with `defusedxml`; no external entities.
 - Enforce file-size, XML nesting-depth, XML element-count, audio-duration, decompression, and processing limits. The Phase 2 preview parser currently applies a 20 MiB file limit, 256-level nesting limit, and 100,000-element limit.
 - Validate extension and content/magic bytes; extension alone is not trusted.
-- Load YAML only with `safe_load`, then validate against strict Pydantic schemas.
+- Load YAML only with `safe_load`, then validate against explicit strict schemas and typed models.
 - Invoke FFmpeg with argument arrays, no shell, controlled environment, timeouts, and bounded output paths.
 - Treat names, metadata, and paths inside input files as untrusted; never use them directly as output paths or shell arguments.
 - Never commit audio files; tests use short synthetic tones.
@@ -375,7 +375,7 @@ These are implementation questions, not permission to guess:
 - Which exact `.loredit` elements/attributes are required for each supported channel/effect type?
 - How are timing grids, event boundaries, effect settings, and sequence references represented across supported versions?
 - Which preview properties encode physical segment order/orientation reliably, and which require user overrides?
-- Which channel types/effects are present in the user's display but not yet represented by the supplied fixture pair?
+- Which channel types/effects are not yet represented by the available fixture set?
 - What resource limits are appropriate for expected song lengths and preview sizes?
 
 Resolve these through additional fixtures, targeted questions, and tests before implementation depends on the answer.
