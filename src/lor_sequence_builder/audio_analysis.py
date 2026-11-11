@@ -167,10 +167,10 @@ def _estimate_tempo(
         score /= max(1, overlap)
         candidates.append((score, lag))
     if not candidates:
-        return None, 0.0, None, None
+        return None, 0.0, None, None, 0.0
     best_score = max(score for score, _ in candidates)
     if best_score <= 1e-12:
-        return None, 0.0, None, None
+        return None, 0.0, None, None, 0.0
     # Frame quantization can make the true beat lag score materially lower
     # than a multiple of that lag. Restrict alias selection to local peaks,
     # then prefer the shortest peak retaining half the strongest correlation.
