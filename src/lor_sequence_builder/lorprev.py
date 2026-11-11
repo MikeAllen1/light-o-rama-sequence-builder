@@ -279,7 +279,7 @@ def read_lorprev(path: str | Path) -> PropModel:
         # A point is geometry only when it is a direct child of an observed
         # shape element. Do not interpret similarly named nodes in unknown
         # nested structures as display geometry.
-        for shape in _iter_raw_elements(prop, "shape"):
+        for shape in (child for child in prop.children if child.tag == "shape"):
             for point in (child for child in shape.children if child.tag == "point"):
                 x_value = point.attributes.get("x")
                 y_value = point.attributes.get("y")
