@@ -179,7 +179,7 @@ def _write_cli_json_report(
 ) -> None:
     destination = Path(path)
     try:
-        write_new_text_atomically(destination, json.dumps(payload, indent=2) + "\\n")
+        write_new_text_atomically(destination, json.dumps(payload, indent=2) + "\n")
     except FileExistsError as exc:
         raise error_type(f"Report already exists: {destination}") from exc
     except OSError as exc:
