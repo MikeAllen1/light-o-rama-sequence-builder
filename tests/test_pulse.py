@@ -288,3 +288,20 @@ def test_non_integer_bpm_is_rejected(
             preview, template, tmp_path / "fractional.loredit",
             tmp_path / "fractional.json", bpm=120.5  # type: ignore[arg-type]
         )
+
+
+def test_unreasonably_long_template_is_rejected_before_beat_allocation(
+    tmp_path: Path, matching_inputs: tuple[Path, Path]
+) -> None:
+    preview, template = matching_inputs
+    tree = ET.parse(template)
+    tree.getroot().set("totalCentiseconds", "999999999999")
+    tree.write(template, encoding="utf-8", xml_declaration=True)
+
+    with pytest.raises(PulseGenerationError, match="more than 50000 beats"):
+        build_pulse_sequence(
+            preview, template, tmp_path / "too-long.loredit",
+            tmp_path / "too-long.json", bpm=120
+        )
+    assert not (tmp_path / "too-long.loredit").exists()
+    assert not (tmp_path / "too-long.json").exists()
