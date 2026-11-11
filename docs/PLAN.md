@@ -227,3 +227,12 @@ The Phase 4 baseline is merged in `2b962bd39d51b052c3f97d76876a29176dc627ae`. Th
 - Real-audio recheck: all ten supplied audio streams were reprocessed with a source-equivalent reproduction of v1.3 logic (not the packaged CLI). All ten beat grids remain ambiguous because competing phase energy is substantial; the tempo alias problem is not accepted as solved. Two sequence/audio pairs match in duration within 0.02 seconds: Christmas Vacation Intro and Underneath the Tree. No audio or native .loredit files were committed.
 - Production reference set: seven owner-authored finalized 2026 .loredit sequences are documented as examples of real display style, not as perfect gold-standard output. Their native files remain outside the repository.
 - Remaining acceptance: run the packaged CLI against all ten supplied tracks (or clearly retain the source-equivalent limitation); inspect diagnostic SVGs against the actual audio; resolve or explicitly abstain on tempo aliases; review whether onset/section candidates are useful; confirm the 30 ms lighting-lead behavior against actual sequences; owner review and explicit approval. Phase 5 remains blocked until these gates are satisfied.
+
+
+### Fixture privacy/readability remediation — 2026-11-11
+
+- Replaced the opaque base64/gzip Revision 56 sequence template with readable, sanitized `basic_show.loredit` XML. The source was rebuilt from the owner-provided anonymized fixture candidate, with the empty group sequence record removed, all GUIDs remapped to synthetic identifiers, picture payloads/background file references removed, and the effect records retained for round-trip coverage.
+- Extracted the matching Revision 56 `PreviewClass` into readable `s6_revision_56_group_export.lorprev`.
+- Replaced the base64-wrapped Revision 1 preview with readable sanitized `s6_revision_1_export.lorprev`.
+- Updated tests and Phase 3 package generation to consume plain XML directly. The fixture test now rejects `.gz` and `.b64` wrappers and scans readable XML for `C:\\Users`, `/Users/`, and `Background*File=` attributes.
+- This sanitizes the current PR tree. It does not remove the old path from already-published Git history or from `master`; history rewriting is a separate destructive operation requiring coordinated approval.

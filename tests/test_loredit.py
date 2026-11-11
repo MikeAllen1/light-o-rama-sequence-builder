@@ -202,11 +202,13 @@ def test_sequence_prop_may_reference_native_preview_group_id(
 
 def test_committed_xml_fixtures_have_no_private_paths_or_background_files() -> None:
     fixture_dir = Path(__file__).parent / "fixtures"
+    assert not list(fixture_dir.glob("*.gz"))
+    assert not list(fixture_dir.glob("*.b64"))
     for source in sorted(fixture_dir.iterdir()):
         if source.suffix.lower() not in {".loredit", ".lorprev"}:
             continue
         content = source.read_text(encoding="utf-8")
         assert re.search(r"C:\\Users|/Users/", content, re.IGNORECASE) is None, source.name
         assert re.search(
-            r"\\bBackground[A-Za-z0-9_]*File\\s*=", content, re.IGNORECASE
+            r"\bBackground[A-Za-z0-9_]*File\s*=", content, re.IGNORECASE
         ) is None, source.name
