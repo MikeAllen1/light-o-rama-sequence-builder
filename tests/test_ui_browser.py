@@ -17,7 +17,14 @@ playwright_api = pytest.importorskip("playwright.sync_api")
 
 
 def _sequence_xml() -> str:
-    return """<?xml version="1.0" encoding="utf-8"?>
+    effects = [
+        '<effect startCentisecond="100" endCentisecond="300" settings="INTENSITY" intensity="80" />'
+    ]
+    effects.extend(
+        f'<effect startCentisecond="{index % 9900}" endCentisecond="{index % 9900 + 1}" settings="INTENSITY" intensity="80" />'
+        for index in range(1, 40000)
+    )
+    return f"""<?xml version="1.0" encoding="utf-8"?>
 <sequence saveFileVersion="15" totalCentiseconds="10000" musicTitle="Browser Acceptance">
   <PreviewClass id="preview">
     <PropGroup id="group-front" Name="Front Yard">
@@ -27,7 +34,7 @@ def _sequence_xml() -> str:
   <SequenceProps>
     <SeqProp id="prop-tree" name="Tree">
       <channel row="0" col="0" color="0">
-        <effect startCentisecond="100" endCentisecond="300" settings="INTENSITY" intensity="80" />
+        {''.join(effects)}
       </channel>
     </SeqProp>
   </SequenceProps>
@@ -113,7 +120,7 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                     assert page.locator("#sequenceTitle").inner_text() == "Browser Acceptance"
                     assert page.locator("#propStat").inner_text() == "1"
                     assert page.locator("#channelStat").inner_text() == "1"
-                    assert page.locator("#effectStat").inner_text() == "1"
+                    assert page.locator("#effectStat").inner_text() == "40,000"
                     assert "Front Yard" in page.locator("#trackLabels").inner_text()
                     assert "Beats" in page.locator("#markerLabels").inner_text()
 
