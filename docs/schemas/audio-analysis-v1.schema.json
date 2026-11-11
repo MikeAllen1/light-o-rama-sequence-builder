@@ -13,7 +13,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.0"
+      "const": "1.1"
     },
     "audio": {
       "type": "object",
@@ -61,7 +61,7 @@
       ],
       "properties": {
         "analyzer_schema": {
-          "const": "1.0"
+          "const": "1.1"
         },
         "ffmpeg": {
           "type": "string",
@@ -121,6 +121,7 @@
         "method",
         "provenance",
         "limitations",
+        "beat_grid_status",
         "tempo",
         "beats",
         "downbeats",
@@ -144,6 +145,10 @@
           "items": {
             "type": "string"
           }
+        },
+        "beat_grid_status": {
+          "type": "string",
+          "enum": ["unavailable", "ambiguous", "provisional"]
         },
         "tempo": {
           "type": "object",
