@@ -7,7 +7,6 @@ from pathlib import Path
 import pytest
 
 import lor_sequence_builder.sequence_writer as sequence_writer_module
-
 from lor_sequence_builder.choreography import (
     Choreography,
     Effect,
