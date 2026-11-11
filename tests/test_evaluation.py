@@ -204,3 +204,38 @@ def test_read_timing_grid_rejects_marks_outside_sequence_duration(
     tree.write(sequence, encoding="utf-8", xml_declaration=True)
     with pytest.raises(EvaluationError, match="outside sequence duration"):
         read_timing_grid(sequence, "Beats")
+
+
+def test_a_music_review_is_read_as_its_corrected_analysis(tmp_path: Path) -> None:
+    from lor_sequence_builder.evaluation import EvaluationError, load_analysis
+    from lor_sequence_builder.planner import _music, _sections
+
+    bars = [{"time": float(t), "confidence": 1.0, "method": "review", "status": "confirmed"}
+            for t in range(0, 60, 2)]
+    beats = [{"time": t / 2, "confidence": 1.0, "method": "review"} for t in range(120)]
+    analysis = {
+        "schema_version": "2.0",
+        "audio": {"duration_seconds": 60.0},
+        "analysis": {
+            "beats": beats, "downbeats": bars, "hard_stops": [],
+            "energy": [{"time": float(t), "rms": 0.2 if t < 30 else 0.4, "method": "x"}
+                       for t in range(60)],
+            "section_candidates": [
+                {"time": 20.1, "label": "Bridge", "status": "confirmed"},
+                {"time": 40.0, "label": None},
+            ],
+        },
+    }
+    review = tmp_path / "song.review.json"
+    review.write_text(json.dumps({"schema_version": "music-review-1.0", "meter": 4,
+                                  "analysis": analysis, "lyrics": None}), encoding="utf-8")
+    loaded = load_analysis(review)
+    assert loaded == analysis
+    labels = [section.label for section in _sections(_music(loaded))]
+    assert labels[1] == "bridge"  # named in the review; the others are still guesses
+    assert "bridge" not in (labels[0], labels[2])
+
+    empty = tmp_path / "empty.review.json"
+    empty.write_text(json.dumps({"schema_version": "music-review-1.0"}), encoding="utf-8")
+    with pytest.raises(EvaluationError, match="no analysis"):
+        load_analysis(empty)

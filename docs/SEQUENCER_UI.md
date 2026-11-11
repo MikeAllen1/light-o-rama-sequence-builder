@@ -52,6 +52,33 @@ Export rebuilds only the channels that were edited (marked with an amber edge); 
 
 Effects of types other than Intensity, Twinkle and Shimmer keep their own settings; only their timing can be edited. Moving an effect to another channel is not supported yet.
 
+## Music review
+
+The reference lanes can be corrected by ear before sequencing. Beats, bars (downbeats), cymbal crashes, high hits, sections and lyric lines are editable:
+
+| Action | How |
+| --- | --- |
+| Select | Click a marker or lyric line; the inspector shows its time, status and what is lit there |
+| Move | Drag it; it snaps to the targets ticked in the edit bar (Alt places freely) |
+| Add | Double-click an empty spot in the lane |
+| Delete, confirm | Delete key; Enter or **Confirm** marks an estimate as right |
+| Exact time | Type it in the inspector and **Apply** |
+| Name a section | Pick Intro, Verse, Pre-chorus, Chorus, Bridge, Instrumental, Breakdown, Solo, Outro or Finale |
+| Fix lyrics | Type the corrected words; drag a line or its edges to retime it. Corrected or confirmed lines are verified |
+| Tempo map | Confirm two bars, select the earlier one and **Fit bars and beats evenly**: the bars and beats between them are spread evenly at the chosen meter (the bar count defaults to the nearest whole number) |
+
+Every marker carries a status: `auto` (an estimate), `confirmed` (placed or confirmed by you, drawn with a filled diamond) or `fitted` (spread between confirmed bars, a hollow diamond). Lane labels show how many are confirmed (`✓12`). Corrections share the undo history with effect edits.
+
+Fitting one stretch at a time is how tempo changes and rubato passages get an accurate grid: anchor the bars you can hear, fit between them, and leave steady stretches alone. Changing the meter after you start a review does not re-run the analysis; it sets the meter used for fitting.
+
+**Save music review** downloads `<name>.review.json` (`music-review-1.0`): the corrected analysis (still a valid audio-analysis v2.0 report, with the optional `status` and section `label` fields), the reviewed lyrics and the meter. **Load analysis** opens it again; once a review is loaded, opening the audio does not replace it with a fresh analysis. The generator accepts it in place of an analysis:
+
+```powershell
+uv run lor-sequence-builder generate --preview display.lorprev --analysis song.review.json --output song.loredit
+```
+
+Section names from the review replace the planner's loudness guesses (and work with requirements such as "quiet during the bridge"); corrected beats, bars, crashes and hits drive the timing. Checked locally on one of the owner's songs (not committed): confirming two bars and fitting eight bars between them, naming a section, saving, and generating from the review.
+
 ## Local processing and safety
 
 Run with:
@@ -75,6 +102,6 @@ The browser parser rejects DTD/entity declarations and enforces the 50 MiB, 100,
 
 ## Follow-on work
 
-1. Musical editing: manual vocal phrase and lyric markers, reviewed beat/bar grids, tempo/meter changes, transient/vocal snapping, and out-of-sync diagnostics.
+1. Musical editing: vocal phrase markers, meter changes within a song, and word-level lyric retiming.
 2. Professional workflow: reusable layouts, track visibility/mute, keyboard shortcuts, event inspector, and performance work on larger displays.
 3. Final delivery: desktop wrapper and packaging only after the browser sequencing and editing workflows are complete.
