@@ -22,6 +22,7 @@ import hashlib
 import uuid
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
+from pathlib import PurePosixPath, PureWindowsPath
 
 from lor_sequence_builder.loredit import LoreditDocument
 from lor_sequence_builder.timeline import ExcludedProp
@@ -98,7 +99,8 @@ def _sequence_id(preview: ET.Element, total_centiseconds: int, music_filename: s
     digest = hashlib.sha256()
     digest.update(ET.tostring(preview, encoding="utf-8"))
     digest.update(f"|{total_centiseconds}|{music_filename}".encode())
-    return str(uuid.UUID(bytes=digest.digest()[:16], version=4))
+    # UUIDv5 accurately describes this deterministic, name-derived identifier.
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, digest.hexdigest()))
 
 
 def build_new_sequence(
@@ -117,10 +119,23 @@ def build_new_sequence(
         or not 1 <= total_centiseconds <= MAX_SEQUENCE_CENTISECONDS
     ):
         raise NewSequenceError("Sequence duration must be from 1 centisecond to 30 minutes")
-    if not music_filename or not music_filename.strip():
+    if not isinstance(music_filename, str) or not music_filename.strip():
         raise NewSequenceError("A musical sequence needs an audio file name")
     if any(ord(character) < 32 for character in music_filename):
         raise NewSequenceError("Audio file name contains control characters")
+    # S6 resolves this value beneath its configured audio folder. Reject
+    # absolute, drive-qualified, UNC, and parent-traversal paths on every OS.
+    windows_path = PureWindowsPath(music_filename)
+    posix_path = PurePosixPath(music_filename.replace("\\", "/"))
+    if (
+        windows_path.is_absolute()
+        or bool(windows_path.drive)
+        or posix_path.is_absolute()
+        or any(part == ".." for part in (*windows_path.parts, *posix_path.parts))
+    ):
+        raise NewSequenceError("Audio file name must be a relative path inside the S6 audio folder")
+    if len(music_filename) > 240:
+        raise NewSequenceError("Audio file name is too long")
 
     props = preview.findall("PropClass")
     if not props:
