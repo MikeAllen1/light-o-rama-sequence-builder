@@ -105,11 +105,28 @@ The application should preserve named grids and their exact timing values. It mu
 
 The inspected file contains `PropViews`, with saved view definitions and `ViewMember` entries. Its `MotionPaks` section does not establish the schema for motion effects.
 
+## New sequence structure (Phase 4b evidence)
+
+Structural observations from native S6 6.6.0.12 musical sequences examined locally (none of their content is committed):
+
+- **Sections:** every sequence examined has the same eleven top-level sections in the same order: `PreviewClass`, `BeatChannels`, `Subsequences`, `SequenceProps`, `ArchivedProps`, `RgbAggregates`, `TimingGrids`, `BeatView`, `PropViews`, `MotionPaks`, `pictures`. Empty sections are written as empty elements; `BeatChannels` carries `MaxDisplayedRows="10"`.
+- **Sequence props:** exactly one `SeqProp` per preview prop whose `MasterPropId` is empty, in preview order. Props linked to a master prop have no `SeqProp`; the master drives them. Older sequences can also hold a stub `SeqProp` with no channels for a prop no longer in the preview; a new sequence has none.
+- **SeqProp attributes:** `id` (the preview prop id), `name` (the preview prop name), `EnablePixelChannels="0"`, `OverlayMotionRows="0"` (an editor display toggle; occasionally set to 1 by the user).
+- **Channels:** one per `ChannelGrid` entry. `Single Color` and `Multicolor_string_1_ch` use row 0 with sequential columns; `Channel_per_color` uses row 0, column 0, with sequential colors. Verified on every prop examined.
+- **Timing grids:** a `TimingGridFixed name="Fixed Grid: 0.05" spacing="5"` is present unless a user removes it, followed by any user-made `TimingGridFree` grids.
+- **Root attributes:** `saveFileVersion="15"`, `AppVersion`, `id`, `totalCentiseconds`, and `musicFilename` are always present, plus editor settings with identical values in every sequence examined (`WaveHeight`, `TimingGridIdx`, `DragEventsWithTimings`, `ChaseClearFirst`, `ChaseSameRowType`, `ChaseType`, `AudioAnalysisLevel`, `GridView`, `GridViewSource`, `StartColor`, `EndColor`) and view settings that vary (`NameAreaWidth`, `ZoomWidth`, `ZoomHeight`). `author`, `musicArtist`, `musicTitle`, `musicAlbum`, and `createdAt` are optional.
+- **Audio:** S6 creates musical sequences only with an audio file chosen. `musicFilename` is stored as a path relative to the user's S6 audio folder (by default `Documents\Audio`), such as `Folder\song.mp3`. S6 reports a missing media file when it is not found there.
+- **Views:** the sequence-level `PropViews` holds editor view state (a system view listing members, expansion, scroll, zoom). New sequences are written with an empty `PropViews`; whether S6 rebuilds its default view on open is checked in the Phase 4b owner gate.
+
+Rebuilding each examined sequence from its embedded preview alone matched every sequence prop, channel coordinate, empty section, and shared root setting, apart from user edits such as a removed fixed grid.
+
+Still unconfirmed: the exact default `PropViews` content and view settings S6 writes for a brand-new sequence. S6 accepts an empty `PropViews` and builds its own view on open.
+
 ## What remains to be learned
 
 One sequence is a useful starting point, not a complete schema. Additional S6-created fixtures are still required for:
 
-- Minimal sequence structure and required empty sections
+- Default view state and audio path base folder for a brand-new sequence (see above)
 - RGB props, pixel channels, and RGB effect encoding
 - Multi-channel and grouped props
 - Motion effects and MotionPak references
