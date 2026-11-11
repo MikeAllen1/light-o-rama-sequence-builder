@@ -1,8 +1,8 @@
 # Implementation Plan
 
-**Status:** Phases 0 through 4 complete and merged. Phase 4 was accepted by the owner on 2026-11-11 with swung and rubato songs as a known limitation.  
-**Current phase:** none active  
-**Next phase:** 4b, the scratch-built sequence writer (requires owner approval to start), then 5, prop classification.
+**Status:** Phases 0 through 6b are complete and merged. Phase 7 (Planner v1) is in review; its owner S6 playback gate is pending.  
+**Current phase:** Phase 7 — Planner v1 (PR #39, owner playback gate pending).  
+**Next phase:** Phase 8 — Vocals (PR #44), stacked on Phase 7 and to be reviewed only after Phase 7. No later phase is authorized until the required owner gate and approval are recorded.
 
 ## Product objective and fixed requirements
 
@@ -35,7 +35,7 @@ These differ from the original stack proposal. They are intentional and accepted
 
 1. **Sequence creation without a template (resolved 2026-11-11).** Owner chose to build sequences from scratch: `generate` takes audio and preview only, and the tool creates a new native sequence itself. A template is not a required input. This becomes Phase 4b, scheduled after Phase 4 acceptance and before Phase 5 because it is the largest remaining format unknown.
 2. **Preview Revision (resolved 2026-11-11).** Owner clarified that `PreviewClass/@Revision` is an edit counter incremented on each save, not a format version. The parser's revision allowlist (which rejected any preview not at revision 0, 1, 56, or 58) was removed; the value is now optional metadata. Compatibility is judged by structure. Do not reintroduce revision-based gating.
-3. **Fixture diversity before Phase 5.** Current committed fixtures are synthetic and intentionally limited. Classifier golden tests need 2 to 3 previews from materially different displays (different size, messy naming, legacy AC/DC) before Phase 5 can claim display independence. Any additional owner-provided examples must remain local; do not commit original or sanitized owner show material.
+3. **Fixture diversity before Phase 5 (resolved for Phase 5 acceptance, 2026-11-11).** Phase 5 passed its five fictional-display regression suite and the owner confirmed the classifier conclusions against a real display locally. The real display and all derivatives remain private and are not committed. This records the Phase 5 acceptance evidence; it does not claim broad validation across every display or legacy AC/DC configuration.
 4. **License.** An MIT `LICENSE` was added in the docs-cleanup PR as a proposed default. The owner should confirm or replace it before merge.
 
 ## Mandatory engineering workflow
@@ -82,7 +82,7 @@ Delivered: bounded FFmpeg normalization; deterministic RMS/positive-energy-flux/
 
 Final-head CI: Tests workflow run `42956005759` passed both Linux (pytest, Ruff, strict mypy, pip-audit) and Windows compatibility jobs. Phase 3 Validation Package run `42956005713` passed. CodeQL run `42956005698` passed. The final hard-stop timestamp test uses a tolerance consistent with the 551-sample frame duration (~49.977 ms), rather than asserting a mathematically exact 3.000-second frame boundary.
 
-**Superseded by the rework below.** Original remaining acceptance: owner review of diagnostic plots against contrasting real songs (fast/percussive, slower, and a song with tempo or arrangement changes), recording tempo/phase alignment, false/missed candidates, and whether confidence communicates uncertainty usefully. Confidence values remain heuristic and uncalibrated; do not treat them as probabilities or use them as the sole basis for choreography. No real-song review is claimed complete. Phase 5 remains blocked until this human review is complete and the owner explicitly approves moving forward.
+**Historical baseline note:** The original stdlib implementation did not satisfy real-song review and was superseded by the librosa rework in PR #17. The unresolved review items from that baseline are historical, not current blockers. The reworked analyzer was accepted by the owner on 2026-11-11; its known swung/rubato limitation is recorded below and is addressed as a Phase 8 planning concern.
 
 **Real-song review (2026-11-11):** the stdlib baseline was scored against owner-made timing grids on several songs and failed (beat placement near chance). The librosa rework (PR #17) was scored the same way. Per-song results, song identities, and measurements are kept private and are not recorded in this repository.
 
@@ -94,7 +94,7 @@ Final-head CI: Tests workflow run `42956005759` passed both Linux (pytest, Ruff,
 
 Review audio, sequences, and results stay local and are never committed.
 
-**Done when:** on at least three contrasting songs with trusted grids, beats F ≥ 0.85 and bars F ≥ 0.85 via `evaluate-analysis`; section recall is reported; synthetic tests cover tempo, beats, downbeats, sections, stops, and the schema contract; CI is green; owner approves moving to Phase 4b.
+**Acceptance:** The owner accepted the librosa rework on 2026-11-11 after the documented grid-scoring review. The original stdlib baseline did not pass and is retained only as historical context. Phase 4b was subsequently completed under its own S6 writer gate.
 
 ### Phase 4b — Scratch-built sequence writer
 **Status: Complete. Owner S6 open-test passed on 2026-11-11.**
@@ -193,6 +193,18 @@ See [GITHUB_WORKFLOW.md](GITHUB_WORKFLOW.md) for branch, PR, review, merge, and 
 
 ## Current progress log
 
+### Current implementation handoff — 2026-11-11
+This is the authoritative current-state summary; older entries below are chronological implementation history.
+
+- **Phase 0–4b:** complete. Phase 4 rework was accepted in PR #17; the scratch-built sequence writer was completed and S6-checked in PR #23. The earlier stdlib audio-analysis acceptance text is historical and is not a current blocker.
+- **Phase 5:** complete and owner-accepted; PR #29 merged.
+- **Phase 6:** complete; PR #34 merged. Native S6 verification of fade, TWINKLE, and SHIMMER output remains a known check for the Phase 7 owner playback gate.
+- **Phase 6b:** complete; PR #36 merged. A live translation-provider call remains optional and was not part of automated verification.
+- **Current phase under review — Phase 7, Planner v1:** PR #39 is open against master. Its required owner gate is to generate a real song on the owner's display and open/play it in S6, including the first real S6 check of fade, twinkle, and shimmer effects. Do not call this phase complete until that gate and merge/approval criteria are satisfied.
+- **Phase 8 — Vocals:** PR #44 is open but explicitly stacked on Phase 7's branch. Review it after Phase 7; it is not an independent base-master phase and must not be treated as unblocked or merged.
+- **Next gate:** complete the Phase 7 S6 playback check, record the owner's result, then merge/close Phase 7 under its issue. Phase 8 remains dependent on that outcome. No later phase is authorized by this status entry.
+
+
 ### Repository cleanup — 2026-11-11
 Owner decision: closed PR #12 unmerged (superseded by the librosa rework) and closed issues #8 and #13 as done. Retired the Phase 3 validation-package workflow, its build script, and its guide; the `pulse` harness itself remains. Stale branches are to be deleted by the owner.
 
@@ -269,7 +281,7 @@ At the start of each fresh phase session: read this plan and active issue; confi
 
 ## Phase 4 implementation boundary
 
-The Phase 4 baseline is merged in `2b962bd39d51b052c3f97d76876a29176dc627ae`. The analyzer emits a versioned JSON report and SVG diagnostic plot using bounded FFmpeg normalization. It estimates a single global tempo and heuristic event candidates; it does not claim semantic section recognition, tempo-change tracking, spectral onset classification, or choreography. Real-song diagnostic review and confidence calibration remain acceptance tasks.
+The original Phase 4 baseline was merged in `2b962bd39d51b052c3f97d76876a29176dc627ae` and then superseded after it failed real-song review. PR #17 delivered the librosa rework, which the owner accepted on 2026-11-11 for steady songs. The known limitation is swung/rubato singer-led passages; Phase 8 is intended to address those using vocal phrasing. Confidence values remain heuristic, not probabilities.
 
 ### Phase 4 merge and handoff — 2026-11-10/11
 - PR: https://github.com/MikeAllen1/light-o-rama-sequence-builder/pull/9
@@ -278,5 +290,5 @@ The Phase 4 baseline is merged in `2b962bd39d51b052c3f97d76876a29176dc627ae`. Th
 - Merge: squash commit `2b962bd39d51b052c3f97d76876a29176dc627ae`
 - Final verification: Tests run `42956005759` passed on Linux and Windows; Phase 3 Validation Package run `42956005713` passed; CodeQL run `42956005698` passed.
 - Final hardening: corrected cross-platform frame-time test tolerance; documented leading-silence hard-stop candidates; beat-grid confidence is reported separately from tempo confidence.
-- Human gate: pending real-song review. No user audio or real-song diagnostic outputs have been reviewed in this phase.
-- Next step: complete real-song review and evaluate whether confidence and candidate markers are useful before requesting approval for Phase 5. Do not start classifier work until owner approval.
+- Historical state at the close of PR #9: real-song review was pending and the stdlib baseline was not accepted. This was superseded by PR #17 and the owner acceptance recorded in the Phase 4 section above.
+- Current Phase 4 status: complete and accepted for steady songs, with the swung/rubato limitation explicitly retained.

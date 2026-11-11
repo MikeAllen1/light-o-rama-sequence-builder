@@ -24,7 +24,7 @@ from lor_sequence_builder.requirements_intake import (
     translator_from_environment,
 )
 from lor_sequence_builder.rules import display_from_preview, load_rule_set
-from lor_sequence_builder.rules.engine import Display
+from lor_sequence_builder.rules.engine import Display, DisplayProp
 from tests.display_builders import DisplayBuilder, classic_yard, roofline_house
 
 
@@ -135,6 +135,99 @@ def test_plain_english_is_translated_validated_and_confirmed(tmp_path: Path) -> 
     assert load_rule_set((saved,)).sources == ("default.yaml", "yard.requirements.yaml")
 
 
+def test_fresh_requirements_bypass_malformed_saved_sidecar(tmp_path: Path) -> None:
+    preview = _preview(tmp_path, classic_yard())
+    sidecar = saved_requirements_path(preview)
+    sidecar.write_text("schema_version: rules-1.0\\nrequirements: [broken\\n", encoding="utf-8")
+    translator = FakeTranslator(Translation([
+        {"type": "never_use", "props": {"names": ["Santa"]}},
+    ]))
+    script = Script({"Describe them": "never use Santa", "Use these?": "y"})
+    result = gather_requirements(
+        preview, _display(classic_yard()), script.ask, script.say,
+        translator, fresh=True,
+    )
+    assert [item.type for item in result] == ["never_use"]
+    assert [item.type for item in load_saved_requirements(preview)] == ["never_use"]
+
+
+
+def test_fresh_intake_with_no_new_requirements_clears_old_saved_sidecar(
+    tmp_path: Path,
+) -> None:
+    preview = _preview(tmp_path, classic_yard())
+    sidecar = saved_requirements_path(preview)
+    sidecar.write_text(
+        "schema_version: rules-1.0\\nrequirements:\\n"
+        "  - type: never_use\\n    props: {names: [Santa]}\\n",
+        encoding="utf-8",
+    )
+    script = Script({
+        "Describe them": "",
+        "Answer a few quick questions": "n",
+    })
+
+    result = gather_requirements(
+        preview, _display(classic_yard()), script.ask, script.say, None, fresh=True
+    )
+
+    assert result == ()
+    assert not sidecar.exists()
+
+
+
+def test_fresh_intake_does_not_resurrect_valid_saved_requirements(
+    tmp_path: Path,
+) -> None:
+    preview = _preview(tmp_path, classic_yard())
+    sidecar = saved_requirements_path(preview)
+    sidecar.write_text(
+        "schema_version: rules-1.0\n"
+        "requirements:\n"
+        "  - type: never_use\n"
+        "    props: {names: [Santa]}\n",
+        encoding="utf-8",
+    )
+    script = Script({
+        "Describe them": "",
+        "Answer a few quick questions": "n",
+    })
+
+    result = gather_requirements(
+        preview, _display(classic_yard()), script.ask, script.say, None, fresh=True
+    )
+
+    assert result == ()
+    assert not sidecar.exists()
+
+
+
+def test_interactive_fresh_choice_does_not_restore_saved_requirements(
+    tmp_path: Path,
+) -> None:
+    preview = _preview(tmp_path, classic_yard())
+    sidecar = saved_requirements_path(preview)
+    sidecar.write_text(
+        "schema_version: rules-1.0\n"
+        "requirements:\n"
+        "  - type: never_use\n"
+        "    props: {names: [Santa]}\n",
+        encoding="utf-8",
+    )
+    script = Script({
+        "[K]eep them": "f",
+        "Describe them": "",
+        "Answer a few quick questions": "n",
+    })
+
+    result = gather_requirements(
+        preview, _display(classic_yard()), script.ask, script.say, None
+    )
+
+    assert result == ()
+    assert not sidecar.exists()
+
+
 def test_nothing_is_saved_without_confirmation(tmp_path: Path) -> None:
     preview = _preview(tmp_path, classic_yard())
     translator = FakeTranslator(Translation(
@@ -207,7 +300,7 @@ def test_api_translator_sends_the_display_and_reads_the_tool_answer() -> None:
         return json.dumps({"content": [
             {"type": "text", "text": "ignored"},
             {"type": "tool_use", "name": "record_requirements", "input": {
-                "requirements": [{"type": "keep_on", "props": {"role": "arch"}}, "junk"],
+                "requirements": [{"type": "keep_on", "props": {"role": "arch"}}],
                 "not_supported": ["sparkle more"],
             }},
         ]}).encode()
@@ -230,6 +323,27 @@ def test_api_translator_sends_the_display_and_reads_the_tool_answer() -> None:
 
     with pytest.raises(IntakeError, match="cannot read"):
         ApiTranslator("k", transport=garbage).translate("x", _display(classic_yard()))
+
+
+
+def test_translator_rejects_mixed_valid_and_malformed_requirement_entries() -> None:
+    def transport(url: str, headers: dict[str, str], body: bytes) -> bytes:
+        return json.dumps({"content": [{
+            "type": "tool_use",
+            "name": "record_requirements",
+            "input": {
+                "requirements": [
+                    {"type": "keep_on", "props": {"role": "arch"}},
+                    "malformed entry",
+                ],
+                "not_supported": [],
+            },
+        }]}).encode()
+
+    with pytest.raises(IntakeError, match="malformed requirement"):
+        ApiTranslator("key", transport=transport).translate(
+            "arches stay on", _display(classic_yard())
+        )
 
 
 def test_translator_comes_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -281,3 +395,36 @@ def test_builds_use_saved_requirements_automatically(
     assert main([*build, "--ask-requirements"]) == 0
     assert not saved_requirements_path(preview).exists()
     assert (tmp_path / "s.loredit").exists()
+
+
+def test_guided_chase_direction_is_asked_for_each_group_in_a_role() -> None:
+    props = {}
+    groups: dict[str, tuple[str, ...]] = {"Arches": (), "Porch Arches": ()}
+    for group in groups:
+        members = []
+        for index in range(3):
+            prop_id = f"{group}-{index}"
+            props[prop_id] = DisplayProp(
+                prop_id=prop_id, name=prop_id, role="arch", channel_count=1,
+                color_kind="multi_color", channel_colors=("Red",), linked_to=None,
+                layout_problem=None, center=None, direction="horizontal",
+                group=group, position_in_row=index + 1, row_size=3,
+            )
+            members.append(prop_id)
+        groups[group] = tuple(members)
+    display = Display(props=props, groups=groups)
+    script = Script({
+        "group 'Arches'": "l",
+        "group 'Porch Arches'": "r",
+    })
+
+    found = guided_requirements(display, script.ask, script.say)
+
+    assert found == [
+        {"type": "move_direction", "props": {"group": "Arches"},
+         "movement": "chase", "direction": "left_to_right"},
+        {"type": "move_direction", "props": {"group": "Porch Arches"},
+         "movement": "chase", "direction": "right_to_left"},
+    ]
+    assert any("group 'Arches'" in prompt for prompt in script.prompts)
+    assert any("group 'Porch Arches'" in prompt for prompt in script.prompts)

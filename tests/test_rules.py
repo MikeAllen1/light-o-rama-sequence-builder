@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
+import lor_sequence_builder.choreography as choreography_module
 from lor_sequence_builder.choreography import (
     Choreography,
     ChoreographyError,
@@ -24,6 +26,7 @@ from lor_sequence_builder.rules import (
     RuleReport,
     RuleSet,
     check_choreography,
+    display_from_preview,
     load_rule_set,
 )
 from tests.display_builders import (
@@ -656,3 +659,289 @@ def test_checking_never_modifies_the_timeline() -> None:
     before = choreography_json(timeline)
     _check(display, timeline)
     assert choreography_json(timeline) == before
+
+ 
+@pytest.mark.parametrize("value", [".nan", ".inf", "-.inf"])
+def test_profile_rejects_non_finite_rule_values(tmp_path: Path, value: str) -> None:
+    profile = _profile(tmp_path, "schema_version: rules-1.0\nrules:\n"
+                                 f"  not_everything_at_once: {{max_share: {value}}}\n")
+    with pytest.raises(RuleProfileError, match="finite number"):
+        load_rule_set((profile,))
+
+
+@pytest.mark.parametrize("kind", ["[keep_on]", "{bad: value}"])
+def test_requirement_type_must_be_text(tmp_path: Path, kind: str) -> None:
+    profile = _profile(tmp_path, "schema_version: rules-1.0\nrequirements:\n"
+                                 f"  - type: {kind}\n    props: {{all: true}}\n")
+    with pytest.raises(RuleProfileError, match=r"requirements\[0\]\.type"):
+        load_rule_set((profile,))
+
+
+def test_timeline_movement_count_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(choreography_module, "MAX_MOVEMENTS", 1)
+    data = {
+        "schema_version": "choreography-1.0",
+        "duration_centiseconds": SONG,
+        "effects": [],
+        "movements": [
+            {"movement_id": f"m{i}", "kind": "chase", "prop_ids": ["a"],
+             "direction": "left_to_right", "start_centisecond": 0,
+             "end_centisecond": 100}
+            for i in range(2)
+        ],
+    }
+    with pytest.raises(ChoreographyError, match="more than 1 movements"):
+        parse_choreography(data)
+
+
+def test_duplicate_movement_ids_are_reported() -> None:
+    display = classic_yard()
+    timeline = Choreography(
+        duration_centiseconds=SONG,
+        effects=(),
+        movements=(
+            Movement("duplicate", "chase", ("a",), "left_to_right", 0, 100),
+            Movement("duplicate", "chase", ("b",), "left_to_right", 100, 200),
+        ),
+    )
+    report = _check(display, timeline)
+    _, findings = _result(report, "effects_well_formed")
+    assert any("Movement id 'duplicate' is used more than once" in item
+               for item in findings)
+
+
+def test_direct_choreography_objects_reject_unknown_effect_and_movement_values() -> None:
+    display = classic_yard()
+    invalid_effect = Choreography(
+        duration_centiseconds=SONG,
+        effects=(Effect(_ids(display)["Arch 1"], 0, 0, 100, kind="laser"),),
+    )
+    _, effect_findings = _result(_check(display, invalid_effect), "effects_well_formed")
+    assert any("Effect kind 'laser' is not supported" in item for item in effect_findings)
+
+    invalid_movement = Choreography(
+        duration_centiseconds=SONG,
+        effects=(),
+        movements=(Movement("bad", "teleport", (_ids(display)["Arch 1"],),
+                            "diagonal", 0, 100),),
+    )
+    _, movement_findings = _result(
+        _check(display, invalid_movement), "effects_well_formed"
+    )
+    assert any("unsupported kind 'teleport'" in item for item in movement_findings)
+    assert any("unsupported direction 'diagonal'" in item for item in movement_findings)
+
+
+def test_timeline_json_rejects_duplicate_object_keys_at_any_depth(tmp_path: Path) -> None:
+    path = tmp_path / "duplicate.json"
+    path.write_text(
+        '{"schema_version":"choreography-1.0","duration_centiseconds":100,'
+        '"effects":[{"prop_id":"a","channel_index":0,"start_centisecond":0,'
+        '"end_centisecond":10,"prop_id":"b"}]}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ChoreographyError, match="duplicate object key 'prop_id'"):
+        load_choreography(path)
+
+
+
+
+@pytest.mark.parametrize("blank_index,expected", [
+    (0, ("", "Red", "Green")),
+    (1, ("White", "", "Green")),
+])
+def test_rule_display_preserves_per_channel_color_indexes(
+    blank_index: int, expected: tuple[str, ...]
+) -> None:
+    display = classic_yard()
+    face = next(p for p in display.element().findall("PropClass")
+                if p.get("Name") == "Santa")
+    entries = face.get("ChannelGrid", "").split(";")
+    fields = entries[blank_index].split(",")
+    fields[5] = ""
+    entries[blank_index] = ",".join(fields)
+    face.set("ChannelGrid", ";".join(entries))
+
+    parsed = display_from_preview(display.element())
+
+    assert parsed.props[_ids(display)["Santa"]].channel_colors == expected
+
+
+def test_profile_rejects_non_string_requirement_keys(tmp_path: Path) -> None:
+    path = _profile(
+        tmp_path,
+        "schema_version: rules-1.0\n"
+        "requirements:\n"
+        "  - type: never_use\n"
+        "    props: {all: true}\n"
+        "    7: value\n",
+    )
+
+    with pytest.raises(RuleProfileError, match=r"requirements\[0\].*field names must be text"):
+        load_rule_set((path,))
+
+
+def test_profile_rejects_unhashable_yaml_mapping_keys(tmp_path: Path) -> None:
+    path = _profile(
+        tmp_path,
+        "schema_version: rules-1.0\nrules:\n  ? [not, a, scalar, key]\n  : value\n",
+    )
+    with pytest.raises(RuleProfileError, match="mapping keys must be scalar/hashable"):
+        load_rule_set((path,))
+
+
+
+
+def test_direct_movement_with_no_props_fails_without_crashing() -> None:
+    display = classic_yard()
+    timeline = Choreography(
+        duration_centiseconds=SONG,
+        effects=(),
+        movements=(Movement("empty-fall", "fall", (), "left_to_right", 0, 100),),
+    )
+    report = _check(display, timeline)
+    _, findings = _result(report, "effects_well_formed")
+    assert not report.ok
+    assert any("Movement 'empty-fall' must contain at least one prop" in item
+               for item in findings)
+
+
+
+
+def test_direct_movement_with_non_iterable_props_fails_without_crashing() -> None:
+    display = classic_yard()
+    timeline = Choreography(
+        duration_centiseconds=SONG,
+        effects=(),
+        movements=(Movement("bad-props", "fall", cast(Any, None),
+                            "top_to_bottom", 0, 100),),
+    )
+
+    report = _check(display, timeline)
+    _, findings = _result(report, "effects_well_formed")
+
+    assert not report.ok
+    assert any("Movement 'bad-props' must contain at least one prop" in item
+               for item in findings)
+
+
+def test_direct_movement_with_non_integer_time_raises_domain_error() -> None:
+    display = classic_yard()
+    timeline = Choreography(
+        duration_centiseconds=SONG,
+        effects=(),
+        movements=(Movement("bad-time", "chase", (_ids(display)["Arch 1"],),
+                            "left_to_right", True, 100),),
+    )
+
+    with pytest.raises(
+        ChoreographyError, match=r"movements\[0\].start_centisecond must be an integer"
+    ):
+        _check(display, timeline)
+
+
+
+@pytest.mark.parametrize(
+    ("duration", "field"),
+    [("1200", "duration_centiseconds"), (True, "duration_centiseconds")],
+)
+def test_direct_choreography_rejects_invalid_duration_types(
+    duration: object, field: str
+) -> None:
+    display = classic_yard()
+    timeline = Choreography(
+        duration_centiseconds=cast(Any, duration),
+        effects=(),
+    )
+    with pytest.raises(ChoreographyError, match=field):
+        _check(display, timeline)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("channel_index", True),
+        ("start_centisecond", "0"),
+        ("end_centisecond", "100"),
+        ("start_intensity", "high"),
+        ("end_intensity", False),
+    ],
+)
+def test_direct_effect_rejects_invalid_numeric_field_types(
+    field: str, value: object
+) -> None:
+    display = classic_yard()
+    effect = Effect(_ids(display)["Arch 1"], 0, 0, 100)
+    effect = dataclasses.replace(effect, **{field: cast(Any, value)})
+    timeline = Choreography(duration_centiseconds=SONG, effects=(effect,))
+    with pytest.raises(ChoreographyError, match=field):
+        _check(display, timeline)
+
+
+
+@pytest.mark.parametrize(
+    ("timeline", "field"),
+    [
+        (
+            Choreography(
+                duration_centiseconds=SONG, effects=(),
+                sections=(Section("intro", cast(Any, "0"), 100),),
+            ),
+            r"sections\[0\]\.start_centisecond",
+        ),
+        (
+            Choreography(
+                duration_centiseconds=SONG, effects=(),
+                hard_stops_centiseconds=(cast(Any, "50"),),
+            ),
+            r"hard_stops_centiseconds\[0\]",
+        ),
+        (
+            Choreography(
+                duration_centiseconds=SONG, effects=(),
+                vocal_regions=((0, cast(Any, "50")),),
+            ),
+            r"vocal_regions\[0\]\[1\]",
+        ),
+    ],
+)
+def test_direct_choreography_rejects_invalid_section_stop_and_vocal_times(
+    timeline: Choreography, field: str
+) -> None:
+    with pytest.raises(ChoreographyError, match=field):
+        _check(classic_yard(), timeline)
+
+
+
+@pytest.mark.parametrize(
+    "field", ["effects", "movements", "sections", "hard_stops_centiseconds"]
+)
+def test_direct_choreography_rejects_non_tuple_collections(field: str) -> None:
+    base = Choreography(duration_centiseconds=SONG, effects=())
+    timeline = dataclasses.replace(base, **{field: cast(Any, None)})
+    with pytest.raises(ChoreographyError, match=field):
+        _check(classic_yard(), timeline)
+
+
+def test_direct_choreography_rejects_non_tuple_vocal_regions() -> None:
+    base = Choreography(duration_centiseconds=SONG, effects=())
+    timeline = dataclasses.replace(base, vocal_regions=cast(Any, []))
+    with pytest.raises(ChoreographyError, match="vocal_regions"):
+        _check(classic_yard(), timeline)
+
+
+def test_duplicate_group_names_union_members_for_name_selectors() -> None:
+    builder = classic_yard()
+    root = builder.element()
+    duplicate = ET.SubElement(
+        root, "PropGroup", {"id": "second-arches-group", "Name": "Arches"}
+    )
+    mini_tree_id = _ids(builder)["Mini Tree 1"]
+    ET.SubElement(duplicate, "member", {"id": mini_tree_id})
+
+    display = display_from_preview(root)
+
+    expected = {
+        _ids(builder)[f"Arch {index}"] for index in range(1, 5)
+    } | {mini_tree_id}
+    assert set(display.groups["Arches"]) == expected

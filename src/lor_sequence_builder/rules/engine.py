@@ -24,13 +24,23 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
-from lor_sequence_builder.choreography import Choreography, Effect, Movement, seconds
+from lor_sequence_builder.channel_mapping import channel_layout_problem
+from lor_sequence_builder.choreography import (
+    EFFECT_KINDS,
+    MOVEMENT_DIRECTIONS,
+    MOVEMENT_KINDS,
+    Choreography,
+    ChoreographyError,
+    Effect,
+    Movement,
+    Section,
+    seconds,
+)
 from lor_sequence_builder.classifier import (
     PropClassification,
     classify_preview,
     prop_center,
 )
-from lor_sequence_builder.new_sequence import channel_layout_problem
 from lor_sequence_builder.rules.profile import (
     RULE_SPECS,
     Requirement,
@@ -215,11 +225,14 @@ def display_from_preview(preview: ET.Element) -> Display:
                 if len(name_to_ids[name]) == 1
             ),
         )
-    groups: dict[str, tuple[str, ...]] = {}
+    group_members: dict[str, list[str]] = defaultdict(list)
     for group in preview.findall("PropGroup"):
         name = group.get("Name", "")
         if name:
-            groups[name] = tuple(m.get("id", "") for m in group.findall("member"))
+            # A display name is the public selector key. Preserve every matching
+            # group's members rather than silently replacing earlier groups.
+            group_members[name].extend(m.get("id", "") for m in group.findall("member"))
+    groups = {name: tuple(dict.fromkeys(ids)) for name, ids in group_members.items()}
     return Display(props, groups)
 
 
@@ -353,11 +366,33 @@ _Check = Callable[[_Context], str | None]
 # ---------------------------------------------------------------- built-in rules
 
 
+def _movement_identity_valid(movement: Movement) -> bool:
+    """Whether downstream movement rules can safely use its identity and props."""
+    return (
+        isinstance(movement.movement_id, str)
+        and bool(movement.movement_id.strip())
+        and movement.kind in MOVEMENT_KINDS
+        and movement.direction in MOVEMENT_DIRECTIONS
+        and isinstance(movement.prop_ids, tuple)
+        and bool(movement.prop_ids)
+        and all(isinstance(pid, str) and bool(pid.strip()) for pid in movement.prop_ids)
+        and isinstance(movement.start_centisecond, int)
+        and not isinstance(movement.start_centisecond, bool)
+        and isinstance(movement.end_centisecond, int)
+        and not isinstance(movement.end_centisecond, bool)
+    )
+
+
 def _effects_well_formed(ctx: _Context) -> str | None:
     duration = ctx.choreography.duration_centiseconds
     if duration <= 0:
         ctx.add(f"Timeline duration must be positive, found {duration}")
     for e in ctx.choreography.effects:
+        if e.kind not in EFFECT_KINDS:
+            ctx.add(
+                f"Effect kind {e.kind!r} is not supported; use one of {', '.join(EFFECT_KINDS)}",
+                e,
+            )
         if e.start_centisecond < 0:
             ctx.add("Effect starts before the song does", e)
         if e.end_centisecond > duration:
@@ -372,10 +407,65 @@ def _effects_well_formed(ctx: _Context) -> str | None:
             ctx.add(f"A {e.kind} effect holds one intensity; use a fade to change it", e)
         if e.kind == "fade" and e.start_intensity == e.end_intensity:
             ctx.add("A fade must change intensity; use an on effect to hold one", e)
-    movement_ids = [m.movement_id for m in ctx.choreography.movements]
-    for movement_id in {m for m in movement_ids if movement_ids.count(m) > 1}:
+    seen_movement_ids: set[str] = set()
+    duplicate_movement_ids: set[str] = set()
+    for movement in ctx.choreography.movements:
+        movement_id = movement.movement_id
+        if not isinstance(movement_id, str) or not movement_id.strip():
+            ctx.add("Movement id must be a non-empty string")
+        elif movement_id in seen_movement_ids:
+            duplicate_movement_ids.add(movement_id)
+        else:
+            seen_movement_ids.add(movement_id)
+        if not isinstance(movement.prop_ids, tuple) or not movement.prop_ids:
+            ctx.add(
+                f"Movement {movement_id!r} must contain at least one prop",
+                centisecond=movement.start_centisecond
+                if isinstance(movement.start_centisecond, int) else None,
+            )
+        elif any(not isinstance(pid, str) or not pid.strip() for pid in movement.prop_ids):
+            ctx.add(
+                f"Movement {movement_id!r} prop ids must be non-empty strings",
+                centisecond=movement.start_centisecond
+                if isinstance(movement.start_centisecond, int) else None,
+            )
+    for movement_id in sorted(duplicate_movement_ids):
         ctx.add(f"Movement id {movement_id!r} is used more than once")
     for m in ctx.choreography.movements:
+        prop_id = m.prop_ids[0] if _movement_identity_valid(m) else None
+        centisecond = (
+            m.start_centisecond
+            if isinstance(m.start_centisecond, int) and not isinstance(m.start_centisecond, bool)
+            else None
+        )
+        if m.kind not in MOVEMENT_KINDS:
+            ctx.add(
+                f"Movement {m.movement_id!r} has unsupported kind {m.kind!r}; use one of "
+                f"{', '.join(MOVEMENT_KINDS)}",
+                prop_id=prop_id,
+                centisecond=centisecond,
+            )
+        if m.direction not in MOVEMENT_DIRECTIONS:
+            ctx.add(
+                f"Movement {m.movement_id!r} has unsupported direction {m.direction!r}; "
+                f"use one of {', '.join(MOVEMENT_DIRECTIONS)}",
+                prop_id=prop_id,
+                centisecond=centisecond,
+            )
+        if (
+            isinstance(m.start_centisecond, bool)
+            or not isinstance(m.start_centisecond, int)
+            or isinstance(m.end_centisecond, bool)
+            or not isinstance(m.end_centisecond, int)
+        ):
+            ctx.add(
+                f"Movement {m.movement_id!r} start and end times must be integers",
+                prop_id=prop_id,
+                centisecond=centisecond,
+            )
+            continue
+        if not _movement_identity_valid(m):
+            continue
         if not 0 <= m.start_centisecond < m.end_centisecond <= duration:
             ctx.add(f"Movement {m.movement_id!r} must start before it ends, inside the song",
                     centisecond=m.start_centisecond)
@@ -414,6 +504,8 @@ def _known_props_and_channels(ctx: _Context) -> str | None:
                 e,
             )
     for m in ctx.choreography.movements:
+        if not _movement_identity_valid(m):
+            continue
         for pid in m.prop_ids:
             prop = ctx.display.props.get(pid)
             if prop is None or not prop.sequenceable:
@@ -451,7 +543,10 @@ def _movement_effects(ctx: _Context) -> dict[str, list[Effect]]:
 
 
 def _movements_complete(ctx: _Context) -> str | None:
-    movements = {m.movement_id: m for m in ctx.choreography.movements}
+    movements = {
+        m.movement_id: m for m in ctx.choreography.movements
+        if _movement_identity_valid(m)
+    }
     tagged = _movement_effects(ctx)
     for movement_id, effects in tagged.items():
         if movement_id not in movements:
@@ -493,8 +588,11 @@ def _ordered(values: list[float], increasing: bool) -> bool:
 
 
 def _chases_follow_layout(ctx: _Context) -> str | None:
-    moves = [m for m in ctx.choreography.movements
-             if m.kind in {"chase", "fill"} and len(m.prop_ids) > 1]
+    moves = [
+        m for m in ctx.choreography.movements
+        if _movement_identity_valid(m) and m.kind in {"chase", "fill"}
+        and len(m.prop_ids) > 1
+    ]
     if not moves:
         return "the Timeline has no chases or fills across several props"
     for m in moves:
@@ -532,7 +630,10 @@ def _chases_follow_layout(ctx: _Context) -> str | None:
 
 
 def _falls_go_down(ctx: _Context) -> str | None:
-    falls = [m for m in ctx.choreography.movements if m.kind == "fall"]
+    falls = [
+        m for m in ctx.choreography.movements
+        if _movement_identity_valid(m) and m.kind == "fall"
+    ]
     if not falls:
         return "the Timeline has no falling effects"
     tagged = _movement_effects(ctx)
@@ -671,6 +772,8 @@ def _motion_stops_at_hard_stops(ctx: _Context) -> str | None:
         return "the Timeline has no movements"
     tagged = _movement_effects(ctx)
     for m in ctx.choreography.movements:
+        if not _movement_identity_valid(m):
+            continue
         for stop in stops:
             if m.start_centisecond < stop < m.end_centisecond:
                 ctx.add(f"The {m.kind} {m.movement_id!r} keeps moving through the hard stop",
@@ -854,8 +957,10 @@ def _quiet_during(ctx: _Context, req: Requirement, props: list[str]) -> str | No
 def _move_direction(ctx: _Context, req: Requirement, props: list[str]) -> str | None:
     kind = req.params.get("movement", "chase")
     chosen = set(props)
-    moves: list[Movement] = [m for m in ctx.choreography.movements
-                             if m.kind == kind and set(m.prop_ids) <= chosen]
+    moves: list[Movement] = [
+        m for m in ctx.choreography.movements
+        if _movement_identity_valid(m) and m.kind == kind and set(m.prop_ids) <= chosen
+    ]
     if not moves:
         return f"the Timeline has no {kind} across these props"
     for m in moves:
@@ -895,10 +1000,66 @@ def describe_requirement(req: Requirement) -> str:
 # ---------------------------------------------------------------- entry point
 
 
+def _validate_choreography_numeric_fields(choreography: Choreography) -> None:
+    """Protect the public dataclass API from values the JSON parser would reject."""
+    def require_int(value: object, field_name: str) -> None:
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ChoreographyError(f"Choreography {field_name} must be an integer")
+
+    def require_tuple(value: object, field_name: str) -> tuple[Any, ...]:
+        if not isinstance(value, tuple):
+            raise ChoreographyError(f"Choreography {field_name} must be a tuple")
+        return value
+
+    require_int(choreography.duration_centiseconds, "duration_centiseconds")
+    effects = require_tuple(choreography.effects, "effects")
+    movements = require_tuple(choreography.movements, "movements")
+    sections = require_tuple(choreography.sections, "sections")
+    hard_stops = require_tuple(
+        choreography.hard_stops_centiseconds, "hard_stops_centiseconds"
+    )
+    for index, effect in enumerate(effects):
+        if not isinstance(effect, Effect):
+            raise ChoreographyError(f"Choreography effects[{index}] must be an Effect")
+        if not isinstance(effect.prop_id, str) or not effect.prop_id.strip():
+            raise ChoreographyError(f"Choreography effects[{index}].prop_id must be text")
+        require_int(effect.channel_index, f"effects[{index}].channel_index")
+        require_int(effect.start_centisecond, f"effects[{index}].start_centisecond")
+        require_int(effect.end_centisecond, f"effects[{index}].end_centisecond")
+        require_int(effect.start_intensity, f"effects[{index}].start_intensity")
+        require_int(effect.end_intensity, f"effects[{index}].end_intensity")
+        if effect.movement_id is not None and not isinstance(effect.movement_id, str):
+            raise ChoreographyError(f"Choreography effects[{index}].movement_id must be text")
+        if effect.color is not None and not isinstance(effect.color, str):
+            raise ChoreographyError(f"Choreography effects[{index}].color must be text")
+    for index, movement in enumerate(movements):
+        if not isinstance(movement, Movement):
+            raise ChoreographyError(f"Choreography movements[{index}] must be a Movement")
+        require_int(movement.start_centisecond, f"movements[{index}].start_centisecond")
+        require_int(movement.end_centisecond, f"movements[{index}].end_centisecond")
+    for index, section in enumerate(sections):
+        if not isinstance(section, Section):
+            raise ChoreographyError(f"Choreography sections[{index}] must be a Section")
+        if not isinstance(section.label, str):
+            raise ChoreographyError(f"Choreography sections[{index}].label must be text")
+        require_int(section.start_centisecond, f"sections[{index}].start_centisecond")
+        require_int(section.end_centisecond, f"sections[{index}].end_centisecond")
+    for index, stop in enumerate(hard_stops):
+        require_int(stop, f"hard_stops_centiseconds[{index}]")
+    if choreography.vocal_regions is not None:
+        vocal_regions = require_tuple(choreography.vocal_regions, "vocal_regions")
+        for index, region in enumerate(vocal_regions):
+            if not isinstance(region, tuple) or len(region) != 2:
+                raise ChoreographyError(f"Choreography vocal_regions[{index}] must be a pair")
+            require_int(region[0], f"vocal_regions[{index}][0]")
+            require_int(region[1], f"vocal_regions[{index}][1]")
+
+
 def check_choreography(
     preview: ET.Element, choreography: Choreography, rule_set: RuleSet
 ) -> RuleReport:
     """Run every built-in rule and requirement; never modifies the choreography."""
+    _validate_choreography_numeric_fields(choreography)
     display = display_from_preview(preview)
     results: list[RuleResult] = []
     for rule_id, check in _BUILT_IN.items():
