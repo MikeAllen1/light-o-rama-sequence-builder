@@ -5,8 +5,8 @@ import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from defusedxml.ElementTree import parse as safe_parse
 import pytest
+from defusedxml.ElementTree import parse as safe_parse
 
 from lor_sequence_builder.loredit import (
     LoreditError,
