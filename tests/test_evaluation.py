@@ -10,6 +10,7 @@ from lor_sequence_builder.cli import main
 from lor_sequence_builder.evaluation import (
     EvaluationError,
     evaluate,
+    load_analysis,
     match_events,
     read_timing_grid,
 )
@@ -74,6 +75,19 @@ def test_match_events_handles_empty_inputs_and_bad_tolerance() -> None:
     assert match_events([1.0], [], 0.07).f_measure == 0.0
     with pytest.raises(EvaluationError, match="positive"):
         match_events([1.0], [1.0], 0.0)
+
+
+
+def test_analysis_json_rejects_duplicate_object_keys_at_any_depth(tmp_path: Path) -> None:
+    path = tmp_path / "duplicate-analysis.json"
+    path.write_text(
+        '{"schema_version":"2.0","audio":{"duration_seconds":30},'
+        '"analysis":{"beats":[{"time":1.0,"time":2.0}],'
+        '"downbeats":[],"section_candidates":[]}}',
+        encoding="utf-8",
+    )
+    with pytest.raises(EvaluationError, match="duplicate object key 'time'"):
+        load_analysis(path)
 
 
 def test_read_timing_grid_returns_sorted_seconds(tmp_path: Path) -> None:
@@ -177,7 +191,7 @@ def test_load_analysis_rejects_boolean_and_out_of_duration_timestamps(tmp_path: 
             evaluate(path, sequence, beats_grid="Beats")
 
  
-@pytest.mark.parametrize("centisecond", [-10, 3001])
+@pytest.mark.parametrize("centisecond", [-10, 20926])
 def test_read_timing_grid_rejects_marks_outside_sequence_duration(
     tmp_path: Path, centisecond: int
 ) -> None:
