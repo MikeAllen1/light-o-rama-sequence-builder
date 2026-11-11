@@ -49,7 +49,7 @@ def _normalize(path: Path, output: Path) -> None:
         )
     command = [
         ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
-        "-i", str(path), "-map", "0:a:0", "-vn", "-ac", "1",
+        "-i", str(path), "-t", str(MAX_DURATION_SECONDS + 1), "-map", "0:a:0", "-vn", "-ac", "1",
         "-ar", str(SAMPLE_RATE), "-c:a", "pcm_s16le", "-f", "wav", str(output),
     ]
     try:
@@ -146,8 +146,13 @@ def _estimate_tempo(flux: list[float], duration: float) -> tuple[float | None, f
         candidates.append((score, lag))
     if not candidates:
         return None, 0.0, None, None
-    candidates.sort(reverse=True)
-    best_score, best_lag = candidates[0]
+    best_score = max(score for score, _ in candidates)
+    # Prefer the faster candidate when tempo aliases (for example 60/120 BPM)
+    # have nearly equal autocorrelation. The confidence still reflects the best score.
+    best_lag = min(
+        lag for score, lag in candidates
+        if score >= best_score * 0.98
+    )
     positive = [score for score, _ in candidates if score > 0]
     mean_score = math.fsum(positive) / len(positive) if positive else 0.0
     confidence = max(0.0, min(1.0, (best_score - mean_score) / (abs(best_score) + 1e-12)))
@@ -361,7 +366,7 @@ def analyze_audio(
             },
         }
         serialized = json.dumps(report, indent=2, sort_keys=True) + "\n"
-        json_path.write_text(serialized, encoding="utf-8")
+        with json_path.open("x", encoding="utf-8") as stream:\n            stream.write(serialized)
         try:
             _svg_plot(plot_path, duration, energy, beat_times, onsets, stops)
         except OSError:
