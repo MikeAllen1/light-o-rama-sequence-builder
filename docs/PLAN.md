@@ -2,7 +2,7 @@
 
 **Status:** Phases 0–3 complete and merged. The Phase 4 audio-analysis baseline is merged; its real-song review and confidence-calibration acceptance work remains open.  
 **Current phase:** 4 acceptance review  
-**Next phase:** 5 — prop classification (blocked until Phase 4 acceptance is complete and the owner approves).
+**Next phase:** 4.5 — template-free native sequence creation (Issue #13); Phase 5 remains blocked until Phase 4 acceptance and the Phase 4.5 S6 gate are complete.
 
 ## Product objective and fixed requirements
 
@@ -12,12 +12,12 @@ Build a display-independent CLI that accepts audio plus a required Light-O-Rama 
 - Props, controllers, and channels must originate from the preview or reviewed user prop map. Never invent or silently reassign them.
 - Classification combines prop type, shape, grouping, position, channel count, color, and name hints; never names alone.
 - Product target includes legacy AC/DC single-color and LOR multi-color/single-circuit props. Phase 3 is intentionally narrower: it generates only verified `DeviceType=LOR` mappings for `Single Color`, `Multicolor_string_1_ch`, and `Channel_per_color`. AC/DC remains parseable but excluded until its native S6 channel mapping is independently verified; see the Phase 3 boundary in ARCHITECTURE.md.
-- RGB/pixel is outside v1 because the user's display does not use pixels. Detect and report unsupported pixel props; never silently drop or fake support.
+- RGB/pixel is outside v1. Detect and report unsupported pixel props; never silently drop or fake support.
 - Physical overrides in props.yaml win over inferred preview interpretation but cannot create channel identities.
 - Rules are configuration; invalid Timelines fail with readable rule, prop/channel, and timestamp details.
 - Never modify/overwrite inputs. Output is a new file.
 - V1 excludes GUI, controller upload, live playback, and editing existing sequences.
-- Python 3.12, uv + committed lockfile, Pydantic, Typer, pytest, Ruff, strict mypy.
+- Python 3.12+, uv + committed lockfile, pytest, Ruff, strict mypy. Current implementation intentionally uses stdlib `argparse` and immutable dataclasses for the CLI/internal value objects; Pydantic and Typer are not runtime dependencies.
 - XML via defusedxml; YAML safe_load; FFmpeg argument list, never shell=True; input size/type/duration limits.
 - No secrets in code; .env gitignored; pin dependencies and run pip-audit.
 - CI uses least privilege and third-party Actions pinned to full commit SHAs. Never use pull_request_target to execute untrusted PR code.
@@ -71,8 +71,20 @@ Final-head CI: Tests workflow run `42956005759` passed both Linux (pytest, Ruff,
 
 **Done when:** Analysis JSON and a debug plot are generated; plot is reviewed against real songs; synthetic tests cover known tempo/events/energy/sections/stops; uncertainty and limitations are explicit; confidence behavior is reviewed; CI is green; owner approves Phase 5.
 
+### Phase 4.5 — Native blank sequence creation (Issue #13)
+
+**Status: Decision made; implementation blocked on S6-created minimal-sequence evidence.** The product must generate a native v15 sequence directly from a standalone .lorprev, reviewed props.yaml, and explicit target S6 version. An existing .loredit may be an optional reference/import source, but must never be a required input to normal generation. Do not make "bring a sequence file for this display" a product requirement.
+
+Scope: establish the minimal v15 structure from a sequence created and saved by the target S6 version; build a blank-sequence factory; embed the exact preview prop/group content; create only verified SeqProp/channel mappings; start with no effects; add deterministic timing grids and validated Timeline events; add tests proving generation works without any .loredit input.
+
+**Mandatory human gate:** open the generated blank sequence in S6 without repair/conversion prompts, save it, reopen it, and verify preview, props, channels, timing, and events persist. A hand-authored XML skeleton is not evidence of S6 validity.
+
+**Blocked input:** owner must provide a minimal empty musical sequence (or the smallest new S6 sequence with one supported prop and no effects) saved by the target S6 version. Keep the original outside Git; derive only synthetic fixtures that do not expose private display data.
+
+**Done when:** Issue #13 acceptance criteria pass, no template path is required by the normal generate command, CI is green, and the owner records the S6 open/save/reopen result.
+
 ### Phase 5 — Classifier
-Build prop roles, orientation/direction, segment order, color capability, analyze command, and editable props.yaml.
+Build prop roles, orientation/direction, segment order, color capability, analyze command, and editable props.yaml. Use at least 2–3 materially different synthetic preview fixtures (including different display sizes, naming conventions, and channel types) before accepting classifier behavior.
 
 **Done when:** Expected classifications match golden results on all fixtures; low-confidence and unknown classifications are flagged; names alone cannot determine classification; overrides win without changing channel identity; stale prop maps are rejected or explicitly migrated.
 
