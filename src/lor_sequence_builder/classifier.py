@@ -149,11 +149,15 @@ class _Geometry:
 
 
 def _float(value: str | None) -> float | None:
+    if value is None:
+        return None
     try:
-        parsed = float(value) if value is not None else None
+        parsed = float(value)
     except ValueError:
         return None
-    return parsed if parsed is not None and math.isfinite(parsed) else None
+    if not math.isfinite(parsed):
+        raise ClassificationError(f"Preview contains a non-finite numeric value: {value!r}")
+    return parsed
 
 
 def _geometry(prop: ET.Element) -> _Geometry | None:
@@ -349,8 +353,8 @@ def _validated_prop_links(props: list[ET.Element]) -> dict[str, str | None]:
     """Validate stable identities and direct master links before classification."""
     by_id: dict[str, ET.Element] = {}
     for prop in props:
-        prop_id = prop.get("id", "").strip()
-        if not prop_id:
+        prop_id = prop.get("id", "")
+        if not prop_id.strip():
             raise ClassificationError("Preview contains a prop with a missing or blank id")
         if prop_id in by_id:
             raise ClassificationError(f"Preview contains duplicate prop id {prop_id!r}")
@@ -404,6 +408,8 @@ def _rows(
             continue
         signature = (_shape_name(prop), len(_channel_entries(prop)), prop.get("TraditionalType", ""))
         by_signature.setdefault(signature, []).append(pid)
+    row_comparisons = 0
+    max_row_comparisons = 2_000_000
     for members in by_signature.values():
         remaining = sorted(members, key=lambda pid: geometries[pid].center_y)  # type: ignore[union-attr]
         while remaining:
@@ -411,6 +417,12 @@ def _rows(
             assert seed is not None
             row = [remaining[0]]
             for pid in remaining[1:]:
+                row_comparisons += 1
+                if row_comparisons > max_row_comparisons:
+                    raise ClassificationError(
+                        "Preview contains too many similar props to infer rows safely; "
+                        "use explicit S6 groups or simplify the preview"
+                    )
                 g = geometries[pid]
                 assert g is not None
                 similar_size = all(
@@ -420,7 +432,8 @@ def _rows(
                 level = abs(g.center_y - seed.center_y) <= max(0.04, 0.6 * seed.height)
                 if similar_size and level:
                     row.append(pid)
-            remaining = [pid for pid in remaining if pid not in row]
+            row_set = set(row)
+            remaining = [pid for pid in remaining if pid not in row_set]
             if len(row) >= 3:
                 ordered = sorted(row, key=lambda pid: geometries[pid].center_x)  # type: ignore[union-attr]
                 key = f"auto:{ordered[0]}"
