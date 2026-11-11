@@ -157,3 +157,11 @@ At the start of each fresh phase session: read this plan and active issue; confi
 
 - Remaining acceptance work: no new group export is required. The supplied embedded PreviewClass in `fixture_candidate.loredit` provides native S6 group evidence and is now committed as a sanitized extracted golden fixture. The parser covers Revision 56, PropGroup, member ID references, arrangement, orientation, top, and left. The original standalone Revision 1 fixture remains covered separately. The exact S6 build is recorded in the source sequence as 6.6.0.12; parser compatibility is keyed to each preview's internal Revision marker.
 - Scope remains Phase 2 only. Audio analysis, classification, props.yaml, Timeline, rules, and choreography have not been started.
+
+
+### Phase 2 hardening follow-up — 2026-11-10
+- Added incremental secure XML scanning with a 100,000-element ceiling in addition to the existing 20 MiB input and 256-level nesting limits. The bounded scan completes before the typed raw model is constructed; the same in-memory bytes are then reparsed with defusedxml.
+- Added explicit unsupported-construct reporting for missing/blank and duplicate PropClass IDs. Source props remain preserved; invalid identities are not treated as reliable keys.
+- Clarified that ChannelGrid parsing currently exposes address fields only (LOR network/Unit ID/circuit and DMX universe/channel). Other fields remain raw and must not be assumed semantically interpreted by later phases.
+- Updated CLI summary wording so its unsupported-construct count includes group and channel-assignment issues, not only prop/device declarations.
+- Added three regression tests. Latest successful Tests workflow on head `0293fc2678dea9220636a36e44f202b25a6cfa1c`: 47 passed, Ruff passed, strict mypy passed, and pip-audit passed. CodeQL is running on this head.
