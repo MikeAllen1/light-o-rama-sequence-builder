@@ -57,18 +57,18 @@ def read_loredit(path: str | Path) -> LoreditDocument:
     """Read and validate an observed S6 LOREDIT v15 XML document."""
     source = Path(path)
     try:
-        size = source.stat().st_size
+        with source.open("rb") as stream:
+            content = stream.read(MAX_LOREDIT_BYTES + 1)
     except OSError as exc:
         raise LoreditError(f"Cannot access LOREDIT file: {source}") from exc
-    if size == 0:
+    if not content:
         raise LoreditError("LOREDIT file is empty")
-    if size > MAX_LOREDIT_BYTES:
+    if len(content) > MAX_LOREDIT_BYTES:
         raise LoreditError(
             f"LOREDIT file exceeds the {MAX_LOREDIT_BYTES // (1024 * 1024)} MiB limit"
         )
 
     try:
-        content = source.read_bytes()
         iterator = SafeET.iterparse(
             io.BytesIO(content),
             events=("start", "end"),

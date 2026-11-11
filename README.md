@@ -72,12 +72,12 @@ This is an initial measurable baseline, not professional choreography. Beat grid
 
 ## Phase 3 walking skeleton
 
-The temporary engineering command `pulse` proves the preview → Timeline → native S6 writer path using a fixed BPM. It does not analyze audio or create intelligent choreography. It requires a native S6 v15 `.loredit` template whose embedded prop IDs and per-prop `DeviceType`, `TraditionalType`, and `ChannelGrid` declarations match the supplied standalone preview exactly.
+The temporary engineering command `pulse` proves the preview → Timeline → native S6 writer path using a fixed BPM (including decimal values such as `127.43`). It does not analyze audio or create intelligent choreography. It requires a native S6 v15 `.loredit` template whose embedded prop IDs and per-prop `DeviceType`, `TraditionalType`, and `ChannelGrid` declarations match the supplied standalone preview exactly.
 
 Example:
 
 ```powershell
-uv run lor-sequence-builder pulse --preview .\display.lorprev --template .\template.loredit --bpm 120 --output .\pulse-test.loredit --timeline-output .\pulse-test.timeline.json
+uv run lor-sequence-builder pulse --preview .\display.lorprev --template .\template.loredit --bpm 127.43 --output .\pulse-test.loredit --timeline-output .\pulse-test.timeline.json
 ```
 
 The verified Phase 3 boundary is `DeviceType=LOR` with `TraditionalType=Single Color`, `Multicolor_string_1_ch`, or `Channel_per_color`. The standalone preview and embedded template must have identical prop subtrees (all attributes and nested data, including geometry and master-prop references) and identical `PropGroup` membership/layout. Numeric geometry and group coordinates allow only a 1e-6 tolerance. Revision markers may differ; the independent S6 fixture pairs standalone Revision 58 with embedded Revision 56.

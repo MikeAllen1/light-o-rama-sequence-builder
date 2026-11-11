@@ -202,7 +202,7 @@ The exact `.loredit` schema is not to be inferred from memory. The supplied real
 
 ### 5.9 Phase 3 walking-skeleton orchestrator
 
-**Inputs:** Required standalone `.lorprev`, matching native S6 v15 `.loredit` template, integer fixed BPM, pulse duration.
+**Inputs:** Required standalone `.lorprev`, matching native S6 v15 `.loredit` template, fixed BPM (integer or decimal), pulse duration.
 
 **Responsibilities:**
 - Require exact prop-ID set equality, semantic equality of every complete `PropClass` subtree (all attributes, master-prop references, shapes, and geometry), and semantic equality of all `PropGroup` records (member references and arrangement). Numeric geometry/layout coordinates may differ only by 1e-6 to tolerate export formatting. Never remap IDs based on names or order.
@@ -211,7 +211,7 @@ The exact `.loredit` schema is not to be inferred from memory. The supplied real
 - Exclude unsupported device/prop types and any prop without a provable native mapping explicitly in Timeline JSON. A missing SeqProp, incomplete address, ChannelGrid/native-channel count mismatch, or unverified coordinate pattern is a per-prop exclusion with a reason; no event is generated for it.
 - AC/DC values remain recognized by the preview parser for legacy compatibility but are explicitly excluded from Phase 3 because their native mapping has not been verified.
 - Map each ChannelGrid entry to the native channel at the same index only when the entry count matches the channel count and the native coordinates match a verified S6 v15 pattern: row 0 + sequential col for Single Color/Multicolor_string_1_ch; row 0 + col 0 + sequential color for Channel_per_color. Carry network, Unit ID, circuit, preview index, and native row/col/color into every Timeline channel reference.
-- Generate deterministic integer-centisecond beat positions from an explicitly supplied integer BPM (30–300); no audio analysis or tempo inference occurs in this phase. Bound allocation to 50,000 beats and 250,000 events before event materialization.
+- Generate deterministic integer-centisecond beat positions from an explicitly supplied BPM (30–300, decimals allowed); no audio analysis or tempo inference occurs in this phase. Bound allocation to 50,000 beats and 250,000 events before event materialization.
 - Replace prior effects in the in-memory template copy with short `INTENSITY` pulses at each beat for every supported native channel.
 - Validate Timeline prop/channel references and event bounds before serialization; re-read the generated LOREDIT before publishing outputs.
 - Write a versioned Timeline JSON with SHA-256 fingerprints of the validated parsed XML trees, BPM, beat positions, supported/excluded props, and event references.

@@ -164,7 +164,7 @@ def test_invalid_bpm_fails_before_output(
     tmp_path: Path, matching_inputs: tuple[Path, Path], bpm: int
 ) -> None:
     preview, template = matching_inputs
-    with pytest.raises(PulseGenerationError, match="BPM must be an integer"):
+    with pytest.raises(PulseGenerationError, match="BPM must be a finite number"):
         build_pulse_sequence(
             preview, template, tmp_path / "invalid.loredit", tmp_path / "invalid.json", bpm
         )
@@ -479,14 +479,15 @@ def test_timeline_lists_unsupported_props_with_reasons(
     assert all(item["prop_id"] and item["reason"] for item in timeline["excluded_props"])
 
 
-def test_non_integer_bpm_is_rejected(
-    tmp_path: Path, matching_inputs: tuple[Path, Path]
+@pytest.mark.parametrize("bpm", [float("nan"), float("inf"), float("-inf")])
+def test_non_finite_bpm_is_rejected(
+    tmp_path: Path, matching_inputs: tuple[Path, Path], bpm: float
 ) -> None:
     preview, template = matching_inputs
-    with pytest.raises(PulseGenerationError, match="BPM must be an integer"):
+    with pytest.raises(PulseGenerationError, match="BPM must be a finite number"):
         build_pulse_sequence(
-            preview, template, tmp_path / "fractional.loredit",
-            tmp_path / "fractional.json", bpm=120.5  # type: ignore[arg-type]
+            preview, template, tmp_path / "non-finite.loredit",
+            tmp_path / "non-finite.json", bpm=bpm
         )
 
 
