@@ -45,7 +45,7 @@ For a solo-maintained repository, one approval is not useful unless another trus
 - Inspect `git status` and `git diff --cached` before committing. Ignored files can still be force-added.
 - Scan decoded/expanded fixtures as well as their transport wrappers; secret scanners do not inspect opaque compressed or base64 payloads reliably.
 - If a credential is ever committed, revoke or rotate it immediately. Deleting the file in a later commit does not make the exposed credential safe.
-- Use synthetic or sanitized XML fixtures for tests. Remove names, GUIDs, machine paths, media references, and other private details.
+- Use only hand-authored or runtime-generated synthetic XML fixtures in the repository. Do not commit owner/customer LOR files or sanitized/derived copies. Keep any owner-supplied source material outside the repository.
 - Do not put real credentials in issues, pull requests, logs, screenshots, or example configuration files.
 
 ## References
