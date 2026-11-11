@@ -861,8 +861,7 @@
       const response = await fetch("/api/analyze?beats_per_bar=" + meter, {
         method: "POST",
         headers: {
-          "Content-Type": "application/octet-stream",
-          "X-Audio-Filename": encodeURIComponent(file.name)
+          "Content-Type": "application/octet-stream"
         },
         body: file
       });
