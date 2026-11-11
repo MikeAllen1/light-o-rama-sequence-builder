@@ -376,11 +376,15 @@
   }
 
   function getTimelineDurationSeconds() {
-    if (!state.sequence) return 0;
-    return Math.max(
-      state.sequence.durationSeconds,
-      state.audioBuffer ? state.audioBuffer.duration : 0
-    );
+    const durations = [
+      state.sequence ? state.sequence.durationSeconds : 0,
+      state.audioBuffer ? state.audioBuffer.duration : 0,
+      state.analysis && state.analysis.audio
+        ? Number(state.analysis.audio.duration_seconds) || 0
+        : 0,
+      state.vocals ? Number(state.vocals.duration_seconds) || 0 : 0
+    ];
+    return Math.max(...durations);
   }
 
   function drawRuler(width, duration, pps) {
