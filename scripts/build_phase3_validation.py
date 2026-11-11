@@ -6,8 +6,8 @@ import argparse
 import json
 import sys
 import tempfile
-import zipfile
 import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
 
 from defusedxml import ElementTree as SafeET
