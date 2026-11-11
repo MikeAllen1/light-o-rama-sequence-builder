@@ -65,7 +65,7 @@ def _normalize(path: Path, output: Path) -> str:
             "FFmpeg is required for audio decoding; install FFmpeg and ensure it is on PATH"
         )
     try:
-        version_result = subprocess.run(
+        version_result = subprocess.run(  # noqa: S603 - fixed executable and constant arguments
             [ffmpeg, "-version"], check=False, capture_output=True, text=True, timeout=10
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -77,12 +77,22 @@ def _normalize(path: Path, output: Path) -> str:
         ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
         "-protocol_whitelist", "file",
         "-f", input_format,
-        "-i", str(path.resolve()), "-t", str(MAX_DURATION_SECONDS + 1), "-map", "0:a:0", "-vn", "-ac", "1",
-        "-ar", str(SAMPLE_RATE), "-c:a", "pcm_s16le", "-f", "wav", str(output),
+        "-i", str(path.resolve()),
+        "-t", str(MAX_DURATION_SECONDS + 1),
+        "-map", "0:a:0",
+        "-vn",
+        "-ac", "1",
+        "-ar", str(SAMPLE_RATE),
+        "-c:a", "pcm_s16le",
+        "-f", "wav",
+        str(output),
     ]
     try:
-        completed = subprocess.run(
-            command, check=False, capture_output=True, text=True,
+        completed = subprocess.run(  # noqa: S603 - fixed executable and validated argument list
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
             timeout=MAX_FFMPEG_SECONDS,
         )
     except subprocess.TimeoutExpired as exc:
