@@ -37,7 +37,7 @@ The original audio, preview, prop map, and any reference sequence are read-only 
 7. **Rules are configuration.** Universal rules ship in `rules/default.yaml`; user profiles layer on top without modifying application code.
 8. **The writer does not choreograph.** `lor_writer` serializes a validated Timeline into the exact supported LOR format.
 9. **Inputs are immutable and untrusted.** Parsing is hardened, resource limits are explicit, and output is always written separately.
-10. **Format claims require fixtures.** Real `.lorprev` and `.loredit` fixtures plus opening the result in the target LOR application—not remembered or guessed schemas—establish compatibility.
+10. **Format claims require evidence.** S6-generated samples must be inspected locally and the resulting structural observations documented; synthetic regression tests protect implemented behavior, and the owner must open generated files in the target LOR application. Do not commit owner/customer source files or sanitized derivatives.
 
 ## 4. High-level data flow
 
