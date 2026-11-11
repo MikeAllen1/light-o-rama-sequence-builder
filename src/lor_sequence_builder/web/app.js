@@ -8,6 +8,7 @@
   const MARKER_HEIGHT = 22;
   const MAX_XML_BYTES = 50 * 1024 * 1024;
   const MAX_XML_ELEMENTS = 100000;
+  const MAX_JSON_BYTES = 5 * 1024 * 1024;
   const MAX_XML_DEPTH = 256;
 
   const state = {
@@ -244,6 +245,12 @@
       if (analysis.onsets && analysis.onsets.length) lanes.push({
         label: "Audio transients", source: "librosa", kind: "onsets", events: analysis.onsets
       });
+      if (analysis.energy && analysis.energy.length) lanes.push({
+        label: "RMS energy envelope", source: "librosa", kind: "energy", events: analysis.energy
+      });
+      if (analysis.phrase_boundaries && analysis.phrase_boundaries.length) lanes.push({
+        label: "Estimated 4-bar phrases", source: "heuristic", kind: "phrases", events: analysis.phrase_boundaries
+      });
       if (analysis.section_candidates && analysis.section_candidates.length) lanes.push({
         label: "Section candidates", source: "estimated", kind: "sections", events: analysis.section_candidates
       });
@@ -272,14 +279,17 @@
     if (source) {
       const badge = document.createElement("span");
       badge.className = "source";
-      const confidences = (events || []).map((event) => Number(event.confidence))
+      const items = events || [];
+      const confidences = items.map((event) => Number(event.confidence))
         .filter((value) => Number.isFinite(value));
       const average = confidences.length
         ? confidences.reduce((sum, value) => sum + value, 0) / confidences.length
         : null;
+      const methods = Array.from(new Set(items.map((event) => event.method).filter(Boolean)));
       badge.textContent = source + (average == null ? "" : " · " + average.toFixed(2));
-      div.title = source + (average == null ? "" :
-        "; mean heuristic confidence " + average.toFixed(3) + " (not a probability)");
+      div.title = source + (methods.length ? "; method: " + methods.join(", ") : "") +
+        (average == null ? "" :
+          "; mean heuristic confidence " + average.toFixed(3) + " (not a probability)");
       div.appendChild(badge);
     }
     return div;
@@ -445,6 +455,8 @@
       downbeats: "#b28be8",
       onsets: "#d99b56",
       sections: "#4fa9b7",
+      phrases: "#8c79c7",
+      energy: "#6ca4b7",
       stops: "#d56e70",
       "vocal-regions": "#5ea8d9",
       syllables: "#d48db9"
@@ -459,6 +471,21 @@
       ctx.lineTo(width, y + MARKER_HEIGHT - .5);
       ctx.stroke();
       const color = colors[lane.kind] || "#8096a6";
+      if (lane.kind === "energy") {
+        const maximum = Math.max(0.000001, ...lane.events.map((event) => Number(event.rms) || 0));
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        lane.events.forEach((event, index) => {
+          const x = Number(event.time) * pps;
+          const value = Math.max(0, Number(event.rms) || 0);
+          const pointY = y + MARKER_HEIGHT - 3 - (value / maximum) * (MARKER_HEIGHT - 7);
+          if (index === 0) ctx.moveTo(x, pointY);
+          else ctx.lineTo(x, pointY);
+        });
+        ctx.stroke();
+        return;
+      }
       for (const event of lane.events) {
         const time = event.time != null ? Number(event.time) : Number(event.start);
         if (!Number.isFinite(time) || time < 0) continue;
@@ -585,13 +612,12 @@
     const seconds = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
     const visibleTime = Math.min(seconds, state.sequence.durationSeconds);
     playhead.style.left = (visibleTime * state.pxPerSecond) + "px";
-    playhead.style.display = state.audioFile ? "block" : "none";
+    playhead.style.display = state.audioBuffer ? "block" : "none";
   }
 
   function seekAudio(seconds) {
-    if (!state.audioFile) return;
-    const maximum = state.audioBuffer ? state.audioBuffer.duration : state.sequence.durationSeconds;
-    audio.currentTime = Math.max(0, Math.min(seconds, maximum));
+    if (!state.audioBuffer) return;
+    audio.currentTime = Math.max(0, Math.min(seconds, state.audioBuffer.duration));
     updatePlayhead();
   }
 
@@ -624,7 +650,8 @@
     const tempo = state.analysis && state.analysis.analysis && state.analysis.analysis.tempo;
     $("tempoStat").textContent = tempo && tempo.bpm != null ? String(tempo.bpm) : "—";
     $("tempoStat").title = tempo && tempo.bpm != null
-      ? "Estimated dominant tempo. Heuristic stability confidence: " + tempo.confidence
+      ? "Estimated dominant tempo. Method: " + tempo.method +
+        ". Heuristic stability confidence: " + tempo.confidence + " (not a probability)."
       : "No reliable dominant tempo estimate is available.";
   }
 
@@ -707,6 +734,8 @@
       renderSequenceStats();
       refreshTimeline();
       const analysis = state.analysis.analysis;
+      $("analysisBanner").title = analysis.method + "\n" + analysis.provenance +
+        "\nLimitations: " + analysis.limitations.join(" ");
       const bpm = analysis.tempo && analysis.tempo.bpm != null ? analysis.tempo.bpm + " BPM" : "tempo unavailable";
       const warning = payload.warning ? " " + payload.warning : "";
       setBanner("Audio analysis complete: " + bpm + "; " + analysis.beats.length +
@@ -722,6 +751,22 @@
   async function loadAudio(file) {
     if (!file) return;
     state.audioFile = file;
+    state.audioBuffer = null;
+    state.analysis = null;
+    state.vocals = null;
+    if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
+    state.audioUrl = null;
+    audio.pause();
+    audio.removeAttribute("src");
+    audio.load();
+    $("playButton").disabled = true;
+    $("stopButton").disabled = true;
+    $("playButton").textContent = "▶";
+    $("analysisBanner").title = "";
+    if (state.sequence) {
+      renderSequenceStats();
+      refreshTimeline();
+    }
     try {
       const duration = await decodeWaveform(file);
       setBanner("Waveform decoded from the selected audio (" + formatTime(duration) +
@@ -735,13 +780,37 @@
   async function loadAnalysis(file) {
     if (!file) return;
     try {
+      if (file.size > MAX_JSON_BYTES) throw new Error("Analysis JSON exceeds the 5 MiB input limit.");
       const data = JSON.parse(await file.text());
-      if (data.schema_version !== "2.0" || !data.analysis || !Array.isArray(data.analysis.beats)) {
-        throw new Error("Expected a supported audio-analysis v2.0 JSON report.");
+      if (!data || typeof data !== "object") throw new Error("Analysis JSON must contain an object.");
+      const analysis = data.analysis;
+      const requiredArrays = ["beats", "downbeats", "onsets", "energy",
+        "phrase_boundaries", "section_candidates", "hard_stops"];
+      if (data.schema_version !== "2.0" || !analysis ||
+          !data.audio || !Number.isFinite(Number(data.audio.duration_seconds)) ||
+          Number(data.audio.duration_seconds) <= 0 || Number(data.audio.duration_seconds) > 1800 ||
+          !analysis.tempo || !Array.isArray(analysis.limitations) ||
+          typeof analysis.method !== "string" || typeof analysis.provenance !== "string" ||
+          requiredArrays.some((key) => !Array.isArray(analysis[key]))) {
+        throw new Error("Expected a complete audio-analysis v2.0 JSON report.");
+      }
+      for (const key of requiredArrays) {
+        if (analysis[key].length > 100000) throw new Error("Analysis lane " + key + " exceeds 100,000 events.");
+        for (const event of analysis[key]) {
+          if (!event || typeof event !== "object") {
+            throw new Error("Analysis lane " + key + " contains an invalid event.");
+          }
+          const time = Number(event.time);
+          if (!Number.isFinite(time) || time < 0 || time > Number(data.audio.duration_seconds) + 1) {
+            throw new Error("Analysis lane " + key + " contains an invalid timestamp.");
+          }
+        }
       }
       state.analysis = data;
       renderSequenceStats();
       refreshTimeline();
+      $("analysisBanner").title = data.analysis.method + "\n" + data.analysis.provenance +
+        "\nLimitations: " + data.analysis.limitations.join(" ");
       setBanner("Loaded saved analysis. Beat, downbeat, onset, section, and silence markers are labeled as estimates.", "good");
     } catch (error) {
       setBanner(error.message || String(error), "error");
@@ -751,13 +820,31 @@
   async function loadVocals(file) {
     if (!file) return;
     try {
+      if (file.size > MAX_JSON_BYTES) throw new Error("Vocal JSON exceeds the 5 MiB input limit.");
       const data = JSON.parse(await file.text());
-      if (data.schema_version !== "vocals-1.0" ||
-          !Array.isArray(data.regions) || !Array.isArray(data.syllables)) {
-        throw new Error("Expected a supported vocals-1.0 JSON report.");
+      if (!data || typeof data !== "object") throw new Error("Vocal JSON must contain an object.");
+      const duration = Number(data.duration_seconds);
+      if (data.schema_version !== "vocals-1.0" || !Number.isFinite(duration) ||
+          duration <= 0 || duration > 1800 || !Array.isArray(data.limitations) ||
+          typeof data.method !== "string" ||
+          !Array.isArray(data.regions) || !Array.isArray(data.syllables) ||
+          data.regions.length > 100000 || data.syllables.length > 100000) {
+        throw new Error("Expected a complete vocals-1.0 JSON report.");
+      }
+      for (const event of data.regions.concat(data.syllables)) {
+        if (!event || typeof event !== "object") {
+          throw new Error("Vocal report contains an invalid event.");
+        }
+        const start = Number(event.start);
+        const end = Number(event.end);
+        if (!Number.isFinite(start) || !Number.isFinite(end) ||
+            start < 0 || end <= start || end > duration + 1) {
+          throw new Error("Vocal report contains an invalid event boundary.");
+        }
       }
       state.vocals = data;
       refreshTimeline();
+      $("analysisBanner").title = data.method + "\nLimitations: " + data.limitations.join(" ");
       setBanner("Loaded vocal regions and syllable candidates. This analysis is heuristic and does not identify words or lyrics.", "good");
     } catch (error) {
       setBanner(error.message || String(error), "error");
@@ -886,6 +973,9 @@
     audio.addEventListener("pause", () => $("playButton").textContent = "▶");
     audio.addEventListener("timeupdate", updatePlayhead);
     canvasViewport.addEventListener("scroll", syncScroll);
+    window.addEventListener("resize", () => {
+      if (state.sequence) refreshTimeline();
+    });
     $("waveformCanvas").addEventListener("click", (event) => seekFromPointer(event, $("waveformCanvas")));
     $("markersCanvas").addEventListener("click", (event) => seekFromPointer(event, $("markersCanvas")));
     $("tracksCanvas").addEventListener("click", handleTrackClick);

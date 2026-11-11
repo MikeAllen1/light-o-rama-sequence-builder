@@ -168,3 +168,6 @@ canvas { display: block; }
   .bottom-panel { align-items: flex-start; flex-direction: column; }
   .inspector { max-width: 100%; }
 }
+
+.legend-energy { background: #6ca4b7; }
+.legend-phrase { background: #8c79c7; }
