@@ -2,7 +2,7 @@
 
 A display-independent command-line tool for building native Light-O-Rama S6 sequences from music and a required `.lorprev` display preview.
 
-**Project status:** Phases 0 through 6b are complete and merged. Phase 7 (the first full show planner) is built and waiting for an owner playback check in S6. Phase 4 audio analysis runs on librosa and is accepted for songs in 4; swung and rubato recordings are a known limitation. Singing-face lip sync is future work (Phase 8). See [docs/PLAN.md](docs/PLAN.md) for the authoritative status.
+**Project status:** Phases 0 through 6b are complete and merged. Phase 7 (the first full show planner) is built and waiting for an owner playback check in S6. Phase 4 audio analysis runs on librosa and is accepted for songs in 4. Phase 8 (singing faces) is built and waiting for an owner check. See [docs/PLAN.md](docs/PLAN.md) for the authoritative status.
 
 ## Product workflow
 
@@ -77,7 +77,22 @@ Before building, it asks whether you have any specific requirements (skipped whe
 - `Song.timeline.json`, `Song.plan.json`, `Song.rules.json`: every decision, the section plan with props used and left out, and the rule report.
 - `Song.analysis.json` and `Song.analysis.svg`: the music analysis. Pass `--analysis` instead of `--audio` to reuse one.
 
-Singing-face mouths are not animated yet; that needs vocal analysis (Phase 8).
+### Singing faces
+
+Faces drawn as separate props (outline, mouth shapes, eyes) sing along: the mouth opens on each syllable (wider on stronger ones, an "O" mouth on some held notes when you have one, the closed mouth between words), the eyes blink every few seconds, the outline stays on whenever a mouth is on, and the face rests during instrumentals. Parts are recognized by their names in the preview: `outline`; `mouth` or `lips` with `closed`, `half`, `open`, or `o`; `eyes open`, `eyes closed`.
+
+That needs the vocals on their own. Either:
+
+- pass a vocals-only file you already have: `--vocals .\Song-vocals.wav`, or
+- install the optional separation add-on once, and `generate` splits the vocals out of the song itself (only when your display has face mouths):
+
+  ```powershell
+  uv sync --locked --extra vocals
+  ```
+
+  It is a large install (PyTorch), downloads a 67 MB model the first time, and then runs offline. Splitting takes a few minutes per song (about 6 on a 2-core machine); the result is saved as `Song.vocals.wav` and `Song.vocals.json`, and either can be passed to `--vocals` next time. `--no-vocals` skips it.
+
+Without vocals, face mouths stay still and the rest of the face lights with the show.
 
 ## Rules and display requirements
 
@@ -105,6 +120,8 @@ uv run lor-sequence-builder analyze-audio .\song.mp3 --output-json .\song.analys
 The report contains tempo (with a stability confidence), beats from a dynamic-programming beat tracker, downbeats chosen from harmonic change, onsets, an energy curve, four-bar phrase candidates, unlabelled section candidates (self-similarity plus loudness change at bar starts, and broad energy transitions), and hard-stop candidates. Every inferred event records its method and a heuristic confidence. The formal contract is [audio-analysis-v2.schema.json](docs/schemas/audio-analysis-v2.schema.json). Output files must be new paths and are never overwritten.
 
 Add `--beats-per-bar 3` for songs counted in 3; the default is 4.
+
+Experimental, off by default: `--vocals .\song-vocals.wav` lets a vocals-only track re-place beats in stretches where the band's own tempo drifts (the band following the singer). It helped on generated rubato songs but not on the real songs it was checked against, where the plain beat tracker did as well or better, so `generate` only uses it with `--vocal-beats`. The report lists any re-placed stretches under `beat_guidance`.
 
 Score the analysis against timing grids you placed by hand in an existing sequence for the same song:
 

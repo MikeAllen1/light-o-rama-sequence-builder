@@ -16,6 +16,14 @@ dependencies = [
     "pyyaml>=6.0.2,<7",
 ]
 
+[project.optional-dependencies]
+# Optional on-PC vocal separation for singing faces. Large (PyTorch); install
+# with `uv sync --extra vocals`. Without it, pass a vocals-only file instead.
+vocals = [
+    "audio-separator[cpu]==0.48.0",
+    "audioread>=3.0.1,<4",
+]
+
 [project.scripts]
 lor-sequence-builder = "lor_sequence_builder.cli:main"
 
@@ -37,4 +45,9 @@ target-version = "py312"
 python_version = "3.12"
 strict = true
 files = ["src", "tests"]
+
+[[tool.mypy.overrides]]
+# Optional add-on for vocal separation; usually not installed.
+module = ["audio_separator.*"]
+ignore_missing_imports = true
 

@@ -25,10 +25,13 @@ rules:
     severity: error
     # Face parts are recognized by these words in the prop name.
     outline_names: [outline]
-    mouth_names: [mouth, lips]
+    mouth_names: [mouth, lips, mustache, moustache]
   mouths_only_during_vocals:
     severity: error
-    mouth_names: [mouth, lips]
+    mouth_names: [mouth, lips, mustache, moustache]
+    # A mouth part named like this is the resting (closed) position; it may stay
+    # on with the face when nobody is singing.
+    rest_names: [closed, close, shut, rest, down]
   single_color_only_where_possible:
     severity: error
   motion_stops_at_hard_stops:
