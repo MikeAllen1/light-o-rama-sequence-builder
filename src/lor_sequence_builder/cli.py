@@ -415,6 +415,17 @@ def _analyze_preview(preview_path: str, report_path: str | None) -> int:
     model = read_lorprev(preview_path)
     if report_path is not None and Path(report_path).exists():
         raise ClassificationError(f"Report already exists: {report_path}")
+    invalid_groups = [
+        item for item in model.unsupported_constructs
+        if item.kind in {"prop group identity", "prop group member"}
+    ]
+    if invalid_groups:
+        details = "; ".join(
+            f"{item.source.locator}: {item.detail}" for item in invalid_groups
+        )
+        raise ClassificationError(
+            f"Preview has invalid PropGroup identity or membership; cannot classify: {details}"
+        )
     results = classify_preview(preview_element(model))
     order = {"confident": 0, "review": 1, "unknown": 2}
     print(f"Props: {len(results)}")
