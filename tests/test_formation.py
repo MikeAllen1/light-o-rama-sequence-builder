@@ -5,7 +5,6 @@ from __future__ import annotations
 import itertools
 import random
 
-import pytest
 
 from lor_sequence_builder.formation import formation
 from lor_sequence_builder.planner import plan_show
@@ -153,3 +152,30 @@ def test_random_invented_yards_plan_without_breaking_a_rule() -> None:
         planned += 1
     assert planned >= 10
 
+
+
+def test_formation_spatial_work_scales_without_all_pairs_comparisons(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    import lor_sequence_builder.formation as module
+
+    rng = random.Random(41)
+    props = {}
+    for index in range(2500):
+        prop_id = f"p{index}"
+        props[prop_id] = SimpleNamespace(
+            prop_id=prop_id,
+            center=(rng.uniform(-100, 100), rng.uniform(-100, 100)),
+        )
+    calls = 0
+    original = module.math.dist
+
+    def counted(left, right):
+        nonlocal calls
+        calls += 1
+        return original(left, right)
+
+    monkeypatch.setattr(module.math, "dist", counted)
+    result = module.formation(SimpleNamespace(props=props), set(props))
+    assert result.kind in {"clusters", "scatter", "rows", "columns"}
+    assert calls < 250_000
