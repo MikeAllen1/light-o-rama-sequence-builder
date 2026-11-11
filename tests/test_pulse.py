@@ -306,3 +306,28 @@ def test_unreasonably_long_template_is_rejected_before_beat_allocation(
         )
     assert not (tmp_path / "too-long.loredit").exists()
     assert not (tmp_path / "too-long.json").exists()
+
+
+def test_preview_template_channel_declarations_must_match(
+    tmp_path: Path, matching_inputs: tuple[Path, Path]
+) -> None:
+    preview, template = matching_inputs
+    tree = ET.parse(preview)
+    prop = next(
+        item
+        for item in tree.getroot().findall("PropClass")
+        if item.get("DeviceType") == "LOR"
+        and item.get("TraditionalType") in {"Single Color", "Multicolor_string_1_ch"}
+    )
+    prop_id = prop.get("id")
+    assert prop_id is not None
+    prop.set("ChannelGrid", "Different,99,99,99,0,White")
+    tree.write(preview, encoding="utf-8", xml_declaration=True)
+
+    with pytest.raises(PulseGenerationError, match=f"mismatched ChannelGrid"):
+        build_pulse_sequence(
+            preview, template, tmp_path / "channel-mismatch.loredit",
+            tmp_path / "channel-mismatch.json", bpm=120
+        )
+    assert not (tmp_path / "channel-mismatch.loredit").exists()
+    assert not (tmp_path / "channel-mismatch.json").exists()
