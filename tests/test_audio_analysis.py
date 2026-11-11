@@ -94,7 +94,9 @@ def test_cli_exposes_audio_analysis_command(capsys: pytest.CaptureFixture[str]) 
     with pytest.raises(SystemExit) as exc_info:
         main(["analyze-audio", "--help"])
     assert exc_info.value.code == 0
-    assert "output-json" in capsys.readouterr().out
+    help_text = capsys.readouterr().out
+    assert "output-json" in help_text
+    assert "min-bpm" in help_text
 
 
 def test_silence_does_not_fabricate_a_tempo(tmp_path: Path) -> None:
@@ -133,3 +135,23 @@ def test_energy_transition_produces_unlabelled_section_candidate(tmp_path: Path)
     assert candidates
     assert candidates[0]["time"] == pytest.approx(10.0, abs=1.0)
     assert candidates[0]["label"] is None
+
+
+def test_tempo_bounds_are_configurable_and_validated(tmp_path: Path) -> None:
+    audio = tmp_path / "configured.wav"
+    _click_track(audio)
+
+    report = analyze_audio(
+        audio, tmp_path / "configured.json", tmp_path / "configured.svg",
+        min_bpm=100, max_bpm=140,
+    )
+
+    assert report["configuration"]["minimum_bpm"] == 100
+    assert report["configuration"]["maximum_bpm"] == 140
+    assert report["analysis"]["tempo"]["bpm"] == pytest.approx(120.0, abs=3.0)
+
+    with pytest.raises(AudioAnalysisError, match="Tempo bounds"):
+        analyze_audio(
+            audio, tmp_path / "invalid.json", tmp_path / "invalid.svg",
+            min_bpm=150, max_bpm=100,
+        )
