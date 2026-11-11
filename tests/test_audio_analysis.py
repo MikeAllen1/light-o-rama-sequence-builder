@@ -426,7 +426,7 @@ def test_transient_heavy_noisy_audio_remains_bounded_and_finite(tmp_path: Path) 
 
     audio = tmp_path / "noisy-transients.wav"
     rate = 11_025
-    rng = random.Random(20261110)
+    rng = random.Random(20261110)  # noqa: S311 - deterministic synthetic audio, not security-sensitive
     samples = array.array("h", (
         rng.randint(-900, 900) for _ in range(rate * 6)
     ))
@@ -482,7 +482,7 @@ def test_analyzer_accepts_mp3_input_and_recovers_tempo(tmp_path: Path) -> None:
     source = tmp_path / "source.wav"
     audio = tmp_path / "song.mp3"
     _click_track(source, duration=8.0, bpm=120.0)
-    subprocess.run(
+    subprocess.run(  # noqa: S603 - fixed FFmpeg executable and constant argument structure
         [
             ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
             "-i", str(source), "-map", "0:a:0", "-c:a", "libmp3lame",
