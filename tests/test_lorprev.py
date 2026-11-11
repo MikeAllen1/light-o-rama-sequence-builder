@@ -105,6 +105,13 @@ def test_synthetic_revision_one_preview_preserves_full_prop_model(tmp_path: Path
     assert model.unsupported_constructs == ()
     assert all(entry.source.locator.endswith("/@ChannelGrid") for entry in model.channel_grid_entries)
     assert model.channel_grid_entries[0].entry_index == 0
+    assert model.channel_grid_entries[0].device_type == "LOR"
+    assert model.channel_grid_entries[0].network == "Regular"
+    assert model.channel_grid_entries[0].unit_id == "99"
+    assert model.channel_grid_entries[0].circuit == "01"
+    assert model.channel_grid_entries[0].raw_fields == (
+        "Regular", "99", "01", "01", "0", "Multi"
+    )
     assert model.channel_grid_entries[31].entry_index == 15
     assert all(point.x.file == str(source) and point.y.file == str(source) for point in model.geometry_points)
     assert sum(p.attributes["BulbShape"].value == "Square" for p in model.props) == 46
@@ -181,6 +188,53 @@ def test_unknown_prop_device_values_are_reported_with_source_provenance(
     assert model.unsupported_constructs[0].source.file == str(source)
     assert model.unsupported_constructs[0].source.locator.endswith("/@DeviceType")
     assert model.unsupported_constructs[1].source.value == "PixelString"
+
+
+def test_dmx_channel_grid_is_interpreted_without_losing_raw_fields(tmp_path: Path) -> None:
+    source = tmp_path / "dmx-channel-grid.lorprev"
+    source.write_text(
+        '<PreviewClass Revision="1"><PropClass id="dmx-prop" DeviceType="DMX" '
+        'ChannelGrid="12,301,extra" /></PreviewClass>',
+        encoding="utf-8",
+    )
+
+    model = read_lorprev(source)
+    assignment = model.channel_grid_entries[0]
+    assert assignment.device_type == "DMX"
+    assert assignment.universe == "12"
+    assert assignment.channel == "301"
+    assert assignment.network is None
+    assert assignment.unit_id is None
+    assert assignment.raw_fields == ("12", "301", "extra")
+    assert model.unsupported_constructs == ()
+
+
+def test_incomplete_lor_channel_grid_is_preserved_and_reported(tmp_path: Path) -> None:
+    source = tmp_path / "incomplete-lor-channel-grid.lorprev"
+    source.write_text(
+        '<PreviewClass Revision="1"><PropClass id="lor-prop" DeviceType="LOR" '
+        'ChannelGrid="Regular,99" /></PreviewClass>',
+        encoding="utf-8",
+    )
+
+    model = read_lorprev(source)
+    assert model.channel_grid_entries[0].raw_fields == ("Regular", "99")
+    assert model.channel_grid_entries[0].network is None
+    assert [item.kind for item in model.unsupported_constructs] == [
+        "channel assignment"
+    ]
+
+
+def test_undetermined_device_type_is_supported_as_unassigned(tmp_path: Path) -> None:
+    source = tmp_path / "undetermined-device.lorprev"
+    source.write_text(
+        '<PreviewClass Revision="1"><PropClass id="unknown-prop" '
+        'DeviceType="Undetermined" /></PreviewClass>',
+        encoding="utf-8",
+    )
+
+    model = read_lorprev(source)
+    assert model.unsupported_constructs == ()
 
 
 def test_unknown_top_level_construct_is_preserved_and_reported(tmp_path: Path) -> None:
