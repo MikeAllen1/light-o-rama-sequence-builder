@@ -68,7 +68,7 @@ uv run lor-sequence-builder pulse --preview .\display.lorprev --template .\templ
 
 The initial walking-skeleton support boundary is intentionally narrow: `DeviceType=LOR` with `TraditionalType=Single Color` or `Multicolor_string_1_ch`, complete LOR ChannelGrid addresses, and matching native channels in the template. Other prop types are listed in the Timeline as excluded. A prop inside the supported type boundary that lacks a complete preview assignment or native template channel causes generation to fail closed. Existing effects in the template copy are replaced by short intensity pulses at the requested fixed tempo. The template's duration controls the generated sequence duration.
 
-The command writes a deterministic, versioned Timeline JSON and a new `.loredit`; it refuses to overwrite inputs or existing outputs. The generated file still requires manual opening and playback verification in the target S6 release.
+The command writes a deterministic, versioned Timeline JSON and a new `.loredit`; it refuses to overwrite inputs or existing outputs. It bounds generation to 50,000 beats and 250,000 events. The generated file still requires manual opening and playback verification in the target S6 release.
 
 ## Development checks
 
