@@ -82,6 +82,8 @@ A single global tempo is expected to drift whenever the arrangement changes temp
 
 ## Follow-up implementation in PR #12
 
-The first correction removes the previous "shortest local peak retaining 50% of maximum" selection rule. The estimator now selects the strongest local autocorrelation maximum, avoiding the explicit bias toward the fastest qualifying alias. A tempo estimate within 1.5 BPM of either configured search boundary has its confidence capped at 0.1 because the search window may be censoring a stronger candidate outside the requested range.
+The first attempted correction replaced the shortest qualifying local autocorrelation peak with the strongest local peak. CI exposed a clear regression: synthetic 120, 140, and 180 BPM material was returned as approximately 60–70 BPM, and the 220 BPM out-of-range case was returned as approximately 109 BPM. The same four failures reproduced on Linux and Windows.
 
-A regression test covers a 220 BPM synthetic click track analyzed with the default 60–200 BPM range and requires the boundary-pinned result to be marked low confidence. This is a guardrail, not proof that all musical half/double-time ambiguity is solved. The ten real tracks must be reprocessed and compared before this follow-up can be accepted. The test and CodeQL workflows are running on the PR head; results are not yet recorded here.
+That change has been reverted. The current implementation restores the previous shortest-local-peak heuristic, which avoids the newly introduced slow-tempo regression but retains a known risk of selecting double-time aliases on real music. The configured-range confidence cap remains in place for estimates pinned near a search boundary.
+
+This is a rollback, not a completed tempo fix. The ten real tracks have not been reprocessed against a validated replacement algorithm. The next implementation must compare tempo aliases using additional evidence and explicitly represent ambiguity rather than assuming that either the strongest or shortest autocorrelation peak is always musically correct.
