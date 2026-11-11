@@ -1220,12 +1220,26 @@
       if (requestId !== state.sequenceRequestId) return;
       if (state.dirty && !window.confirm("Discard the unexported edits to " +
         state.sequence.filename + "?")) return;
-      const doc = parseXmlDocument(xmlText);
-      state.sequence = parseSequence(doc, file.name);
       const head = new Uint8Array(await file.slice(0, 3).arrayBuffer());
+      openSequenceText(xmlText, file.name, head[0] === 0xEF && head[1] === 0xBB && head[2] === 0xBF);
+      setBanner("Loaded " + state.sequence.props.length + " native props, " +
+        state.sequence.channelCount + " channels, and " + state.sequence.effectCount.toLocaleString() +
+        " effects. Edits stay here until you export a new copy; the source file is never changed.",
+        "good");
+      if (state.audioBuffer) compareDurations();
+    } catch (error) {
+      if (requestId !== state.sequenceRequestId) return;
+      setBanner(error.message || String(error), "error");
+    }
+  }
+
+  // Show a sequence from its text: a file the user opened, or a show just generated.
+  function openSequenceText(xmlText, name, bom) {
+      const doc = parseXmlDocument(xmlText);
+      state.sequence = parseSequence(doc, name);
       const declaration = xmlText.replace(/^\uFEFF/, "").match(/^<\?xml[^?]*\?>/);
       state.sequence.source = {
-        bom: head[0] === 0xEF && head[1] === 0xBB && head[2] === 0xBF,
+        bom: Boolean(bom),
         crlf: xmlText.slice(0, 65536).includes("\r\n"),
         declaration: declaration ? declaration[0] : '<?xml version="1.0" encoding="utf-8"?>',
         spacedEmpty: / \/>/.test(xmlText.slice(0, 65536)),
@@ -1236,19 +1250,11 @@
       state.collapsedProps.clear();
       state.selectedEffect = null;
       $("welcome").classList.add("hidden");
+      $("newShow").classList.add("hidden");
       $("editor").classList.remove("hidden");
       renderEditInspector();
       renderSequenceStats();
       refreshTimeline();
-      setBanner("Loaded " + state.sequence.props.length + " native props, " +
-        state.sequence.channelCount + " channels, and " + state.sequence.effectCount.toLocaleString() +
-        " effects. Edits stay here until you export a new copy; the source file is never changed.",
-        "good");
-      if (state.audioBuffer) compareDurations();
-    } catch (error) {
-      if (requestId !== state.sequenceRequestId) return;
-      setBanner(error.message || String(error), "error");
-    }
   }
 
   async function decodeWaveform(file, requestId) {
@@ -1342,7 +1348,7 @@
     }
   }
 
-  async function loadAudio(file) {
+  async function loadAudio(file, presetAnalysis) {
     if (!file) return;
     if (file.size <= 0 || file.size > MAX_AUDIO_BYTES) {
       setBanner("Audio must be non-empty and no larger than 200 MiB.", "error");
@@ -1370,6 +1376,13 @@
     try {
       const duration = await decodeWaveform(file, requestId);
       if (requestId !== state.audioRequestId || duration == null) return;
+      if (presetAnalysis) {
+        // Already analyzed while building the show: use that, do not run it again.
+        state.analysis = presetAnalysis;
+        renderSequenceStats();
+        if (state.sequence) refreshTimeline();
+        return;
+      }
       setBanner("Waveform decoded from the selected audio (" + formatTime(duration) +
         "). Starting local musical analysis…", "good");
       await analyzeSelectedAudio(file, requestId);
@@ -1791,6 +1804,11 @@
     set("duplicateButton", has);
     set("exportButton", Boolean(state.sequence));
     set("saveReviewButton", Boolean(state.analysis));
+    const exportButton = $("exportButton");
+    if (exportButton) {
+      exportButton.textContent = state.sequence && state.sequence.generated ? "Save sequence"
+        : "Export edited copy";
+    }
     const status = $("editStatus");
     if (status) {
       const parts = [];
@@ -2458,7 +2476,9 @@
         "error");
       return;
     }
-    const name = sequence.filename.replace(/\.(loredit|xml)$/i, "") + " (edited).loredit";
+    // A show generated here is saved under its own name; an opened file gets "(edited)".
+    const name = sequence.generated ? sequence.filename
+      : sequence.filename.replace(/\.(loredit|xml)$/i, "") + " (edited).loredit";
     const url = URL.createObjectURL(new Blob([text], { type: "application/xml" }));
     const link = document.createElement("a");
     link.href = url;
@@ -2996,6 +3016,296 @@
       "with --analysis.", "good");
   }
 
+  // ---------------------------------------------------------------------------
+  // Build a new show: the display preview, the song, optional requirements, then
+  // generate. Each step runs in the local engine (see show_builder.py); the result
+  // opens in the workspace to review, and is saved as a new file.
+
+  const SECTION_NAMES = ["intro", "verse", "pre-chorus", "chorus", "bridge", "instrumental",
+    "breakdown", "solo", "outro", "finale"];
+  const REQUIREMENT_KINDS = {
+    keep_on: "Keep on all song",
+    never_use: "Never use",
+    quiet_during: "Keep dark during",
+    max_intensity: "Limit brightness to"
+  };
+
+  const show = { token: null, summary: null, audioFile: null, analysis: null, raw: [],
+    result: null };
+
+  function showMessage(id, text, kind) {
+    const element = $(id);
+    element.textContent = text;
+    element.className = "step-status" + (kind ? " " + kind : "");
+  }
+
+  async function postShow(path, body, type) {
+    const response = await fetch(path, { method: "POST", headers: { "Content-Type": type },
+      body });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.error || "The local engine refused this step (" +
+        response.status + "). Start the workspace with lor-sequence-ui.");
+    }
+    return payload;
+  }
+
+  function openNewShow() {
+    $("welcome").classList.add("hidden");
+    $("editor").classList.add("hidden");
+    $("newShow").classList.remove("hidden");
+  }
+
+  function closeNewShow() {
+    $("newShow").classList.add("hidden");
+    if (state.sequence) $("editor").classList.remove("hidden");
+    else $("welcome").classList.remove("hidden");
+  }
+
+  function setStepEnabled() {
+    $("showSongFile").disabled = !show.token;
+    $("showSongLabel").classList.toggle("disabled", !show.token);
+    $("addRequirement").disabled = !show.token;
+    $("translateRequirements").disabled = !show.token || !show.summary.can_translate;
+    $("generateShow").disabled = !(show.token && show.analysis);
+  }
+
+  async function chooseDisplay(file) {
+    if (!file) return;
+    showMessage("displayStatus", "Reading " + file.name + "…");
+    try {
+      if (file.size > 20 * 1024 * 1024) throw new Error("A preview must be 20 MiB or smaller.");
+      const summary = await postShow("/api/show/start?name=" + encodeURIComponent(file.name),
+        await file.text(), "application/xml");
+      show.token = summary.token;
+      show.summary = summary;
+      show.analysis = null;
+      show.result = null;
+      const kinds = summary.kinds.map((kind) => kind.count + " " + kind.label).join(", ");
+      const skipped = summary.props.filter((prop) => !prop.sequenceable);
+      showMessage("displayStatus", summary.display + ": " + (kinds || "nothing it can sequence") +
+        "." + (skipped.length ? " Not sequenced: " + skipped.map((prop) => prop.name +
+          (prop.reason ? " (" + prop.reason + ")" : "")).join("; ") + "." : ""), "good");
+      fillRequirementForm();
+      renderRequirements(summary.requirements, []);
+      $("singFaces").closest("label").classList.toggle("hidden", !summary.faces);
+      $("singNote").textContent = summary.faces ? (summary.can_separate_vocals
+        ? "Splitting the vocals out takes a few minutes per song."
+        : "Needs the vocals add-on (uv sync --extra vocals); without it the mouths stay still.")
+        : "";
+      $("plainNote").textContent = summary.can_translate ? ""
+        : "Typing requirements in your own words needs a translator (ANTHROPIC_API_KEY); " +
+          "use the form instead.";
+      if (show.audioFile) await chooseSong(show.audioFile);
+    } catch (error) {
+      show.token = null;
+      showMessage("displayStatus", error.message || String(error), "error");
+    }
+    setStepEnabled();
+  }
+
+  async function chooseSong(file) {
+    if (!file || !show.token) return;
+    show.audioFile = file;
+    show.analysis = null;
+    $("musicFilename").value = file.name;
+    showMessage("songStatus", "Analyzing " + file.name + " on this computer…");
+    setStepEnabled();
+    try {
+      if (file.size > 200 * 1024 * 1024) throw new Error("Audio must be 200 MiB or smaller.");
+      const payload = await postShow("/api/show/audio?token=" + encodeURIComponent(show.token) +
+        "&beats_per_bar=" + $("meterSelect").value + "&name=" + encodeURIComponent(file.name),
+      file, "application/octet-stream");
+      show.analysis = payload.report;
+      const analysis = payload.report.analysis;
+      const tempo = analysis.tempo && analysis.tempo.bpm != null ? analysis.tempo.bpm + " BPM"
+        : "no steady tempo";
+      showMessage("songStatus", file.name + ": " + formatTime(payload.report.audio.duration_seconds) +
+        ", about " + tempo + ", " + analysis.section_candidates.length + " section changes.",
+        "good");
+    } catch (error) {
+      showMessage("songStatus", error.message || String(error), "error");
+    }
+    setStepEnabled();
+  }
+
+  function option(value, text) {
+    const element = document.createElement("option");
+    element.value = value;
+    element.textContent = text;
+    return element;
+  }
+
+  function fillRequirementForm() {
+    const props = $("requirementProps");
+    props.replaceChildren();
+    const summary = show.summary;
+    for (const kind of summary.kinds) {
+      props.appendChild(option("role:" + kind.role, "All " + kind.plural));
+    }
+    for (const group of summary.groups) props.appendChild(option("group:" + group, "Group: " + group));
+    for (const prop of summary.props.filter((item) => item.sequenceable)) {
+      props.appendChild(option("name:" + prop.name, prop.name));
+    }
+    const sections = $("requirementSections");
+    sections.replaceChildren();
+    for (const name of SECTION_NAMES) {
+      const label = document.createElement("label");
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.value = name;
+      label.append(box, name);
+      sections.appendChild(label);
+    }
+    syncRequirementForm();
+  }
+
+  function syncRequirementForm() {
+    const kind = $("requirementKind").value;
+    $("requirementSections").classList.toggle("hidden", kind !== "quiet_during");
+    $("requirementMax").closest("label").classList.toggle("hidden", kind !== "max_intensity");
+  }
+
+  function selectorFrom(value) {
+    const [kind, ...rest] = value.split(":");
+    const text = rest.join(":");
+    if (kind === "role") return { role: text };
+    if (kind === "group") return { group: text };
+    return { names: [text] };
+  }
+
+  async function sendRequirements(raw, text) {
+    try {
+      const result = await postShow("/api/show/requirements?token=" +
+        encodeURIComponent(show.token), JSON.stringify(text ? { requirements: raw, text }
+        : { requirements: raw }), "application/json");
+      show.raw = result.raw;
+      renderRequirements(result.requirements, result.problems);
+    } catch (error) {
+      showMessage("requirementStatus", error.message || String(error), "error");
+    }
+  }
+
+  function renderRequirements(described, problems) {
+    const list = $("requirementList");
+    list.replaceChildren();
+    described.forEach((text, index) => {
+      const item = document.createElement("li");
+      item.textContent = text;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "link-button";
+      remove.textContent = "Remove";
+      remove.addEventListener("click", () =>
+        sendRequirements(show.raw.filter((_, other) => other !== index)));
+      item.appendChild(remove);
+      list.appendChild(item);
+    });
+    showMessage("requirementStatus", (described.length ? described.length +
+      " requirement(s), remembered for this display." : "No requirements: the planner decides.") +
+      (problems.length ? " " + problems.join(" ") : ""), problems.length ? "warn" : "");
+  }
+
+  async function addRequirement() {
+    const kind = $("requirementKind").value;
+    const chosen = Array.from($("requirementProps").selectedOptions).map((item) => item.value);
+    if (!chosen.length) {
+      showMessage("requirementStatus", "Choose which props it is about.", "warn");
+      return;
+    }
+    const added = chosen.map((value) => {
+      const item = { type: kind, props: selectorFrom(value) };
+      if (kind === "quiet_during") {
+        item.sections = Array.from($("requirementSections").querySelectorAll("input:checked"))
+          .map((box) => box.value);
+      }
+      if (kind === "max_intensity") item.max = Number($("requirementMax").value);
+      return item;
+    });
+    if (kind === "quiet_during" && !added[0].sections.length) {
+      showMessage("requirementStatus", "Choose the parts of the song to keep them dark.", "warn");
+      return;
+    }
+    await sendRequirements(show.raw.concat(added));
+  }
+
+  async function generateShow() {
+    const button = $("generateShow");
+    button.disabled = true;
+    const singing = $("singFaces").checked && !$("singFaces").closest("label")
+      .classList.contains("hidden");
+    showMessage("generateStatus", singing
+      ? "Splitting the vocals and planning the show; this can take a few minutes…"
+      : "Planning the show and checking every rule…");
+    try {
+      const result = await postShow("/api/show/generate?token=" + encodeURIComponent(show.token),
+        JSON.stringify({ music_filename: $("musicFilename").value, sing: singing }),
+        "application/json");
+      show.result = result;
+      const parts = result.sections.map((section) => section.label + " (" + section.level + ")");
+      showMessage("generateStatus", (result.rules_ok ? "Every rule passed. " :
+        "Some rules did not pass; see the report. ") + result.used.length + " props used. Parts: " +
+        parts.join(", ") + "." + (result.skipped.length ? " Left out: " + result.skipped
+        .map((item) => item.name + " (" + item.reason + ")").join("; ") + "." : ""), "good");
+      $("showNotes").replaceChildren(...result.notes.map((note) => {
+        const item = document.createElement("li");
+        item.textContent = note;
+        return item;
+      }));
+      $("openGenerated").disabled = false;
+      $("pictureGenerated").disabled = false;
+    } catch (error) {
+      showMessage("generateStatus", error.message || String(error), "error");
+    }
+    button.disabled = false;
+  }
+
+  async function openGenerated() {
+    const result = show.result;
+    if (!result) return;
+    if (state.dirty && !window.confirm("Discard the unexported edits to " +
+      state.sequence.filename + "?")) return;
+    openSequenceText(result.sequence, result.file_name, false);
+    state.sequence.generated = true;
+    state.dirty = true;
+    updateEditControls();
+    setBanner("Generated " + result.file_name + ". Review it against the music, then Save " +
+      "sequence to keep it; open it in S6 to fine-tune.", "good");
+    if (show.audioFile) await loadAudio(show.audioFile, show.analysis);
+  }
+
+  function openPicture() {
+    if (!show.result) return;
+    const url = URL.createObjectURL(new Blob([show.result.picture], { type: "image/svg+xml" }));
+    window.open(url, "_blank", "noopener");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
+  function setupNewShow() {
+    $("newShowButton").addEventListener("click", openNewShow);
+    $("welcomeNewShow").addEventListener("click", openNewShow);
+    $("closeNewShow").addEventListener("click", closeNewShow);
+    const bind = (id, handler) => $(id).addEventListener("change", (event) => {
+      const file = event.target.files && event.target.files[0];
+      if (file) handler(file);
+      event.target.value = "";
+    });
+    bind("showDisplayFile", chooseDisplay);
+    bind("showSongFile", chooseSong);
+    $("requirementKind").addEventListener("change", syncRequirementForm);
+    $("addRequirement").addEventListener("click", addRequirement);
+    $("translateRequirements").addEventListener("click", () => {
+      const text = $("plainRequirements").value.trim();
+      if (text) sendRequirements(show.raw, text);
+    });
+    $("generateShow").addEventListener("click", generateShow);
+    $("openGenerated").addEventListener("click", openGenerated);
+    $("pictureGenerated").addEventListener("click", openPicture);
+    for (const [value, text] of Object.entries(REQUIREMENT_KINDS)) {
+      $("requirementKind").appendChild(option(value, text));
+    }
+  }
+
   function setup() {
     const bindFile = (id, handler) => $(id).addEventListener("change", (event) => {
       const file = event.target.files && event.target.files[0];
@@ -3071,6 +3381,7 @@
     });
     $("waveformCanvas").addEventListener("click", (event) => seekFromPointer(event, $("waveformCanvas")));
     setupEditing();
+    setupNewShow();
   }
 
   setup();

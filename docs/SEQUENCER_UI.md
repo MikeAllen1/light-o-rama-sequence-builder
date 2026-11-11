@@ -27,6 +27,19 @@ The reference lanes are ordered like a DAW arrangement: lyrics and vocals direct
 
 The shared horizontal extent covers the longer of the sequence and selected audio, so neither the lighting sequence nor an audio tail is silently clipped when their durations differ. Audio analysis timestamps are seconds from the decoded audio start and are mapped onto the same horizontal time axis as the sequence's centisecond timestamps. Native timing grids and inferred audio-analysis events remain visually and semantically distinct.
 
+## Building a new show
+
+**New show** (or **Build a new show** on the start page) runs the whole generator from the browser, one step at a time:
+
+1. **Your display:** choose the S6 preview (.lorprev). The panel says what it found (for example "4 arches, 1 mega tree, 4 mini trees") and lists any prop it cannot sequence, with the reason.
+2. **The song:** choose the audio file; it is analyzed on this computer.
+3. **Requirements (optional):** keep props on, never use them, keep them dark during chosen parts of the song, or limit their brightness, chosen from the display's own kinds of props, groups and prop names. With a translator configured (`ANTHROPIC_API_KEY`), they can also be typed in plain English. Requirements are remembered per display in the user's data folder (`%LOCALAPPDATA%\lor-sequence-builder\requirements` on Windows), keyed by the preview's own id, so the next show for the same display starts with them.
+4. **Generate:** set the audio file name as S6 should find it, choose whether faces sing (needs the vocals add-on), and generate. Every rule is checked; the panel lists the song's parts, the props used and left out, and the planner's notes. **Plan picture** opens the whole show at a glance; **Open in the workspace** loads the sequence with the song and its analysis so it can be reviewed against the music, and **Save sequence** downloads `<song> (generated).loredit`.
+
+The files are kept in a private temporary folder for the session (at most four sessions, two hours each) and deleted when the session ends or the workspace stops. The endpoints accept only same-origin requests on the loopback address, with the same size limits as the command line.
+
+Fine-tuning belongs in S6: the workspace's own editing is for quick fixes and for checking a show against the music.
+
 ## Editing
 
 Effects can be edited in place; nothing is written until **Export edited copy**.

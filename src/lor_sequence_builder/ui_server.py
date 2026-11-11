@@ -24,9 +24,16 @@ from lor_sequence_builder.loredit import (
     effect_timing_problems,
     read_loredit,
 )
+from lor_sequence_builder.lorprev import MAX_LORPREV_BYTES
+from lor_sequence_builder.show_builder import ShowBuildError, ShowSessions
 
 _WEB_ROOT = Path(__file__).with_name("web")
 _MAX_UPLOAD_BYTES = MAX_INPUT_BYTES
+_MAX_JSON_BYTES = 256 * 1024
+# Shows being built from the browser (preview, song, requirements, generate).
+SHOWS = ShowSessions()
+_SHOW_STEPS = {"/api/show/start", "/api/show/audio", "/api/show/requirements",
+               "/api/show/generate"}
 
 
 def _looks_like_mp3(data: bytes) -> bool:
@@ -112,9 +119,9 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def do_POST(self) -> None:
-        """Analyze a selected audio file or check an edited sequence; nothing is kept."""
+        """Analyze audio, check an edited sequence, or build a new show."""
         parsed = urlsplit(self.path)
-        if parsed.path not in {"/api/analyze", "/api/export"}:
+        if parsed.path not in {"/api/analyze", "/api/export", *_SHOW_STEPS}:
             self.send_error(404)
             return
         if not self._is_same_origin():
@@ -122,7 +129,62 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/export":
             self._check_export()
             return
+        if parsed.path in _SHOW_STEPS:
+            self._show_step(parsed.path, parse_qs(parsed.query))
+            return
         self._analyze(parsed.query)
+
+    def _show_step(self, path: str, query: dict[str, list[str]]) -> None:
+        token = query.get("token", [""])[0]
+        try:
+            if path == "/api/show/start":
+                payload = self._read_body("application/xml", MAX_LORPREV_BYTES, "Preview")
+                if payload is None:
+                    return
+                name = query.get("name", ["display.lorprev"])[0][:200]
+                self._send_json(200, SHOWS.start(payload, name))
+            elif path == "/api/show/audio":
+                payload = self._read_body("application/octet-stream", _MAX_UPLOAD_BYTES,
+                                          "Audio")
+                if payload is None:
+                    return
+                suffix = _detect_audio_suffix(payload)
+                if suffix is None or suffix not in INPUT_DEMUXERS:
+                    self.send_error(415, "Unsupported or unrecognized audio container")
+                    return
+                meter = query.get("beats_per_bar", ["4"])[0]
+                if meter not in {"3", "4"}:
+                    self.send_error(400, "beats_per_bar must be 3 or 4")
+                    return
+                report = SHOWS.add_audio(token, payload, suffix, INPUT_DEMUXERS[suffix],
+                                         query.get("name", ["song"])[0][:200], int(meter))
+                self._send_json(200, {"report": report})
+            else:
+                body = self._read_json()
+                if body is None:
+                    return
+                if path == "/api/show/requirements":
+                    self._send_json(200, SHOWS.set_requirements(token, body))
+                else:
+                    self._send_json(200, SHOWS.generate(token, body))
+        except (ShowBuildError, AudioAnalysisError, ValueError, RuntimeError) as exc:
+            self._send_json(422, {"error": str(exc)})
+        except OSError:
+            self._send_json(500, {"error": "The show could not be built on this computer"})
+
+    def _read_json(self) -> dict[str, Any] | None:
+        payload = self._read_body("application/json", _MAX_JSON_BYTES, "Request")
+        if payload is None:
+            return None
+        try:
+            body = json.loads(payload.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            self.send_error(400, "Expected a JSON object")
+            return None
+        if not isinstance(body, dict):
+            self.send_error(400, "Expected a JSON object")
+            return None
+        return body
 
     def _is_same_origin(self) -> bool:
         expected_host = "127.0.0.1:" + str(cast(ThreadingHTTPServer, self.server).server_port)
@@ -245,6 +307,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("\nStopping LOR Sequencing Workspace.")
     finally:
         server.server_close()
+        SHOWS.close()
     return 0
 
 
