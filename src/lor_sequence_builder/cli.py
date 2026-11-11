@@ -41,6 +41,8 @@ from lor_sequence_builder.sequence_writer import (
     SequenceWriteError,
     build_from_timeline,
 )
+from lor_sequence_builder.vocal_separation import SeparationError
+from lor_sequence_builder.vocals import VocalAnalysisError
 
 _RULES_HELP = "rule profile to layer over the built-in rules; repeat to stack, later wins"
 _IGNORE_HELP = "do not use the requirements saved next to the preview"
@@ -112,6 +114,11 @@ def _build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--min-bpm", type=int, default=60, help="minimum tempo to search (default: 60)")
     analyze.add_argument("--max-bpm", type=int, default=200, help="maximum tempo to search (default: 200)")
     analyze.add_argument(
+        "--vocals",
+        help="experimental: vocals-only track of the same song, to guide beats where the "
+        "band follows the singer",
+    )
+    analyze.add_argument(
         "--beats-per-bar",
         type=int,
         choices=(3, 4),
@@ -176,6 +183,18 @@ def _build_parser() -> argparse.ArgumentParser:
         "--music-filename",
         help="audio file name to store in the sequence, inside the S6 audio folder "
         "(default: the audio file's name)",
+    )
+    generate.add_argument(
+        "--vocals",
+        help="vocals-only audio for singing faces (or a .vocals.json from an earlier run)",
+    )
+    generate.add_argument(
+        "--no-vocals", action="store_true",
+        help="do not split vocals out of the song, even when the add-on is installed",
+    )
+    generate.add_argument(
+        "--vocal-beats", action="store_true",
+        help="experimental: let the vocals guide beats where the band follows the singer",
     )
     generate.add_argument("--beats-per-bar", type=int, choices=(3, 4), default=4,
                           help="4 for most songs, 3 for waltz time (default: 4)")
@@ -243,6 +262,8 @@ def _generate(options: argparse.Namespace) -> int:
             options.preview, options.output, rule_set,
             audio_path=options.audio, analysis_path=options.analysis,
             music_filename=options.music_filename, beats_per_bar=options.beats_per_bar,
+            vocals_path=options.vocals, separate=False if options.no_vocals else None,
+            progress=print, vocal_beats=options.vocal_beats,
         )
     except RulesFailedError as failed:
         print(failed.report.format_text())
@@ -268,6 +289,10 @@ def _generate(options: argparse.Namespace) -> int:
     print(f"Rule report: {show.report_path}")
     if show.analysis_path is not None:
         print(f"Analysis: {show.analysis_path}")
+    if show.vocals_path is not None:
+        print(f"Vocals: {show.vocals_path}")
+    if show.vocals_note is not None:
+        print(f"Note: {show.vocals_note}")
     return 0
 
 
@@ -310,6 +335,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 min_bpm=options.min_bpm,
                 max_bpm=options.max_bpm,
                 beats_per_bar=options.beats_per_bar,
+                vocals_path=options.vocals,
             )
             analysis = report["analysis"]
             tempo = analysis["tempo"]
@@ -330,6 +356,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"Onsets: {len(analysis['onsets'])}")
             print(f"Section candidates: {len(analysis['section_candidates'])}")
             print(f"Hard stops: {len(analysis['hard_stops'])}")
+            if "beat_guidance" in analysis:
+                stretches = analysis["beat_guidance"]["stretches"]
+                print(f"Vocal-guided stretches: {len(stretches)}")
+                for stretch in stretches:
+                    print(f"  {stretch['start']:.1f}s to {stretch['end']:.1f}s")
             return 0
         if options.command == "pulse":
             if options.duration_seconds is not None and not math.isfinite(
@@ -476,6 +507,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         EvaluationError,
         IntakeError,
         PlanningError,
+        SeparationError,
+        VocalAnalysisError,
         RuleProfileError,
         SequenceWriteError,
         LoreditError,

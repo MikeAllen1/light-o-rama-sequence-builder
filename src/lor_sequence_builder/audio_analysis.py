@@ -224,6 +224,36 @@ def _detect_onsets(envelope: FloatArray) -> list[dict[str, Any]]:
     ]
 
 
+HIGH_BAND_HZ = 5000.0
+
+
+def _high_hits(samples: npt.NDArray[np.float32]) -> list[dict[str, Any]]:
+    """Hits in the high frequencies: tambourine, sleigh bells, hi-hats, shakers."""
+    envelope = np.asarray(
+        librosa.onset.onset_strength(y=samples, sr=SAMPLE_RATE, hop_length=HOP_LENGTH,
+                                     fmin=HIGH_BAND_HZ, n_mels=32),
+        dtype=np.float64,
+    )
+    frames = np.asarray(
+        librosa.onset.onset_detect(onset_envelope=envelope, sr=SAMPLE_RATE,
+                                   hop_length=HOP_LENGTH, units="frames"),
+        dtype=np.int64,
+    )
+    if frames.size == 0:
+        return []
+    reference = float(np.percentile(envelope[frames], 90)) or 1.0
+    events = []
+    for frame, time in zip(frames, _frames_to_times(frames), strict=True):
+        strength = float(envelope[frame]) / reference
+        if strength >= 0.35:
+            events.append({
+                "time": round(float(time), 3),
+                "confidence": round(min(1.0, strength), 4),
+                "method": "librosa_onset_detect_above_5khz",
+            })
+    return events
+
+
 def _fit_tempo_bounds(bpm: float, min_bpm: int, max_bpm: int) -> float | None:
     """Return an octave-equivalent tempo inside the requested range, if one exists."""
     if not math.isfinite(bpm) or bpm <= 0:
@@ -617,8 +647,13 @@ def analyze_audio(
     min_bpm: int = MIN_BPM,
     max_bpm: int = MAX_BPM,
     beats_per_bar: int = 4,
+    vocals_path: str | Path | None = None,
 ) -> dict[str, Any]:
-    """Analyze audio and write a versioned JSON report and an SVG diagnostic plot."""
+    """Analyze audio and write a versioned JSON report and an SVG diagnostic plot.
+
+    With ``vocals_path`` (a vocals-only track of the same song), beats in
+    singer-led stretches are placed with the singer's help (see vocal_beats.py).
+    """
     source = Path(audio_path)
     json_path = Path(json_output)
     plot_path = Path(plot_output)
@@ -647,9 +682,26 @@ def analyze_audio(
         rms = _frame_rms(samples)
         envelope = _onset_envelope(samples)
         onsets = _detect_onsets(envelope)
+        high_hits = _high_hits(samples)
         bpm, beat_frames, tempo_stability, beat_contrast = _track_beats(
             envelope, min_bpm, max_bpm
         )
+        guidance: dict[str, Any] | None = None
+        guided: list[tuple[float, float]] = []
+        if vocals_path is not None and bpm is not None:
+            from lor_sequence_builder.vocal_beats import vocal_guided_beats
+            from lor_sequence_builder.vocals import vocal_events
+
+            vocal_samples, vocal_duration = decode_audio(vocals_path)
+            events = vocal_events(vocal_samples, vocal_duration)
+            beat_frames, guided = vocal_guided_beats(
+                envelope, vocal_samples, beat_frames, bpm, events["regions"]
+            )
+            guidance = {
+                "source": Path(vocals_path).name,
+                "method": "vocal-guided dynamic-tempo beat tracking in singer-led stretches",
+                "stretches": [{"start": a, "end": b} for a, b in guided],
+            }
         beat_times = [round(float(t), 3) for t in _frames_to_times(beat_frames)]
         beat_confidence = round(beat_contrast, 4)
 
@@ -729,7 +781,11 @@ def analyze_audio(
                 },
                 "beats": [
                     {"time": value, "confidence": beat_confidence,
-                     "method": "librosa_dynamic_programming_beat_tracker"}
+                     "method": (
+                         "vocal_guided_dynamic_tempo_beat_tracker"
+                         if any(a <= value < b for a, b in guided)
+                         else "librosa_dynamic_programming_beat_tracker"
+                     )}
                     for value in beat_times
                 ],
                 "downbeats": [
@@ -738,10 +794,12 @@ def analyze_audio(
                     for value in downbeats
                 ],
                 "onsets": onsets,
+                "high_hits": high_hits,
                 "energy": energy,
                 "phrase_boundaries": phrases,
                 "section_candidates": sections,
                 "hard_stops": stops,
+                **({"beat_guidance": guidance} if guidance is not None else {}),
             },
         }
         serialized = json.dumps(report, indent=2, sort_keys=True) + "\n"
@@ -781,3 +839,17 @@ def analyze_audio(
         return report
     except OSError as exc:
         raise AudioAnalysisError(f"Audio analysis I/O failure: {exc}") from exc
+
+
+def decode_audio(audio_path: str | Path) -> tuple[npt.NDArray[np.float32], float]:
+    """Decode any supported audio file to mono samples at SAMPLE_RATE, with its duration."""
+    source = Path(audio_path)
+    if not source.is_file():
+        raise AudioAnalysisError(f"Audio input is not a regular file: {source}")
+    size = source.stat().st_size
+    if size <= 0 or size > MAX_INPUT_BYTES:
+        raise AudioAnalysisError("Audio file must be non-empty and no larger than 200 MiB")
+    with tempfile.TemporaryDirectory(prefix="lor-decode-") as folder:
+        normalized = Path(folder) / "normalized.wav"
+        _normalize(source, normalized)
+        return _read_samples(normalized)

@@ -72,6 +72,6 @@ Do not commit audio, real show files, or analysis outputs from copyrighted songs
 - One dominant tempo per song; tempo changes lower tempo confidence rather than being tracked.
 - Half-time and double-time readings describe the same pulse and cannot always be distinguished.
 - Downbeats use the configured beats per bar (4 by default); meter is not detected.
-- Loosely swung recordings can lower beat agreement, and songs whose harmony does not mark the bar give low downbeat confidence.
+- Loosely swung recordings can lower beat agreement, and songs whose harmony does not mark the bar give low downbeat confidence. Phase 8 adds vocal-guided beat placement for singer-led stretches when a vocals-only track is available (`--vocals`).
 - Section candidates are not labelled and agree only moderately with human section marks.
 - Vocals, syllables, instruments, and lyrics are not detected.

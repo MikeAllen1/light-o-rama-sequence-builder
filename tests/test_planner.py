@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import math
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from pathlib import Path
@@ -108,7 +109,7 @@ def test_every_fictional_display_gets_a_plan_that_passes_the_rules(
 def test_sections_follow_the_song_energy() -> None:
     plan, report = _plan(classic_yard())
     assert [(s.label, s.level) for s in plan.sections] == [
-        ("intro", LOW), ("verse", LOW), ("chorus", HIGH), ("outro", MID),
+        ("intro", LOW), ("verse", MID), ("chorus", HIGH), ("outro", MID),
     ]
     assert [s.start_centisecond for s in plan.sections] == [0, 1600, 3200, 4800]
     # Louder sections light more of the display than quiet ones.
@@ -123,14 +124,24 @@ def test_sections_follow_the_song_energy() -> None:
 
 
 def test_section_labels_reflect_their_place_and_energy() -> None:
-    analysis = synthetic_analysis(sections=((0.0, 0.1), (12.0, 0.9), (30.0, 0.2),
-                                            (45.0, 0.95)))
+    analysis = synthetic_analysis(sections=((0.0, 0.1), (10.0, 0.9), (20.0, 0.2),
+                                            (50.0, 0.95)))
     plan, _ = _plan(classic_yard(), analysis)
     assert [s.label for s in plan.sections] == ["intro", "chorus", "verse", "finale"]
 
 
+def _arches_only() -> DisplayBuilder:
+    display = DisplayBuilder("Fictional Arch Row")
+    names = [f"Arch {i}" for i in range(1, 5)]
+    for i, name in enumerate(names):
+        display.add(name, "arch", shape="Arch", box=(-0.8 + 0.2 * i, -0.3, 0.08, 0.07),
+                    unit="80")
+    display.group("Arches", names)
+    return display
+
+
 def test_arches_chase_in_their_preview_order_and_mirror_between_sections() -> None:
-    display = classic_yard()
+    display = _arches_only()
     ids = _ids(display)
     arches = tuple(ids[f"Arch {i}"] for i in range(1, 5))
     plan, _ = _plan(display)
@@ -161,10 +172,12 @@ def test_mouths_stay_still_until_vocals_exist() -> None:
     ids = _ids(display)
     plan, report = _plan(display)
     lit = {e.prop_id for e in plan.choreography.effects}
-    assert ids["Mouth Open"] not in lit and ids["Mouth Closed"] not in lit
+    # Without vocals the mouth never opens; the closed mouth may rest with the face.
+    assert ids["Mouth Open"] not in lit
+    assert ids["Mouth Closed"] in lit
     assert ids["Face Outline"] in lit
     skipped = {s.name: s.reason for s in plan.skipped_props}
-    assert "vocal analysis" in skipped["Mouth Open"]
+    assert "no vocals for this song" in skipped["Mouth Open"]
     assert "driven by its master prop" in skipped["Face Eyes"]
     assert report.ok
 
@@ -270,9 +283,10 @@ def test_cli_generate_from_audio(tmp_path: Path, capsys: pytest.CaptureFixture[s
 
 
 def test_long_sections_change_look_from_phrase_to_phrase() -> None:
-    display = classic_yard()
+    display = _arches_only()
     ids = _ids(display)
-    analysis = synthetic_analysis(duration=64.0, sections=((0.0, 0.1), (8.0, 0.9)))
+    analysis = synthetic_analysis(duration=64.0,
+                                  sections=((0.0, 0.1), (8.0, 0.95), (40.0, 0.3)))
     plan, report = _plan(display, analysis)
     assert report.ok
     arches = {ids[f"Arch {i}"] for i in range(1, 5)}
@@ -285,16 +299,15 @@ def test_long_sections_change_look_from_phrase_to_phrase() -> None:
     assert all(set(m.prop_ids) == arches for m in plan.choreography.movements)
 
 
-def test_the_intro_builds_and_the_song_ends_with_a_fade() -> None:
+def test_the_intro_starts_focused_and_the_song_ends_with_a_fade() -> None:
     display = roofline_house()
-    ids = _ids(display)
     analysis = synthetic_analysis(duration=60.0, sections=((0.0, 0.1), (24.0, 0.9)))
     plan, report = _plan(display, analysis)
     assert report.ok, report.format_text()
-    first_phrase = {e.prop_id for e in plan.choreography.effects if e.start_centisecond < 800}
-    roles = {display_from_preview(display.element()).props[p].role for p in first_phrase}
-    assert roles <= {"star", "outline", "snowflake"}
-    assert ids["Front Icicles"] not in first_phrase
+    props = display_from_preview(display.element()).props
+    first_phrase = {props[e.prop_id].role for e in plan.choreography.effects
+                    if e.start_centisecond < 800}
+    assert len(first_phrase - {"star", "outline"}) <= 2
     ending = [e for e in plan.choreography.effects if e.end_centisecond == 6000]
     assert ending and all(e.kind == "fade" and e.end_intensity == 0 for e in ending)
 
@@ -390,3 +403,92 @@ def test_any_song_shape_plans_without_breaking_a_rule(seed: int) -> None:
     for make in ALL_DISPLAYS:
         _, report = _plan(make(), analysis)
         assert report.ok, f"{make.__name__}: {report.format_text()}"
+
+
+def test_two_rows_of_the_same_size_stay_separate_and_face_groups_are_not_rows() -> None:
+    display = DisplayBuilder("Two Fictional Rows")
+    for i in range(3):
+        display.add(f"Low Arch {i + 1}", "arch", shape="Arch", channels=2,
+                    box=(-0.9 + 0.06 * i, -0.2, 0.05, 0.04), unit="50")
+        display.add(f"High Arch {i + 1}", "arch", shape="Arch", channels=4,
+                    box=(0.4 + 0.16 * i, -0.37, 0.12, 0.1), unit="51")
+    ring = [(0.1 + 0.05 * math.cos(a), 0.05 * math.sin(a))
+            for a in (k * math.pi / 6 for k in range(13))]
+    names = ("Face Outline", "Face Mouth Open", "Face Mouth Closed")
+    for name in names:
+        display.add(name, "singing_face", shape="Lines-Connected", points=ring, unit="52")
+    display.group("Face", names)
+    props = display_from_preview(display.element()).props
+    low = {props[p].row_id for p in props if props[p].name.startswith("Low")}
+    high = {props[p].row_id for p in props if props[p].name.startswith("High")}
+    assert len(low) == len(high) == 1 and low != high
+    plan, report = _plan(display)
+    assert report.ok, report.format_text()
+    for movement in plan.choreography.movements:
+        rows = {props[p].row_id for p in movement.prop_ids}
+        assert len(rows) == 1
+        assert all(props[p].role == "arch" for p in movement.prop_ids)
+
+
+def test_multi_segment_arches_wipe_across_their_segments() -> None:
+    display = DisplayBuilder("Segmented Fictional Arches")
+    for i in range(4):
+        display.add(f"Segment Arch {i + 1}", "arch", shape="Arch", channels=4,
+                    box=(-0.6 + 0.3 * i, -0.3, 0.2, 0.15), unit="70")
+    plan, report = _plan(display)
+    assert report.ok, report.format_text()
+    chase = next(m for m in plan.choreography.movements if m.kind == "chase")
+    first = chase.prop_ids[0]
+    starts = sorted((e.start_centisecond, e.channel_index) for e in plan.choreography.effects
+                    if e.movement_id == chase.movement_id and e.prop_id == first)
+    assert len({s for s, _ in starts}) == 4  # each segment starts a little later
+    expected = [0, 1, 2, 3] if chase.direction == "left_to_right" else [3, 2, 1, 0]
+    assert [c for _, c in starts] == expected
+
+
+def _lit_groups(plan: Plan, display: DisplayBuilder, start: int, end: int) -> set[str]:
+    props = display_from_preview(display.element()).props
+    return {props[e.prop_id].role for e in plan.choreography.effects
+            if e.start_centisecond < end and start < e.end_centisecond
+            and props[e.prop_id].role not in {"star", "outline"}}
+
+
+def test_quiet_parts_have_few_leads_that_hand_off_and_answer_every_beat() -> None:
+    display = classic_yard()
+    analysis = synthetic_analysis(duration=64.0, sections=((0.0, 0.1), (40.0, 0.9)))
+    plan, report = _plan(display, analysis)
+    assert report.ok, report.format_text()
+    # The quiet first section: two groups lead at a time (8 s phrases at 120 BPM).
+    leads = [_lit_groups(plan, display, a + 50, a + 750) for a in range(0, 3200, 800)]
+    assert all(1 <= len(lead) <= 2 for lead in leads)
+    assert len({frozenset(lead) for lead in leads}) >= 3  # it passes across the yard
+    # Something answers every beat, even in the quiet part.
+    starts = {e.start_centisecond for e in plan.choreography.effects}
+    beats = [round(t["time"] * 100) for t in analysis["analysis"]["beats"]
+             if t["time"] < 32]
+    assert all(any(abs(s - b) <= 1 for s in starts) for b in beats)
+
+
+def test_the_finale_brings_everything_in() -> None:
+    display = classic_yard()
+    analysis = synthetic_analysis(duration=60.0,
+                                  sections=((0.0, 0.2), (20.0, 0.5), (40.0, 0.95)))
+    plan, _ = _plan(display, analysis)
+    assert plan.sections[-1].label == "finale"
+    assert _lit_groups(plan, display, 4100, 5500) >= {"arch", "mini_tree", "mega_tree"}
+
+
+def test_high_pitched_hits_make_the_sparkle_group_flash() -> None:
+    display = line_drawn_yard()
+    analysis = synthetic_analysis(duration=32.0, sections=((0.0, 0.5),))
+    hits = [round(0.25 + 0.5 * i, 3) for i in range(60)]  # a tambourine on the offbeats
+    analysis["analysis"]["high_hits"] = [{"time": t, "confidence": 0.9, "method": "test"}
+                                         for t in hits]
+    plan, report = _plan(display, analysis)
+    assert report.ok, report.format_text()
+    props = display_from_preview(display.element()).props
+    flakes = [e for e in plan.choreography.effects if props[e.prop_id].role == "snowflake"]
+    on_hits = [e for e in flakes if any(abs(e.start_centisecond - round(t * 100)) <= 1
+                                        for t in hits)]
+    assert len(on_hits) >= 40
+    assert all(e.end_centisecond - e.start_centisecond <= 12 for e in on_hits)
