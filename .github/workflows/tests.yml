@@ -100,7 +100,7 @@ jobs:
         run: mkdir -p dist
 
       - name: Export locked production dependencies
-        run: uv export --locked --no-dev --format requirements-txt --output-file dist/requirements-production.txt
+        run: uv export --locked --no-dev --no-emit-project --format requirements-txt --output-file dist/requirements-production.txt
       - name: Audit production dependencies
         run: uv tool run --from pip-audit==2.10.1 pip-audit -r dist/requirements-production.txt
 
