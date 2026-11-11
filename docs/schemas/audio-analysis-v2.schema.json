@@ -91,6 +91,7 @@
         "hop_length",
         "minimum_bpm",
         "maximum_bpm",
+        "beats_per_bar",
         "minimum_duration_seconds",
         "maximum_duration_seconds",
         "maximum_input_bytes",
@@ -125,6 +126,12 @@
         },
         "hop_length": {
           "const": 512
+        },
+        "beats_per_bar": {
+          "enum": [
+            3,
+            4
+          ]
         }
       }
     },

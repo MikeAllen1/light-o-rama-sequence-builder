@@ -48,6 +48,13 @@ def _build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--plot", required=True, help="new SVG diagnostic plot path")
     analyze.add_argument("--min-bpm", type=int, default=60, help="minimum tempo to search (default: 60)")
     analyze.add_argument("--max-bpm", type=int, default=200, help="maximum tempo to search (default: 200)")
+    analyze.add_argument(
+        "--beats-per-bar",
+        type=int,
+        choices=(3, 4),
+        default=4,
+        help="beats per bar for downbeats: 4 for most songs, 3 for waltz time (default: 4)",
+    )
     score = commands.add_parser(
         "evaluate-analysis",
         help="score an analysis JSON against hand-placed timing grids in a sequence",
@@ -78,6 +85,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 options.plot,
                 min_bpm=options.min_bpm,
                 max_bpm=options.max_bpm,
+                beats_per_bar=options.beats_per_bar,
             )
             analysis = report["analysis"]
             tempo = analysis["tempo"]

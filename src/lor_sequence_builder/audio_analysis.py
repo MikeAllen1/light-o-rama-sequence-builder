@@ -36,6 +36,7 @@ MIN_DURATION_SECONDS = 2.0
 MAX_DECODED_SAMPLES = SAMPLE_RATE * MAX_DURATION_SECONDS
 MIN_BPM = 60
 MAX_BPM = 200
+SUPPORTED_BEATS_PER_BAR = (3, 4)
 
 # Structural segmentation tunables, chosen against owner-made section grids.
 SECTION_KERNEL_BEATS = 16
@@ -288,13 +289,17 @@ def _beat_chroma(samples: npt.NDArray[np.float32], beat_frames: IntArray) -> Flo
     return _beat_sync(chroma, beat_frames, aggregate=np.median)
 
 
-def _downbeat_phase(beat_chroma: FloatArray, beat_count: int) -> tuple[int, float]:
-    """Pick the bar phase where harmony changes most (assumes 4 beats per bar)."""
-    if beat_count < DOWNBEAT_MIN_BARS * 4 or beat_chroma.shape[1] < 2:
+def _downbeat_phase(
+    beat_chroma: FloatArray, beat_count: int, beats_per_bar: int = 4
+) -> tuple[int, float]:
+    """Pick the bar phase where harmony changes most for the given beats per bar."""
+    if beat_count < DOWNBEAT_MIN_BARS * beats_per_bar or beat_chroma.shape[1] < 2:
         return 0, 0.0
     change = np.r_[0.0, np.linalg.norm(np.diff(beat_chroma, axis=1), axis=0)][:beat_count]
     # Median per bar position: real bar structure repeats; one odd beat should not decide.
-    scores = [float(np.median(change[phase::4])) for phase in range(4)]
+    scores = [
+        float(np.median(change[phase::beats_per_bar])) for phase in range(beats_per_bar)
+    ]
     phase = int(np.argmax(scores))
     ordered = sorted(scores)
     confidence = (ordered[-1] - ordered[-2]) / ordered[-1] if ordered[-1] > 1e-12 else 0.0
@@ -544,6 +549,7 @@ def analyze_audio(
     plot_output: str | Path,
     min_bpm: int = MIN_BPM,
     max_bpm: int = MAX_BPM,
+    beats_per_bar: int = 4,
 ) -> dict[str, Any]:
     """Analyze audio and write a versioned JSON report and an SVG diagnostic plot."""
     source = Path(audio_path)
@@ -552,6 +558,8 @@ def analyze_audio(
     try:
         if not 30 <= min_bpm < max_bpm <= 300:
             raise AudioAnalysisError("Tempo bounds must satisfy 30 <= min BPM < max BPM <= 300")
+        if beats_per_bar not in SUPPORTED_BEATS_PER_BAR:
+            raise AudioAnalysisError("Beats per bar must be 3 or 4")
         if not source.is_file():
             raise AudioAnalysisError(f"Audio input is not a regular file: {source}")
         size = source.stat().st_size
@@ -581,10 +589,10 @@ def analyze_audio(
         downbeats: list[float] = []
         bar_confidence = 0.0
         structural: list[dict[str, Any]] = []
-        if bpm is not None and len(beat_times) >= 8:
+        if bpm is not None and len(beat_times) >= 2 * beats_per_bar:
             beat_chroma = _beat_chroma(samples, beat_frames)
-            phase, bar_confidence = _downbeat_phase(beat_chroma, len(beat_times))
-            downbeat_indices = np.arange(phase, len(beat_times), 4, dtype=np.int64)
+            phase, bar_confidence = _downbeat_phase(beat_chroma, len(beat_times), beats_per_bar)
+            downbeat_indices = np.arange(phase, len(beat_times), beats_per_bar, dtype=np.int64)
             downbeats = [beat_times[int(i)] for i in downbeat_indices]
             for beat_index, score in _structural_sections(
                 samples, beat_frames, beat_chroma, downbeat_indices
@@ -625,6 +633,7 @@ def analyze_audio(
                 "hop_length": HOP_LENGTH,
                 "minimum_bpm": min_bpm,
                 "maximum_bpm": max_bpm,
+                "beats_per_bar": beats_per_bar,
                 "minimum_duration_seconds": MIN_DURATION_SECONDS,
                 "maximum_duration_seconds": MAX_DURATION_SECONDS,
                 "maximum_input_bytes": MAX_INPUT_BYTES,
@@ -640,7 +649,7 @@ def analyze_audio(
                 "limitations": [
                     "Beat tracking assumes one dominant tempo; tempo stability reports how much of the song agrees with it.",
                     "Half-time and double-time readings describe the same pulse and cannot always be told apart.",
-                    "Downbeats assume four beats per bar and choose the bar phase where harmony changes most.",
+                    "Downbeats use the configured beats per bar (3 or 4, default 4; meter is not detected) and choose the bar phase where harmony changes most.",
                     "Phrase boundaries group every four detected bars; they are not semantic phrase detection.",
                     "Section candidates are structural or energy changes; verse/chorus labels are not inferred, and section placement is partly a matter of taste.",
                     "Hard stops are sustained near-silence candidates and may include intentional pauses.",
@@ -658,7 +667,7 @@ def analyze_audio(
                 ],
                 "downbeats": [
                     {"time": value, "confidence": bar_confidence,
-                     "method": "four_beat_bar_phase_from_beat_synchronous_chroma_change"}
+                     "method": "bar_phase_from_beat_synchronous_chroma_change"}
                     for value in downbeats
                 ],
                 "onsets": onsets,

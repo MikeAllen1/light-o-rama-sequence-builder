@@ -66,6 +66,8 @@ uv run lor-sequence-builder analyze-audio .\song.mp3 --output-json .\song.analys
 
 The report contains tempo (with a stability confidence), beats from a dynamic-programming beat tracker, downbeats chosen from harmonic change, onsets, an energy curve, four-bar phrase candidates, unlabelled section candidates (self-similarity plus loudness change at bar starts, and broad energy transitions), and hard-stop candidates. Every inferred event records its method and a heuristic confidence. The formal contract is [audio-analysis-v2.schema.json](docs/schemas/audio-analysis-v2.schema.json). Output files must be new paths and are never overwritten.
 
+Add `--beats-per-bar 3` for songs counted in 3; the default is 4.
+
 Score the analysis against timing grids you placed by hand in an existing sequence for the same song:
 
 ```powershell

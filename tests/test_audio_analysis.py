@@ -649,6 +649,7 @@ def _chord_song(
     bars_per_part: int,
     pickup_beats: int = 1,
     bpm: float = 120.0,
+    beats_per_bar: int = 4,
 ) -> float:
     """Clicks on every beat with chords that change exactly on each downbeat.
 
@@ -657,11 +658,11 @@ def _chord_song(
     rate = 22_050
     beat = 60.0 / bpm
     start = 0.5
-    total_beats = pickup_beats + 4 * bars_per_part * len(progressions)
+    total_beats = pickup_beats + beats_per_bar * bars_per_part * len(progressions)
     samples = [0.0] * int(rate * (start + (total_beats + 1) * beat))
     for index in range(total_beats):
         onset = start + index * beat
-        bar = (index - pickup_beats) // 4
+        bar = (index - pickup_beats) // beats_per_bar
         part = max(0, bar) // bars_per_part
         chords = progressions[min(part, len(progressions) - 1)]
         chord = chords[max(0, bar) % len(chords)]
@@ -739,3 +740,28 @@ def test_beat_sync_columns_line_up_with_beat_indices() -> None:
     # Column i averages beat i up to the next beat; the last beat spans one period.
     assert late_start.tolist() == [[7.0, 12.0, 17.0]]
     assert zero_start.tolist() == [[2.0, 7.0, 12.0, 17.0]]
+
+
+def test_waltz_downbeats_follow_three_beat_bars(tmp_path: Path) -> None:
+    audio = tmp_path / "waltz.wav"
+    first_downbeat = _chord_song(
+        audio, [[C_MAJOR, A_MINOR, F_MAJOR, G_MAJOR]], bars_per_part=16,
+        pickup_beats=1, beats_per_bar=3,
+    )
+
+    report = analyze_audio(
+        audio, tmp_path / "waltz.json", tmp_path / "waltz.svg", beats_per_bar=3
+    )
+
+    assert report["configuration"]["beats_per_bar"] == 3
+    downbeats = [event["time"] for event in report["analysis"]["downbeats"]]
+    bar_seconds = 1.5
+    offsets = [(time - first_downbeat) % bar_seconds for time in downbeats]
+    assert all(min(offset, bar_seconds - offset) < 0.1 for offset in offsets)
+
+
+def test_unsupported_beats_per_bar_is_rejected(tmp_path: Path) -> None:
+    audio = tmp_path / "click.wav"
+    _click_track(audio)
+    with pytest.raises(AudioAnalysisError, match="3 or 4"):
+        analyze_audio(audio, tmp_path / "bad.json", tmp_path / "bad.svg", beats_per_bar=5)
