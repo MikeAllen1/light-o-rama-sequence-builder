@@ -32,7 +32,9 @@ def _build_parser() -> argparse.ArgumentParser:
     inspect.add_argument("sequence", help="input .loredit file")
     preview = commands.add_parser("inspect-preview", help="inspect a standalone LORPREV file")
     preview.add_argument("preview", help="input .lorprev file")
-    roundtrip = commands.add_parser("roundtrip", help="write a semantically preserving LOREDIT copy")
+    roundtrip = commands.add_parser(
+        "roundtrip", help="write a semantically preserving LOREDIT copy"
+    )
     roundtrip.add_argument("sequence", help="input .loredit file")
     roundtrip.add_argument("output", help="new output .loredit path (must not exist)")
     pulse = commands.add_parser(
@@ -47,7 +49,9 @@ def _build_parser() -> argparse.ArgumentParser:
         help=f"fixed tempo in beats per minute ({MIN_PULSE_BPM}–{MAX_PULSE_BPM}, decimals allowed)",
     )
     pulse.add_argument("--output", required=True, help="new output .loredit path")
-    pulse.add_argument("--timeline-output", required=True, help="new deterministic Timeline .json path")
+    pulse.add_argument(
+        "--timeline-output", required=True, help="new deterministic Timeline .json path"
+    )
     pulse.add_argument(
         "--pulse-duration-cs",
         type=int,
