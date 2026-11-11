@@ -449,7 +449,7 @@ def test_tempo_estimator_handles_a_range_of_common_tempos(
 def test_analysis_does_not_publish_json_when_plot_generation_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import lor_sequence_builder.audio_analysis as audio_analysis
+    from lor_sequence_builder import audio_analysis
 
     audio = tmp_path / "atomic.wav"
     json_path = tmp_path / "atomic.json"
@@ -473,7 +473,7 @@ def test_analysis_does_not_publish_json_when_plot_generation_fails(
 def test_concurrent_plot_creation_does_not_leave_partial_json(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import lor_sequence_builder.audio_analysis as audio_analysis
+    from lor_sequence_builder import audio_analysis
 
     audio = tmp_path / "race.wav"
     json_path = tmp_path / "race.json"
