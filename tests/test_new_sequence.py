@@ -322,7 +322,7 @@ def test_new_sequence_excludes_pixel_string_types(tmp_path: Path) -> None:
     candidate = next(
         prop for prop in preview.findall("PropClass")
         if prop.get("DeviceType") == "LOR"
-        and prop.get("TraditionalType") == "Single Color"
+        and prop.get("TraditionalType") == "Multicolor_string_1_ch"
     )
     candidate.set("StringType", "Pixel")
 
