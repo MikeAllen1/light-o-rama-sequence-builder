@@ -488,8 +488,8 @@ def test_concurrent_plot_creation_does_not_leave_partial_json(
         link_calls += 1
         if link_calls == 2:
             Path(destination).write_text("another process won", encoding="utf-8")
-        else:
-            real_link(source, destination)
+            raise FileExistsError("simulated concurrent output creation")
+        real_link(source, destination)
 
     monkeypatch.setattr(audio_analysis.os, "link", create_competing_plot)
 
