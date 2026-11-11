@@ -50,9 +50,18 @@ def test_analyze_audio_detects_tempo_beats_onsets_and_hard_stop(tmp_path: Path) 
     assert report["audio"]["duration_seconds"] == pytest.approx(8.0, abs=0.1)
     assert analysis["tempo"]["bpm"] == pytest.approx(120.0, abs=3.0)
     assert len(analysis["beats"]) >= 10
+    assert analysis["beats"][0]["time"] == pytest.approx(0.25, abs=0.12)
     assert len(analysis["downbeats"]) >= 2
+    assert analysis["downbeats"][0]["time"] == pytest.approx(0.25, abs=0.12)
+    assert analysis["downbeats"][1]["time"] == pytest.approx(2.25, abs=0.15)
     assert len(analysis["onsets"]) >= 8
     assert all(0.0 <= event["confidence"] <= 1.0 for event in analysis["onsets"])
+    assert all(event["method"] for event in analysis["beats"])
+    assert all(event["method"] for event in analysis["downbeats"])
+    assert all(event["method"] for event in analysis["onsets"])
+    assert all(point["method"] == "root_mean_square_amplitude" for point in analysis["energy"])
+    assert analysis["hard_stops"][0]["method"]
+    assert report["tool_versions"]["ffmpeg"].startswith("ffmpeg version")
     assert analysis["hard_stops"]
     assert analysis["hard_stops"][0]["time"] == pytest.approx(5.8, abs=0.2)
     assert analysis["energy"]
@@ -155,3 +164,42 @@ def test_tempo_bounds_are_configurable_and_validated(tmp_path: Path) -> None:
             audio, tmp_path / "invalid.json", tmp_path / "invalid.svg",
             min_bpm=150, max_bpm=100,
         )
+
+
+
+def test_constant_tone_does_not_invent_periodic_beats(tmp_path: Path) -> None:
+    import array
+
+    audio = tmp_path / "constant-tone.wav"
+    samples = array.array("h", (
+        int(8_000 * math.sin(2 * math.pi * 440 * index / 11_025))
+        for index in range(11_025 * 5)
+    ))
+    with wave.open(str(audio), "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(11_025)
+        output.writeframes(samples.tobytes())
+
+    report = analyze_audio(audio, tmp_path / "tone.json", tmp_path / "tone.svg")
+
+    assert report["analysis"]["tempo"]["bpm"] is None
+    assert report["analysis"]["beats"] == []
+    assert report["analysis"]["downbeats"] == []
+
+
+def test_analysis_json_records_provenance_and_runtime_configuration(tmp_path: Path) -> None:
+    audio = tmp_path / "provenance.wav"
+    _click_track(audio)
+
+    report = analyze_audio(
+        audio, tmp_path / "provenance.json", tmp_path / "provenance.svg",
+        min_bpm=100, max_bpm=140,
+    )
+
+    assert report["tool_versions"]["ffmpeg"]
+    assert report["tool_versions"]["python"]
+    assert report["analysis"]["provenance"]
+    assert report["configuration"]["minimum_bpm"] == 100
+    assert report["configuration"]["maximum_bpm"] == 140
+    assert report["analysis"]["phrase_boundaries"][0]["method"]
