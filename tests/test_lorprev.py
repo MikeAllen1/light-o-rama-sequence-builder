@@ -195,6 +195,21 @@ def test_unknown_top_level_construct_is_preserved_and_reported(tmp_path: Path) -
     assert model.unrecognized_top_level[0].attributes["id"].value == "future"
 
 
+def test_raw_element_preserves_mixed_text_and_child_tail(tmp_path: Path) -> None:
+    source = tmp_path / "mixed-content.lorprev"
+    source.write_text(
+        '<PreviewClass Revision="1"><PropClass id="p">before'
+        '<shape>inside</shape>after</PropClass></PreviewClass>',
+        encoding="utf-8",
+    )
+
+    model = read_lorprev(source)
+    prop = model.props[0]
+    assert prop.text == "before"
+    assert prop.children[0].text == "inside"
+    assert prop.children[0].tail == "after"
+
+
 def test_owner_supplied_default_preview_is_rejected_as_zero_prop_fixture() -> None:
     with pytest.raises(LorprevError, match="zero PropClass"):
         read_lorprev(FIXTURES / "default_empty.lorprev")
