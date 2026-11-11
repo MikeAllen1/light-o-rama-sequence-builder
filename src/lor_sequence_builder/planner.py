@@ -34,7 +34,6 @@ deterministic: the same inputs give the same plan.
 from __future__ import annotations
 
 import itertools
-import math
 import re
 import zlib
 from collections import defaultdict
@@ -42,6 +41,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from lor_sequence_builder.choreography import Choreography, Effect, Movement, Section
+from lor_sequence_builder.formation import Formation, formation
 from lor_sequence_builder.rules import RuleSet, select_props
 from lor_sequence_builder.rules.engine import Display, DisplayProp
 
@@ -385,7 +385,7 @@ def _rows(display: Display, usable: set[str]) -> tuple[list[_Row], list[str]]:
     keyed: dict[tuple[str, str], list[DisplayProp]] = defaultdict(list)
     for prop in display.props.values():
         # Parts of a singing face share a group but are never chased like a row, and
-        # snowflakes fall down their columns instead of chasing across the yard.
+        # snowflakes move by their own formation (see formation.py).
         if (prop.prop_id in usable and prop.position_in_row is not None
                 and prop.row_id is not None and prop.role not in {"singing_face", "snowflake"}):
             keyed[(prop.role, prop.row_id)].append(prop)
@@ -410,41 +410,6 @@ def _rows(display: Display, usable: set[str]) -> tuple[list[_Row], list[str]]:
         in_rows.update(p.prop_id for p in ordered)
     singles = [pid for pid in display.props if pid in usable and pid not in in_rows]
     return rows, singles
-
-
-def _columns(display: Display, usable: set[str]) -> list[tuple[str, ...]]:
-    """Snowflakes stacked one above another, each column listed top to bottom.
-
-    Columns come from the preview: snowflakes whose horizontal positions are much
-    closer together than the snowflakes are to each other overall. A column needs
-    at least two snowflakes at different heights.
-    """
-    flakes = [p for p in display.props.values()
-              if p.prop_id in usable and p.role == "snowflake" and p.center is not None]
-    if len(flakes) < 2:
-        return []
-
-    def xy(prop: DisplayProp) -> tuple[float, float]:
-        assert prop.center is not None
-        return prop.center
-
-    nearest = sorted(
-        min(math.dist(xy(a), xy(b)) for b in flakes if b is not a) for a in flakes)
-    gap = 0.35 * nearest[len(nearest) // 2]
-    flakes.sort(key=lambda p: xy(p)[0])
-    groups: list[list[DisplayProp]] = [[flakes[0]]]
-    for prop in flakes[1:]:
-        if xy(prop)[0] - xy(groups[-1][-1])[0] <= gap:
-            groups[-1].append(prop)
-        else:
-            groups.append([prop])
-    columns = []
-    for group in groups:
-        ordered = sorted(group, key=lambda p: -xy(p)[1])
-        heights = [xy(p)[1] for p in ordered]
-        if len(ordered) >= 2 and all(a - b >= 0.5 * gap for a, b in itertools.pairwise(heights)):
-            columns.append(tuple(p.prop_id for p in ordered))
-    return sorted(columns, key=lambda c: xy(display.props[c[0]])[0])
 
 
 # ---------------------------------------------------------------- building effects
@@ -588,8 +553,9 @@ class _Planner:
     # two is what keeps a show from feeling all-flash or all-fade.
     soft: bool = True
     turns: dict[frozenset[str], int] = field(default_factory=dict)
-    # Snowflakes stacked in columns, each listed top to bottom; they fall.
-    columns: list[tuple[str, ...]] = field(default_factory=list)
+    # How the snowflakes stand in the preview, and so how they move.
+    snow: Formation = field(default_factory=lambda: Formation("single", (), (), ("chase",
+                                                                                "left_to_right")))
     fall_turn: int = 0
 
     def channels(self, pid: str, section_index: int) -> list[int]:
@@ -729,10 +695,11 @@ class _Planner:
         self.light(pid, window.section_index, window.start, window.end, kind, intensity)
 
     def fall(self, members: list[str], section_index: int, start: int, intensity: int,
-             limit: int) -> bool:
-        """Light a column of snowflakes from the top down: each holds, then fades out.
+             limit: int, motion: tuple[str, str] = ("fall", "top_to_bottom")) -> bool:
+        """Light a line of props one after another (a column from the top down, or a
+        row or cluster across): each holds, then fades out.
 
-        The whole fall is placed or none of it, so the movement always finishes.
+        The whole line is placed or none of it, so the movement always finishes.
         """
         spans = []
         for i, pid in enumerate(members):
@@ -745,7 +712,7 @@ class _Planner:
             for channel in self.channels(pid, section_index):
                 if not self.canvas._free((pid, channel), on, off):
                     return False
-        movement = (self.movement("fall", tuple(members), "top_to_bottom", start, end)
+        movement = (self.movement(motion[0], tuple(members), motion[1], start, end)
                     if len(members) > 1 else None)
         for pid, on, held, off in spans:
             self.light(pid, section_index, on, held, "on", intensity, movement=movement)
@@ -753,18 +720,50 @@ class _Planner:
         return True
 
     def falls(self, window: _Window, columns: list[list[str]], times: list[int],
-              intensity: int, reverse: bool = False) -> None:
-        """One column falls at each time; the columns take turns across the yard and back."""
-        if not columns:
+              intensity: int, reverse: bool = False,
+              motion: tuple[str, str] = ("fall", "top_to_bottom"),
+              bursts: list[str] | None = None) -> None:
+        """At each time one line moves (a column falls, or a row or cluster ripples
+        across); the lines take turns across the yard and back. Multi-segment props
+        in ``bursts`` take their turn too, opening out segment by segment."""
+        lines: list[list[str]] = [list(c) for c in columns if c]
+        if motion[0] == "chase" and reverse:
+            # Ripples alternate direction, like chases do.
+            lines = [list(reversed(line)) for line in lines]
+            motion = ("chase", "right_to_left" if motion[1] == "left_to_right"
+                      else "left_to_right")
+        turns: list[tuple[str, list[str]]] = [("line", line) for line in lines]
+        turns += [("burst", [pid]) for pid in bursts or []]
+        if not turns:
             return
-        order = list(range(len(columns)))
+        order = list(range(len(turns)))
         if reverse:
             order.reverse()
         cycle = order + order[-2:0:-1] if len(order) > 2 else order
         for time in times:
-            column = columns[cycle[self.fall_turn % len(cycle)]]
-            if self.fall(column, window.section_index, time, intensity, window.end):
+            kind, members = turns[cycle[self.fall_turn % len(cycle)]]
+            placed = (self.burst(members[0], window.section_index, time, intensity, window.end)
+                      if kind == "burst" else
+                      self.fall(members, window.section_index, time, intensity, window.end,
+                                motion))
+            if placed:
                 self.fall_turn += 1
+
+    def burst(self, pid: str, section_index: int, start: int, intensity: int,
+              limit: int) -> bool:
+        """Open a multi-segment prop out segment by segment, in its channel order."""
+        channels = self.channels(pid, section_index)
+        spans = [(ch, start + i * FALL_STEP) for i, ch in enumerate(channels)]
+        end = spans[-1][1] + FALL_HOLD + FALL_DECAY
+        if end > limit or not all(self.canvas._free((pid, ch), on, on + FALL_HOLD + FALL_DECAY)
+                                  for ch, on in spans):
+            return False
+        for ch, on in spans:
+            color = self.color(pid, ch)
+            self.canvas.put(pid, ch, on, on + FALL_HOLD, "on", intensity, color=color)
+            self.canvas.put(pid, ch, on + FALL_HOLD, on + FALL_HOLD + FALL_DECAY, "fade",
+                            intensity, 0, color)
+        return True
 
     def rotate(self, pid: str, window: _Window, intensity: int, per_beat: int,
                reverse: bool = False) -> None:
@@ -848,8 +847,10 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
             for pid in members:
                 planner.pulse(pid, window, intensity=gentle)
 
-    columns = [[p for p in column if p in active] for column in planner.columns]
-    in_columns = {p for column in planner.columns for p in column}
+    snow = planner.snow
+    columns = [[p for p in line if p in active] for line in snow.lines]
+    in_columns = {p for line in snow.lines for p in line}
+    bursts = [p for p in snow.loose if p in active and _multi_segment(planner, p)]
     for pid in singles:
         if pid not in active or pid in in_columns:
             continue
@@ -872,20 +873,29 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
             if level >= MID:
                 planner.steady(pid, window, 100)
         elif prop.role == "snowflake":
-            # A snowflake on its own (not part of a falling column) twinkles.
-            planner.steady(pid, window, {LOW: 40, MID: 60, HIGH: 100}[level], "twinkle")
+            # A snowflake outside the formation: a multi-segment one opens out with the
+            # others (below); a simple one twinkles.
+            if pid not in bursts:
+                planner.steady(pid, window, {LOW: 40, MID: 60, HIGH: 100}[level], "twinkle")
         else:
             planner.pulse(pid, window, intensity={LOW: 60, MID: 90, HIGH: 100}[level]
                           if prop.role != "unknown" else {LOW: 50, MID: 70, HIGH: 90}[level])
     columns = [c for c in columns if c]
-    if columns:
+    if columns or bursts:
         if level == LOW:
             times = [a for a, _ in _bars(window)]
         elif level == MID:
             times = list(window.beats[(window.offset % 2)::2])
         else:
             times = list(window.beats)
-        planner.falls(window, columns, times, gentle, reverse=flip)
+        planner.falls(window, columns, times, gentle, reverse=flip, motion=snow.movement,
+                      bursts=bursts)
+
+
+def _multi_segment(planner: _Planner, pid: str) -> bool:
+    prop = planner.display.props[pid]
+    return (len(planner.constraints.channels[pid]) >= 2
+            and prop.color_kind != "color_per_channel")
 
 
 
@@ -983,9 +993,11 @@ def _sparkle(planner: _Planner, window: _Window, props: list[str], hits: list[in
     and fade."""
     if not props:
         return
-    columns = [[p for p in column if p in props] for column in planner.columns]
+    snow = planner.snow
+    columns = [[p for p in line if p in props] for line in snow.lines]
     columns = [c for c in columns if c]
-    if columns:
+    bursts = [p for p in snow.loose if p in props and _multi_segment(planner, p)]
+    if columns or bursts:
         # One fall per hit, but never closer together than a column takes to start
         # falling, so each fall reads.
         spaced: list[int] = []
@@ -993,10 +1005,11 @@ def _sparkle(planner: _Planner, window: _Window, props: list[str], hits: list[in
             if not spaced or hit - spaced[-1] >= SPARKLE_SPACING:
                 spaced.append(hit)
         level = planner.sections[window.section_index].level
-        planner.falls(window, columns, spaced, {LOW: 60, MID: 85, HIGH: 100}[level])
-        # Snowflakes that are not part of a column glitter under the falls.
+        planner.falls(window, columns, spaced, {LOW: 60, MID: 85, HIGH: 100}[level],
+                      motion=snow.movement, bursts=bursts)
+        # Other snowflakes glitter underneath.
         for pid in props:
-            if not any(pid in c for c in columns):
+            if not any(pid in c for c in columns) and pid not in bursts:
                 planner.steady(pid, window, 60, "twinkle")
         return
     share = max(1, len(props) // 3)
@@ -1304,7 +1317,9 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
                          "sings but their mouths do not move.")
     rows, singles = _rows(display, usable - singing)
     groups = _groups(display, rows, singles)
-    planner.columns = _columns(display, usable - singing)
+    planner.snow = formation(display, {p for p in usable - singing
+                                       if display.props[p].role == "snowflake"},
+                             prefer="columns")
     base = {p for p in usable - singing if display.props[p].role in BASE_ROLES}
     sparkle = _sparkle_group(groups)
     hits = _times(analysis, "high_hits")
