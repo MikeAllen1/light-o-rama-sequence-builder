@@ -25,7 +25,7 @@ def test_cli_help_exits_successfully(capsys: pytest.CaptureFixture[str]) -> None
 
 
 def test_inspect_preview_reports_lor_controller_addresses(
-    tmp_path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     preview = tmp_path / "controller-layout.lorprev"
     preview.write_text(
