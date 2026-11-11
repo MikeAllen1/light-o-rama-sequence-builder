@@ -5,14 +5,14 @@ This document separates security controls committed to the repository from GitHu
 ## Configured in the repository
 
 - **Dependabot version updates:** `.github/dependabot.yml` checks Python dependencies and GitHub Actions weekly and opens update pull requests.
-- **Automated tests and dependency audit:** `.github/workflows/tests.yml` runs tests, Ruff, strict mypy, and `pip-audit`. The workflow has read-only repository permissions and disables persisted checkout credentials.
+- **Automated tests and dependency audit:** `.github/workflows/tests.yml` runs tests, Ruff, strict mypy, and a `pip-audit` scan of the locked production dependency export. Developer-tool pins are centralized in `requirements-dev.txt`; they are not yet represented in `uv.lock`. The workflow has read-only repository permissions and disables persisted checkout credentials.
 - **CodeQL:** `.github/workflows/codeql.yml` runs Python and GitHub Actions code scanning on pushes and pull requests to `master`, plus a weekly scheduled scan. The analysis job receives only the permissions needed to publish code-scanning results.
 - **Security policy:** `SECURITY.md` explains responsible vulnerability reporting and safe handling of user files.
 - **Local-file exclusions:** `.gitignore` excludes local secrets, private keys, audio, and Light-O-Rama sequence files. This is a guardrail, not a substitute for checking staged files.
 
 ## GitHub settings that still need an owner action
 
-The GitHub connection used to update repository files does not expose the repository's security-settings write controls. The repository's ruleset listing currently returns no rulesets, and branch-protection settings could not be read through that connection. Do not assume the following hosted controls are enabled just because the workflow files exist.
+The GitHub connection used to update repository files does not expose repository security-settings write controls. A repository ruleset named `Protect` exists, but its enforcement is **disabled**. The `master` branch API also reports `protected: false` and no required status checks. Do not treat `master` as protected until the ruleset is enabled and its requirements are verified.
 
 On the repository page, open **Settings → Security → Advanced Security** (GitHub may label the page slightly differently) and enable the following where offered:
 
@@ -27,7 +27,7 @@ CodeQL is configured as a workflow in this repository. After its first successfu
 
 ## Protect the default branch
 
-Open **Settings → Rules → Rulesets** and create an active branch ruleset targeting `master`. Recommended protections for this project:
+Open **Settings → Rules → Rulesets**, edit the existing `Protect` ruleset, and change enforcement from **Disabled** to **Active**. Confirm that it targets `master`. Recommended protections for this project:
 
 - Require a pull request before changes merge to `master`.
 - Require the **Tests / Tests, lint, types, and dependency audit** status check (confirm the exact displayed name after a successful run).
