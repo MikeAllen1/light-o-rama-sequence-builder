@@ -270,7 +270,7 @@
         label: "Vocal regions", source: "heuristic", kind: "vocal-regions", events: state.vocals.regions
       });
       if (state.vocals.syllables && state.vocals.syllables.length) lanes.push({
-        label: "Syllable onsets", source: "heuristic", kind: "syllables", events: state.vocals.syllables
+        label: "Vocal syllables / holds", source: "heuristic", kind: "syllables", events: state.vocals.syllables
       });
     }
     state.lanes = lanes;
@@ -548,13 +548,30 @@
         const time = event.time != null ? Number(event.time) : Number(event.start);
         if (!Number.isFinite(time) || time < 0) continue;
         const x = time * pps;
-        if (lane.kind === "vocal-regions") {
-          const end = Number(event.end);
+        if (lane.kind === "vocal-regions" || lane.kind === "syllables" || lane.kind === "stops") {
+          const end = lane.kind === "stops"
+            ? time + Number(event.silence_duration)
+            : Number(event.end);
           if (Number.isFinite(end) && end > time) {
-            ctx.fillStyle = "rgba(74, 151, 199, .28)";
-            ctx.fillRect(x, y + 5, Math.max(2, (end - time) * pps), 12);
+            const blockY = lane.kind === "vocal-regions" ? y + 5 : y + 7;
+            const blockHeight = lane.kind === "vocal-regions" ? 12 : 8;
+            const blockWidth = Math.max(2, (end - time) * pps);
+            const strength = lane.kind === "syllables"
+              ? Math.max(0.2, Math.min(1, Number(event.strength) || 0.2))
+              : 1;
+            ctx.globalAlpha = lane.kind === "syllables" ? 0.25 + strength * 0.65 : 0.3;
+            ctx.fillStyle = color;
+            ctx.fillRect(x, blockY, blockWidth, blockHeight);
+            ctx.globalAlpha = 1;
             ctx.strokeStyle = color;
-            ctx.strokeRect(x, y + 5, Math.max(2, (end - time) * pps), 12);
+            ctx.strokeRect(x, blockY, blockWidth, blockHeight);
+            if (lane.kind === "syllables") {
+              ctx.strokeStyle = "rgba(245, 224, 238, .85)";
+              ctx.beginPath();
+              ctx.moveTo(Math.floor(x) + .5, y + 3);
+              ctx.lineTo(Math.floor(x) + .5, y + MARKER_HEIGHT - 3);
+              ctx.stroke();
+            }
           }
         } else {
           ctx.strokeStyle = color;
