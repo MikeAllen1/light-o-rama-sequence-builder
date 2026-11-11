@@ -745,6 +745,21 @@ def test_timeline_json_rejects_duplicate_object_keys_at_any_depth(tmp_path: Path
         load_choreography(path)
 
 
+
+def test_profile_rejects_non_string_requirement_keys(tmp_path: Path) -> None:
+    path = _profile(
+        tmp_path,
+        "schema_version: rules-1.0\\n"
+        "requirements:\\n"
+        "  - type: never_use\\n"
+        "    props: {all: true}\\n"
+        "    7: value\\n",
+    )
+
+    with pytest.raises(RuleProfileError, match=r"requirements\\[0\\].*field names must be text"):
+        load_rule_set((path,))
+
+
 def test_profile_rejects_unhashable_yaml_mapping_keys(tmp_path: Path) -> None:
     path = _profile(
         tmp_path,
