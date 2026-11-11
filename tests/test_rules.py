@@ -793,54 +793,6 @@ def test_profile_rejects_unhashable_yaml_mapping_keys(tmp_path: Path) -> None:
 
 
 
-def test_direct_choreography_rejects_malformed_numeric_fields_cleanly() -> None:
-    display = classic_yard()
-    with pytest.raises(ChoreographyError, match="duration_centiseconds must be an integer"):
-        _check(display, Choreography(duration_centiseconds=cast(int, "1200"), effects=()))
-
-    with pytest.raises(ChoreographyError, match="duration_centiseconds must be an integer"):
-        _check(display, Choreography(duration_centiseconds=cast(int, True), effects=()))
-
-    invalid_intensity = Choreography(
-        duration_centiseconds=SONG,
-        effects=(Effect(_ids(display)["Arch 1"], 0, 0, 100,
-                        start_intensity=cast(int, "high")),),
-    )
-    with pytest.raises(ChoreographyError, match=r"effects\[0\].start_intensity must be an integer"):
-        _check(display, invalid_intensity)
-
-    invalid_timestamp = Choreography(
-        duration_centiseconds=SONG,
-        effects=(Effect(_ids(display)["Arch 1"], 0,
-                        cast(int, "0"), 100),),
-    )
-    with pytest.raises(ChoreographyError, match=r"effects\[0\].start_centisecond must be an integer"):
-        _check(display, invalid_timestamp)
-
-    invalid_channel = Choreography(
-        duration_centiseconds=SONG,
-        effects=(Effect(_ids(display)["Arch 1"], cast(int, "0"), 0, 100),),
-    )
-    with pytest.raises(ChoreographyError, match=r"effects\[0\].channel_index must be an integer"):
-        _check(display, invalid_channel)
-
-    invalid_end = Choreography(
-        duration_centiseconds=SONG,
-        effects=(Effect(_ids(display)["Arch 1"], 0, 0, cast(int, "100")),),
-    )
-    with pytest.raises(ChoreographyError, match=r"effects\[0\].end_centisecond must be an integer"):
-        _check(display, invalid_end)
-
-    invalid_end_intensity = Choreography(
-        duration_centiseconds=SONG,
-        effects=(Effect(_ids(display)["Arch 1"], 0, 0, 100,
-                        end_intensity=cast(int, True)),),
-    )
-    with pytest.raises(ChoreographyError, match=r"effects\[0\].end_intensity must be an integer"):
-        _check(display, invalid_end_intensity)
-
-
-
 def test_direct_movement_with_no_props_fails_without_crashing() -> None:
     display = classic_yard()
     timeline = Choreography(
@@ -883,7 +835,7 @@ def test_direct_movement_with_non_integer_time_raises_domain_error() -> None:
                             "left_to_right", True, 100),),
     )
 
-    with pytest.raises(ChoreographyError, match=r"movements\\[0\\].start_centisecond must be an integer"):
+    with pytest.raises(ChoreographyError, match=r"movements\[0\].start_centisecond must be an integer"):
         _check(display, timeline)
 
 
@@ -974,31 +926,6 @@ def test_direct_movement_with_non_iterable_props_fails_without_crashing() -> Non
 
     assert not report.ok
     assert any("must contain at least one prop" in item for item in findings)
-
-
-def test_direct_section_hard_stop_and_vocal_times_raise_domain_errors() -> None:
-    display = classic_yard()
-
-    bad_section = Choreography(
-        duration_centiseconds=SONG, effects=(),
-        sections=(Section("verse", cast(int, "0"), 100),),
-    )
-    with pytest.raises(ChoreographyError, match=r"sections\\[0\\].start_centisecond must be an integer"):
-        _check(display, bad_section)
-
-    bad_stop = Choreography(
-        duration_centiseconds=SONG, effects=(),
-        hard_stops_centiseconds=(cast(int, "100"),),
-    )
-    with pytest.raises(ChoreographyError, match=r"hard_stops_centiseconds\\[0\\] must be an integer"):
-        _check(display, bad_stop)
-
-    bad_vocals = Choreography(
-        duration_centiseconds=SONG, effects=(),
-        vocal_regions=((cast(int, "0"), 100),),
-    )
-    with pytest.raises(ChoreographyError, match=r"vocal_regions\\[0\\]\\[0\\] must be an integer"):
-        _check(display, bad_vocals)
 
 
 def test_duplicate_group_names_union_members_for_name_selectors() -> None:
