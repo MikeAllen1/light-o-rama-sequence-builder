@@ -215,11 +215,14 @@ def display_from_preview(preview: ET.Element) -> Display:
                 if len(name_to_ids[name]) == 1
             ),
         )
-    groups: dict[str, tuple[str, ...]] = {}
+    group_members: dict[str, list[str]] = defaultdict(list)
     for group in preview.findall("PropGroup"):
         name = group.get("Name", "")
         if name:
-            groups[name] = tuple(m.get("id", "") for m in group.findall("member"))
+            # A display name is the public selector key. Preserve every matching
+            # group's members rather than silently replacing earlier groups.
+            group_members[name].extend(m.get("id", "") for m in group.findall("member"))
+    groups = {name: tuple(dict.fromkeys(ids)) for name, ids in group_members.items()}
     return Display(props, groups)
 
 
@@ -372,8 +375,15 @@ def _effects_well_formed(ctx: _Context) -> str | None:
             ctx.add(f"A {e.kind} effect holds one intensity; use a fade to change it", e)
         if e.kind == "fade" and e.start_intensity == e.end_intensity:
             ctx.add("A fade must change intensity; use an on effect to hold one", e)
-    movement_ids = [m.movement_id for m in ctx.choreography.movements]
-    for movement_id in {m for m in movement_ids if movement_ids.count(m) > 1}:
+    seen_movement_ids: set[str] = set()
+    duplicate_movement_ids: set[str] = set()
+    for movement in ctx.choreography.movements:
+        movement_id = movement.movement_id
+        if movement_id in seen_movement_ids:
+            duplicate_movement_ids.add(movement_id)
+        else:
+            seen_movement_ids.add(movement_id)
+    for movement_id in sorted(duplicate_movement_ids):
         ctx.add(f"Movement id {movement_id!r} is used more than once")
     for m in ctx.choreography.movements:
         if not 0 <= m.start_centisecond < m.end_centisecond <= duration:

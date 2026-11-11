@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
+
+import lor_sequence_builder.choreography as choreography_module
 
 from lor_sequence_builder.choreography import (
     Choreography,
@@ -24,6 +27,7 @@ from lor_sequence_builder.rules import (
     RuleReport,
     RuleSet,
     check_choreography,
+    display_from_preview,
     load_rule_set,
 )
 from tests.display_builders import (
@@ -656,3 +660,68 @@ def test_checking_never_modifies_the_timeline() -> None:
     before = choreography_json(timeline)
     _check(display, timeline)
     assert choreography_json(timeline) == before
+
+ 
+@pytest.mark.parametrize("value", [".nan", ".inf", "-.inf"])
+def test_profile_rejects_non_finite_rule_values(tmp_path: Path, value: str) -> None:
+    profile = _profile(tmp_path, "schema_version: rules-1.0\nrules:\n"
+                                 f"  not_everything_at_once: {{max_share: {value}}}\n")
+    with pytest.raises(RuleProfileError, match="finite number"):
+        load_rule_set((profile,))
+
+
+@pytest.mark.parametrize("kind", ["[keep_on]", "{bad: value}"])
+def test_requirement_type_must_be_text(tmp_path: Path, kind: str) -> None:
+    profile = _profile(tmp_path, "schema_version: rules-1.0\nrequirements:\n"
+                                 f"  - type: {kind}\n    props: {{all: true}}\n")
+    with pytest.raises(RuleProfileError, match=r"requirements\[0\]\.type"):
+        load_rule_set((profile,))
+
+
+def test_timeline_movement_count_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(choreography_module, "MAX_MOVEMENTS", 1)
+    data = {
+        "schema_version": "choreography-1.0",
+        "duration_centiseconds": SONG,
+        "effects": [],
+        "movements": [
+            {"movement_id": f"m{i}", "kind": "chase", "prop_ids": ["a"],
+             "direction": "left_to_right", "start_centisecond": 0,
+             "end_centisecond": 100}
+            for i in range(2)
+        ],
+    }
+    with pytest.raises(ChoreographyError, match="more than 1 movements"):
+        parse_choreography(data)
+
+
+def test_duplicate_movement_ids_are_reported() -> None:
+    display = classic_yard()
+    timeline = Choreography(
+        duration_centiseconds=SONG,
+        movements=(
+            Movement("duplicate", "chase", ("a",), "left_to_right", 0, 100),
+            Movement("duplicate", "chase", ("b",), "left_to_right", 100, 200),
+        ),
+    )
+    report = _check(display, timeline)
+    _, findings = _result(report, "effects_well_formed")
+    assert any("Movement id 'duplicate' is used more than once" in item
+               for item in findings)
+
+
+def test_duplicate_group_names_union_members_for_name_selectors() -> None:
+    builder = classic_yard()
+    root = builder.element()
+    duplicate = ET.SubElement(
+        root, "PropGroup", {"id": "second-arches-group", "Name": "Arches"}
+    )
+    mini_tree_id = _ids(builder)["Mini Tree 1"]
+    ET.SubElement(duplicate, "member", {"id": mini_tree_id})
+
+    display = display_from_preview(root)
+
+    expected = {
+        _ids(builder)[f"Arch {index}"] for index in range(1, 5)
+    } | {mini_tree_id}
+    assert set(display.groups["Arches"]) == expected
