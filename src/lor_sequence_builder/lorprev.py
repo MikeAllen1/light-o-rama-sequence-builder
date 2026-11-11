@@ -235,7 +235,16 @@ def read_lorprev(path: str | Path) -> PropModel:
     unknown = tuple(child for child in display.children if child.tag not in known)
     # Only these tags have been observed in committed native fixtures. Preserve
     # and surface every other tag at any depth without guessing its meaning.
-    known_tags = {"PreviewClass", "PropClass", "Scene", "PropViews", "PropGroup", "member", "shape", "point"}
+    known_tags = {
+        "PreviewClass",
+        "PropClass",
+        "Scene",
+        "PropViews",
+        "PropGroup",
+        "member",
+        "shape",
+        "point",
+    }
     unrecognized_elements = tuple(
         node for node in _walk_raw_elements(display) if node.tag not in known_tags
     )
