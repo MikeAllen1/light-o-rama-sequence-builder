@@ -653,7 +653,7 @@ def test_ffmpeg_input_is_protocol_limited_and_demuxer_pinned(
 ) -> None:
     from types import SimpleNamespace
 
-    import lor_sequence_builder.audio_analysis as module
+    import lor_sequence_builder.audio_io as module
 
     executable = tmp_path / "ffmpeg"
     executable.write_text("", encoding="utf-8")
