@@ -222,3 +222,40 @@ def test_analyzer_recovers_a_different_known_tempo(tmp_path: Path) -> None:
     beat_times = [event["time"] for event in report["analysis"]["beats"]]
     assert beat_times[0] == pytest.approx(0.25, abs=0.15)
     assert beat_times[1] - beat_times[0] == pytest.approx(2 / 3, abs=0.08)
+
+
+
+def test_transient_heavy_noisy_audio_remains_bounded_and_finite(tmp_path: Path) -> None:
+    import array
+    import random
+
+    audio = tmp_path / "noisy-transients.wav"
+    rate = 11_025
+    rng = random.Random(20261110)
+    samples = array.array("h", (
+        rng.randint(-900, 900) for _ in range(rate * 6)
+    ))
+    for onset in (0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0):
+        start = int(onset * rate)
+        for offset in range(220):
+            samples[start + offset] = int(
+                12_000 * math.sin(2 * math.pi * 1_200 * offset / rate)
+            )
+    with wave.open(str(audio), "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(rate)
+        output.writeframes(samples.tobytes())
+
+    report = analyze_audio(audio, tmp_path / "noise.json", tmp_path / "noise.svg")
+
+    assert report["audio"]["duration_seconds"] == pytest.approx(6.0, abs=0.1)
+    assert report["analysis"]["energy"]
+    assert all(
+        0.0 <= event["time"] <= 6.0
+        and 0.0 <= event["confidence"] <= 1.0
+        for event in report["analysis"]["onsets"]
+    )
+    assert report["analysis"]["tempo"]["bpm"] is None or (
+        30 <= report["analysis"]["tempo"]["bpm"] <= 300
+    )
