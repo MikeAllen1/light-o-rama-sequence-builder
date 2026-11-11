@@ -19,6 +19,8 @@ from array import array
 from pathlib import Path
 
 from lor_sequence_builder.file_publish import publish_new_files
+from lor_sequence_builder.audio_plot import _svg_plot
+from lor_sequence_builder.audio_tempo import _beat_grid_status, _estimate_tempo
 from typing import Any
 
 ANALYSIS_SCHEMA_VERSION = "1.3"
@@ -206,122 +208,6 @@ def _detect_onsets(flux: list[float]) -> list[dict[str, Any]]:
     return peaks
 
 
-def _estimate_tempo(
-    flux: list[float], min_bpm: int, max_bpm: int
-) -> tuple[float | None, float, float | None, int | None, float, list[dict[str, float]]]:
-    if len(flux) < 40:
-        return None, 0.0, None, None, 0.0, []
-    # Autocorrelation of onset strength; frame hop is 10 ms.
-    mean = math.fsum(flux) / len(flux)
-    centered = [value - mean for value in flux]
-    candidates: list[tuple[float, int]] = []
-    for lag in range(
-        round(60.0 / max_bpm / FRAME_SECONDS),
-        round(60.0 / min_bpm / FRAME_SECONDS) + 1,
-    ):
-        overlap = len(centered) - lag
-        if overlap <= 0:
-            continue
-        score = math.fsum(centered[i] * centered[i + lag] for i in range(overlap))
-        score /= max(1, overlap)
-        candidates.append((score, lag))
-    if not candidates:
-        return None, 0.0, None, None, 0.0, []
-    best_score = max(score for score, _ in candidates)
-    variance = math.fsum(value * value for value in centered) / len(centered)
-    # Reject weak periodic ripple, such as the window-boundary variation of a
-    # steady tone. A candidate must explain a meaningful share of flux variance.
-    if best_score <= max(1e-12, variance * 0.01):
-        return None, 0.0, None, None, 0.0, []
-    # Autocorrelation has octave/subdivision aliases: the strongest peak can
-    # represent a slower metrical level (for example, half-time). Prefer the
-    # shortest local peak retaining a substantial share of the strongest
-    # correlation. This is a deliberate tempo-prior heuristic, not meter
-    # detection; real music can still produce half/double-time ambiguity.
-    scores_by_lag = {lag: score for score, lag in candidates}
-    local_peaks = [
-        lag for score, lag in candidates
-        if score >= scores_by_lag.get(lag - 1, float("-inf"))
-        and score >= scores_by_lag.get(lag + 1, float("-inf"))
-        and score >= best_score * 0.50
-    ]
-    best_lag = min(local_peaks) if local_peaks else max(candidates)[1]
-    # Keep distinct periodicity peaks visible: autocorrelation alone cannot
-    # determine which metrical level a listener would count as the beat.
-    ranked_peaks = sorted(local_peaks, key=lambda lag: scores_by_lag[lag], reverse=True)
-    # The selected tempo must always be visible, even when it is not among the
-    # six strongest correlation peaks because the alias heuristic chose it.
-    candidate_lags = [best_lag, *[lag for lag in ranked_peaks if lag != best_lag][:5]]
-    tempo_candidates = [
-        {
-            "bpm": round(60.0 / (candidate_lag * FRAME_SECONDS), 2),
-            "relative_score": round(max(0.0, scores_by_lag[candidate_lag]) / best_score, 4),
-        }
-        for candidate_lag in candidate_lags
-    ]
-    # Parabolic interpolation around the discrete correlation peak reduces
-    # BPM quantization error for tempos whose beat period is not an integer
-    # number of 50 ms analysis frames.
-    left_score = scores_by_lag.get(best_lag - 1)
-    center_score = scores_by_lag.get(best_lag)
-    right_score = scores_by_lag.get(best_lag + 1)
-    refined_lag = float(best_lag)
-    if left_score is not None and right_score is not None and center_score is not None:
-        denominator = left_score - 2.0 * center_score + right_score
-        if denominator < -1e-12:
-            offset = 0.5 * (left_score - right_score) / denominator
-            if abs(offset) <= 0.5:
-                refined_lag += offset
-    if tempo_candidates:
-        tempo_candidates[0]["bpm"] = round(60.0 / (refined_lag * FRAME_SECONDS), 2)
-    positive = [score for score, _ in candidates if score > 0]
-    mean_score = math.fsum(positive) / len(positive) if positive else 0.0
-    confidence = max(0.0, min(1.0, (best_score - mean_score) / (abs(best_score) + 1e-12)))
-    bpm = 60.0 / (refined_lag * FRAME_SECONDS)
-    # A peak at the configured search boundary is censored evidence: a stronger
-    # candidate may exist just outside the requested range. Do not report it
-    # with ordinary confidence.
-    if bpm <= min_bpm + 1.5 or bpm >= max_bpm - 1.5:
-        confidence = min(confidence, 0.1)
-    # Phase maximizes onset strength sampled at the candidate beat period.
-    period = best_lag
-    phase_scores = [
-        math.fsum(flux[index] for index in range(phase, len(flux), period))
-        for phase in range(period)
-    ]
-    phase = max(range(period), key=lambda item: phase_scores[item])
-    # Adjacent frame offsets often represent the same transient smeared across
-    # neighboring analysis windows. Compare the winning phase with the strongest
-    # genuinely separate phase, not merely the second-highest adjacent frame.
-    separation = max(2, round(period * 0.2))
-    alternatives = [
-        score for offset, score in enumerate(phase_scores)
-        if min((offset - phase) % period, (phase - offset) % period) >= separation
-    ]
-    half_period_phase = (phase + max(1, round(period / 2))) % period
-    alternate_score = max(
-        max(alternatives, default=0.0), phase_scores[half_period_phase]
-    )
-    winning_score = phase_scores[phase]
-    alternate_ratio = alternate_score / (winning_score + 1e-12)
-    # A meaningful accent halfway between candidate beats may be an offbeat
-    # or subdivision. Autocorrelation cannot decide which accent is metrical,
-    # so confidence falls to zero when that competing phase reaches 10% of the
-    # winning phase instead of confidently selecting the louder accent.
-    phase_confidence = max(0.0, min(1.0, 1.0 - alternate_ratio / 0.10))
-    return round(bpm, 2), round(confidence, 4), refined_lag, phase, round(phase_confidence, 4), tempo_candidates
-
-
-def _beat_grid_status(
-    has_beats: bool, tempo_confidence: float, phase_confidence: float
-) -> str:
-    if not has_beats:
-        return "unavailable"
-    if tempo_confidence * phase_confidence < 0.2:
-        return "ambiguous"
-    return "provisional"
-
-
 def _energy_curve(rms: list[float]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     frames_per_second = round(1.0 / FRAME_SECONDS)
@@ -430,59 +316,6 @@ def _section_candidates(energy: list[dict[str, Any]]) -> list[dict[str, Any]]:
             })
     return result
 
-def _svg_plot(
-    path: Path,
-    duration: float,
-    energy: list[dict[str, Any]],
-    beats: list[float],
-    downbeats: list[float],
-    onsets: list[dict[str, Any]],
-    sections: list[dict[str, Any]],
-    stops: list[dict[str, Any]],
-) -> None:
-    width, height = 1400, 520
-    left, right, top, bottom = 70, 20, 35, 55
-    plot_width, plot_height = width - left - right, height - top - bottom
-    max_energy = max((point["rms"] for point in energy), default=1.0) or 1.0
-    points = []
-    for point in energy:
-        x = left + point["time"] / duration * plot_width
-        y = top + plot_height - point["rms"] / max_energy * plot_height
-        points.append(f"{x:.1f},{y:.1f}")
-    parts = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
-        '<rect width="100%" height="100%" fill="white"/>',
-        '<text x="70" y="22" font-family="sans-serif" font-size="16">Audio analysis: RMS energy, beats, onsets, hard stops</text>',
-        f'<line x1="{left}" y1="{top + plot_height}" x2="{width-right}" y2="{top + plot_height}" stroke="#333"/>',
-    ]
-    if points:
-        parts.append(f'<polyline fill="none" stroke="#2767a8" stroke-width="2" points="{" ".join(points)}"/>')
-    for beat in beats:
-        x = left + beat / duration * plot_width
-        parts.append(f'<line x1="{x:.1f}" y1="{top}" x2="{x:.1f}" y2="{top+plot_height}" stroke="#2b8a3e" opacity=".28"/>')
-    for downbeat in downbeats:
-        x = left + downbeat / duration * plot_width
-        parts.append(f'<line x1="{x:.1f}" y1="{top}" x2="{x:.1f}" y2="{top+plot_height}" stroke="#7048e8" stroke-width="2" opacity=".65"/>')
-    for onset in onsets:
-        x = left + onset["time"] / duration * plot_width
-        parts.append(f'<line x1="{x:.1f}" y1="{top+plot_height-12}" x2="{x:.1f}" y2="{top+plot_height}" stroke="#d97706"/>')
-    for section in sections:
-        x = left + section["time"] / duration * plot_width
-        parts.append(f'<line x1="{x:.1f}" y1="{top}" x2="{x:.1f}" y2="{top+plot_height}" stroke="#0c8599" stroke-dasharray="4 4"/>')
-    for stop in stops:
-        x = left + stop["time"] / duration * plot_width
-        parts.append(f'<line x1="{x:.1f}" y1="{top}" x2="{x:.1f}" y2="{top+plot_height}" stroke="#c92a2a" stroke-width="2"/>')
-    for tick in range(0, math.ceil(duration) + 1, max(1, math.ceil(duration / 12))):
-        x = left + tick / duration * plot_width
-        parts.append(f'<text x="{x:.1f}" y="{height-20}" text-anchor="middle" font-family="sans-serif" font-size="11">{tick}s</text>')
-    parts.extend([
-        '<text x="70" y="500" font-family="sans-serif" font-size="11">Blue: RMS energy | Green: beats | Purple: provisional downbeats | Amber: onsets | Teal: energy transitions | Red: hard stops</text>',
-        '</svg>',
-    ])
-    with path.open("x", encoding="utf-8") as stream:
-        stream.write("\n".join(parts))
-
-
 def analyze_audio(
     audio_path: str | Path,
     json_output: str | Path,
@@ -518,7 +351,7 @@ def analyze_audio(
             rms, flux, duration = _read_features(normalized)
         onsets = _detect_onsets(flux)
         bpm, tempo_confidence, lag, phase, phase_confidence, tempo_candidates = _estimate_tempo(
-            flux, min_bpm, max_bpm
+            flux, min_bpm, max_bpm, FRAME_SECONDS
         )
         beat_times: list[float] = []
         downbeats: list[float] = []
