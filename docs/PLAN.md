@@ -61,7 +61,7 @@ Build/audit repository structure, CONTRIBUTING.md, ARCHITECTURE.md, PLAN.md, CI 
 ### Phase 1 — LOR format (highest-risk unknown)
 Build fixture-driven sequence reader/writer for native .loredit.
 
-**Done when:** Read/write fixtures; semantic round-trip tests pass; unsupported versions/constructs fail clearly; no input is modified; output is new; owner opens rewritten file in target S6 and confirms it loads. This is a mandatory human gate. Do not start preview parsing, audio analysis, or choreography during this phase. Fixtures are the format authority; ask when evidence is missing, never guess.
+**Done when:** Read/write fixtures; semantic round-trip tests pass; unsupported versions/constructs fail clearly; no input is modified; output is new; owner opens rewritten file in target S6 and confirms it loads. This is a mandatory human gate. Do not start preview parsing, audio analysis, or choreography during this phase. S6-generated reference files and documented structural observations are the format evidence; synthetic fixtures provide regression coverage, not native-format authority. Ask when evidence is missing; never guess.
 
 ### Phase 2 — Preview parser
 Build .lorprev / embedded PreviewClass → raw PropModel plus display/channel/controller/group data.
@@ -71,7 +71,7 @@ Build .lorprev / embedded PreviewClass → raw PropModel plus display/channel/co
 ### Phase 3 — Walking skeleton
 Build fixed-tempo "pulse every supported prop on the beat" → Timeline → writer.
 
-**Status: Complete and merged.** The owner opened the generated Phase 3 package in Light-O-Rama S6 and confirmed the native sequence loads, the generic fixture preview renders without the private house image, and generated lighting events appear in the timeline. The owner accepted this as the Phase 3 completion check. Physical controller output was not independently verified; Phase 3's completed scope is native file generation and S6 preview rendering, not a claim of confirmed hardware playback.
+**Status: Complete and merged.** The owner opened the generated Phase 3 package in Light-O-Rama S6 and confirmed the native sequence loads, the synthetic fixture preview renders, and generated lighting events appear in the timeline. The owner accepted this as the Phase 3 completion check. Physical controller output was not independently verified; Phase 3's completed scope is native file generation and S6 preview rendering, not a claim of confirmed hardware playback.
 
 **Done when:** The fixed-tempo pipeline generates a native v15 sequence and deterministic Timeline; S6 opens the generated file; preview and generated events render; unsupported/excluded props are enumerated.
 
@@ -156,7 +156,7 @@ See [GITHUB_WORKFLOW.md](GITHUB_WORKFLOW.md) for branch, PR, review, merge, and 
 - PR: https://github.com/MikeAllen1/light-o-rama-sequence-builder/pull/1
 - Issue: https://github.com/MikeAllen1/light-o-rama-sequence-builder/issues/1
 - Branch: `phase-1/loredit-format`
-- Format evidence: Light-O-Rama S6 `6.6.0.12`, `saveFileVersion="15"`, was used for the initial format investigation. Owner-derived fixture content was subsequently removed from the current repository tree; keep original and sanitized show material local.
+- Format evidence: Light-O-Rama S6 `6.6.0.12`, `saveFileVersion="15"`, was used for the initial format investigation. Owner-derived fixture content was subsequently removed from the current repository tree; keep original show material and all derivatives local.
 - Implementation: secure `defusedxml` parsing with DTDs/entities/external references forbidden; v15-only support boundary; opaque XML-tree preservation; `inspect` and `roundtrip` CLI; atomic create-if-absent writer; sequence-prop/preview referential-integrity validation on read and write.
 - Test data: the current test suite uses synthetic or runtime-generated XML with fictional identifiers and values. No owner sequence fixture is required as a test input in the current tree.
 - Local tests: `PYTHONPATH=src python -m pytest -q` — 17 passed.
