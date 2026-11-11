@@ -259,3 +259,22 @@ def test_transient_heavy_noisy_audio_remains_bounded_and_finite(tmp_path: Path) 
     assert report["analysis"]["tempo"]["bpm"] is None or (
         30 <= report["analysis"]["tempo"]["bpm"] <= 300
     )
+
+
+
+def test_analysis_schema_documents_the_emitted_v1_contract() -> None:
+    import json
+
+    schema_path = Path(__file__).parents[1] / "docs" / "schemas" / "audio-analysis-v1.schema.json"
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+
+    assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
+    assert schema["properties"]["schema_version"]["const"] == "1.0"
+    assert set(schema["required"]) == {
+        "schema_version", "audio", "tool_versions", "configuration", "analysis"
+    }
+    analysis_required = set(schema["properties"]["analysis"]["required"])
+    assert analysis_required == {
+        "method", "provenance", "limitations", "tempo", "beats", "downbeats",
+        "onsets", "energy", "phrase_boundaries", "section_candidates", "hard_stops",
+    }
