@@ -424,22 +424,40 @@ def _effects_well_formed(ctx: _Context) -> str | None:
     for movement_id in sorted(duplicate_movement_ids):
         ctx.add(f"Movement id {movement_id!r} is used more than once")
     for m in ctx.choreography.movements:
-        if not _movement_identity_valid(m):
-            continue
+        prop_id = m.prop_ids[0] if _movement_identity_valid(m) else None
+        centisecond = (
+            m.start_centisecond
+            if isinstance(m.start_centisecond, int) and not isinstance(m.start_centisecond, bool)
+            else None
+        )
         if m.kind not in MOVEMENT_KINDS:
             ctx.add(
                 f"Movement {m.movement_id!r} has unsupported kind {m.kind!r}; use one of "
                 f"{', '.join(MOVEMENT_KINDS)}",
-                prop_id=m.prop_ids[0] if m.prop_ids else None,
-                centisecond=m.start_centisecond,
+                prop_id=prop_id,
+                centisecond=centisecond,
             )
         if m.direction not in MOVEMENT_DIRECTIONS:
             ctx.add(
                 f"Movement {m.movement_id!r} has unsupported direction {m.direction!r}; "
                 f"use one of {', '.join(MOVEMENT_DIRECTIONS)}",
-                prop_id=m.prop_ids[0] if m.prop_ids else None,
-                centisecond=m.start_centisecond,
+                prop_id=prop_id,
+                centisecond=centisecond,
             )
+        if not _movement_identity_valid(m):
+            continue
+        if (
+            isinstance(m.start_centisecond, bool)
+            or not isinstance(m.start_centisecond, int)
+            or isinstance(m.end_centisecond, bool)
+            or not isinstance(m.end_centisecond, int)
+        ):
+            ctx.add(
+                f"Movement {m.movement_id!r} start and end times must be integers",
+                prop_id=prop_id,
+                centisecond=centisecond,
+            )
+            continue
         if not 0 <= m.start_centisecond < m.end_centisecond <= duration:
             ctx.add(f"Movement {m.movement_id!r} must start before it ends, inside the song",
                     centisecond=m.start_centisecond)
@@ -560,8 +578,11 @@ def _ordered(values: list[float], increasing: bool) -> bool:
 
 
 def _chases_follow_layout(ctx: _Context) -> str | None:
-    moves = [m for m in ctx.choreography.movements
-             if m.kind in {"chase", "fill"} and len(m.prop_ids) > 1]
+    moves = [
+        m for m in ctx.choreography.movements
+        if _movement_identity_valid(m) and m.kind in {"chase", "fill"}
+        and len(m.prop_ids) > 1
+    ]
     if not moves:
         return "the Timeline has no chases or fills across several props"
     for m in moves:
