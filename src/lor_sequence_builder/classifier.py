@@ -149,10 +149,15 @@ class _Geometry:
 
 
 def _float(value: str | None) -> float | None:
+    if value is None:
+        return None
     try:
-        return float(value) if value is not None else None
+        parsed = float(value)
     except ValueError:
         return None
+    if not math.isfinite(parsed):
+        raise ClassificationError(f"Preview contains a non-finite numeric value: {value!r}")
+    return parsed
 
 
 def _geometry(prop: ET.Element) -> _Geometry | None:
@@ -293,7 +298,12 @@ def _overlap(a: _Geometry, b: _Geometry) -> float:
 
 
 def _figures(props: list[ET.Element], geometries: dict[str, _Geometry | None]) -> dict[str, list[str]]:
-    """Group small props drawn on top of each other into figures."""
+    """Group overlapping small props using a bounded spatial index.
+
+    The grid avoids comparing props that are too far apart to overlap. A hard
+    comparison budget also bounds pathological previews where many props occupy
+    the same tiny area.
+    """
     candidates = [
         p.get("id", "") for p in props
         if (g := geometries[p.get("id", "")]) is not None
@@ -308,15 +318,73 @@ def _figures(props: list[ET.Element], geometries: dict[str, _Geometry | None]) -
             pid = parent[pid]
         return pid
 
-    for a, b in itertools.combinations(candidates, 2):
-        ga, gb = geometries[a], geometries[b]
-        assert ga is not None and gb is not None
-        if _overlap(ga, gb) >= _FIGURE_OVERLAP:
-            parent[find(a)] = find(b)
+    cell_size = _FIGURE_MAX_SIZE
+    buckets: dict[tuple[int, int], list[str]] = {}
+    comparisons = 0
+    max_comparisons = 2_000_000
+    for pid in candidates:
+        geometry = geometries[pid]
+        assert geometry is not None
+        cell = (math.floor(geometry.center_x / cell_size), math.floor(geometry.center_y / cell_size))
+        nearby: list[str] = []
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                nearby.extend(buckets.get((cell[0] + dx, cell[1] + dy), ()))
+        comparisons += len(nearby)
+        if comparisons > max_comparisons:
+            raise ClassificationError(
+                "Preview contains too many overlapping small props to classify safely; "
+                "separate dense overlapping geometry and retry"
+            )
+        for other in nearby:
+            other_geometry = geometries[other]
+            assert other_geometry is not None
+            if _overlap(geometry, other_geometry) >= _FIGURE_OVERLAP:
+                parent[find(pid)] = find(other)
+        buckets.setdefault(cell, []).append(pid)
+
     clusters: dict[str, list[str]] = {}
     for pid in candidates:
         clusters.setdefault(find(pid), []).append(pid)
     return {pid: members for members in clusters.values() if len(members) >= 2 for pid in members}
+
+
+def _validated_prop_links(props: list[ET.Element]) -> dict[str, str | None]:
+    """Validate stable identities and direct master links before classification."""
+    by_id: dict[str, ET.Element] = {}
+    for prop in props:
+        prop_id = prop.get("id", "")
+        if not prop_id.strip():
+            raise ClassificationError("Preview contains a prop with a missing or blank id")
+        if prop_id in by_id:
+            raise ClassificationError(f"Preview contains duplicate prop id {prop_id!r}")
+        by_id[prop_id] = prop
+
+    links: dict[str, str | None] = {}
+    for prop_id, prop in by_id.items():
+        master_id = prop.get("MasterPropId", "").strip() or None
+        links[prop_id] = master_id
+        if master_id is None:
+            continue
+        if master_id == prop_id:
+            raise ClassificationError(f"Prop {prop_id!r} cannot reference itself as its master")
+        master = by_id.get(master_id)
+        if master is None:
+            raise ClassificationError(
+                f"Prop {prop_id!r} references missing master prop {master_id!r}"
+            )
+        if master.get("MasterPropId", "").strip():
+            raise ClassificationError(
+                f"Prop {prop_id!r} references linked master {master_id!r}; "
+                "master chains and cycles are not supported"
+            )
+        problem = channel_layout_problem(master)
+        if problem is not None:
+            raise ClassificationError(
+                f"Prop {prop_id!r} references master {master_id!r} without a verified "
+                f"native channel layout: {problem}"
+            )
+    return links
 
 
 def _rows(
@@ -336,10 +404,12 @@ def _rows(
     by_signature: dict[tuple[str, int, str], list[str]] = {}
     for prop in props:
         pid = prop.get("id", "")
-        if pid in rows or pid in figures or prop.get("MasterPropId") or geometries[pid] is None:
+        if pid in rows or pid in figures or prop.get("MasterPropId", "").strip() or geometries[pid] is None:
             continue
         signature = (_shape_name(prop), len(_channel_entries(prop)), prop.get("TraditionalType", ""))
         by_signature.setdefault(signature, []).append(pid)
+    row_comparisons = 0
+    max_row_comparisons = 2_000_000
     for members in by_signature.values():
         remaining = sorted(members, key=lambda pid: geometries[pid].center_y)  # type: ignore[union-attr]
         while remaining:
@@ -347,6 +417,12 @@ def _rows(
             assert seed is not None
             row = [remaining[0]]
             for pid in remaining[1:]:
+                row_comparisons += 1
+                if row_comparisons > max_row_comparisons:
+                    raise ClassificationError(
+                        "Preview contains too many similar props to infer rows safely; "
+                        "use explicit S6 groups or simplify the preview"
+                    )
                 g = geometries[pid]
                 assert g is not None
                 similar_size = all(
@@ -356,7 +432,8 @@ def _rows(
                 level = abs(g.center_y - seed.center_y) <= max(0.04, 0.6 * seed.height)
                 if similar_size and level:
                     row.append(pid)
-            remaining = [pid for pid in remaining if pid not in row]
+            row_set = set(row)
+            remaining = [pid for pid in remaining if pid not in row_set]
             if len(row) >= 3:
                 ordered = sorted(row, key=lambda pid: geometries[pid].center_x)  # type: ignore[union-attr]
                 key = f"auto:{ordered[0]}"
@@ -372,6 +449,7 @@ def classify_preview(preview: ET.Element) -> tuple[PropClassification, ...]:
     props = preview.findall("PropClass")
     if not props:
         raise ClassificationError("Preview contains zero PropClass entries")
+    masters = _validated_prop_links(props)
     by_id = {p.get("id", ""): p for p in props}
     geometries = {p.get("id", ""): _geometry(p) for p in props}
     figures = _figures(props, geometries)
@@ -395,7 +473,7 @@ def classify_preview(preview: ET.Element) -> tuple[PropClassification, ...]:
         parm1 = int(parm1_value) if parm1_value is not None else None
         traditional = prop.get("TraditionalType", "")
         geometry = geometries[prop_id]
-        master = prop.get("MasterPropId") or None
+        master = masters[prop_id]
         notes: list[str] = []
 
         evidence = _shape_evidence(shape_name, channels, parm1, geometry, traditional)
