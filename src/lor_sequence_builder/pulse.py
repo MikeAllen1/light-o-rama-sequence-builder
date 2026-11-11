@@ -78,6 +78,33 @@ def _attribute(element: ET.Element, name: str) -> str | None:
     return value if value is not None and value.strip() else None
 
 
+
+
+def _elements_equivalent(left: ET.Element, right: ET.Element) -> bool:
+    """Compare preview subtrees semantically, allowing harmless coordinate rounding."""
+    if left.tag != right.tag or set(left.attrib) != set(right.attrib):
+        return False
+    for name, left_value in left.attrib.items():
+        right_value = right.attrib[name]
+        if name in {"x", "y", "top", "left"}:
+            try:
+                if abs(float(left_value) - float(right_value)) > 1e-6:
+                    return False
+                continue
+            except ValueError:
+                pass
+        if left_value != right_value:
+            return False
+    if (left.text or "").strip() != (right.text or "").strip():
+        return False
+    if (left.tail or "").strip() != (right.tail or "").strip():
+        return False
+    left_children = list(left)
+    right_children = list(right)
+    return len(left_children) == len(right_children) and all(
+        _elements_equivalent(a, b) for a, b in zip(left_children, right_children)
+    )
+
 def _beat_positions(duration: int, bpm: int) -> tuple[int, ...]:
     # Bound beat-list allocation before iterating over untrusted template duration.
     estimated_beats = (duration * bpm + 5999) // 6000
@@ -194,11 +221,21 @@ def _build_timeline(
         prop_id = _attribute(preview_prop, "id")
         assert prop_id is not None
         template_prop = embedded_prop_map[prop_id]
-        for attribute in ("DeviceType", "TraditionalType", "ChannelGrid"):
-            if _attribute(preview_prop, attribute) != _attribute(template_prop, attribute):
-                raise PulseGenerationError(
-                    f"Prop {prop_id!r} has mismatched {attribute} between preview and template"
-                )
+        if not _elements_equivalent(preview_prop, template_prop):
+            raise PulseGenerationError(
+                f"Prop {prop_id!r} has mismatched preview data between standalone "
+                "preview and template (attributes, geometry, or nested structures)"
+            )
+
+    preview_groups = preview_root.findall("PropGroup")
+    template_groups = embedded_preview.findall("PropGroup")
+    if len(preview_groups) != len(template_groups) or any(
+        not _elements_equivalent(preview_group, template_group)
+        for preview_group, template_group in zip(preview_groups, template_groups)
+    ):
+        raise PulseGenerationError(
+            "Preview/template PropGroup relationships or arrangement data do not match"
+        )
 
     sequence_prop_nodes = sequence_props.findall("SeqProp")
     sequence_prop_map: dict[str, ET.Element] = {}
@@ -212,7 +249,7 @@ def _build_timeline(
 
     excluded: list[ExcludedProp] = []
     supported_prop_ids: list[str] = []
-    mapped_channels: dict[tuple[str, int], ET.Element] = {}
+    mapped_channels: dict[tuple[str, int], _MappedChannel] = {}
     channels_by_prop: dict[str, list[_MappedChannel]] = {}
 
     for prop in preview_nodes:
@@ -222,6 +259,18 @@ def _build_timeline(
         device_type = _attribute(prop, "DeviceType")
         traditional_type = _attribute(prop, "TraditionalType")
 
+        if device_type in {"AC", "DC"}:
+            excluded.append(
+                ExcludedProp(
+                    prop_id=prop_id,
+                    name=name,
+                    reason=(
+                        f"DeviceType {device_type!r} is recognized by the preview parser "
+                        "but legacy AC/DC native channel mapping is not verified for Phase 3"
+                    ),
+                )
+            )
+            continue
         if device_type not in SUPPORTED_DEVICE_TYPES:
             excluded.append(
                 ExcludedProp(
@@ -250,61 +299,113 @@ def _build_timeline(
 
         channel_grid = _attribute(prop, "ChannelGrid")
         if channel_grid is None:
-            raise PulseGenerationError(
-                f"Supported prop {prop_id!r} has no ChannelGrid assignment"
+            excluded.append(
+                ExcludedProp(
+                    prop_id=prop_id,
+                    name=name,
+                    reason="No ChannelGrid assignment is present",
+                )
             )
-        entries = channel_grid.split(";")
-        if not entries or any(
-            len(entry.split(",")) < 3 or not all(entry.split(",")[:3])
-            for entry in entries
+            continue
+        address_entries = [entry.split(",") for entry in channel_grid.split(";")]
+        if not address_entries or any(
+            len(entry) < 3 or not all(field.strip() for field in entry[:3])
+            for entry in address_entries
         ):
-            raise PulseGenerationError(
-                f"Supported prop {prop_id!r} lacks a complete "
-                "LOR network/Unit ID/circuit address"
+            excluded.append(
+                ExcludedProp(
+                    prop_id=prop_id,
+                    name=name,
+                    reason="ChannelGrid lacks a complete LOR network/Unit ID/circuit address",
+                )
             )
+            continue
 
         sequence_prop = sequence_prop_map.get(prop_id)
         if sequence_prop is None:
-            raise PulseGenerationError(
-                f"Supported prop {prop_id!r} has no matching SeqProp in the template"
+            excluded.append(
+                ExcludedProp(
+                    prop_id=prop_id,
+                    name=name,
+                    reason="No matching native SeqProp exists; no sequence channel can be targeted",
+                )
             )
+            continue
         native_channels = sequence_prop.findall("channel")
         if not native_channels:
-            raise PulseGenerationError(
-                f"Supported prop {prop_id!r} has no native channel records in the template"
+            excluded.append(
+                ExcludedProp(
+                    prop_id=prop_id,
+                    name=name,
+                    reason="Matching native SeqProp contains no channel records",
+                )
             )
+            continue
+        if len(address_entries) != len(native_channels):
+            excluded.append(
+                ExcludedProp(
+                    prop_id=prop_id,
+                    name=name,
+                    reason=(
+                        f"Ambiguous physical mapping: {len(address_entries)} ChannelGrid "
+                        f"addresses but {len(native_channels)} native sequence channels"
+                    ),
+                )
+            )
+            continue
 
         channel_refs: list[_MappedChannel] = []
         seen_coordinates: set[tuple[str, str, str]] = set()
-        for index, channel in enumerate(native_channels):
+        mapping_error: str | None = None
+        for index, (address, channel) in enumerate(zip(address_entries, native_channels)):
             row = _attribute(channel, "row")
             col = _attribute(channel, "col")
             color = _attribute(channel, "color")
             if row is None or col is None or color is None:
-                raise PulseGenerationError(
-                    f"Supported prop {prop_id!r} native channel {index} is missing "
-                    "row, col, or color coordinates"
+                mapping_error = (
+                    f"Native channel {index} is missing row, col, or color coordinates"
                 )
+                break
+            # Verified S6 v15 LOR fixtures use one native row and zero-based
+            # sequential columns. ChannelGrid entry order maps to that column.
+            if row != "0" or col != str(index):
+                mapping_error = (
+                    f"Native channel {index} has unverified coordinates row={row!r}, "
+                    f"col={col!r}; expected row='0', col={str(index)!r}"
+                )
+                break
             coordinates = (row, col, color)
             if coordinates in seen_coordinates:
-                raise PulseGenerationError(
-                    f"Supported prop {prop_id!r} has duplicate native channel "
-                    f"coordinates {coordinates!r}"
-                )
+                mapping_error = f"Duplicate native channel coordinates {coordinates!r}"
+                break
             seen_coordinates.add(coordinates)
             reference = TimelineChannel(
                 prop_id=prop_id,
                 channel_index=index,
+                preview_channel_index=index,
+                network=address[0].strip(),
+                unit_id=address[1].strip(),
+                circuit=address[2].strip(),
                 row=row,
                 col=col,
                 color=color,
             )
             channel_refs.append(_MappedChannel(reference=reference, element=channel))
 
+        if mapping_error is not None:
+            excluded.append(
+                ExcludedProp(
+                    prop_id=prop_id,
+                    name=name,
+                    reason=f"Physical channel mapping is not verified: {mapping_error}",
+                )
+            )
+            continue
+
         supported_prop_ids.append(prop_id)
         channels_by_prop[prop_id] = channel_refs
         for mapped in channel_refs:
-            mapped_channels[(prop_id, mapped.reference.channel_index)] = mapped.element
+            mapped_channels[(prop_id, mapped.reference.channel_index)] = mapped
 
     if not supported_prop_ids:
         raise PulseGenerationError(
@@ -365,7 +466,7 @@ def _build_timeline(
 def _validate_timeline(
     timeline: Timeline,
     preview_ids: set[str],
-    mapped_channels: dict[tuple[str, int], ET.Element],
+    mapped_channels: dict[tuple[str, int], _MappedChannel],
 ) -> None:
     supported = set(timeline.supported_prop_ids)
     if len(supported) != len(timeline.supported_prop_ids):
@@ -378,6 +479,8 @@ def _validate_timeline(
         raise PulseGenerationError("Timeline contains duplicate excluded prop IDs")
     if not set(excluded_ids).issubset(preview_ids) or supported.intersection(excluded_ids):
         raise PulseGenerationError("Timeline excluded-prop references are invalid")
+    if supported.union(excluded_ids) != preview_ids:
+        raise PulseGenerationError("Every preview prop must be supported or explicitly excluded")
 
     beats = timeline.beat_positions_centiseconds
     if not beats or tuple(sorted(set(beats))) != beats:
@@ -413,7 +516,17 @@ def _validate_timeline(
         )
         if event.end_centisecond != expected_end:
             raise PulseGenerationError("Timeline event duration does not match the configured pulse")
-        native_channel = mapped_channels[(channel.prop_id, channel.channel_index)]
+        mapped = mapped_channels[(channel.prop_id, channel.channel_index)]
+        if channel != mapped.reference:
+            raise PulseGenerationError(
+                "Timeline physical address or native channel coordinates do not match "
+                "the validated preview/template mapping"
+            )
+        if channel.preview_channel_index != channel.channel_index:
+            raise PulseGenerationError("Timeline preview/native channel indices do not match")
+        if not all((channel.network, channel.unit_id, channel.circuit)):
+            raise PulseGenerationError("Timeline channel is missing its physical LOR address")
+        native_channel = mapped.element
         if (
             native_channel.attrib.get("row") != channel.row
             or native_channel.attrib.get("col") != channel.col
@@ -475,7 +588,7 @@ def build_pulse_sequence(
                 channel.remove(effect)
 
     for event in timeline.events:
-        channel = mapped_channels[(event.channel.prop_id, event.channel.channel_index)]
+        channel = mapped_channels[(event.channel.prop_id, event.channel.channel_index)].element
         ET.SubElement(
             channel,
             "effect",
