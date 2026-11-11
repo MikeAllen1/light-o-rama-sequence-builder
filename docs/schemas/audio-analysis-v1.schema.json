@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/MikeAllen1/light-o-rama-sequence-builder/blob/master/docs/schemas/audio-analysis-v1.1.schema.json",
+  "$id": "https://github.com/MikeAllen1/light-o-rama-sequence-builder/blob/master/docs/schemas/audio-analysis-v1.schema.json",
   "title": "Light-O-Rama Sequence Builder Audio Analysis v1.1",
   "type": "object",
   "additionalProperties": false,
