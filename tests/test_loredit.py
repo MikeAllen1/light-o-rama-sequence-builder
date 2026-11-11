@@ -155,3 +155,22 @@ def test_sequence_prop_missing_from_preview_is_rejected(
 
     with pytest.raises(LoreditError, match="missing from PreviewClass"):
         read_loredit(source)
+
+
+
+def test_sequence_prop_may_reference_native_preview_group_id(
+    tmp_path: Path, fixture_path: Path
+) -> None:
+    source = tmp_path / "group-sequence-prop.loredit"
+    tree = ET.parse(fixture_path)
+    preview = tree.getroot().find("PreviewClass")
+    sequence_props = tree.getroot().find("SequenceProps")
+    assert preview is not None
+    assert sequence_props is not None
+    group_id = "native-preview-group-id"
+    ET.SubElement(preview, "PropGroup", {"id": group_id, "Name": "Fixture Group"})
+    ET.SubElement(sequence_props, "SeqProp", {"id": group_id, "name": "Fixture Group"})
+    tree.write(source, encoding="utf-8", xml_declaration=True)
+
+    document = read_loredit(source)
+    assert document.root.find(f"./SequenceProps/SeqProp[@id='{group_id}']") is not None

@@ -93,8 +93,9 @@ def read_loredit(path: str | Path) -> LoreditDocument:
 def _validate_sequence_prop_references(root: ET.Element) -> None:
     """Reject sequence props that have no matching embedded preview prop.
 
-    S6 warns that these records will be removed on save. Preview-only props are
-    allowed because the observed fixture contains preview entities that are not
+    S6 warns that these records will be removed on save. SequenceProps may
+    reference either a PropClass or a native PropGroup ID. Preview-only props
+    are allowed because observed fixtures contain preview entities that are not
     currently represented in SequenceProps.
     """
     preview = root.find("PreviewClass")
@@ -107,6 +108,11 @@ def _validate_sequence_prop_references(root: ET.Element) -> None:
         for prop in preview.findall("PropClass")
         if prop.attrib.get("id")
     }
+    preview_ids.update(
+        group.attrib["id"]
+        for group in preview.findall("PropGroup")
+        if group.attrib.get("id")
+    )
     orphan_ids = [
         prop.attrib.get("id", "<missing id>")
         for prop in sequence_props.findall("SeqProp")

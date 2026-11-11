@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** Phase 2 — preview parser for standalone and embedded PreviewClass data in progress; later-stage contracts are planned below  
+**Status:** Phase 2 merged; Phase 3 fixed-tempo Timeline walking skeleton in progress  
 **Project:** Light-O-Rama Sequence Builder  
 **V1 interface:** Command line  
 **Target output:** Native Light-O-Rama S6 `.loredit` sequence  
@@ -200,6 +200,24 @@ User profiles may add display-specific constraints and adjust tunables such as e
 
 The exact `.loredit` schema is not to be inferred from memory. The supplied real sequence is a starting reference; additional sanitized fixtures and round-trip tests must establish the structures needed for each supported feature.
 
+### 5.9 Phase 3 walking-skeleton orchestrator
+
+**Inputs:** Required standalone `.lorprev`, matching native S6 v15 `.loredit` template, integer fixed BPM, pulse duration.
+
+**Responsibilities:**
+- Require exact prop-ID set equality, semantic equality of every complete `PropClass` subtree (all attributes, master-prop references, shapes, and geometry), and semantic equality of all `PropGroup` records (member references and arrangement). Numeric geometry/layout coordinates may differ only by 1e-6 to tolerate export formatting. Never remap IDs based on names or order.
+- The independent integration fixture pairs an S6-exported standalone Revision 58 preview with a separate native S6 v15 sequence whose embedded preview is Revision 56. Preview revision markers may differ; physical display content must match.
+- Support only `DeviceType=LOR` with `TraditionalType=Single Color`, `Multicolor_string_1_ch`, or `Channel_per_color`, complete LOR ChannelGrid addresses, and matching native channel records.
+- Exclude unsupported device/prop types and any prop without a provable native mapping explicitly in Timeline JSON. A missing SeqProp, incomplete address, ChannelGrid/native-channel count mismatch, or unverified coordinate pattern is a per-prop exclusion with a reason; no event is generated for it.
+- AC/DC values remain recognized by the preview parser for legacy compatibility but are explicitly excluded from Phase 3 because their native mapping has not been verified.
+- Map each ChannelGrid entry to the native channel at the same index only when the entry count matches the channel count and the native coordinates match a verified S6 v15 pattern: row 0 + sequential col for Single Color/Multicolor_string_1_ch; row 0 + col 0 + sequential color for Channel_per_color. Carry network, Unit ID, circuit, preview index, and native row/col/color into every Timeline channel reference.
+- Generate deterministic integer-centisecond beat positions from an explicitly supplied integer BPM (30–300); no audio analysis or tempo inference occurs in this phase. Bound allocation to 50,000 beats and 250,000 events before event materialization.
+- Replace prior effects in the in-memory template copy with short `INTENSITY` pulses at each beat for every supported native channel.
+- Validate Timeline prop/channel references and event bounds before serialization; re-read the generated LOREDIT before publishing outputs.
+- Write a versioned Timeline JSON with SHA-256 fingerprints of the validated parsed XML trees, BPM, beat positions, supported/excluded props, and event references.
+
+This is a temporary engineering harness, not the final user workflow. It requires a compatible S6 sequence template because the current writer preserves a verified native v15 document rather than constructing a blank sequence. The standalone preview is not merged into the template: it is compared in full and must already describe the same prop geometry and group layout. Existing effects in the template copy are intentionally cleared and replaced by the generated pulses. The owner must open and play the output in S6 and confirm that the expected physical lights respond; automated checks do not satisfy this human gate.
+
 ### 5.8 `report`
 
 **Inputs:** Input metadata, classifications, audio analysis, Timeline, rule results, writer/verification results.
@@ -216,14 +234,14 @@ The exact `.loredit` schema is not to be inferred from memory. The supplied real
 
 ## 6. Domain models and artifact contracts
 
-Use Pydantic models for public stage boundaries. Initial model families:
+Use Pydantic models for public configuration/stage boundaries; small internal immutable Timeline value objects may use frozen dataclasses with explicit validation. Initial model families:
 
 - `InputManifest`: paths, file metadata, hashes, detected formats, configured target version, and resource limits.
 - `RawDisplayModel`, `RawPropModel`, `RawChannelModel`, `RawControllerModel`: faithful preview-derived structures and source identifiers.
 - `ClassifiedPropModel`: inferred role, orientation, segment order, color capability, confidence, evidence, review status, and overrides.
 - `AudioAnalysisModel`: tempo, beats, downbeats, onsets, sections, energy curve, hard stops, vocal regions, and syllable events.
 - `RuleProfile`: versioned rule IDs, constraints, and tunables.
-- `Timeline`: versioned timebase, source references, musical sections, and channel/prop events.
+- `Timeline`: versioned timebase, source references, musical sections, and channel/prop events. Phase 3 serializes an immutable dataclass Timeline with schema version, source fingerprints, fixed BPM, centisecond beat positions, supported/excluded props, and native channel references.
 - `GenerationReport`: used/unused entities, unsupported features, validation results, and verification status.
 
 ### Timeline requirements

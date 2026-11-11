@@ -10,7 +10,7 @@ from pathlib import Path
 from defusedxml import ElementTree as SafeET
 from defusedxml.common import DefusedXmlException
 
-SUPPORTED_PREVIEW_REVISIONS = frozenset({"0", "1", "56"})
+SUPPORTED_PREVIEW_REVISIONS = frozenset({"0", "1", "56", "58"})
 MAX_LORPREV_BYTES = 20 * 1024 * 1024
 MAX_XML_DEPTH = 256
 MAX_LORPREV_ELEMENTS = 100_000
