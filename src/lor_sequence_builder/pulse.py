@@ -107,7 +107,8 @@ def _elements_equivalent(left: ET.Element, right: ET.Element) -> bool:
     left_children = list(left)
     right_children = list(right)
     return len(left_children) == len(right_children) and all(
-        _elements_equivalent(a, b) for a, b in zip(left_children, right_children)
+        _elements_equivalent(a, b)
+        for a, b in zip(left_children, right_children, strict=True)
     )
 
 def _beat_positions(duration: int, bpm: float) -> tuple[int, ...]:
@@ -229,7 +230,9 @@ def _build_timeline(
     template_groups = embedded_preview.findall("PropGroup")
     if len(preview_groups) != len(template_groups) or any(
         not _elements_equivalent(preview_group, template_group)
-        for preview_group, template_group in zip(preview_groups, template_groups)
+        for preview_group, template_group in zip(
+            preview_groups, template_groups, strict=True
+        )
     ):
         raise PulseGenerationError(
             "Preview/template PropGroup relationships or arrangement data do not match"
@@ -356,7 +359,9 @@ def _build_timeline(
         channel_refs: list[_MappedChannel] = []
         seen_coordinates: set[tuple[str, str, str]] = set()
         mapping_error: str | None = None
-        for index, (address, channel) in enumerate(zip(address_entries, native_channels)):
+        for index, (address, channel) in enumerate(
+            zip(address_entries, native_channels, strict=True)
+        ):
             row = _attribute(channel, "row")
             col = _attribute(channel, "col")
             color = _attribute(channel, "color")
@@ -491,7 +496,9 @@ def _validate_timeline(
 
     beats = timeline.beat_positions_centiseconds
     if not beats or tuple(sorted(set(beats))) != beats:
-        raise PulseGenerationError("Timeline beat positions must be non-empty and strictly increasing")
+        raise PulseGenerationError(
+            "Timeline beat positions must be non-empty and strictly increasing"
+        )
     if {prop_id for prop_id, _ in mapped_channels} != supported:
         raise PulseGenerationError("Timeline supported props do not match the native channel map")
 
@@ -510,7 +517,9 @@ def _validate_timeline(
             raise PulseGenerationError("Timeline event references an unknown or unsupported prop")
         key = (event.beat_index, channel.prop_id, channel.channel_index)
         if key not in expected or key in observed:
-            raise PulseGenerationError("Timeline event has an invalid or duplicate beat/channel reference")
+            raise PulseGenerationError(
+                "Timeline event has an invalid or duplicate beat/channel reference"
+            )
         if event.beat_index < 0 or event.beat_index >= len(beats):
             raise PulseGenerationError("Timeline event references an invalid beat index")
         if event.start_centisecond != beats[event.beat_index]:
@@ -522,7 +531,9 @@ def _validate_timeline(
             timeline.duration_centiseconds,
         )
         if event.end_centisecond != expected_end:
-            raise PulseGenerationError("Timeline event duration does not match the configured pulse")
+            raise PulseGenerationError(
+                "Timeline event duration does not match the configured pulse"
+            )
         mapped = mapped_channels[(channel.prop_id, channel.channel_index)]
         if channel != mapped.reference:
             raise PulseGenerationError(
@@ -539,7 +550,9 @@ def _validate_timeline(
             or native_channel.attrib.get("col") != channel.col
             or native_channel.attrib.get("color") != channel.color
         ):
-            raise PulseGenerationError("Timeline channel coordinates do not match the native template")
+            raise PulseGenerationError(
+                "Timeline channel coordinates do not match the native template"
+            )
         observed.add(key)
 
     if observed != expected:
