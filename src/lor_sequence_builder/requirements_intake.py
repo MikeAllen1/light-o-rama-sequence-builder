@@ -461,6 +461,8 @@ def gather_requirements(
                 # Completing a fresh intake with no accepted requirements must
                 # clear the old sidecar too; otherwise the next build resurrects it.
                 saved_requirements_path(preview_path).unlink(missing_ok=True)
+                if saved:
+                    say("Saved requirements cleared for this fresh start.")
             return result
         if result or not saved or existing:
             return result if result else existing
