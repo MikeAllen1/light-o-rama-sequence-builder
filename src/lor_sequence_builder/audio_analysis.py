@@ -147,6 +147,8 @@ def _estimate_tempo(flux: list[float], duration: float) -> tuple[float | None, f
     if not candidates:
         return None, 0.0, None, None
     best_score = max(score for score, _ in candidates)
+    if best_score <= 1e-12:
+        return None, 0.0, None, None
     # Prefer the faster candidate when tempo aliases (for example 60/120 BPM)
     # have nearly equal autocorrelation. The confidence still reflects the best score.
     best_lag = min(
