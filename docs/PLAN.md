@@ -122,7 +122,7 @@ See [GITHUB_WORKFLOW.md](GITHUB_WORKFLOW.md) for branch, PR, review, merge, and 
 - Verification: Python 3.12 CI passed pytest, Ruff, strict mypy, dependency audit, and CodeQL. See the merged PR and its linked runs.
 
 ### Phase 1 — Native S6 LOREDIT format
-- Status: Implementation complete; PR #1 ready for owner review. Latest GitHub Tests and CodeQL runs are green.
+- Status: Complete and merged in PR #1. The owner opened the writer-generated round-trip output in S6 and confirmed it loads.
 - PR: https://github.com/MikeAllen1/light-o-rama-sequence-builder/pull/1
 - Issue: https://github.com/MikeAllen1/light-o-rama-sequence-builder/issues/1
 - Branch: `phase-1/loredit-format`
@@ -134,7 +134,7 @@ See [GITHUB_WORKFLOW.md](GITHUB_WORKFLOW.md) for branch, PR, review, merge, and 
 - Human gate: complete. Owner opened the writer-generated round-trip output in S6 and explicitly confirmed it was fine.
 - Local quality-tool limitation: Ruff and mypy executables are unavailable in this runtime. `uv lock --check --offline` passes. `uv sync --locked --offline` cannot install registry packages without network access. GitHub Tests run https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42917498988 passed locked sync, 17 pytest tests, Ruff, strict mypy (with pinned `types-defusedxml` stubs), and pip-audit. CodeQL run https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42917499008 passed.
 - Scope boundary: no preview parser, audio analysis, Timeline, or choreography work has been started.
-- Remaining: resolve any CI findings, complete PR review, obtain owner approval to merge, then stop. Do not begin Phase 2 before merge and explicit approval.
+- Completion: PR #1 was merged before Phase 2 began; the S6 writer validation gate is complete.
 
 ## Handoff protocol
 
@@ -143,7 +143,7 @@ At the start of each fresh phase session: read this plan and active issue; confi
 
 ## Phase 2 — Standalone LORPREV parser
 
-- Status: Parser implementation and automated checks are passing on the latest verified commit; PR #6 remains draft/open and is not merged. Human verification and fixture-version evidence remain outstanding.
+- Status: Parser implementation and automated checks pass on the current PR head; PR #6 remains draft/open and is not merged. S6 export and independent S6 import verification are complete.
 - Issue: https://github.com/MikeAllen1/light-o-rama-sequence-builder/issues/5
 - PR: https://github.com/MikeAllen1/light-o-rama-sequence-builder/pull/6
 - Branch: `phase-2/lorprev-parser`
@@ -152,8 +152,8 @@ At the start of each fresh phase session: read this plan and active issue; confi
 - Observed golden data: Revision 1; 51 PropClass entries; one Scene; one empty PropViews; 1,900 geometry points; 46 Square and 5 Hexagon props; six shape names; eight Channel_per_color props. The source contains no controller or group elements. ChannelGrid is exposed as semicolon-indexed entries with comma-separated raw fields and source-attribute provenance; field semantics are not guessed. Geometry points expose individually sourced x/y values. MasterPropId remains a raw source reference.
 - Parser: secure defusedxml parsing; Revision 0 and 1 support; raw attributes and XML descendants retained; per-attribute file/element locator provenance; unknown top-level nodes preserved; unfamiliar DeviceType and TraditionalType values surfaced as UnsupportedConstruct records with provenance; ChannelGrid entries and geometry points exposed as typed provenance-backed records without assigning undocumented channel-field semantics; explicit missing/malformed/unsafe/unsupported-revision/zero-prop errors. Recognized device values are `LOR`, `AC`, and `DC`; recognized traditional types are `Single Color`, `Channel_per_color`, and `Multicolor_string_1_ch`, all grounded in the committed Revision 0/1 fixtures and the product's stated AC/DC scope.
 - Tests: Revision 0 fixture and runtime-generated synthetic Revision 1 coverage, plus golden parse test for the S6-exported Revision 1 fixture, channel-grid entry offsets, geometry point values, unsupported-construct reporting, and provenance assertions.
-- Latest completed Tests CI: run https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42926090139 — 31 pytest tests passed, Ruff passed, strict mypy passed, pip-audit passed. CodeQL run https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42926090181 is running. Latest source commit: `06284086266b90d450657ab6be05106604eaba16`.
+- Current-head CI: Tests, Ruff, strict mypy, dependency audit, and CodeQL all passed on `443ffa27f249cf87a478408cb7946bfc34c08b14`. Tests run: https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42928018281. CodeQL run: https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42928018325.
 - Human verification: complete. On 2026-11-10, the owner opened the sanitized Revision 1 `.lorprev` fixture supplied for S6 import and confirmed that it loads successfully. This satisfies the independent-import acceptance gate; no further preview import is requested.
-- Current-head CI: Tests run 42926187690 passed; CodeQL run 42926187730 passed on head `2788eabc12f93ffde8c2f25abce09b27aa3bc83d`.
-- Remaining acceptance work: exact S6 application version used for the original standalone Revision 1 export was not captured and remains an evidence gap; review any remaining issue criteria. Do not assume the Phase 1 version applies. No controller/group model is fabricated because the golden export contains no such entities.
+
+- Remaining acceptance work: final code review and owner approval to merge. The export is confirmed as Light-O-Rama S6; the exact minor application build was not captured and is optional provenance, not an acceptance gate. The file's `Revision="1"` marker governs parser compatibility. No controller/group model is fabricated because the golden export contains no such entities.
 - Scope remains Phase 2 only. Audio analysis, classification, props.yaml, Timeline, rules, and choreography have not been started.
