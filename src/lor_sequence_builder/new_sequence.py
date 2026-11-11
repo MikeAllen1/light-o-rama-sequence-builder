@@ -89,7 +89,10 @@ def _channel_count(prop: ET.Element) -> int:
         raise NewSequenceError(
             f"Prop ChannelGrid exceeds the {MAX_CHANNEL_GRID_ENTRIES_PER_PROP} entry limit"
         )
-    return sum(bool(entry) for entry in value.split(";"))
+    entries = value.split(";")
+    if any(not entry.strip() for entry in entries):
+        raise NewSequenceError("ChannelGrid contains an empty assignment; channel indices cannot be compacted")
+    return len(entries)
 
 
 def channel_layout_problem(prop: ET.Element) -> str | None:
@@ -106,7 +109,15 @@ def channel_layout_problem(prop: ET.Element) -> str | None:
             f"TraditionalType {traditional_type or '(missing)'} has no verified native "
             "channel layout"
         )
-    if _channel_count(prop) == 0:
+    value = prop.attrib.get("ChannelGrid", "")
+    entries = value.split(";") if value else []
+    for index, entry in enumerate(entries):
+        fields = entry.split(",")
+        if not entry.strip():
+            return f"ChannelGrid entry {index} is empty; channel indices cannot be compacted"
+        if len(fields) < 3 or not all(field.strip() for field in fields[:3]):
+            return f"ChannelGrid entry {index} lacks a complete LOR network, Unit ID, and circuit"
+    if not entries:
         return "ChannelGrid has no controller assignments"
     return None
 

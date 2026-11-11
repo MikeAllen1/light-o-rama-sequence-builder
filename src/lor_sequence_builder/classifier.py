@@ -198,7 +198,9 @@ def prop_center(prop: ET.Element) -> tuple[float, float] | None:
 
 
 def _channel_entries(prop: ET.Element) -> list[list[str]]:
-    return [entry.split(",") for entry in prop.get("ChannelGrid", "").split(";") if entry]
+    value = prop.get("ChannelGrid", "")
+    # Preserve empty slots: dropping one shifts every subsequent physical index.
+    return [entry.split(",") for entry in value.split(";")] if value else []
 
 
 def _shape_name(prop: ET.Element) -> str:

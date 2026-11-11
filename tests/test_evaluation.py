@@ -175,3 +175,19 @@ def test_load_analysis_rejects_boolean_and_out_of_duration_timestamps(tmp_path: 
                         encoding="utf-8")
         with pytest.raises(EvaluationError):
             evaluate(path, sequence, beats_grid="Beats")
+
+ 
+@pytest.mark.parametrize("centisecond", [-10, 3001])
+def test_read_timing_grid_rejects_marks_outside_sequence_duration(
+    tmp_path: Path, centisecond: int
+) -> None:
+    sequence = _sequence_with_named_grids(tmp_path, "Beats")
+    tree = ET.parse(sequence)
+    grid = tree.getroot().find("./TimingGrids/TimingGridFree")
+    assert grid is not None
+    timing = grid.find("timing")
+    assert timing is not None
+    timing.set("centisecond", str(centisecond))
+    tree.write(sequence, encoding="utf-8", xml_declaration=True)
+    with pytest.raises(EvaluationError, match="outside sequence duration"):
+        read_timing_grid(sequence, "Beats")

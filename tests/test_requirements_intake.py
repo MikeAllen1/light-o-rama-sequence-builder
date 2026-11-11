@@ -24,7 +24,7 @@ from lor_sequence_builder.requirements_intake import (
     translator_from_environment,
 )
 from lor_sequence_builder.rules import display_from_preview, load_rule_set
-from lor_sequence_builder.rules.engine import Display
+from lor_sequence_builder.rules.engine import Display, DisplayProp
 from tests.display_builders import DisplayBuilder, classic_yard, roofline_house
 
 
@@ -281,3 +281,36 @@ def test_builds_use_saved_requirements_automatically(
     assert main([*build, "--ask-requirements"]) == 0
     assert not saved_requirements_path(preview).exists()
     assert (tmp_path / "s.loredit").exists()
+
+
+def test_guided_chase_direction_is_asked_for_each_group_in_a_role() -> None:
+    props = {}
+    groups = {"Arches": (), "Porch Arches": ()}
+    for group in groups:
+        members = []
+        for index in range(3):
+            prop_id = f"{group}-{index}"
+            props[prop_id] = DisplayProp(
+                prop_id=prop_id, name=prop_id, role="arch", channel_count=1,
+                color_kind="multi_color", channel_colors=("Red",), linked_to=None,
+                layout_problem=None, center=None, direction="horizontal",
+                group=group, position_in_row=index + 1, row_size=3,
+            )
+            members.append(prop_id)
+        groups[group] = tuple(members)
+    display = Display(props=props, groups=groups)
+    script = Script({
+        "group 'Arches'": "l",
+        "group 'Porch Arches'": "r",
+    })
+
+    found = guided_requirements(display, script.ask, script.say)
+
+    assert found == [
+        {"type": "move_direction", "props": {"group": "Arches"},
+         "movement": "chase", "direction": "left_to_right"},
+        {"type": "move_direction", "props": {"group": "Porch Arches"},
+         "movement": "chase", "direction": "right_to_left"},
+    ]
+    assert any("group 'Arches'" in prompt for prompt in script.prompts)
+    assert any("group 'Porch Arches'" in prompt for prompt in script.prompts)
