@@ -24,6 +24,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
+from lor_sequence_builder.channel_mapping import channel_layout_problem
 from lor_sequence_builder.choreography import (
     EFFECT_KINDS,
     MOVEMENT_DIRECTIONS,
@@ -40,7 +41,6 @@ from lor_sequence_builder.classifier import (
     classify_preview,
     prop_center,
 )
-from lor_sequence_builder.channel_mapping import channel_layout_problem
 from lor_sequence_builder.rules.profile import (
     RULE_SPECS,
     Requirement,
