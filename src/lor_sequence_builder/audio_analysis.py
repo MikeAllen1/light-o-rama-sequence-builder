@@ -19,7 +19,7 @@ import tempfile
 import wave
 from importlib import metadata
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, IO
 
 import librosa
 import numpy as np
@@ -474,7 +474,7 @@ def _section_candidates(energy: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 def _svg_plot(
-    stream: TextIO,
+    stream: IO[str],
     duration: float,
     energy: list[dict[str, Any]],
     beats: list[float],
