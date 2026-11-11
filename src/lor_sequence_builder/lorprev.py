@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,6 +13,7 @@ from defusedxml.common import DefusedXmlException
 SUPPORTED_PREVIEW_REVISIONS = frozenset({"0", "1", "56"})
 MAX_LORPREV_BYTES = 20 * 1024 * 1024
 MAX_XML_DEPTH = 256
+MAX_LORPREV_ELEMENTS = 100_000
 
 
 class LorprevError(ValueError):
@@ -169,9 +171,35 @@ def read_lorprev(path: str | Path) -> PropModel:
         )
 
     try:
-        root = SafeET.fromstring(
-            content, forbid_dtd=True, forbid_entities=True, forbid_external=True
+        # Parse incrementally so depth and total-node limits are enforced while
+        # the XML parser is consuming input, before building the raw model.
+        iterator = SafeET.iterparse(
+            io.BytesIO(content),
+            events=("start", "end"),
+            forbid_dtd=True,
+            forbid_entities=True,
+            forbid_external=True,
         )
+        depth = 0
+        element_count = 0
+        for event, _element in iterator:
+            if event == "start":
+                depth += 1
+                element_count += 1
+                if depth > MAX_XML_DEPTH:
+                    raise LorprevError(
+                        f"LORPREV XML nesting exceeds the maximum depth of {MAX_XML_DEPTH}"
+                    )
+                if element_count > MAX_LORPREV_ELEMENTS:
+                    raise LorprevError(
+                        "LORPREV XML exceeds the maximum element count "
+                        f"of {MAX_LORPREV_ELEMENTS}"
+                    )
+            else:
+                depth -= 1
+        root = iterator.root
+    except LorprevError:
+        raise
     except (ET.ParseError, DefusedXmlException) as exc:
         raise LorprevError(f"Invalid or unsafe LORPREV XML: {source}") from exc
 
@@ -230,11 +258,29 @@ def read_lorprev(path: str | Path) -> PropModel:
                     )
                 )
 
-    prop_ids = {
-        value.value
-        for prop in prop_nodes
-        if (value := prop.attributes.get("id")) is not None
-    }
+    prop_ids: set[str] = set()
+    for prop in prop_nodes:
+        prop_id = prop.attributes.get("id")
+        if prop_id is None or not prop_id.value.strip():
+            unsupported.append(
+                UnsupportedConstruct(
+                    kind="prop identity",
+                    detail="PropClass is missing a non-empty id attribute",
+                    source=SourceValue("", str(source), f"{prop.locator}/@id"),
+                )
+            )
+            continue
+        if prop_id.value in prop_ids:
+            unsupported.append(
+                UnsupportedConstruct(
+                    kind="prop identity",
+                    detail=f"Duplicate PropClass id {prop_id.value!r}",
+                    source=prop_id,
+                )
+            )
+            continue
+        prop_ids.add(prop_id.value)
+
     groups: list[PropGroupModel] = []
     for group in group_nodes:
         members: list[PropGroupMemberModel] = []
