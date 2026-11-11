@@ -19,6 +19,7 @@ from lor_sequence_builder.loredit import read_loredit
 BEAT_TOLERANCE_SECONDS = 0.07
 SECTION_TOLERANCE_SECONDS = 2.0
 MAX_ANALYSIS_BYTES = 50 * 1024 * 1024
+REVIEW_SCHEMA_VERSION = "music-review-1.0"
 ANALYSIS_SCHEMA_VERSION = "2.0"
 
 
@@ -156,6 +157,7 @@ def _reject_duplicate_object_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any
 
 
 def load_analysis(path: str | Path) -> dict[str, Any]:
+    """Read an analysis JSON, or the corrected analysis inside a music review."""
     source = Path(path)
     try:
         if source.stat().st_size > MAX_ANALYSIS_BYTES:
@@ -168,6 +170,11 @@ def load_analysis(path: str | Path) -> dict[str, Any]:
         raise EvaluationError(f"Cannot read analysis JSON: {source}") from exc
     if not isinstance(data, dict):
         raise EvaluationError("Analysis JSON must be an object")
+    if data.get("schema_version") == REVIEW_SCHEMA_VERSION:
+        # A music review saved by the workspace wraps the corrected analysis.
+        data = data.get("analysis")
+        if not isinstance(data, dict):
+            raise EvaluationError("Music review JSON has no analysis object")
     if data.get("schema_version") != ANALYSIS_SCHEMA_VERSION:
         raise EvaluationError(
             f"Unsupported analysis schema_version {data.get('schema_version')!r}; "

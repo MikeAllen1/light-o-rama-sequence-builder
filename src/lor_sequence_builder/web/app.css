@@ -182,8 +182,8 @@ canvas { display: block; }
 
 /* Editing */
 .edit-bar {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 6px 18px;
-  background: #121a22; border-bottom: 1px solid var(--line); font-size: 10px; color: #9fadb9;
+  display: flex; flex-wrap: nowrap; align-items: center; gap: 6px 8px; padding: 6px 18px;
+  overflow-x: auto; flex-shrink: 0; background: #121a22; border-bottom: 1px solid var(--line); font-size: 10px; color: #9fadb9;
 }
 .edit-bar .tool-button { min-height: 26px; padding: 0 10px; font-size: 10px; }
 .edit-bar .tool-button:disabled { opacity: .4; cursor: default; }
@@ -192,12 +192,17 @@ canvas { display: block; }
 .snap-option input { margin: 0; accent-color: var(--accent); }
 .snap-hint { color: var(--faint); font-size: 9px; }
 .edit-spacer { flex: 1; }
-.edit-status { color: var(--faint); font-size: 9px; white-space: nowrap; }
+.edit-status {
+  color: var(--faint); font-size: 9px; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; min-width: 60px; max-width: 220px;
+}
+.edit-bar > * { flex-shrink: 0; }
+.edit-bar > .edit-status { flex-shrink: 1; }
 .edit-status.dirty { color: var(--amber); }
 .tracks-canvas { touch-action: none; }
 .edit-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px 10px; margin-top: 6px; }
 .edit-field { display: inline-flex; flex-direction: column; gap: 2px; color: #82919e; font-size: 8px; }
-.edit-field input[type="number"], .edit-field select {
+.edit-field input[type="number"], .edit-field input[type="text"], .edit-field select {
   width: 72px; height: 24px; padding: 0 5px; border-radius: 4px; border: 1px solid var(--line);
   background: #0f161d; color: var(--text); font-size: 10px;
 }
@@ -205,3 +210,4 @@ canvas { display: block; }
 .edit-field input[type="checkbox"] { height: 18px; margin: 3px 0; accent-color: var(--accent); }
 .edit-form .tool-button, .inspector-action { min-height: 24px; padding: 0 12px; font-size: 10px; }
 .inspector-action { margin-top: 6px; }
+.edit-field input.review-text { width: 280px; }

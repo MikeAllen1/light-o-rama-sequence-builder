@@ -26,7 +26,7 @@
         <span>Open audio</span>
         <input id="audioFile" type="file" accept="audio/*,.mp3,.mp4,.wav,.flac,.m4a,.ogg,.opus">
       </label>
-      <label class="tool-button subtle">
+      <label class="tool-button subtle" title="An analysis JSON, or a saved music review">
         <span>Load analysis</span>
         <input id="analysisFile" type="file" accept=".json,application/json">
       </label>
@@ -115,6 +115,7 @@
         <span class="snap-hint">Alt: no snap · arrows nudge</span>
         <span class="edit-spacer"></span>
         <span id="editStatus" class="edit-status">No edits</span>
+        <button id="saveReviewButton" class="tool-button" type="button" disabled title="Save the corrected beats, bars, hits, sections and lyrics as a music review file">Save music review</button>
         <button id="exportButton" class="tool-button primary" type="button" disabled title="Check the edited sequence and download it as a new file">Export edited copy</button>
       </div>
 

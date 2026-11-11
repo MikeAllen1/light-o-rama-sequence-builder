@@ -317,10 +317,17 @@
                 "$ref": "#/$defs/confidence"
               },
               "label": {
-                "type": "null"
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Null from the analyzer; a part name (Verse, Chorus...) when a person named it in a music review."
               },
               "method": {
                 "type": "string"
+              },
+              "status": {
+                "$ref": "#/$defs/status"
               }
             }
           }
@@ -455,8 +462,19 @@
         },
         "method": {
           "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
         }
       }
+    },
+    "status": {
+      "enum": [
+        "auto",
+        "confirmed",
+        "fitted"
+      ],
+      "description": "Optional. Set by a music review: confirmed (placed or confirmed by a person), fitted (spread evenly between confirmed bars) or auto (an estimate)."
     }
   }
 }
