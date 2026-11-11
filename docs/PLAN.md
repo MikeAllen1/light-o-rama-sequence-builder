@@ -1,8 +1,8 @@
 # Implementation Plan
 
-**Status:** Phase 1 — native LOREDIT format  
-**Current phase:** 1  
-**Next phase:** 2 — preview parser
+**Status:** Phase 2 — standalone LORPREV parser in progress  
+**Current phase:** 2  
+**Next phase:** 3 — walking skeleton (blocked until Phase 2 is merged and owner approves)
 
 ## Product objective and fixed requirements
 
@@ -49,7 +49,7 @@ Build fixture-driven sequence reader/writer for native .loredit.
 **Done when:** Read/write fixtures; semantic round-trip tests pass; unsupported versions/constructs fail clearly; no input is modified; output is new; owner opens rewritten file in target S6 and confirms it loads. This is a mandatory human gate. Do not start preview parsing, audio analysis, or choreography during this phase. Fixtures are the format authority; ask when evidence is missing, never guess.
 
 ### Phase 2 — Preview parser
-Build .lorprev → raw PropModel plus display/channel/controller data.
+Build .lorprev / embedded PreviewClass → raw PropModel plus display/channel/controller/group data.
 
 **Done when:** Golden tests pass on every fixture preview; revision detection and unsupported-version errors work; missing/unreadable/malformed/zero-prop previews fail; every entity has source provenance; unsupported types are explicitly reported.
 
@@ -122,7 +122,7 @@ See [GITHUB_WORKFLOW.md](GITHUB_WORKFLOW.md) for branch, PR, review, merge, and 
 - Verification: Python 3.12 CI passed pytest, Ruff, strict mypy, dependency audit, and CodeQL. See the merged PR and its linked runs.
 
 ### Phase 1 — Native S6 LOREDIT format
-- Status: Implementation complete; PR #1 ready for owner review. Latest GitHub Tests and CodeQL runs are green.
+- Status: Complete and merged in PR #1. The owner opened the writer-generated round-trip output in S6 and confirmed it loads.
 - PR: https://github.com/MikeAllen1/light-o-rama-sequence-builder/pull/1
 - Issue: https://github.com/MikeAllen1/light-o-rama-sequence-builder/issues/1
 - Branch: `phase-1/loredit-format`
@@ -134,8 +134,34 @@ See [GITHUB_WORKFLOW.md](GITHUB_WORKFLOW.md) for branch, PR, review, merge, and 
 - Human gate: complete. Owner opened the writer-generated round-trip output in S6 and explicitly confirmed it was fine.
 - Local quality-tool limitation: Ruff and mypy executables are unavailable in this runtime. `uv lock --check --offline` passes. `uv sync --locked --offline` cannot install registry packages without network access. GitHub Tests run https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42917498988 passed locked sync, 17 pytest tests, Ruff, strict mypy (with pinned `types-defusedxml` stubs), and pip-audit. CodeQL run https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42917499008 passed.
 - Scope boundary: no preview parser, audio analysis, Timeline, or choreography work has been started.
-- Remaining: resolve any CI findings, complete PR review, obtain owner approval to merge, then stop. Do not begin Phase 2 before merge and explicit approval.
+- Completion: PR #1 was merged before Phase 2 began; the S6 writer validation gate is complete.
 
 ## Handoff protocol
 
 At the start of each fresh phase session: read this plan and active issue; confirm previous PR is merged and approval recorded; check branch and working tree; work only on the active phase; update this log before PR; stop after phase completion and request approval.
+
+
+## Phase 2 — Preview parser
+
+- Status: Parser implementation now covers the supplied native S6 PreviewClass including its PropGroup; PR #6 remains draft/open and is not merged. The earlier assertion that group evidence was missing was incorrect.
+- Issue: https://github.com/MikeAllen1/light-o-rama-sequence-builder/issues/5
+- PR: https://github.com/MikeAllen1/light-o-rama-sequence-builder/pull/6
+- Branch: `phase-2/lorprev-parser`
+- Owner-provided standalone preview: `Imported from roundtrip.loredit on 11_10_2026 (3).lorprev`, a fictional S6 Revision 1 export (118,026 bytes). The repo also contains the owner-provided `fixture_candidate.loredit` source with an embedded PreviewClass Revision 56; this embedded preview contains the native PropGroup that the earlier review overlooked.
+- Golden fixture: `tests/fixtures/s6_revision_1_export.lorprev.gz` is a base64-encoded gzip transport copy of the sanitized S6 XML. The test decodes/decompresses it before parsing. Sanitization changes only preview/scene/prop IDs and preview/scene names; structural source values and geometry are retained.
+- Observed standalone Revision 1 data: 51 PropClass entries; one Scene; one empty PropViews; 1,900 geometry points; 46 Square and 5 Hexagon props; six shape names; eight Channel_per_color props. Its controller/channel assignments are in each prop's ChannelGrid. The embedded Revision 56 PreviewClass in `fixture_candidate.loredit` has 51 PropClass entries and one PropGroup named `Fixture Group 01`, with five member references resolving to Fixture Props 011, 010, 009, 008, and 007. Group arrangement is `Preview`; each member retains orientation/top/left values. Controller assignments expose LOR network + Unit ID + circuit, while DMX exposes universe + channel. All source fields and locators are retained.
+- Parser: secure defusedxml parsing; Revision 0, 1, and 56 support; raw attributes, element text, child-tail text, and XML descendants retained; per-attribute file/element locator provenance; unknown elements at any depth preserved and surfaced with source provenance; unfamiliar DeviceType and TraditionalType values surfaced as UnsupportedConstruct records with provenance; ChannelGrid rows are typed by DeviceType (LOR network/Unit ID/circuit; DMX universe/channel) while all remaining raw fields are retained; `Undetermined` remains an explicit unassigned device type; legacy `AC` and `DC` values remain recognized for Revision 0 fixture compatibility; geometry points are typed with x/y provenance and only read from direct prop shape children; explicit missing/malformed/unsafe/unsupported-revision/zero-prop errors; 20 MiB input and 256-level nesting limits. PropGroup and member references are parsed into typed group/member models; IDs are checked against the prop set and dangling references are surfaced as unsupported constructs.
+- Tests: 44 tests on the current branch, including Revision 0 fixture and runtime-generated synthetic Revision 1 coverage, golden parse test for the S6-exported Revision 1 fixture, typed LOR/DMX channel address assertions against the native S6 golden fixture and synthetic DMX fixture, incomplete assignment reporting, legacy/undetermined device handling, CLI controller-address and group summary output, native Revision 56 group/member golden assertions, geometry point values, unsupported-construct reporting, provenance assertions, nested unknown controller/group-shaped element reporting, mixed-content preservation, excessive-nesting rejection, geometry-context isolation, incomplete-point rejection, and bounded file reads.
+- Current PR head: `0afae4298f474a0ee48883ee8c1e96b0d6ce9cda` (latest documentation update). Latest fully successful code-bearing run: https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42936156503 — 44 pytest tests, Ruff, strict mypy, and pip-audit all passed. CodeQL passed on that same code-bearing head: https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42936159766. Checks for the current documentation-only head are running: Tests https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42936321319; CodeQL https://github.com/MikeAllen1/light-o-rama-sequence-builder/actions/runs/42936321648.
+- Human verification: complete. On 2026-11-10, the owner opened the sanitized Revision 1 `.lorprev` fixture supplied for S6 import and confirmed that it loads successfully. This satisfies the independent-import acceptance gate; no further preview import is requested.
+
+- Remaining acceptance work: no new group export is required. The supplied embedded PreviewClass in `fixture_candidate.loredit` provides native S6 group evidence and is now committed as a sanitized extracted golden fixture. The parser covers Revision 56, PropGroup, member ID references, arrangement, orientation, top, and left. The original standalone Revision 1 fixture remains covered separately. The exact S6 build is recorded in the source sequence as 6.6.0.12; parser compatibility is keyed to each preview's internal Revision marker.
+- Scope remains Phase 2 only. Audio analysis, classification, props.yaml, Timeline, rules, and choreography have not been started.
+
+
+### Phase 2 hardening follow-up — 2026-11-10
+- Added incremental secure XML scanning with a 100,000-element ceiling in addition to the existing 20 MiB input and 256-level nesting limits. The bounded scan completes before the typed raw model is constructed; the same in-memory bytes are then reparsed with defusedxml.
+- Added explicit unsupported-construct reporting for missing/blank and duplicate PropClass IDs. Source props remain preserved; invalid identities are not treated as reliable keys.
+- Clarified that ChannelGrid parsing currently exposes address fields only (LOR network/Unit ID/circuit and DMX universe/channel). Other fields remain raw and must not be assumed semantically interpreted by later phases.
+- Updated CLI summary wording so its unsupported-construct count includes group and channel-assignment issues, not only prop/device declarations.
+- Added three regression tests. Latest successful Tests workflow on head `0293fc2678dea9220636a36e44f202b25a6cfa1c`: 47 passed, Ruff passed, strict mypy passed, and pip-audit passed. CodeQL is running on this head.
