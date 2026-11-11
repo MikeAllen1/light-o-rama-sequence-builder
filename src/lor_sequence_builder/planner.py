@@ -660,14 +660,19 @@ _INTRO_TIERS: tuple[frozenset[str], ...] = (
 
 
 def _phrases(window: _Window) -> list[_Window]:
-    marks = [d for d in window.downbeats if d > window.start]
-    cuts = [window.start, *marks[BARS_PER_PHRASE - 1::BARS_PER_PHRASE], window.end]
-    if len(marks) < BARS_PER_PHRASE:
-        cuts = [window.start, window.end]
+    """Four-bar phrases counted from the first bar start; short leftovers join a neighbor."""
+    marks = [d for d in window.downbeats if window.start <= d < window.end]
+    cuts = [window.start]
+    # A pickup before the first bar belongs to the first phrase.
+    for index in range(BARS_PER_PHRASE, len(marks), BARS_PER_PHRASE):
+        cuts.append(marks[index])
+    cuts.append(window.end)
+    bar = (marks[1] - marks[0]) if len(marks) >= 2 else window.end - window.start
+    # A leftover shorter than two bars is folded into the phrase before it.
+    while len(cuts) > 2 and cuts[-1] - cuts[-2] < 2 * bar:
+        del cuts[-2]
     phrases = []
     for a, b in itertools.pairwise(cuts):
-        if b - a < 50:
-            continue
         phrases.append(_Window(window.section_index, a, b,
                                tuple(t for t in window.beats if a <= t < b),
                                tuple(t for t in window.downbeats if a <= t < b), False))

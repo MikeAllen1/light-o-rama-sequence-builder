@@ -357,3 +357,14 @@ def test_a_big_display_and_a_full_song_plan_quickly() -> None:
     assert report.ok, report.format_text()
     assert len(plan.choreography.effects) > 5000
     assert elapsed < 30
+
+
+def test_phrases_count_from_the_first_bar_and_absorb_short_leftovers() -> None:
+    from lor_sequence_builder.planner import _phrases, _Window
+
+    beats = tuple(range(50, 1700, 50))
+    window = _Window(0, 0, 1700, beats, beats[::4], False)
+    # Bars every 2 s starting at 0.5 s: phrases start at the 5th bar; the 0.5 s tail
+    # after the last full phrase is folded in rather than left as a scrap.
+    cuts = [(p.start, p.end) for p in _phrases(window)]
+    assert cuts == [(0, 850), (850, 1700)]
