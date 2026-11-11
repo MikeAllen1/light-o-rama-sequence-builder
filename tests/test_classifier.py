@@ -108,6 +108,29 @@ def test_color_capability_follows_the_prop_type() -> None:
     assert (face.kind, face.colors) == ("color_per_channel", ("White", "Red", "Green"))
 
 
+
+@pytest.mark.parametrize("blank_index,expected", [
+    (0, ("", "Red", "Green")),
+    (1, ("White", "", "Green")),
+])
+def test_channel_per_color_keeps_blank_color_slots(
+    blank_index: int, expected: tuple[str, ...]
+) -> None:
+    display = classic_yard()
+    face = next(p for p in display.element().findall("PropClass")
+                if p.get("Name") == "Santa")
+    entries = face.get("ChannelGrid", "").split(";")
+    fields = entries[blank_index].split(",")
+    fields[5] = ""
+    entries[blank_index] = ",".join(fields)
+    face.set("ChannelGrid", ";".join(entries))
+
+    result = _by_name(display)["Santa"]
+
+    assert result.color_capability.kind == "color_per_channel"
+    assert result.color_capability.colors == expected
+
+
 def test_rows_follow_group_order_or_left_to_right_position() -> None:
     display = classic_yard()
     root = display.element()
