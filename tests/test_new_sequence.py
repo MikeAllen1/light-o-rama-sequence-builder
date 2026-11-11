@@ -106,6 +106,32 @@ def test_props_linked_to_a_master_get_no_sequence_prop(tmp_path: Path) -> None:
     assert "Linked to master prop" in reasons[linked.get("id", "")]
 
 
+@pytest.mark.parametrize("master_reference", [None, "", "   ", "\\t\\n"])
+def test_empty_or_whitespace_master_reference_is_treated_as_unlinked(
+    tmp_path: Path, master_reference: str | None
+) -> None:
+    preview = _synthetic_preview(tmp_path)
+    props = preview.findall("PropClass")
+    candidate = props[1]
+    if master_reference is None:
+        candidate.attrib.pop("MasterPropId", None)
+    else:
+        candidate.set("MasterPropId", master_reference)
+
+    built = build_new_sequence(preview, 12_000, "song.mp3")
+
+    sequence_prop_ids = {
+        item.get("id") for item in built.document.root.findall("./SequenceProps/SeqProp")
+    }
+    assert candidate.get("id") in sequence_prop_ids
+    embedded = built.document.root.find("PreviewClass")
+    assert embedded is not None
+    embedded_candidate = next(
+        item for item in embedded.findall("PropClass") if item.get("id") == candidate.get("id")
+    )
+    assert embedded_candidate.get("MasterPropId", "") == ""
+
+
 def test_new_sequence_is_deterministic_and_input_sensitive(tmp_path: Path) -> None:
     preview = _synthetic_preview(tmp_path)
     first = build_new_sequence(preview, 12_000, "song.mp3").document.root
