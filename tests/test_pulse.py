@@ -35,6 +35,7 @@ def matching_inputs(tmp_path: Path) -> tuple[Path, Path]:
     for prop in list(preview.findall("PropClass")):
         if prop.get("id") not in sequence_ids:
             preview.remove(prop)
+    tree.write(template, encoding="utf-8", xml_declaration=True)
     preview_path = tmp_path / "display.lorprev"
     ET.ElementTree(preview).write(preview_path, encoding="utf-8", xml_declaration=True)
     return preview_path, template
