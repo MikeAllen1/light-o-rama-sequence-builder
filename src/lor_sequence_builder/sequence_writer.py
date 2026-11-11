@@ -168,9 +168,8 @@ def build_from_timeline(
     resolved = {p.resolve() for p in (preview_source, output, report_output)}
     if len(resolved) != 3:
         raise SequenceWriteError("Preview, sequence output and report must be different paths")
-    for label, path in (("Sequence output", output), ("Report", report_output)):
-        if path.exists():
-            raise SequenceWriteError(f"{label} already exists; refusing to overwrite: {path}")
+    if output.exists():
+        raise SequenceWriteError(f"Sequence output already exists; refusing to overwrite: {output}")
 
     preview_model = read_lorprev(preview_source)
     invalid_identities = [
