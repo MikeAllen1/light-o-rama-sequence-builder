@@ -1,0 +1,1537 @@
+"use strict";
+
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const ROW_HEIGHT = 22;
+  const RULER_HEIGHT = 38;
+  const WAVE_HEIGHT = 94;
+  const MARKER_HEIGHT = 22;
+  const MAX_XML_BYTES = 50 * 1024 * 1024;
+  const MAX_AUDIO_BYTES = 200 * 1024 * 1024;
+  const MAX_XML_ELEMENTS = 100000;
+  const MAX_JSON_BYTES = 5 * 1024 * 1024;
+  const MAX_CANVAS_PIXELS = 36000000;
+  const MAX_XML_DEPTH = 256;
+
+  const state = {
+    sequence: null,
+    audioFile: null,
+    audioBuffer: null,
+    waveformPeaks: null,
+    audioUrl: null,
+    analysis: null,
+    vocals: null,
+    lyrics: null,
+    syncCheck: null,
+    rows: [],
+    lanes: [],
+    pxPerSecond: 22,
+    collapsedGroups: new Set(),
+    collapsedProps: new Set(),
+    selectedEffect: null,
+    animationFrame: 0,
+    audioRequestId: 0,
+    sequenceRequestId: 0,
+    vocalRequestId: 0,
+    lyricRequestId: 0
+  };
+
+  // Sync check tolerances, in seconds.
+  const SYNC_ON_TIME = 0.04;
+  const SYNC_NEAR_MISS = 0.15;
+  // A "big lighting change" is at least this many channels starting together.
+  const SYNC_CLUSTER = 4;
+
+  const audio = $("audioPlayer");
+  const canvasViewport = $("canvasViewport");
+  const labelsViewport = $("labelsViewport");
+  const playhead = $("playhead");
+
+  function setBanner(message, kind) {
+    const banner = $("analysisBanner");
+    $("analysisMessage").textContent = message;
+    banner.className = "analysis-banner" + (kind ? " " + kind : "");
+  }
+
+  function formatTime(seconds) {
+    const total = Math.max(0, Math.floor(seconds));
+    return Math.floor(total / 60) + ":" + String(total % 60).padStart(2, "0");
+  }
+
+  function formatCentiseconds(value) {
+    const cs = Math.max(0, Math.floor(value));
+    return formatTime(cs / 100) + "." + String(cs % 100).padStart(2, "0");
+  }
+
+  function parseXmlDocument(text) {
+    if (text.length > MAX_XML_BYTES) throw new Error("Sequence exceeds the 50 MiB input limit.");
+    if (/<!DOCTYPE|<!ENTITY/i.test(text)) throw new Error("DOCTYPE and entity declarations are not accepted.");
+    const doc = new DOMParser().parseFromString(text, "application/xml");
+    if (doc.querySelector("parsererror")) throw new Error("The selected file is not well-formed XML.");
+    const root = doc.documentElement;
+    if (!root || root.localName !== "sequence") throw new Error("Expected a native S6 sequence root element.");
+    if (root.getAttribute("saveFileVersion") !== "15") {
+      throw new Error("Only reviewed S6 LOREDIT saveFileVersion 15 files are supported.");
+    }
+    let count = 0;
+    const stack = [{ node: root, depth: 1 }];
+    while (stack.length) {
+      const item = stack.pop();
+      count += 1;
+      if (count > MAX_XML_ELEMENTS) throw new Error("Sequence exceeds the 100,000-element safety limit.");
+      if (item.depth > MAX_XML_DEPTH) throw new Error("Sequence exceeds the 256-level XML nesting limit.");
+      for (const child of item.node.children) stack.push({ node: child, depth: item.depth + 1 });
+    }
+    return doc;
+  }
+
+  function parseSequence(doc, filename) {
+    const root = doc.documentElement;
+    const durationCs = Number(root.getAttribute("totalCentiseconds"));
+    if (!Number.isSafeInteger(durationCs) || durationCs <= 0 || durationCs > 2160000) {
+      throw new Error("Sequence duration is missing or outside the supported range.");
+    }
+    const propsRoot = root.querySelector(":scope > SequenceProps");
+    if (!propsRoot) throw new Error("Sequence is missing its native SequenceProps section.");
+    const props = [];
+    let effectCount = 0;
+    const effectTypes = {};
+    for (const propNode of propsRoot.children) {
+      if (propNode.localName !== "SeqProp") continue;
+      const prop = {
+        id: propNode.getAttribute("id") || "",
+        name: propNode.getAttribute("name") || "(unnamed prop)",
+        channels: []
+      };
+      for (const channelNode of propNode.children) {
+        if (channelNode.localName !== "channel") continue;
+        const channel = {
+          row: channelNode.getAttribute("row") || "0",
+          col: channelNode.getAttribute("col") || "0",
+          color: channelNode.getAttribute("color") || "0",
+          effects: []
+        };
+        for (const effectNode of channelNode.children) {
+          if (effectNode.localName !== "effect") continue;
+          const start = Number(effectNode.getAttribute("startCentisecond"));
+          const end = Number(effectNode.getAttribute("endCentisecond"));
+          if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) ||
+              start < 0 || end <= start || end > durationCs + 100) {
+            throw new Error("Invalid effect timing found in prop " + prop.name + ".");
+          }
+          const attributes = {};
+          for (const attr of effectNode.attributes) attributes[attr.name] = attr.value;
+          const type = attributes.settings || "UNKNOWN";
+          effectTypes[type] = (effectTypes[type] || 0) + 1;
+          channel.effects.push({ start, end, type, attributes });
+          effectCount += 1;
+        }
+        prop.channels.push(channel);
+      }
+      props.push(prop);
+    }
+    if (!props.length) throw new Error("Sequence contains no SeqProp tracks.");
+
+    const groups = [];
+    const membership = new Map();
+    const preview = root.querySelector(":scope > PreviewClass");
+    if (preview) {
+      for (const groupNode of preview.children) {
+        if (groupNode.localName !== "PropGroup") continue;
+        const group = {
+          id: groupNode.getAttribute("id") || "group-" + groups.length,
+          name: groupNode.getAttribute("Name") || "(unnamed group)",
+          arrangement: groupNode.getAttribute("Arrangement") || "unspecified",
+          memberIds: []
+        };
+        for (const member of groupNode.children) {
+          if (member.localName !== "member") continue;
+          const id = member.getAttribute("id");
+          if (id) {
+            group.memberIds.push(id);
+            if (!membership.has(id)) membership.set(id, group.id);
+          }
+        }
+        groups.push(group);
+      }
+    }
+
+    const timingGrids = [];
+    const gridsRoot = root.querySelector(":scope > TimingGrids");
+    if (gridsRoot) {
+      for (const gridNode of gridsRoot.children) {
+        const name = gridNode.getAttribute("name") || gridNode.localName;
+        if (gridNode.localName === "TimingGridFree") {
+          const marks = [];
+          for (const mark of gridNode.children) {
+            if (mark.localName !== "timing") continue;
+            const cs = Number(mark.getAttribute("centisecond"));
+            if (Number.isSafeInteger(cs) && cs >= 0 && cs <= durationCs) marks.push(cs);
+          }
+          timingGrids.push({ name, kind: "free", marks });
+        } else if (gridNode.localName === "TimingGridFixed") {
+          timingGrids.push({
+            name,
+            kind: "fixed",
+            spacing: Number(gridNode.getAttribute("spacing")) || 0,
+            marks: []
+          });
+        }
+      }
+    }
+
+    const audioName = root.getAttribute("musicFilename") || "";
+    return {
+      filename,
+      name: root.getAttribute("musicTitle") || root.getAttribute("name") || filename,
+      artist: root.getAttribute("musicArtist") || "",
+      audioName,
+      durationCs,
+      durationSeconds: durationCs / 100,
+      props,
+      groups,
+      membership,
+      timingGrids,
+      effectCount,
+      effectTypes,
+      channelCount: props.reduce((sum, prop) => sum + prop.channels.length, 0)
+    };
+  }
+
+  function buildRows() {
+    if (!state.sequence) return [];
+    const sequence = state.sequence;
+    const propsByGroup = new Map();
+    const groupIds = new Set(sequence.groups.map((group) => group.id));
+    for (const group of sequence.groups) propsByGroup.set(group.id, []);
+    const ungrouped = [];
+    for (const prop of sequence.props) {
+      const groupId = sequence.membership.get(prop.id);
+      if (groupId && groupIds.has(groupId)) {
+        propsByGroup.get(groupId).push(prop);
+      } else if (groupIds.has(prop.id)) {
+        // S6 can include a channel-less SeqProp whose ID is the PropGroup ID.
+        // The group header already represents that placeholder; don't create a
+        // duplicate empty prop row under "Ungrouped props".
+        if (prop.channels.length) propsByGroup.get(prop.id).push(prop);
+      } else {
+        ungrouped.push(prop);
+      }
+    }
+    const rows = [];
+    function appendProp(prop) {
+      rows.push({ kind: "prop", prop });
+      if (!state.collapsedProps.has(prop.id)) {
+        prop.channels.forEach((channel, index) => rows.push({
+          kind: "channel", prop, channel, channelIndex: index
+        }));
+      }
+    }
+    for (const group of sequence.groups) {
+      const members = propsByGroup.get(group.id) || [];
+      if (!members.length) continue;
+      rows.push({ kind: "group", group, count: members.length });
+      if (!state.collapsedGroups.has(group.id)) members.forEach(appendProp);
+    }
+    if (ungrouped.length) {
+      const id = "__ungrouped__";
+      rows.push({ kind: "group", group: { id, name: "Ungrouped props" }, count: ungrouped.length });
+      if (!state.collapsedGroups.has(id)) ungrouped.forEach(appendProp);
+    }
+    state.rows = rows;
+    return rows;
+  }
+
+  function timingGridMarks(grid) {
+    if (grid.kind === "fixed" && grid.spacing > 0 && state.sequence) {
+      const count = Math.min(50000,
+        Math.floor(state.sequence.durationCs / grid.spacing) + 1);
+      return Array.from({ length: count }, (_, index) => index * grid.spacing);
+    }
+    return grid.marks;
+  }
+
+  function sortedTimes(events) {
+    return events.map((event) => Number(event.time))
+      .filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
+  }
+
+  function nearest(sorted, value) {
+    let low = 0;
+    let high = sorted.length - 1;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (sorted[middle] < value) low = middle + 1;
+      else high = middle;
+    }
+    let best = Infinity;
+    for (const index of [low - 1, low]) {
+      if (index >= 0 && index < sorted.length) {
+        best = Math.min(best, Math.abs(sorted[index] - value));
+      }
+    }
+    return best;
+  }
+
+  // Strong musical moments (bar starts, crash candidates, the loudest tenth of the
+  // transients) checked against big lighting changes (several channels starting
+  // together). A moment whose nearest big change is 40-150 ms away is a possible
+  // out-of-sync hit; farther away it simply has no lighting response, which may be
+  // intended. This reports evidence and the tolerance; it does not judge intent.
+  function syncCheck() {
+    const analysis = state.analysis && state.analysis.analysis;
+    if (!analysis || !state.sequence) return null;
+    if (state.syncCheck && state.syncCheck.analysis === analysis &&
+        state.syncCheck.sequence === state.sequence) return state.syncCheck;
+    const counts = new Map();
+    for (const prop of state.sequence.props) {
+      for (const channel of prop.channels) {
+        for (const effect of channel.effects) {
+          counts.set(effect.start, (counts.get(effect.start) || 0) + 1);
+        }
+      }
+    }
+    const changes = Array.from(counts.entries())
+      .filter(([, count]) => count >= SYNC_CLUSTER).map(([cs]) => cs / 100)
+      .sort((x, y) => x - y);
+    const onsets = (analysis.onsets || []).slice()
+      .sort((x, y) => (Number(y.strength) || 0) - (Number(x.strength) || 0));
+    const strongest = onsets.slice(0, Math.max(1, Math.floor(onsets.length / 10)));
+    const moments = sortedTimes([].concat(analysis.downbeats || [], analysis.crashes || [],
+      strongest)).filter((time, index, all) => index === 0 || time - all[index - 1] > 0.03);
+    const flagged = [];
+    let onTime = 0;
+    for (const time of moments) {
+      let best = null;
+      let low = 0;
+      let high = changes.length - 1;
+      while (low < high) {
+        const middle = (low + high) >> 1;
+        if (changes[middle] < time) low = middle + 1;
+        else high = middle;
+      }
+      for (const index of [low - 1, low]) {
+        if (index >= 0 && index < changes.length) {
+          const offset = changes[index] - time;
+          if (best == null || Math.abs(offset) < Math.abs(best)) best = offset;
+        }
+      }
+      if (best == null) continue;
+      const distance = Math.abs(best);
+      if (distance <= SYNC_ON_TIME) onTime += 1;
+      else if (distance <= SYNC_NEAR_MISS) {
+        const ms = Math.round(distance * 1000);
+        flagged.push({ time, offset_ms: Math.round(best * 1000),
+          method: "nearest big lighting change is " + ms + " ms " + (best < 0 ? "early" : "late") });
+      }
+    }
+    state.syncCheck = { analysis, sequence: state.sequence, moments: moments.length, onTime,
+      flagged };
+    return state.syncCheck;
+  }
+
+  function effectsAt(seconds, toleranceCs) {
+    const cs = seconds * 100;
+    const found = [];
+    for (const prop of state.sequence.props) {
+      prop.channels.forEach((channel, index) => {
+        for (const effect of channel.effects) {
+          if (effect.start - toleranceCs <= cs && cs < effect.end + toleranceCs) {
+            found.push({ prop, channelIndex: index, effect });
+          }
+        }
+      });
+    }
+    return found;
+  }
+
+  function inspectMoment(seconds, lane) {
+    const inspector = $("inspectorContent");
+    inspector.replaceChildren();
+    const add = (text, primary) => {
+      const item = document.createElement("div");
+      if (primary) item.className = "inspector-primary";
+      item.textContent = text;
+      inspector.appendChild(item);
+    };
+    add(formatCentiseconds(seconds * 100) + (lane ? " · " + lane.label : ""), true);
+    if (lane && lane.kind === "lyrics") {
+      const line = lane.events.find((item) => item.start <= seconds && seconds < item.end);
+      if (line) {
+        add("\u201c" + line.text + "\u201d", true);
+        add(line.verified ? "Lyric text from an imported file" :
+          "Transcribed automatically: unverified until reviewed");
+        if (line.words && line.words.length) {
+          add("Words: " + line.words.map((word) => word.text + " " +
+            formatCentiseconds(word.start * 100)).join(" · "));
+        }
+      }
+    }
+    if (lane && lane.kind === "offbeat") {
+      const hit = lane.events.find((item) => Math.abs(item.time - seconds) < 0.02);
+      if (hit) add("Strong musical moment; " + hit.method + " (on time is within " +
+        Math.round(SYNC_ON_TIME * 1000) + " ms).", true);
+    }
+    const found = effectsAt(seconds, 10);
+    const starting = found.filter((item) => Math.abs(item.effect.start - seconds * 100) <= 10);
+    const names = Array.from(new Set(found.map((item) => item.prop.name)));
+    add(starting.length + " effect(s) start within 0.1 s; " + names.length +
+      " prop(s) lit: " + names.slice(0, 14).join(", ") + (names.length > 14 ? ", …" : ""));
+  }
+
+  function handleMarkerClick(event) {
+    if (!state.sequence) return;
+    const canvas = $("markersCanvas");
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const lane = state.lanes[Math.floor((event.clientY - rect.top) / MARKER_HEIGHT)];
+    let seconds = Math.max(0, x / state.pxPerSecond);
+    if (lane && lane.kind !== "lyrics" && lane.kind !== "energy" && lane.kind !== "tempo") {
+      // Snap to the nearest marker within 6 pixels, so a click lands on the event.
+      const times = sortedTimes(lane.events.map((item) =>
+        ({ time: item.time != null ? item.time : item.start })));
+      let best = null;
+      for (const time of times) {
+        if (Math.abs(time - seconds) * state.pxPerSecond <= 6 &&
+            (best == null || Math.abs(time - seconds) < Math.abs(best - seconds))) best = time;
+      }
+      if (best != null) seconds = best;
+    }
+    seekAudio(seconds);
+    inspectMoment(seconds, lane);
+  }
+
+  function buildLanes() {
+    const lanes = [];
+    for (const grid of state.sequence ? state.sequence.timingGrids : []) {
+      const marks = timingGridMarks(grid);
+      if (marks.length) lanes.push({
+        label: grid.name,
+        source: "LOREDIT",
+        kind: "native",
+        events: marks.map((cs) => ({ time: cs / 100 }))
+      });
+    }
+    const analysis = state.analysis && state.analysis.analysis;
+    if (analysis) {
+      if (analysis.beats && analysis.beats.length) lanes.push({
+        label: "Beat candidates", source: "librosa", kind: "beats", events: analysis.beats
+      });
+      if (analysis.downbeats && analysis.downbeats.length) lanes.push({
+        label: "Downbeat candidates", source: "librosa", kind: "downbeats", events: analysis.downbeats
+      });
+      if (analysis.onsets && analysis.onsets.length) lanes.push({
+        label: "Audio transients", source: "librosa", kind: "onsets", events: analysis.onsets
+      });
+      if (analysis.energy && analysis.energy.length) lanes.push({
+        label: "RMS energy envelope", source: "librosa", kind: "energy", events: analysis.energy
+      });
+      if (analysis.phrase_boundaries && analysis.phrase_boundaries.length) lanes.push({
+        label: "Estimated 4-bar phrases", source: "heuristic", kind: "phrases", events: analysis.phrase_boundaries
+      });
+      if (analysis.section_candidates && analysis.section_candidates.length) lanes.push({
+        label: "Section candidates", source: "estimated", kind: "sections", events: analysis.section_candidates
+      });
+      if (analysis.hard_stops && analysis.hard_stops.length) lanes.push({
+        label: "Near-silence candidates", source: "estimated", kind: "stops", events: analysis.hard_stops
+      });
+      if (Array.isArray(analysis.tempo_curve) && analysis.tempo_curve.length) lanes.push({
+        label: "Tempo (local BPM)", source: "librosa", kind: "tempo", events: analysis.tempo_curve
+      });
+      if (Array.isArray(analysis.high_hits) && analysis.high_hits.length) lanes.push({
+        label: "High-pitched hits", source: "librosa", kind: "hits", events: analysis.high_hits
+      });
+      if (Array.isArray(analysis.crashes) && analysis.crashes.length) lanes.push({
+        label: "Cymbal crash candidates", source: "heuristic", kind: "crashes", events: analysis.crashes
+      });
+    }
+    if (state.lyrics && state.lyrics.lines.length) lanes.push({
+      label: state.lyrics.source === "transcribed" ? "Lyrics (unverified)" : "Lyrics",
+      source: state.lyrics.source, kind: "lyrics", events: state.lyrics.lines
+    });
+    const sync = syncCheck();
+    if (sync) lanes.push({
+      label: "Possible out-of-sync hits", source: "check · " + sync.flagged.length +
+        " of " + sync.moments, kind: "offbeat", events: sync.flagged
+    });
+    if (state.vocals) {
+      if (state.vocals.regions && state.vocals.regions.length) lanes.push({
+        label: "Vocal regions", source: "heuristic", kind: "vocal-regions", events: state.vocals.regions
+      });
+      if (state.vocals.syllables && state.vocals.syllables.length) lanes.push({
+        label: "Vocal syllables / holds", source: "heuristic", kind: "syllables", events: state.vocals.syllables
+      });
+    }
+    // Arranged like a DAW reference area: what is sung first, right under the
+    // waveform, then song structure, then rhythm, then the sequence's own grids.
+    const order = ["lyrics", "vocal-regions", "syllables", "sections", "stops", "phrases",
+      "downbeats", "beats", "tempo", "crashes", "hits", "onsets", "energy", "native", "offbeat"];
+    lanes.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
+    state.lanes = lanes;
+    return lanes;
+  }
+
+  function makeLabel(text, className, source, events) {
+    const div = document.createElement("div");
+    div.className = className;
+    const span = document.createElement("span");
+    span.textContent = text;
+    div.appendChild(span);
+    if (source) {
+      const badge = document.createElement("span");
+      badge.className = "source";
+      const items = events || [];
+      const confidences = items.map((event) => Number(event.confidence))
+        .filter((value) => Number.isFinite(value));
+      const average = confidences.length
+        ? confidences.reduce((sum, value) => sum + value, 0) / confidences.length
+        : null;
+      const methods = Array.from(new Set(items.map((event) => event.method).filter(Boolean)));
+      badge.textContent = source + (average == null ? "" : " · c " + average.toFixed(2));
+      if (average != null && average < 0.2) badge.classList.add("low-confidence");
+      div.title = source + (methods.length ? "; method: " + methods.join(", ") : "") +
+        (average == null ? "" :
+          "; mean heuristic confidence " + average.toFixed(3) + " (not a probability)");
+      div.appendChild(badge);
+    }
+    return div;
+  }
+
+  function renderLabels() {
+    const markerLabels = $("markerLabels");
+    const trackLabels = $("trackLabels");
+    markerLabels.replaceChildren();
+    trackLabels.replaceChildren();
+    state.lanes.forEach((lane) => markerLabels.appendChild(
+      makeLabel(lane.label, "marker-label", lane.source, lane.events)
+    ));
+    state.rows.forEach((row) => {
+      const label = document.createElement("div");
+      label.className = "track-label " + row.kind;
+      if (row.kind === "group") {
+        const button = document.createElement("button");
+        const collapsed = state.collapsedGroups.has(row.group.id);
+        button.textContent = collapsed ? "▸" : "▾";
+        button.setAttribute("aria-label", (collapsed ? "Expand " : "Collapse ") + row.group.name);
+        button.addEventListener("click", () => {
+          if (collapsed) state.collapsedGroups.delete(row.group.id);
+          else state.collapsedGroups.add(row.group.id);
+          refreshTimeline();
+        });
+        label.appendChild(button);
+        const name = document.createElement("span");
+        name.textContent = row.group.name;
+        label.appendChild(name);
+        const meta = document.createElement("span");
+        meta.className = "track-meta";
+        meta.textContent = String(row.count);
+        label.appendChild(meta);
+      } else if (row.kind === "prop") {
+        const button = document.createElement("button");
+        const collapsed = state.collapsedProps.has(row.prop.id);
+        button.textContent = collapsed ? "▸" : "▾";
+        button.setAttribute("aria-label", (collapsed ? "Expand " : "Collapse ") + row.prop.name);
+        button.addEventListener("click", () => {
+          if (collapsed) state.collapsedProps.delete(row.prop.id);
+          else state.collapsedProps.add(row.prop.id);
+          refreshTimeline();
+        });
+        label.appendChild(button);
+        const name = document.createElement("span");
+        name.textContent = row.prop.name;
+        label.appendChild(name);
+        const meta = document.createElement("span");
+        meta.className = "track-meta";
+        meta.textContent = String(row.prop.channels.length) + " ch";
+        label.appendChild(meta);
+      } else {
+        const name = document.createElement("span");
+        name.textContent = "Channel " + (row.channelIndex + 1) + " · r" + row.channel.row +
+          " c" + row.channel.col + " · " + row.channel.color;
+        label.appendChild(name);
+        const meta = document.createElement("span");
+        meta.className = "track-meta";
+        meta.textContent = String(row.channel.effects.length);
+        label.appendChild(meta);
+      }
+      trackLabels.appendChild(label);
+    });
+  }
+
+  function setCanvasSize(canvas, width, height) {
+    canvas.width = Math.max(1, Math.ceil(width));
+    canvas.height = Math.max(1, Math.ceil(height));
+    canvas.style.width = Math.max(1, Math.ceil(width)) + "px";
+    canvas.style.height = Math.max(1, Math.ceil(height)) + "px";
+    return canvas.getContext("2d");
+  }
+
+  function getTimelineDurationSeconds() {
+    const durations = [
+      state.sequence ? state.sequence.durationSeconds : 0,
+      state.audioBuffer ? state.audioBuffer.duration : 0,
+      state.analysis && state.analysis.audio
+        ? Number(state.analysis.audio.duration_seconds) || 0
+        : 0,
+      state.vocals ? Number(state.vocals.duration_seconds) || 0 : 0
+    ];
+    return Math.max(...durations);
+  }
+
+  function drawRuler(width, duration, pps) {
+    const canvas = $("rulerCanvas");
+    const ctx = setCanvasSize(canvas, width, RULER_HEIGHT);
+    ctx.fillStyle = "#1a2530";
+    ctx.fillRect(0, 0, width, RULER_HEIGHT);
+    const step = pps < 14 ? 10 : pps < 25 ? 5 : 2;
+    ctx.font = "10px Segoe UI, sans-serif";
+    for (let second = 0; second <= duration; second += 1) {
+      const x = second * pps;
+      const major = second % step === 0;
+      ctx.strokeStyle = major ? "#586978" : "#2e3c48";
+      ctx.beginPath();
+      ctx.moveTo(Math.floor(x) + .5, major ? 13 : 25);
+      ctx.lineTo(Math.floor(x) + .5, RULER_HEIGHT);
+      ctx.stroke();
+      if (major) {
+        ctx.fillStyle = "#a8b6c2";
+        ctx.fillText(formatTime(second), x + 4, 11);
+      }
+    }
+    const bars = state.sequence.timingGrids.find((grid) => /^bars?$/i.test(grid.name));
+    const downbeats = state.analysis && state.analysis.analysis &&
+      state.analysis.analysis.downbeats;
+    if (!bars && downbeats && downbeats.length) {
+      // No native bar grid: number the estimated bars, drawn dimmer as estimates.
+      ctx.fillStyle = "#8a7bb0";
+      downbeats.forEach((event, index) => {
+        const x = Number(event.time) * pps;
+        ctx.fillRect(x, 17, 1, RULER_HEIGHT - 17);
+        if (pps >= 10 || index % 4 === 0) ctx.fillText("~" + (index + 1), x + 3, 27);
+      });
+    }
+    if (bars) {
+      ctx.fillStyle = "#b59ce9";
+      timingGridMarks(bars).forEach((cs, index) => {
+        const x = (cs / 100) * pps;
+        ctx.fillRect(x, 15, 1, RULER_HEIGHT - 15);
+        if (pps >= 16 && index % 1 === 0) ctx.fillText(String(index + 1), x + 3, 27);
+      });
+    }
+  }
+
+  function buildWaveformPeaks(buffer) {
+    const bucketSize = 128;
+    const channelData = Array.from({ length: buffer.numberOfChannels }, (_, index) =>
+      buffer.getChannelData(index));
+    const bucketCount = Math.ceil(buffer.length / bucketSize);
+    const channels = channelData.map(() => ({
+      minimum: new Float32Array(bucketCount),
+      maximum: new Float32Array(bucketCount)
+    }));
+    for (let channel = 0; channel < channelData.length; channel++) {
+      const samples = channelData[channel];
+      for (let bucket = 0; bucket < bucketCount; bucket++) {
+        const start = bucket * bucketSize;
+        const end = Math.min(buffer.length, start + bucketSize);
+        let low = 1;
+        let high = -1;
+        for (let sample = start; sample < end; sample++) {
+          const value = samples[sample];
+          if (value < low) low = value;
+          if (value > high) high = value;
+        }
+        channels[channel].minimum[bucket] = low;
+        channels[channel].maximum[bucket] = high;
+      }
+    }
+    return { bucketSize, channels };
+  }
+
+  function drawWaveform(width, pps) {
+    const canvas = $("waveformCanvas");
+    const ctx = setCanvasSize(canvas, width, WAVE_HEIGHT);
+    ctx.fillStyle = "#121c25";
+    ctx.fillRect(0, 0, width, WAVE_HEIGHT);
+    ctx.strokeStyle = "#263b48";
+    ctx.beginPath();
+    ctx.moveTo(0, WAVE_HEIGHT / 2);
+    ctx.lineTo(width, WAVE_HEIGHT / 2);
+    ctx.stroke();
+    if (!state.audioBuffer) {
+      ctx.fillStyle = "#657987";
+      ctx.font = "11px Segoe UI, sans-serif";
+      ctx.fillText("Open the matching audio file to render its real waveform", 16, 25);
+      return;
+    }
+    const sampleRate = state.audioBuffer.sampleRate;
+    const peaks = state.waveformPeaks;
+    if (!peaks) return;
+    const channelCount = peaks.channels.length;
+    const channelHeight = WAVE_HEIGHT / channelCount;
+    for (let channelIndex = 0; channelIndex < channelCount; channelIndex++) {
+      const channelPeaks = peaks.channels[channelIndex];
+      const center = channelIndex * channelHeight + channelHeight / 2;
+      ctx.strokeStyle = channelIndex === 0 ? "#78bfd0" : "#5da8bd";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = 0; x < width; x++) {
+        const from = Math.floor((x / pps) * sampleRate);
+        if (from >= state.audioBuffer.length) break;
+        const to = Math.min(state.audioBuffer.length, Math.max(from + 1,
+          Math.floor(((x + 1) / pps) * sampleRate)));
+        const firstBucket = Math.floor(from / peaks.bucketSize);
+        const lastBucket = Math.min(channelPeaks.minimum.length - 1,
+          Math.floor((to - 1) / peaks.bucketSize));
+        let min = 1;
+        let max = -1;
+        for (let bucket = firstBucket; bucket <= lastBucket; bucket++) {
+          min = Math.min(min, channelPeaks.minimum[bucket]);
+          max = Math.max(max, channelPeaks.maximum[bucket]);
+        }
+        const y1 = center - max * (channelHeight * .43);
+        const y2 = center - min * (channelHeight * .43);
+        ctx.moveTo(x + .5, y1);
+        ctx.lineTo(x + .5, y2);
+      }
+      ctx.stroke();
+    }
+    if (channelCount === 2) {
+      ctx.strokeStyle = "#263b48";
+      ctx.beginPath();
+      ctx.moveTo(0, WAVE_HEIGHT / 2);
+      ctx.lineTo(width, WAVE_HEIGHT / 2);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "rgba(53, 132, 160, .08)";
+    ctx.fillRect(0, 0, width, WAVE_HEIGHT);
+    ctx.fillStyle = "#8bbdca";
+    ctx.font = "9px Segoe UI, sans-serif";
+    ctx.fillText("AUDIO · " + formatTime(state.audioBuffer.duration) +
+      " · " + state.audioBuffer.numberOfChannels + " CH", 10, 12);
+  }
+
+  function drawMarkers(width, pps) {
+    const canvas = $("markersCanvas");
+    const height = Math.max(MARKER_HEIGHT, state.lanes.length * MARKER_HEIGHT);
+    const ctx = setCanvasSize(canvas, width, height);
+    ctx.fillStyle = "#121a22";
+    ctx.fillRect(0, 0, width, height);
+    const colors = {
+      native: "#8096a6",
+      beats: "#54b88f",
+      downbeats: "#b28be8",
+      onsets: "#d99b56",
+      sections: "#4fa9b7",
+      phrases: "#8c79c7",
+      energy: "#6ca4b7",
+      stops: "#d56e70",
+      "vocal-regions": "#5ea8d9",
+      syllables: "#d48db9",
+      tempo: "#e0c35a",
+      hits: "#9fd3e6",
+      crashes: "#f2e27a",
+      lyrics: "#e8b7d8",
+      offbeat: "#e8665f"
+    };
+    state.lanes.forEach((lane, laneIndex) => {
+      const y = laneIndex * MARKER_HEIGHT;
+      ctx.fillStyle = laneIndex % 2 ? "#141e27" : "#111a22";
+      ctx.fillRect(0, y, width, MARKER_HEIGHT);
+      ctx.strokeStyle = "#25323d";
+      ctx.beginPath();
+      ctx.moveTo(0, y + MARKER_HEIGHT - .5);
+      ctx.lineTo(width, y + MARKER_HEIGHT - .5);
+      ctx.stroke();
+      const color = colors[lane.kind] || "#8096a6";
+      if (lane.kind === "tempo") {
+        const values = lane.events.map((item) => Number(item.bpm)).filter(Number.isFinite);
+        const low = Math.min(...values);
+        const high = Math.max(...values);
+        const span = Math.max(1, high - low);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        lane.events.forEach((item, index) => {
+          const px = Number(item.time) * pps;
+          const py = y + MARKER_HEIGHT - 4 - ((Number(item.bpm) - low) / span) * (MARKER_HEIGHT - 9);
+          if (index === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        });
+        ctx.stroke();
+        // Label the tempo wherever it settles at a new value.
+        ctx.fillStyle = color;
+        ctx.font = "9px Segoe UI, sans-serif";
+        let lastLabelX = -999;
+        let lastBpm = null;
+        lane.events.forEach((item) => {
+          const bpm = Math.round(Number(item.bpm));
+          const px = Number(item.time) * pps;
+          if ((lastBpm == null || Math.abs(bpm - lastBpm) >= 3) && px - lastLabelX > 46) {
+            ctx.fillText(bpm + " BPM", px + 3, y + 9);
+            lastLabelX = px;
+            lastBpm = bpm;
+          }
+        });
+        return;
+      }
+      if (lane.kind === "lyrics") {
+        ctx.font = "10px Segoe UI, sans-serif";
+        for (const line of lane.events) {
+          const x1 = Number(line.start) * pps;
+          const x2 = Number(line.end) * pps;
+          if (!(x2 > x1)) continue;
+          ctx.globalAlpha = 0.22;
+          ctx.fillStyle = color;
+          ctx.fillRect(x1, y + 3, x2 - x1, MARKER_HEIGHT - 6);
+          ctx.globalAlpha = 1;
+          ctx.strokeStyle = color;
+          ctx.setLineDash(line.verified ? [] : [3, 2]);
+          ctx.strokeRect(x1 + .5, y + 3.5, Math.max(1, x2 - x1 - 1), MARKER_HEIGHT - 7);
+          ctx.setLineDash([]);
+          ctx.fillStyle = "rgba(225, 230, 236, .85)";
+          for (const word of line.words || []) {
+            ctx.fillRect(Number(word.start) * pps, y + MARKER_HEIGHT - 6, 1, 3);
+          }
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(x1 + 2, y, Math.max(0, x2 - x1 - 4), MARKER_HEIGHT);
+          ctx.clip();
+          ctx.fillStyle = "#f2e6ee";
+          ctx.fillText(line.text, x1 + 4, y + 14);
+          ctx.restore();
+        }
+        return;
+      }
+      if (lane.kind === "energy") {
+        const maximum = lane.events.reduce(
+          (value, event) => Math.max(value, Number(event.rms) || 0),
+          0.000001
+        );
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        lane.events.forEach((event, index) => {
+          const x = Number(event.time) * pps;
+          const value = Math.max(0, Number(event.rms) || 0);
+          const pointY = y + MARKER_HEIGHT - 3 - (value / maximum) * (MARKER_HEIGHT - 7);
+          if (index === 0) ctx.moveTo(x, pointY);
+          else ctx.lineTo(x, pointY);
+        });
+        ctx.stroke();
+        return;
+      }
+      let laneEvents = lane.events;
+      if (lane.kind === "onsets") {
+        const strongestByPixel = new Map();
+        for (const event of laneEvents) {
+          const time = Number(event.time);
+          if (!Number.isFinite(time) || time < 0) continue;
+          const pixel = Math.floor(time * pps);
+          const existing = strongestByPixel.get(pixel);
+          if (!existing || (Number(event.strength) || 0) > (Number(existing.strength) || 0)) {
+            strongestByPixel.set(pixel, event);
+          }
+        }
+        laneEvents = Array.from(strongestByPixel.values());
+      }
+      const onsetMaximum = lane.kind === "onsets"
+        ? laneEvents.reduce(
+          (value, event) => Math.max(value, Number(event.strength) || 0),
+          0.000001
+        )
+        : 1;
+      for (const event of laneEvents) {
+        const time = event.time != null ? Number(event.time) : Number(event.start);
+        if (!Number.isFinite(time) || time < 0) continue;
+        const x = time * pps;
+        if (lane.kind === "vocal-regions" || lane.kind === "syllables" || lane.kind === "stops") {
+          const end = lane.kind === "stops"
+            ? time + Number(event.silence_duration)
+            : Number(event.end);
+          if (Number.isFinite(end) && end > time) {
+            const blockY = lane.kind === "vocal-regions" ? y + 5 : y + 7;
+            const blockHeight = lane.kind === "vocal-regions" ? 12 : 8;
+            const blockWidth = Math.max(2, (end - time) * pps);
+            const strength = lane.kind === "syllables"
+              ? Math.max(0.2, Math.min(1, Number(event.strength) || 0.2))
+              : 1;
+            ctx.globalAlpha = lane.kind === "syllables" ? 0.25 + strength * 0.65 : 0.3;
+            ctx.fillStyle = color;
+            ctx.fillRect(x, blockY, blockWidth, blockHeight);
+            ctx.globalAlpha = 1;
+            ctx.strokeStyle = color;
+            ctx.strokeRect(x, blockY, blockWidth, blockHeight);
+            if (lane.kind === "syllables") {
+              ctx.strokeStyle = "rgba(245, 224, 238, .85)";
+              ctx.beginPath();
+              ctx.moveTo(Math.floor(x) + .5, y + 3);
+              ctx.lineTo(Math.floor(x) + .5, y + MARKER_HEIGHT - 3);
+              ctx.stroke();
+            }
+          }
+        } else {
+          const rawConfidence = Number(event.confidence);
+          const confidence = Number.isFinite(rawConfidence)
+            ? Math.max(0, Math.min(1, rawConfidence))
+            : 0.35;
+          const lowConfidence = (lane.kind === "beats" || lane.kind === "downbeats") &&
+            confidence < 0.2;
+          ctx.save();
+          if (lane.kind === "onsets") {
+            const strength = Math.max(0, Number(event.strength) || 0);
+            ctx.globalAlpha = 0.25 + 0.65 * strength / onsetMaximum;
+          } else if (lane.kind === "beats" || lane.kind === "downbeats") {
+            ctx.globalAlpha = 0.12 + 0.58 * confidence;
+          } else {
+            ctx.globalAlpha = 0.8;
+          }
+          ctx.strokeStyle = color;
+          ctx.lineWidth = lane.kind === "downbeats" || lane.kind === "crashes" ? 2 : 1;
+          ctx.setLineDash(lowConfidence ? [2, 3] : []);
+          ctx.beginPath();
+          ctx.moveTo(Math.floor(x) + .5, y + (lane.kind === "onsets" ? 10 : 2));
+          ctx.lineTo(Math.floor(x) + .5, y + MARKER_HEIGHT - 3);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+    });
+  }
+
+  function effectColor(effect) {
+    if (effect.type === "TWINKLE") return "#a17ce0";
+    if (effect.type === "SHIMMER") return "#d79a4e";
+    if (effect.type === "INTENSITY") return "#419fc7";
+    return "#7f8b96";
+  }
+
+  function drawTracks(width, pps) {
+    const canvas = $("tracksCanvas");
+    const height = Math.max(ROW_HEIGHT, state.rows.length * ROW_HEIGHT);
+    const ctx = setCanvasSize(canvas, width, height);
+    ctx.fillStyle = "#10171f";
+    ctx.fillRect(0, 0, width, height);
+
+    state.rows.forEach((row, index) => {
+      const y = index * ROW_HEIGHT;
+      if (row.kind === "group") ctx.fillStyle = "#1b2732";
+      else if (row.kind === "prop") ctx.fillStyle = "#18212a";
+      else ctx.fillStyle = index % 2 ? "#111a22" : "#121c25";
+      ctx.fillRect(0, y, width, ROW_HEIGHT);
+      ctx.strokeStyle = "#202d38";
+      ctx.beginPath();
+      ctx.moveTo(0, y + ROW_HEIGHT - .5);
+      ctx.lineTo(width, y + ROW_HEIGHT - .5);
+      ctx.stroke();
+    });
+
+    for (let second = 0; second <= getTimelineDurationSeconds(); second++) {
+      const x = second * pps;
+      ctx.strokeStyle = second % 5 === 0 ? "#293844" : "#1b2731";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(Math.floor(x) + .5, 0);
+      ctx.lineTo(Math.floor(x) + .5, height);
+      ctx.stroke();
+    }
+
+    const bars = state.sequence.timingGrids.find((grid) => /^bars?$/i.test(grid.name));
+    const downbeats = state.analysis && state.analysis.analysis &&
+      state.analysis.analysis.downbeats;
+    if (!bars && downbeats && downbeats.length) {
+      // No native bar grid: number the estimated bars, drawn dimmer as estimates.
+      ctx.fillStyle = "#8a7bb0";
+      downbeats.forEach((event, index) => {
+        const x = Number(event.time) * pps;
+        ctx.fillRect(x, 17, 1, RULER_HEIGHT - 17);
+        if (pps >= 10 || index % 4 === 0) ctx.fillText("~" + (index + 1), x + 3, 27);
+      });
+    }
+    if (bars) {
+      ctx.strokeStyle = "rgba(176, 140, 230, .23)";
+      timingGridMarks(bars).forEach((cs) => {
+        const x = (cs / 100) * pps;
+        ctx.beginPath();
+        ctx.moveTo(Math.floor(x) + .5, 0);
+        ctx.lineTo(Math.floor(x) + .5, height);
+        ctx.stroke();
+      });
+    }
+
+    const beatGrid = state.sequence.timingGrids.find((grid) => /^beats?$/i.test(grid.name));
+    const analysis = state.analysis && state.analysis.analysis;
+    if (beatGrid) {
+      ctx.strokeStyle = "rgba(84, 184, 143, .12)";
+      timingGridMarks(beatGrid).forEach((cs) => {
+        const x = (cs / 100) * pps;
+        ctx.beginPath();
+        ctx.moveTo(Math.floor(x) + .5, 0);
+        ctx.lineTo(Math.floor(x) + .5, height);
+        ctx.stroke();
+      });
+    } else if (analysis && Array.isArray(analysis.beats)) {
+      ctx.strokeStyle = "rgba(84, 184, 143, .10)";
+      analysis.beats.forEach((event) => {
+        const x = Number(event.time) * pps;
+        ctx.beginPath();
+        ctx.moveTo(Math.floor(x) + .5, 0);
+        ctx.lineTo(Math.floor(x) + .5, height);
+        ctx.stroke();
+      });
+    }
+
+    if (!bars && analysis && Array.isArray(analysis.downbeats)) {
+      ctx.strokeStyle = "rgba(178, 139, 232, .17)";
+      analysis.downbeats.forEach((event) => {
+        const x = Number(event.time) * pps;
+        ctx.beginPath();
+        ctx.moveTo(Math.floor(x) + .5, 0);
+        ctx.lineTo(Math.floor(x) + .5, height);
+        ctx.stroke();
+      });
+    }
+
+    state.rows.forEach((row, index) => {
+      if (row.kind !== "channel") return;
+      const y = index * ROW_HEIGHT;
+      for (const effect of row.channel.effects) {
+        const x1 = effect.start / 100 * pps;
+        const x2 = effect.end / 100 * pps;
+        const blockWidth = Math.max(1.5, x2 - x1);
+        const attrs = effect.attributes;
+        const startIntensity = Number(attrs.startIntensity != null ? attrs.startIntensity :
+          attrs.intensity != null ? attrs.intensity : 100);
+        const endIntensity = Number(attrs.endIntensity != null ? attrs.endIntensity :
+          attrs.intensity != null ? attrs.intensity : startIntensity);
+        const average = Math.max(0, Math.min(100, (startIntensity + endIntensity) / 2));
+        ctx.globalAlpha = .28 + .72 * average / 100;
+        if (effect.type === "INTENSITY" && startIntensity !== endIntensity) {
+          const gradient = ctx.createLinearGradient(x1, 0, x2, 0);
+          gradient.addColorStop(0, "#317fa8");
+          gradient.addColorStop(1, "#8ad0e0");
+          ctx.fillStyle = gradient;
+        } else {
+          ctx.fillStyle = effectColor(effect);
+        }
+        ctx.fillRect(x1, y + 4, blockWidth, ROW_HEIGHT - 8);
+        ctx.globalAlpha = 1;
+        if (effect.type === "TWINKLE") {
+          ctx.strokeStyle = "rgba(238, 225, 255, .65)";
+          ctx.setLineDash([2, 3]);
+          ctx.beginPath();
+          ctx.moveTo(x1, y + 6);
+          ctx.lineTo(x2, y + 6);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        } else if (effect.type === "SHIMMER") {
+          ctx.strokeStyle = "rgba(255, 239, 208, .65)";
+          ctx.beginPath();
+          ctx.moveTo(x1, y + ROW_HEIGHT / 2);
+          ctx.lineTo(x2, y + ROW_HEIGHT / 2);
+          ctx.stroke();
+        }
+        if (state.selectedEffect === effect) {
+          ctx.strokeStyle = "#f3f7fa";
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(x1, y + 3, blockWidth, ROW_HEIGHT - 6);
+        }
+      }
+    });
+  }
+  function updatePlayhead() {
+    if (!state.sequence) return;
+    const seconds = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+    const visibleTime = Math.min(seconds, getTimelineDurationSeconds());
+    playhead.style.left = (visibleTime * state.pxPerSecond) + "px";
+    playhead.style.display = state.audioBuffer ? "block" : "none";
+  }
+
+  function seekAudio(seconds) {
+    if (!state.audioBuffer) return;
+    audio.currentTime = Math.max(0, Math.min(seconds, state.audioBuffer.duration));
+    updatePlayhead();
+  }
+
+  function refreshTimeline() {
+    if (!state.sequence) return;
+    buildRows();
+    buildLanes();
+    renderLabels();
+    const duration = getTimelineDurationSeconds();
+    const contentHeight = RULER_HEIGHT + WAVE_HEIGHT +
+      state.lanes.length * MARKER_HEIGHT + state.rows.length * ROW_HEIGHT;
+    const maxWidth = Math.max(canvasViewport.clientWidth, Math.min(30000,
+      Math.floor(MAX_CANVAS_PIXELS / contentHeight)));
+    const maxPps = Math.min(48, maxWidth / duration);
+    const minPps = Math.min(1, maxPps);
+    state.pxPerSecond = Math.max(minPps, Math.min(maxPps, state.pxPerSecond));
+    $("zoomSlider").min = String(minPps);
+    $("zoomSlider").max = String(maxPps);
+    $("zoomSlider").value = String(state.pxPerSecond);
+    const width = Math.max(canvasViewport.clientWidth, Math.ceil(duration * state.pxPerSecond));
+    $("canvasContent").style.width = width + "px";
+    $("labelsContent").style.height = contentHeight + "px";
+    drawRuler(width, duration, state.pxPerSecond);
+    drawWaveform(width, state.pxPerSecond);
+    drawMarkers(width, state.pxPerSecond);
+    drawTracks(width, state.pxPerSecond);
+    updatePlayhead();
+  }
+
+  function renderSequenceStats() {
+    const sequence = state.sequence;
+    if (!sequence) return;
+    $("sequenceTitle").textContent = sequence.name;
+    const subtitle = [sequence.artist, sequence.filename].filter(Boolean).join(" · ");
+    $("sequenceSubtitle").textContent = subtitle + (sequence.audioName ? " · S6 audio: " + sequence.audioName : "");
+    $("durationStat").textContent = formatTime(sequence.durationSeconds);
+    $("propStat").textContent = String(sequence.props.length);
+    $("channelStat").textContent = String(sequence.channelCount);
+    $("effectStat").textContent = sequence.effectCount.toLocaleString();
+    const tempo = state.analysis && state.analysis.analysis && state.analysis.analysis.tempo;
+    $("tempoStat").textContent = tempo && tempo.bpm != null ? String(tempo.bpm) : "—";
+    $("tempoStat").title = tempo && tempo.bpm != null
+      ? "Estimated dominant tempo. Method: " + tempo.method +
+        ". Heuristic stability confidence: " + tempo.confidence + " (not a probability)."
+      : "No reliable dominant tempo estimate is available.";
+  }
+
+  async function loadSequence(file) {
+    if (!file) return;
+    const requestId = ++state.sequenceRequestId;
+    try {
+      if (file.size > MAX_XML_BYTES) throw new Error("Sequence exceeds the 50 MiB input limit.");
+      const xmlText = await file.text();
+      if (requestId !== state.sequenceRequestId) return;
+      const doc = parseXmlDocument(xmlText);
+      state.sequence = parseSequence(doc, file.name);
+      state.collapsedGroups.clear();
+      state.collapsedProps.clear();
+      state.selectedEffect = null;
+      $("welcome").classList.add("hidden");
+      $("editor").classList.remove("hidden");
+      $("inspectorContent").textContent = "Select an effect block to inspect its native settings and exact timing.";
+      renderSequenceStats();
+      refreshTimeline();
+      setBanner("Loaded " + state.sequence.props.length + " native props, " +
+        state.sequence.channelCount + " channels, and " + state.sequence.effectCount.toLocaleString() +
+        " effects. Source sequence remains read-only.", "good");
+      if (state.audioBuffer) compareDurations();
+    } catch (error) {
+      if (requestId !== state.sequenceRequestId) return;
+      setBanner(error.message || String(error), "error");
+    }
+  }
+
+  async function decodeWaveform(file, requestId) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) throw new Error("This browser does not support Web Audio waveform decoding.");
+    const context = new AudioContextClass();
+    try {
+      const audioBytes = await file.arrayBuffer();
+      const prefix = new Uint8Array(audioBytes, 0, Math.min(4, audioBytes.byteLength));
+      const hasId3 = prefix.length >= 3 && prefix[0] === 73 && prefix[1] === 68 && prefix[2] === 51;
+      const hasMpegSync = prefix.length >= 2 && prefix[0] === 255 && (prefix[1] & 224) === 224;
+      const mislabeledMp3 = file.name.toLowerCase().endsWith(".mp4") && (hasId3 || hasMpegSync);
+      const playbackSource = mislabeledMp3
+        ? new Blob([audioBytes], { type: "audio/mpeg" })
+        : file;
+      const buffer = await context.decodeAudioData(audioBytes.slice(0));
+      if (requestId !== state.audioRequestId) return null;
+      if (buffer.duration < 2 || buffer.duration > 1800) {
+        throw new Error("Audio duration must be between 2 seconds and 30 minutes.");
+      }
+      state.audioBuffer = buffer;
+      state.waveformPeaks = buildWaveformPeaks(buffer);
+      if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
+      state.audioUrl = URL.createObjectURL(playbackSource);
+      audio.src = state.audioUrl;
+      $("playButton").disabled = false;
+      $("stopButton").disabled = false;
+      if (state.sequence) refreshTimeline();
+      compareDurations();
+      return buffer.duration;
+    } finally {
+      await context.close();
+    }
+  }
+
+  function durationMismatchMessage() {
+    if (!state.sequence || !state.audioBuffer) return "";
+    const delta = state.audioBuffer.duration - state.sequence.durationSeconds;
+    if (Math.abs(delta) <= 0.25) return "";
+    const direction = delta > 0 ? "longer" : "shorter";
+    return "Selected audio is " + Math.abs(delta).toFixed(2) + " seconds " + direction +
+      " than the sequence; the timeline shows the full duration of both.";
+  }
+
+  function compareDurations() {
+    const message = durationMismatchMessage();
+    if (message) setBanner(message + " Check that the selected recording matches this sequence.", "warn");
+  }
+
+  async function analyzeSelectedAudio(file, requestId = ++state.audioRequestId) {
+    if (!file) return;
+    const meter = $("meterSelect").value;
+    setBanner("Analyzing the selected audio locally: tempo, beats, downbeats, transients, sections, and pauses…");
+    try {
+      const response = await fetch("/api/analyze?beats_per_bar=" + meter, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/octet-stream"
+        },
+        body: file
+      });
+      const payload = await response.json();
+      if (requestId !== state.audioRequestId) return;
+      if (!response.ok) throw new Error(payload.error || "Local analysis failed.");
+      state.analysis = payload.report;
+      renderSequenceStats();
+      refreshTimeline();
+      const analysis = state.analysis.analysis;
+      $("analysisBanner").title = analysis.method + "\n" + analysis.provenance +
+        "\nLimitations: " + analysis.limitations.join(" ");
+      const bpm = analysis.tempo && analysis.tempo.bpm != null ? analysis.tempo.bpm + " BPM" : "tempo unavailable";
+      const warning = payload.warning ? " " + payload.warning : "";
+      const mismatch = durationMismatchMessage();
+      setBanner("Audio analysis complete: " + bpm + "; " + analysis.beats.length +
+        " beat candidates, " + analysis.downbeats.length + " downbeats, " +
+        analysis.onsets.length + " transients, " + analysis.section_candidates.length +
+        " section candidates. Estimates remain editable/reviewable." + warning +
+        (mismatch ? " " + mismatch : ""), mismatch ? "warn" : "good");
+    } catch (error) {
+      if (requestId !== state.audioRequestId) return;
+      const mismatch = durationMismatchMessage();
+      setBanner("Waveform loaded. Automatic analysis unavailable: " +
+        (error.message || String(error)) + " Start the workspace with lor-sequence-ui to enable local analysis, or load a saved analysis JSON." +
+        (mismatch ? " " + mismatch : ""), "warn");
+    }
+  }
+
+  async function loadAudio(file) {
+    if (!file) return;
+    if (file.size <= 0 || file.size > MAX_AUDIO_BYTES) {
+      setBanner("Audio must be non-empty and no larger than 200 MiB.", "error");
+      return;
+    }
+    const requestId = ++state.audioRequestId;
+    state.audioFile = file;
+    state.audioBuffer = null;
+    state.waveformPeaks = null;
+    state.analysis = null;
+    state.vocals = null;
+    if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
+    state.audioUrl = null;
+    audio.pause();
+    audio.removeAttribute("src");
+    audio.load();
+    $("playButton").disabled = true;
+    $("stopButton").disabled = true;
+    $("playButton").textContent = "▶";
+    $("analysisBanner").title = "";
+    if (state.sequence) {
+      renderSequenceStats();
+      refreshTimeline();
+    }
+    try {
+      const duration = await decodeWaveform(file, requestId);
+      if (requestId !== state.audioRequestId || duration == null) return;
+      setBanner("Waveform decoded from the selected audio (" + formatTime(duration) +
+        "). Starting local musical analysis…", "good");
+      await analyzeSelectedAudio(file, requestId);
+    } catch (error) {
+      if (requestId !== state.audioRequestId) return;
+      state.audioFile = null;
+      state.audioBuffer = null;
+      state.waveformPeaks = null;
+      setBanner("Could not decode the selected audio: " + (error.message || String(error)), "error");
+    }
+  }
+
+  async function loadAnalysis(file) {
+    if (!file) return;
+    const requestId = ++state.audioRequestId;
+    try {
+      if (file.size > MAX_JSON_BYTES) throw new Error("Analysis JSON exceeds the 5 MiB input limit.");
+      const analysisText = await file.text();
+      if (requestId !== state.audioRequestId) return;
+      const data = JSON.parse(analysisText);
+      if (!data || typeof data !== "object") throw new Error("Analysis JSON must contain an object.");
+      const analysis = data.analysis;
+      const requiredArrays = ["beats", "downbeats", "onsets", "energy",
+        "phrase_boundaries", "section_candidates", "hard_stops"];
+      if (data.schema_version !== "2.0" || !analysis ||
+          !data.audio || !Number.isFinite(Number(data.audio.duration_seconds)) ||
+          Number(data.audio.duration_seconds) <= 0 || Number(data.audio.duration_seconds) > 1800 ||
+          !analysis.tempo || !Array.isArray(analysis.limitations) ||
+          typeof analysis.method !== "string" || typeof analysis.provenance !== "string" ||
+          requiredArrays.some((key) => !Array.isArray(analysis[key]))) {
+        throw new Error("Expected a complete audio-analysis v2.0 JSON report.");
+      }
+      for (const key of requiredArrays) {
+        if (analysis[key].length > 100000) throw new Error("Analysis lane " + key + " exceeds 100,000 events.");
+        for (const event of analysis[key]) {
+          if (!event || typeof event !== "object") {
+            throw new Error("Analysis lane " + key + " contains an invalid event.");
+          }
+          const time = Number(event.time);
+          if (!Number.isFinite(time) || time < 0 || time > Number(data.audio.duration_seconds) + 1) {
+            throw new Error("Analysis lane " + key + " contains an invalid timestamp.");
+          }
+        }
+      }
+      state.analysis = data;
+      renderSequenceStats();
+      refreshTimeline();
+      $("analysisBanner").title = data.analysis.method + "\n" + data.analysis.provenance +
+        "\nLimitations: " + data.analysis.limitations.join(" ");
+      setBanner("Loaded saved analysis. Beat, downbeat, onset, section, and silence markers are labeled as estimates.", "good");
+    } catch (error) {
+      if (requestId !== state.audioRequestId) return;
+      setBanner(error.message || String(error), "error");
+    }
+  }
+
+  async function loadVocals(file) {
+    if (!file) return;
+    const requestId = ++state.vocalRequestId;
+    try {
+      if (file.size > MAX_JSON_BYTES) throw new Error("Vocal JSON exceeds the 5 MiB input limit.");
+      const vocalsText = await file.text();
+      if (requestId !== state.vocalRequestId) return;
+      const data = JSON.parse(vocalsText);
+      if (!data || typeof data !== "object") throw new Error("Vocal JSON must contain an object.");
+      const duration = Number(data.duration_seconds);
+      if (data.schema_version !== "vocals-1.0" || !Number.isFinite(duration) ||
+          duration <= 0 || duration > 1800 || !Array.isArray(data.limitations) ||
+          typeof data.method !== "string" ||
+          !Array.isArray(data.regions) || !Array.isArray(data.syllables) ||
+          data.regions.length > 100000 || data.syllables.length > 100000) {
+        throw new Error("Expected a complete vocals-1.0 JSON report.");
+      }
+      for (const event of data.regions.concat(data.syllables)) {
+        if (!event || typeof event !== "object") {
+          throw new Error("Vocal report contains an invalid event.");
+        }
+        const start = Number(event.start);
+        const end = Number(event.end);
+        if (!Number.isFinite(start) || !Number.isFinite(end) ||
+            start < 0 || end <= start || end > duration + 1) {
+          throw new Error("Vocal report contains an invalid event boundary.");
+        }
+      }
+      state.vocals = data;
+      refreshTimeline();
+      $("analysisBanner").title = data.method + "\nLimitations: " + data.limitations.join(" ");
+      setBanner("Loaded vocal regions and syllable candidates. This analysis is heuristic and does not identify words or lyrics.", "good");
+    } catch (error) {
+      if (requestId !== state.vocalRequestId) return;
+      setBanner(error.message || String(error), "error");
+    }
+  }
+
+  function parseLyricsText(text, name) {
+    const lines = [];
+    const lrc = /\[(\d{1,3}):(\d{1,2}(?:\.\d{1,3})?)\]/g;
+    const cue = /(?:(\d+):)?(\d{1,2}):(\d{1,2})[.,](\d{1,3})\s*-->\s*(?:(\d+):)?(\d{1,2}):(\d{1,2})[.,](\d{1,3})/;
+    const toSeconds = (h, m, s, f) => Number(h || 0) * 3600 + Number(m) * 60 + Number(s) +
+      Number(String(f).padEnd(3, "0").slice(0, 3)) / 1000;
+    if (lrc.test(text)) {
+      for (const raw of text.split(/\r?\n/)) {
+        const stamps = Array.from(raw.matchAll(/\[(\d{1,3}):(\d{1,2}(?:\.\d{1,3})?)\]/g));
+        const words = raw.replace(/\[[^\]]*\]/g, "").trim();
+        for (const stamp of stamps) {
+          if (words) lines.push({ start: Number(stamp[1]) * 60 + Number(stamp[2]), end: null, text: words });
+        }
+      }
+    } else {
+      for (const block of text.replace(/\r\n/g, "\n").split(/\n\s*\n/)) {
+        const match = block.match(cue);
+        if (!match) continue;
+        const after = block.slice(match.index + match[0].length).trim().split("\n");
+        const words = after.map((line) => line.replace(/<[^>]+>/g, "").trim()).join(" ").trim();
+        if (words) lines.push({ start: toSeconds(match[1], match[2], match[3], match[4]),
+          end: toSeconds(match[5], match[6], match[7], match[8]), text: words });
+      }
+    }
+    if (!lines.length) throw new Error(name + ": no LRC time tags or SRT/VTT cues found.");
+    lines.sort((a, b) => a.start - b.start);
+    lines.forEach((line, index) => {
+      if (line.end == null) line.end = index + 1 < lines.length ? lines[index + 1].start : line.start + 4;
+      line.verified = true;
+      line.words = [];
+    });
+    return { schema_version: "lyrics-1.0", source: "imported", lines };
+  }
+
+  async function loadLyrics(file) {
+    if (!file) return;
+    const requestId = ++state.lyricRequestId;
+    try {
+      if (file.size > MAX_JSON_BYTES) throw new Error("Lyrics file exceeds the 5 MiB input limit.");
+      const text = await file.text();
+      if (requestId !== state.lyricRequestId) return;
+      let data;
+      if (/\.json$/i.test(file.name)) {
+        data = JSON.parse(text);
+        if (!data || data.schema_version !== "lyrics-1.0" || !Array.isArray(data.lines) ||
+            data.lines.length > 5000) throw new Error("Expected a lyrics-1.0 JSON document.");
+      } else {
+        data = parseLyricsText(text, file.name);
+      }
+      for (const line of data.lines) {
+        const start = Number(line.start);
+        const end = Number(line.end);
+        if (!line || typeof line.text !== "string" || !Number.isFinite(start) ||
+            !Number.isFinite(end) || start < 0 || end <= start || end > 1801) {
+          throw new Error("Lyrics contain an invalid line.");
+        }
+      }
+      state.lyrics = data;
+      refreshTimeline();
+      setBanner(data.source === "transcribed"
+        ? "Loaded " + data.lines.length + " transcribed lyric lines. They are unverified: speech recognition mishears sung words. Dashed outlines mark unverified lines."
+        : "Loaded " + data.lines.length + " lyric lines from " + file.name + ".", "good");
+    } catch (error) {
+      if (requestId !== state.lyricRequestId) return;
+      setBanner(error.message || String(error), "error");
+    }
+  }
+
+  function inspectEffect(effect, row) {
+    state.selectedEffect = effect;
+    const attrs = effect.attributes;
+    const lines = [
+      row.prop.name + " · Channel " + (row.channelIndex + 1),
+      effect.type + " · " + formatCentiseconds(effect.start) +
+        " → " + formatCentiseconds(effect.end),
+      "Duration: " + ((effect.end - effect.start) / 100).toFixed(2) + " s",
+      "Intensity: " + (attrs.intensity != null ? attrs.intensity :
+        (attrs.startIntensity != null ? attrs.startIntensity + " → " + attrs.endIntensity : "not specified")),
+      "Native attributes: " + Object.keys(attrs).map((key) => key + "=" + attrs[key]).join(" · ")
+    ];
+    const inspector = $("inspectorContent");
+    inspector.replaceChildren();
+    lines.forEach((line, index) => {
+      const item = document.createElement("div");
+      if (index < 2) item.className = "inspector-primary";
+      item.textContent = line;
+      inspector.appendChild(item);
+    });
+    drawTracks(Number($("tracksCanvas").width), state.pxPerSecond);
+  }
+
+  function seekFromPointer(event, canvas) {
+    if (!state.sequence) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const seconds = Math.max(0, Math.min(getTimelineDurationSeconds(), x / state.pxPerSecond));
+    seekAudio(seconds);
+  }
+
+  function handleTrackClick(event) {
+    if (!state.sequence) return;
+    const canvas = $("tracksCanvas");
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const rowIndex = Math.floor(y / ROW_HEIGHT);
+    const row = state.rows[rowIndex];
+    const seconds = Math.max(0, x / state.pxPerSecond);
+    if (row && row.kind === "channel") {
+      const cs = seconds * 100;
+      const effect = row.channel.effects.find((item) => cs >= item.start && cs < item.end);
+      if (effect) {
+        inspectEffect(effect, row);
+        return;
+      }
+    }
+    seekAudio(seconds);
+  }
+
+  function syncScroll() {
+    labelsViewport.scrollTop = canvasViewport.scrollTop;
+    updatePlayhead();
+  }
+
+  function tickPlayback() {
+    updatePlayhead();
+    if (!audio.paused && !audio.ended) state.animationFrame = requestAnimationFrame(tickPlayback);
+  }
+
+  function setup() {
+    const bindFile = (id, handler) => $(id).addEventListener("change", (event) => {
+      const file = event.target.files && event.target.files[0];
+      if (file) handler(file);
+      event.target.value = "";
+    });
+    bindFile("sequenceFile", loadSequence);
+    bindFile("welcomeSequenceFile", loadSequence);
+    bindFile("audioFile", loadAudio);
+    bindFile("welcomeAudioFile", loadAudio);
+    bindFile("analysisFile", loadAnalysis);
+    bindFile("vocalsFile", loadVocals);
+    bindFile("lyricsFile", loadLyrics);
+
+    $("zoomSlider").addEventListener("input", (event) => {
+      const centerTime = state.sequence
+        ? (canvasViewport.scrollLeft + canvasViewport.clientWidth / 2) / state.pxPerSecond
+        : 0;
+      state.pxPerSecond = Number(event.target.value);
+      refreshTimeline();
+      if (state.sequence) {
+        canvasViewport.scrollLeft = Math.max(0,
+          centerTime * state.pxPerSecond - canvasViewport.clientWidth / 2);
+      }
+    });
+    $("fitButton").addEventListener("click", () => {
+      if (!state.sequence) return;
+      const available = Math.max(1, canvasViewport.clientWidth - 20);
+      const duration = getTimelineDurationSeconds();
+      const minimum = Number($("zoomSlider").min);
+      const maximum = Number($("zoomSlider").max);
+      state.pxPerSecond = Math.max(minimum, Math.min(maximum, available / duration));
+      $("zoomSlider").value = String(state.pxPerSecond);
+      refreshTimeline();
+      canvasViewport.scrollLeft = 0;
+    });
+    $("meterSelect").addEventListener("change", () => {
+      if (state.audioFile && state.audioBuffer) analyzeSelectedAudio(state.audioFile);
+    });
+    $("playButton").addEventListener("click", async () => {
+      if (!state.audioFile) return;
+      if (audio.paused) {
+        try {
+          await audio.play();
+          $("playButton").textContent = "Ⅱ";
+          cancelAnimationFrame(state.animationFrame);
+          state.animationFrame = requestAnimationFrame(tickPlayback);
+        } catch (error) {
+          setBanner("Audio playback could not start: " + (error.message || String(error)), "warn");
+        }
+      } else {
+        audio.pause();
+        $("playButton").textContent = "▶";
+      }
+    });
+    $("stopButton").addEventListener("click", () => {
+      audio.pause();
+      audio.currentTime = 0;
+      $("playButton").textContent = "▶";
+      updatePlayhead();
+    });
+    audio.addEventListener("ended", () => $("playButton").textContent = "▶");
+    audio.addEventListener("pause", () => $("playButton").textContent = "▶");
+    audio.addEventListener("timeupdate", updatePlayhead);
+    canvasViewport.addEventListener("scroll", syncScroll);
+    window.addEventListener("resize", () => {
+      if (state.sequence) refreshTimeline();
+    });
+    $("waveformCanvas").addEventListener("click", (event) => seekFromPointer(event, $("waveformCanvas")));
+    $("markersCanvas").addEventListener("click", handleMarkerClick);
+    $("tracksCanvas").addEventListener("click", handleTrackClick);
+  }
+
+  setup();
+})();

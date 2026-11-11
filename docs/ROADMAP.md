@@ -11,9 +11,11 @@ This roadmap follows the authoritative phase order and acceptance gates in [PLAN
 - [x] Phase 5: prop classifier and `analyze-preview` (preview is the only input); owner confirmed on a real display
 - [x] Phase 6 — Rules engine and user-profile layering
 - [x] Phase 6b — Optional "any specific requirements?" step, remembered per display
-- [ ] Phase 7 — Section-aware choreography planner v1; owner playback gate
-- [ ] Phase 8 — Vocal separation, syllable timing, and singing-face choreography; owner playback gate
+- [ ] Phase 7 — Section-aware choreography planner v1; code merged in PR #39, owner S6 playback gate pending
+- [ ] Phase 8 — Vocal separation, syllable timing, and singing-face choreography; PR #44 open, real-vocal and owner playback gates pending
 - [ ] Phase 9 — Planner v2 (motifs, call-and-response, signature moments, dynamics)
-- [ ] Phase 10 — Reporting, packaging, documentation, and installation polish
+- [ ] Phase 10 — Reporting, Python packaging, documentation, and installation polish
+- [ ] Phase 11A — Browser-first sequencing workspace (Issue #47; desktop packaging deferred)
+- [ ] Final delivery — Desktop wrapper and packaging, only after browser sequencing and editing are accepted
 
 A phase is complete only when its issue acceptance criteria, automated checks, required owner verification, PR merge, and explicit approval are all satisfied. See [PLAN.md](PLAN.md) for the full scope and handoff log.
