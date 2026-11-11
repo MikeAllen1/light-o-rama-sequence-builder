@@ -27,7 +27,7 @@ The command creates a machine-readable JSON report and an SVG diagnostic plot. O
 - **Purple lines:** provisional downbeats. They assume the first detected beat is beat one and every fourth beat is a downbeat; this is not meter detection.
 - **Amber marks:** positive frame-energy-flux peaks. They are transient candidates, not a complete list of drum hits or musical notes.
 - **Teal dashed lines:** energy-transition candidates. They are not verse, chorus, bridge, or drop labels.
-- **Red lines:** sustained near-silence candidates. Quiet breakdowns and intentional pauses may be included.
+- **Red lines:** sustained near-silence candidates, including leading silence when a non-silent track begins with a sufficiently long quiet segment. Quiet breakdowns and intentional pauses may be included.
 
 Confidence values are heuristic and uncalibrated. Tempo confidence describes the autocorrelation signal, while beat/downbeat confidence is additionally reduced when a competing beat/offbeat phase has similar onset energy. A low beat confidence means the analyzer cannot reliably choose which repeating accent is the metrical beat; it does not mean the tempo estimate itself is necessarily wrong. Treat all confidence values as relative evidence, not probabilities.
 
