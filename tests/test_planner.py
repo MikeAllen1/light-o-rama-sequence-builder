@@ -164,7 +164,7 @@ def test_mouths_stay_still_until_vocals_exist() -> None:
     assert ids["Mouth Open"] not in lit and ids["Mouth Closed"] not in lit
     assert ids["Face Outline"] in lit
     skipped = {s.name: s.reason for s in plan.skipped_props}
-    assert "vocal analysis" in skipped["Mouth Open"]
+    assert "no vocals for this song" in skipped["Mouth Open"]
     assert "driven by its master prop" in skipped["Face Eyes"]
     assert report.ok
 

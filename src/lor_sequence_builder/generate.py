@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -20,7 +21,7 @@ from lor_sequence_builder.choreography import choreography_json
 from lor_sequence_builder.evaluation import load_analysis
 from lor_sequence_builder.lorprev import read_lorprev
 from lor_sequence_builder.plan_preview import plan_svg
-from lor_sequence_builder.planner import Plan, plan_show
+from lor_sequence_builder.planner import Plan, display_has_mouths, plan_show
 from lor_sequence_builder.pulse import preview_element
 from lor_sequence_builder.rules import RuleReport, RuleSet, display_from_preview
 from lor_sequence_builder.sequence_writer import (
@@ -28,6 +29,8 @@ from lor_sequence_builder.sequence_writer import (
     SequenceWriteError,
     build_from_timeline,
 )
+from lor_sequence_builder.vocal_separation import separate_vocals, separation_available
+from lor_sequence_builder.vocals import analyze_vocals, load_vocals
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +41,8 @@ class GeneratedShow:
     picture_path: Path
     report_path: Path
     analysis_path: Path | None
+    vocals_path: Path | None
+    vocals_note: str | None
     plan: Plan
     report: RuleReport
 
@@ -52,6 +57,8 @@ def output_paths(output_path: str | Path) -> dict[str, Path]:
         "picture": stem.with_name(stem.name + ".plan.svg"),
         "report": stem.with_name(stem.name + ".rules.json"),
         "analysis": stem.with_name(stem.name + ".analysis.json"),
+        "vocals": stem.with_name(stem.name + ".vocals.json"),
+        "vocals_audio": stem.with_name(stem.name + ".vocals.wav"),
         "plot": stem.with_name(stem.name + ".analysis.svg"),
     }
 
@@ -84,7 +91,14 @@ def generate_show(
     analysis_path: str | Path | None = None,
     music_filename: str | None = None,
     beats_per_bar: int = 4,
+    vocals_path: str | Path | None = None,
+    separate: bool | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> GeneratedShow:
+    """Build a show. Vocals for singing faces come from ``vocals_path`` (a vocals-only
+    audio file, or a vocals JSON from an earlier run); otherwise, when the display
+    has face mouths, they are split out of the song if the add-on is installed.
+    ``separate`` forces separation on (True) or off (False)."""
     if (audio_path is None) == (analysis_path is None):
         raise SequenceWriteError("Give either the audio file or an existing analysis, not both")
     paths = output_paths(output_path)
@@ -93,12 +107,24 @@ def generate_show(
     needed = ["sequence", "timeline", "plan", "picture", "report"]
     if audio_path is not None:
         needed += ["analysis", "plot"]
+    preview = preview_element(read_lorprev(preview_path))
+    display = display_from_preview(preview)
+    wants_vocals = display_has_mouths(display, rule_set)
+    will_separate = (
+        vocals_path is None and audio_path is not None and wants_vocals
+        and (separate is True or (separate is None and separation_available()))
+    )
+    if separate is True and audio_path is None:
+        raise SequenceWriteError("Separating vocals needs the song's audio file (--audio)")
+    if will_separate or (vocals_path is not None
+                         and Path(vocals_path).suffix.lower() != ".json"):
+        needed.append("vocals")
+    if will_separate:
+        needed.append("vocals_audio")
     for name in needed:
         if paths[name].exists():
             raise SequenceWriteError(f"Output already exists; refusing to overwrite: "
                                      f"{paths[name]}")
-    preview = preview_element(read_lorprev(preview_path))
-    display = display_from_preview(preview)
 
     if audio_path is not None:
         paths["sequence"].parent.mkdir(parents=True, exist_ok=True)
@@ -113,7 +139,30 @@ def generate_show(
         written_analysis = None
         default_music = str(analysis.get("audio", {}).get("file_name") or "")
 
-    plan = plan_show(analysis, display, rule_set)
+    vocals: dict[str, Any] | None = None
+    written_vocals: Path | None = None
+    vocals_note: str | None = None
+    if vocals_path is not None:
+        if Path(vocals_path).suffix.lower() == ".json":
+            vocals = load_vocals(vocals_path)
+        else:
+            vocals = analyze_vocals(vocals_path, paths["vocals"], "supplied vocals file")
+            written_vocals = paths["vocals"]
+    elif will_separate:
+        assert audio_path is not None
+        if progress is not None:
+            progress("Splitting the vocals out of the song for the singing faces. This can "
+                     "take a few minutes; the vocals are saved so later runs can reuse them "
+                     "with --vocals.")
+        separate_vocals(audio_path, paths["vocals_audio"])
+        vocals = analyze_vocals(paths["vocals_audio"], paths["vocals"], "separated on this PC")
+        written_vocals = paths["vocals"]
+    elif wants_vocals:
+        vocals_note = (
+            "Face mouths stay still: pass a vocals-only file with --vocals, or install "
+            "the vocals add-on (uv sync --extra vocals) to split vocals out of the song."
+        )
+    plan = plan_show(analysis, display, rule_set, vocals)
     paths["sequence"].parent.mkdir(parents=True, exist_ok=True)
     _write_new(paths["timeline"], choreography_json(plan.choreography))
     _write_new(paths["picture"], plan_svg(plan, display, f"{paths['sequence'].stem}: planned show"))
@@ -127,4 +176,5 @@ def generate_show(
         raise
     _write_new(paths["plan"], _plan_document(plan, written.report, analysis))
     return GeneratedShow(paths["sequence"], paths["timeline"], paths["plan"], paths["picture"],
-                         paths["report"], written_analysis, plan, written.report)
+                         paths["report"], written_analysis, written_vocals, vocals_note, plan,
+                         written.report)

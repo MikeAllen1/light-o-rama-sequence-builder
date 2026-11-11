@@ -263,7 +263,7 @@ def _named(name: str, words: list[str]) -> bool:
     return any(_words(word) <= found for word in words)
 
 
-def _constraints(display: Display, rule_set: RuleSet) -> _Constraints:
+def _constraints(display: Display, rule_set: RuleSet, vocals_known: bool) -> _Constraints:
     c = _Constraints()
     mouth_words = list({
         *rule_set.rules["face_outline_with_mouth"].params.get("mouth_names", []),
@@ -276,8 +276,9 @@ def _constraints(display: Display, rule_set: RuleSet) -> _Constraints:
                 f"driven by its master prop {master.name if master else '(missing)'}")
         elif prop.layout_problem is not None:
             c.excluded[prop.prop_id] = f"cannot be sequenced yet: {prop.layout_problem}"
-        elif prop.role == "singing_face" and _named(prop.name, mouth_words):
-            c.excluded[prop.prop_id] = "mouth animation needs vocal analysis (Phase 8)"
+        elif prop.role == "singing_face" and _named(prop.name, mouth_words) and not vocals_known:
+            c.excluded[prop.prop_id] = (
+                "no vocals for this song: pass --vocals, or install the vocals add-on")
         else:
             c.channels[prop.prop_id] = list(range(prop.channel_count))
     for req in rule_set.requirements:
@@ -689,6 +690,130 @@ def _accent(planner: _Planner, window: _Window, active: set[str]) -> int:
     return end
 
 
+
+# ---------------------------------------------------------------- singing faces
+
+_CLOSED = {"closed", "close", "shut", "rest"}
+_HALF = {"half", "mid", "middle", "partial", "semi"}
+_OPEN = {"open", "full", "wide"}
+_ROUND = {"o", "oo", "ooh", "round"}
+_BLINK = {"closed", "close", "shut", "blink"}
+BLINK_EVERY = 300
+BLINK_LENGTH = 15
+
+
+@dataclass
+class _Face:
+    outline: list[str] = field(default_factory=list)
+    mouths: dict[str, str] = field(default_factory=dict)
+    eyes_open: list[str] = field(default_factory=list)
+    eyes_closed: list[str] = field(default_factory=list)
+    others: list[str] = field(default_factory=list)
+
+    @property
+    def members(self) -> set[str]:
+        return {*self.outline, *self.mouths.values(), *self.eyes_open, *self.eyes_closed,
+                *self.others}
+
+
+def _faces(display: Display, rule_set: RuleSet, usable: set[str]) -> list[_Face]:
+    """Singing faces built from separate props, with each part recognized by its name."""
+    outline_words = rule_set.rules["face_outline_with_mouth"].params.get("outline_names", [])
+    mouth_words = list({
+        *rule_set.rules["face_outline_with_mouth"].params.get("mouth_names", []),
+        *rule_set.rules["mouths_only_during_vocals"].params.get("mouth_names", []),
+    })
+    seen: set[str] = set()
+    faces: list[_Face] = []
+    for prop in display.props.values():
+        if prop.role != "singing_face" or prop.prop_id in seen:
+            continue
+        members = sorted({prop.prop_id, *prop.figure}, key=lambda p: display.props[p].name)
+        seen.update(members)
+        face = _Face()
+        for pid in members:
+            if pid not in usable:
+                continue
+            name = display.props[pid].name
+            words = _words(name)
+            if _named(name, mouth_words):
+                shape = ("closed" if words & _CLOSED else "half" if words & _HALF
+                         else "round" if words & _ROUND else "open")
+                face.mouths.setdefault(shape, pid)
+            elif words & {"eye", "eyes"}:
+                (face.eyes_closed if words & _BLINK else face.eyes_open).append(pid)
+            elif _named(name, outline_words):
+                face.outline.append(pid)
+            else:
+                face.others.append(pid)
+        if face.members:
+            faces.append(face)
+    return faces
+
+
+def display_has_mouths(display: Display, rule_set: RuleSet) -> bool:
+    """Whether any singing face has a separate, sequenceable mouth prop."""
+    usable = {p.prop_id for p in display.props.values() if p.sequenceable}
+    return any(face.mouths for face in _faces(display, rule_set, usable))
+
+
+def _vocal_spans(vocals: dict[str, Any], duration: int) -> tuple[
+        list[tuple[int, int]], list[tuple[int, int, float]]]:
+    regions = []
+    for region in vocals.get("regions", []):
+        a, b = _cs(float(region["start"])), min(duration, _cs(float(region["end"])))
+        if b - a >= 10:
+            regions.append((max(0, a), b))
+    syllables = []
+    for syllable in vocals.get("syllables", []):
+        a, b = _cs(float(syllable["start"])), _cs(float(syllable["end"]))
+        syllables.append((a, min(b, duration), float(syllable.get("strength", 0.5))))
+    return regions, sorted(syllables)
+
+
+def _sing(planner: _Planner, face: _Face, regions: list[tuple[int, int]],
+          syllables: list[tuple[int, int, float]], section_at: Any) -> None:
+    """Light a face while someone sings: outline on, mouth shapes on syllables, blinks."""
+    shapes = face.mouths
+    for start, end in regions:
+        section = section_at(start)
+        steady = [*face.outline, *face.others]
+        for pid in steady:
+            planner.light(pid, section, start, end)
+        # Eyes stay open with a quick blink every few seconds.
+        blinks = list(range(start + 100, end - 50, BLINK_EVERY)) if face.eyes_closed else []
+        cursor = start
+        for blink in blinks:
+            for pid in face.eyes_open:
+                planner.light(pid, section, cursor, blink)
+            for pid in face.eyes_closed:
+                planner.light(pid, section, blink, blink + BLINK_LENGTH)
+            cursor = blink + BLINK_LENGTH
+        for pid in face.eyes_open:
+            planner.light(pid, section, cursor, end)
+        if not shapes:
+            continue
+        inside = [(max(a, start), min(b, end), strength) for a, b, strength in syllables
+                  if a < end and start < b]
+        cursor = start
+        for index, (a, b, strength) in enumerate(inside):
+            a = max(a, cursor)
+            if b - a < 5:
+                continue
+            if "closed" in shapes and a - cursor >= 5:
+                planner.light(shapes["closed"], section, cursor, a)
+            if "round" in shapes and b - a >= 40 and index % 3 == 2:
+                shape = "round"
+            elif strength >= 0.6 and "open" in shapes:
+                shape = "open"
+            else:
+                shape = next((s for s in ("half", "open", "round") if s in shapes), "closed")
+            planner.light(shapes[shape], section, a, b)
+            cursor = b
+        if "closed" in shapes and end - cursor >= 5:
+            planner.light(shapes["closed"], section, cursor, end)
+
+
 def _joined(effects: list[Effect]) -> list[Effect]:
     """Join back-to-back holds with the same look, so a long hold is one effect in S6."""
     out: list[Effect] = []
@@ -709,11 +834,14 @@ def _joined(effects: list[Effect]) -> list[Effect]:
     return out
 
 
-def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet) -> Plan:
+def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
+              vocals: dict[str, Any] | None = None) -> Plan:
+    """Plan a show. ``vocals`` is a vocal analysis (see vocals.py); without it faces
+    light like other props and their mouths stay dark."""
     music = _music(analysis)
     sections = _sections(music)
     windows = _windows(music, sections)
-    constraints = _constraints(display, rule_set)
+    constraints = _constraints(display, rule_set, vocals_known=vocals is not None)
     canvas = _Canvas(constraints.caps)
     planner = _Planner(display, constraints, sections, canvas)
     notes = list(music.notes)
@@ -733,13 +861,38 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet) -> 
             canvas.put(pid, channel, start, end, color=planner.color(pid, channel))
 
     usable = set(constraints.channels)
-    rows, singles = _rows(display, usable)
+    regions: list[tuple[int, int]] = []
+    singing: set[str] = set()
+    if vocals is not None:
+        regions, syllables = _vocal_spans(vocals, music.duration)
+        faces = _faces(display, rule_set, usable - set(keep_spans))
+
+        def section_at(time: int) -> int:
+            return next((i for i, sec in enumerate(sections)
+                         if sec.start_centisecond <= time < sec.end_centisecond), 0)
+
+        for face in faces:
+            allowed_regions = [
+                (a, b) for a, b in regions
+                if not any(sections[section_at(a)].label.lower() in constraints.quiet.get(p, set())
+                           for p in face.members)
+            ]
+            _sing(planner, face, allowed_regions, syllables, section_at)
+            singing |= face.members
+        if not faces:
+            notes.append("Vocals were analyzed, but the preview has no singing face to use them.")
+        elif not regions:
+            notes.append("No singing was found in the vocals, so the faces rest all song.")
+        elif not any(face.mouths for face in faces):
+            notes.append("No face has separate mouth props, so faces light while someone "
+                         "sings but their mouths do not move.")
+    rows, singles = _rows(display, usable - singing)
     last_window = windows[-1] if windows else None
     for window in windows:
         section = sections[window.section_index]
         label = section.label.lower()
         active = {
-            pid for pid in usable
+            pid for pid in usable - singing
             if label not in constraints.quiet.get(pid, set())
             and not any(a < window.end and window.start < b
                         for a, b in keep_spans.get(pid, []))
@@ -785,7 +938,7 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet) -> 
         sections=tuple(Section(s.label, s.start_centisecond, s.end_centisecond)
                        for s in sections),
         hard_stops_centiseconds=tuple(start for start, _ in music.stops),
-        vocal_regions=None,
+        vocal_regions=None if vocals is None else tuple(regions),
     )
     return Plan(
         choreography=choreography,

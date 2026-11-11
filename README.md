@@ -77,7 +77,22 @@ Before building, it asks whether you have any specific requirements (skipped whe
 - `Song.timeline.json`, `Song.plan.json`, `Song.rules.json`: every decision, the section plan with props used and left out, and the rule report.
 - `Song.analysis.json` and `Song.analysis.svg`: the music analysis. Pass `--analysis` instead of `--audio` to reuse one.
 
-Singing-face mouths are not animated yet; that needs vocal analysis (Phase 8).
+### Singing faces
+
+Faces drawn as separate props (outline, mouth shapes, eyes) sing along: the mouth opens on each syllable (wider on stronger ones, an "O" mouth on some held notes when you have one, the closed mouth between words), the eyes blink every few seconds, the outline stays on whenever a mouth is on, and the face rests during instrumentals. Parts are recognized by their names in the preview: `outline`; `mouth` or `lips` with `closed`, `half`, `open`, or `o`; `eyes open`, `eyes closed`.
+
+That needs the vocals on their own. Either:
+
+- pass a vocals-only file you already have: `--vocals .\Song-vocals.wav`, or
+- install the optional separation add-on once, and `generate` splits the vocals out of the song itself (only when your display has face mouths):
+
+  ```powershell
+  uv sync --locked --extra vocals
+  ```
+
+  It is a large install (PyTorch), downloads a 67 MB model the first time, and then runs offline. Splitting takes a few minutes per song; the result is saved as `Song.vocals.wav` and `Song.vocals.json`, and either can be passed to `--vocals` next time. `--no-vocals` skips it.
+
+Without vocals, face mouths stay still and the rest of the face lights with the show.
 
 ## Rules and display requirements
 

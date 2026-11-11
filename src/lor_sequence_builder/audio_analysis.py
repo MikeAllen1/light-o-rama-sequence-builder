@@ -781,3 +781,17 @@ def analyze_audio(
         return report
     except OSError as exc:
         raise AudioAnalysisError(f"Audio analysis I/O failure: {exc}") from exc
+
+
+def decode_audio(audio_path: str | Path) -> tuple[npt.NDArray[np.float32], float]:
+    """Decode any supported audio file to mono samples at SAMPLE_RATE, with its duration."""
+    source = Path(audio_path)
+    if not source.is_file():
+        raise AudioAnalysisError(f"Audio input is not a regular file: {source}")
+    size = source.stat().st_size
+    if size <= 0 or size > MAX_INPUT_BYTES:
+        raise AudioAnalysisError("Audio file must be non-empty and no larger than 200 MiB")
+    with tempfile.TemporaryDirectory(prefix="lor-decode-") as folder:
+        normalized = Path(folder) / "normalized.wav"
+        _normalize(source, normalized)
+        return _read_samples(normalized)

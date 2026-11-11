@@ -40,6 +40,8 @@ from lor_sequence_builder.sequence_writer import (
     SequenceWriteError,
     build_from_timeline,
 )
+from lor_sequence_builder.vocal_separation import SeparationError
+from lor_sequence_builder.vocals import VocalAnalysisError
 
 _RULES_HELP = "rule profile to layer over the built-in rules; repeat to stack, later wins"
 _IGNORE_HELP = "do not use the requirements saved next to the preview"
@@ -176,6 +178,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="audio file name to store in the sequence, inside the S6 audio folder "
         "(default: the audio file's name)",
     )
+    generate.add_argument(
+        "--vocals",
+        help="vocals-only audio for singing faces (or a .vocals.json from an earlier run)",
+    )
+    generate.add_argument(
+        "--no-vocals", action="store_true",
+        help="do not split vocals out of the song, even when the add-on is installed",
+    )
     generate.add_argument("--beats-per-bar", type=int, choices=(3, 4), default=4,
                           help="4 for most songs, 3 for waltz time (default: 4)")
     generate.add_argument("--rules", action="append", default=[], help=_RULES_HELP)
@@ -231,6 +241,8 @@ def _generate(options: argparse.Namespace) -> int:
             options.preview, options.output, rule_set,
             audio_path=options.audio, analysis_path=options.analysis,
             music_filename=options.music_filename, beats_per_bar=options.beats_per_bar,
+            vocals_path=options.vocals, separate=False if options.no_vocals else None,
+            progress=print,
         )
     except RulesFailedError as failed:
         print(failed.report.format_text())
@@ -256,6 +268,10 @@ def _generate(options: argparse.Namespace) -> int:
     print(f"Rule report: {show.report_path}")
     if show.analysis_path is not None:
         print(f"Analysis: {show.analysis_path}")
+    if show.vocals_path is not None:
+        print(f"Vocals: {show.vocals_path}")
+    if show.vocals_note is not None:
+        print(f"Note: {show.vocals_note}")
     return 0
 
 
@@ -458,6 +474,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         EvaluationError,
         IntakeError,
         PlanningError,
+        SeparationError,
+        VocalAnalysisError,
         RuleProfileError,
         SequenceWriteError,
         LoreditError,
