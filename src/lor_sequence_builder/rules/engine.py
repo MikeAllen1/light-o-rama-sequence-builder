@@ -364,6 +364,17 @@ _Check = Callable[[_Context], str | None]
 # ---------------------------------------------------------------- built-in rules
 
 
+def _movement_identity_valid(movement: Movement) -> bool:
+    """Whether downstream movement rules can safely use its identity and props."""
+    return (
+        isinstance(movement.movement_id, str)
+        and bool(movement.movement_id.strip())
+        and isinstance(movement.prop_ids, tuple)
+        and bool(movement.prop_ids)
+        and all(isinstance(pid, str) and bool(pid.strip()) for pid in movement.prop_ids)
+    )
+
+
 def _effects_well_formed(ctx: _Context) -> str | None:
     duration = ctx.choreography.duration_centiseconds
     if duration <= 0:
@@ -392,13 +403,29 @@ def _effects_well_formed(ctx: _Context) -> str | None:
     duplicate_movement_ids: set[str] = set()
     for movement in ctx.choreography.movements:
         movement_id = movement.movement_id
-        if movement_id in seen_movement_ids:
+        if not isinstance(movement_id, str) or not movement_id.strip():
+            ctx.add("Movement id must be a non-empty string")
+        elif movement_id in seen_movement_ids:
             duplicate_movement_ids.add(movement_id)
         else:
             seen_movement_ids.add(movement_id)
+        if not isinstance(movement.prop_ids, tuple) or not movement.prop_ids:
+            ctx.add(
+                f"Movement {movement_id!r} must contain at least one prop",
+                centisecond=movement.start_centisecond
+                if isinstance(movement.start_centisecond, int) else None,
+            )
+        elif any(not isinstance(pid, str) or not pid.strip() for pid in movement.prop_ids):
+            ctx.add(
+                f"Movement {movement_id!r} prop ids must be non-empty strings",
+                centisecond=movement.start_centisecond
+                if isinstance(movement.start_centisecond, int) else None,
+            )
     for movement_id in sorted(duplicate_movement_ids):
         ctx.add(f"Movement id {movement_id!r} is used more than once")
     for m in ctx.choreography.movements:
+        if not _movement_identity_valid(m):
+            continue
         if m.kind not in MOVEMENT_KINDS:
             ctx.add(
                 f"Movement {m.movement_id!r} has unsupported kind {m.kind!r}; use one of "
@@ -488,7 +515,10 @@ def _movement_effects(ctx: _Context) -> dict[str, list[Effect]]:
 
 
 def _movements_complete(ctx: _Context) -> str | None:
-    movements = {m.movement_id: m for m in ctx.choreography.movements}
+    movements = {
+        m.movement_id: m for m in ctx.choreography.movements
+        if _movement_identity_valid(m)
+    }
     tagged = _movement_effects(ctx)
     for movement_id, effects in tagged.items():
         if movement_id not in movements:
@@ -569,7 +599,10 @@ def _chases_follow_layout(ctx: _Context) -> str | None:
 
 
 def _falls_go_down(ctx: _Context) -> str | None:
-    falls = [m for m in ctx.choreography.movements if m.kind == "fall"]
+    falls = [
+        m for m in ctx.choreography.movements
+        if _movement_identity_valid(m) and m.kind == "fall"
+    ]
     if not falls:
         return "the Timeline has no falling effects"
     tagged = _movement_effects(ctx)
@@ -708,6 +741,8 @@ def _motion_stops_at_hard_stops(ctx: _Context) -> str | None:
         return "the Timeline has no movements"
     tagged = _movement_effects(ctx)
     for m in ctx.choreography.movements:
+        if not _movement_identity_valid(m):
+            continue
         for stop in stops:
             if m.start_centisecond < stop < m.end_centisecond:
                 ctx.add(f"The {m.kind} {m.movement_id!r} keeps moving through the hard stop",
@@ -891,8 +926,10 @@ def _quiet_during(ctx: _Context, req: Requirement, props: list[str]) -> str | No
 def _move_direction(ctx: _Context, req: Requirement, props: list[str]) -> str | None:
     kind = req.params.get("movement", "chase")
     chosen = set(props)
-    moves: list[Movement] = [m for m in ctx.choreography.movements
-                             if m.kind == kind and set(m.prop_ids) <= chosen]
+    moves: list[Movement] = [
+        m for m in ctx.choreography.movements
+        if _movement_identity_valid(m) and m.kind == kind and set(m.prop_ids) <= chosen
+    ]
     if not moves:
         return f"the Timeline has no {kind} across these props"
     for m in moves:
