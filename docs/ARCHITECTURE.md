@@ -21,8 +21,8 @@ The original audio, preview, prop map, and any reference sequence are read-only 
 
 - The display preview input is **`.lorprev`** and is mandatory for both `analyze` and `generate`.
 - The generated sequence output is **`.loredit`**, intended to open in the configured target LOR S6 version.
-- The committed standalone preview golden fixture is a sanitized fictional S6 export with internal `Revision="1"`. A second sanitized golden fixture is extracted from the `PreviewClass` embedded in the supplied `fixture_candidate.loredit` (S6 6.6.0.12); it has internal `Revision="56"`, 51 props, and one `PropGroup` containing five prop references. These preview revisions are distinct from the LOREDIT save-file version. The original private owner preview is not committed.
-- Owner-supplied sequences are used only to derive sanitized format fixtures. They are format evidence, not a reference display; nothing about any one display may be hardcoded.
+- The current committed preview fixture is `tests/fixtures/synthetic_display.lorprev`, a small hand-authored fictional XML example. Larger sequence and preview test inputs are generated at test time with fictional identifiers, names, addresses, and geometry.
+- The repository's current fixture policy is synthetic-only. Historical owner-derived and sanitized show material was removed from the current tree in PR #15; do not restore it. Format claims must be supported by documented observations, synthetic regression coverage, and owner-run S6 verification without retaining private source files.
 - RGB/pixel support is a declared V1 limitation, not something to fake or infer. If a preview contains a channel/prop type the current writer cannot safely represent, the tool must report it and must not silently drop it or claim full support.
 - V1 is CLI-only. GUI, controller upload, live playback, and editing existing sequences are out of scope.
 
@@ -37,7 +37,7 @@ The original audio, preview, prop map, and any reference sequence are read-only 
 7. **Rules are configuration.** Universal rules ship in `rules/default.yaml`; user profiles layer on top without modifying application code.
 8. **The writer does not choreograph.** `lor_writer` serializes a validated Timeline into the exact supported LOR format.
 9. **Inputs are immutable and untrusted.** Parsing is hardened, resource limits are explicit, and output is always written separately.
-10. **Format claims require fixtures.** Real `.lorprev` and `.loredit` fixtures plus opening the result in the target LOR application—not remembered or guessed schemas—establish compatibility.
+10. **Format claims require evidence.** S6-generated samples must be inspected locally and the resulting structural observations documented; synthetic regression tests protect implemented behavior, and the owner must open generated files in the target LOR application. Do not commit owner/customer source files or sanitized derivatives.
 
 ## 4. High-level data flow
 
@@ -79,7 +79,7 @@ generate
                        report + verification
 ```
 
-Every stage has typed Pydantic inputs and outputs. A stage may use the public models of another stage, but it must not reach into that stage's implementation internals. Stage orchestration belongs in the application/CLI layer.
+Current internal stage models use frozen dataclasses with explicit validation. Pydantic is reserved for strict validation of user-edited configuration such as `props.yaml` and rules profiles when those inputs are implemented. A stage may use the public models of another stage, but it must not reach into that stage's implementation internals. Stage orchestration belongs in the application/CLI layer.
 
 ## 5. Stage responsibilities and contracts
 
@@ -110,7 +110,7 @@ Every stage has typed Pydantic inputs and outputs. A stage may use the public mo
 
 **Outputs:** `RawDisplayModel` and `RawPropModel[]`.
 
-**Known preview references:** a small synthetic fixture, the supplied standalone S6 `.lorprev` export, and the `PreviewClass` extracted from the supplied S6 6.6.0.12 `.loredit` (51 props and a real `PropGroup` with five `member` references). Fixture file names include the edit revision of the source preview for traceability only. The LOREDIT `saveFileVersion` is a real format version and remains gated; preview edit revisions are not.
+**Known preview references:** the hand-authored fictional fixture at `tests/fixtures/synthetic_display.lorprev` and additional runtime-generated synthetic previews. Tests exercise structural parsing, including groups and members, without requiring owner/customer display exports in the repository. The LOREDIT `saveFileVersion` is a real format version and remains gated; `PreviewClass/@Revision` is an edit counter recorded as optional metadata, not a format gate.
 
 **Controller/channel interpretation:** Each LOR prop `ChannelGrid` row exposes network, Unit ID, and the circuit value present in that row; each DMX row exposes universe and channel. These are address fields, not a complete interpretation of every field or channel-range behavior. Remaining row fields are retained verbatim and are not yet semantically interpreted. The parser retains the complete original value and source locator. `Undetermined` is a recognized unassigned device type. Later phases must not infer channel counts, ranges, color semantics, or controller capabilities from unparsed fields.
 
@@ -144,7 +144,7 @@ The YAML must preserve stable preview identifiers and distinguish inferred value
 - Keep beat, downbeat, onset, vocal, and section events as distinct concepts. Mouth animation follows detected vocal syllables, not the beat.
 - Report unavailable or low-confidence analysis rather than inventing events.
 
-**Implementation notes:** Librosa is the initial analysis foundation. Demucs may be used for vocal separation. Madmom is an alternative only if its Python/runtime compatibility and maintenance are validated. Vocal separation and syllable detection are computationally expensive and must have explicit dependency, runtime, and failure behavior. If vocal analysis is unavailable, singing-face mouth animation must be disabled or flagged for user review; it must not fall back to beat-driven mouth movement.
+**Implementation notes:** The merged Phase 4 baseline uses the Python standard library after bounded FFmpeg normalization; it does not currently depend on librosa and does not provide semantic section labels, tempo-change tracking, or vocal analysis. A future phase may evaluate librosa or other maintained tools for richer analysis. Demucs or another separator may be evaluated for vocal separation only when that phase is approved. Any heavier dependency must have explicit compatibility, runtime, resource, and failure behavior. If vocal analysis is unavailable, singing-face mouth animation must be disabled or flagged for user review; it must not fall back to beat-driven mouth movement.
 
 **Output:** Typed musical feature models with timestamps, confidence, and provenance.
 
@@ -198,7 +198,7 @@ User profiles may add display-specific constraints and adjust tunables such as e
 - Refuse unsupported target versions or unsupported effects/channel constructs.
 - Write to a new output path and verify the resulting file is well-formed and structurally valid.
 
-The exact `.loredit` schema is not to be inferred from memory. The supplied real sequence is a starting reference; additional sanitized fixtures and round-trip tests must establish the structures needed for each supported feature.
+The exact `.loredit` schema is not to be inferred from memory. The implementation's existing format observations and synthetic regression tests are not a substitute for new S6-generated evidence when adding unsupported structures. Request the minimum necessary owner-run export, inspect it locally, and do not commit owner sequence material; retain only synthetic regression cases and documented, non-sensitive format requirements.
 
 ### 5.9 Phase 3 walking-skeleton orchestrator
 
@@ -234,7 +234,7 @@ This is a temporary engineering harness, not the final user workflow. It require
 
 ## 6. Domain models and artifact contracts
 
-Use Pydantic models for public configuration/stage boundaries; small internal immutable Timeline value objects may use frozen dataclasses with explicit validation. Initial model families:
+Use frozen dataclasses with explicit validation for current internal stage models. Use Pydantic for public user-edited configuration boundaries such as `props.yaml` and rules profiles when implemented. Initial model families:
 
 - `InputManifest`: paths, file metadata, hashes, detected formats, configured target version, and resource limits.
 - `RawDisplayModel`, `RawPropModel`, `RawChannelModel`, `RawControllerModel`: faithful preview-derived structures and source identifiers.
