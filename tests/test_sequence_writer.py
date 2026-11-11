@@ -16,6 +16,8 @@ from lor_sequence_builder.choreography import (
 from lor_sequence_builder.cli import main
 from lor_sequence_builder.loredit import read_loredit
 from lor_sequence_builder.rules import load_rule_set
+import lor_sequence_builder.sequence_writer as sequence_writer_module
+
 from lor_sequence_builder.sequence_writer import (
     RulesFailedError,
     SequenceWriteError,
@@ -62,6 +64,13 @@ def test_a_passing_timeline_becomes_a_native_sequence(tmp_path: Path) -> None:
         tmp_path / "out.loredit", tmp_path / "out.rules.json",
     )
     assert result.effect_count == 7 and result.report.ok
+    assert result.excluded_props == ()
+    persisted_report = json.loads(result.report_path.read_text(encoding="utf-8"))
+    assert persisted_report["ok"] is True
+    assert persisted_report["rules_ok"] is True
+    assert persisted_report["build_status"] == "success"
+    assert persisted_report["sequence_written"] is True
+    assert persisted_report["excluded_props"] == []
     assert preview.read_bytes() == before
 
     document = read_loredit(result.sequence_path)
@@ -112,6 +121,10 @@ def test_a_timeline_that_breaks_the_rules_never_reaches_the_file(tmp_path: Path)
     assert "1 rule error(s); the sequence was not written" in str(caught.value)
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["ok"] is False
+    assert report["rules_ok"] is False
+    assert report["build_status"] == "failed"
+    assert report["failure_stage"] == "rules"
+    assert report["sequence_written"] is False
     finding = next(r for r in report["results"] if r["rule_id"] == "no_overlapping_effects")[
         "findings"][0]
     assert (finding["prop_name"], finding["channel_index"], finding["time"]) == (
@@ -226,3 +239,39 @@ def test_timeline_writer_rejects_missing_preview_group_identity(tmp_path: Path) 
             preview, _good(display), load_rule_set(), "song.mp3",
             tmp_path / "invalid.loredit", tmp_path / "invalid.json",
         )
+
+
+def test_failed_native_build_report_is_truthful_and_same_attempt_can_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    display = classic_yard()
+    preview = _preview(tmp_path, display)
+    output = tmp_path / "retry.loredit"
+    report_path = tmp_path / "retry.json"
+    original_builder = sequence_writer_module.build_new_sequence
+
+    def fail_native_build(*args: object, **kwargs: object) -> object:
+        raise sequence_writer_module.NewSequenceError("synthetic native build failure")
+
+    monkeypatch.setattr(sequence_writer_module, "build_new_sequence", fail_native_build)
+    with pytest.raises(SequenceWriteError, match="synthetic native build failure"):
+        build_from_timeline(
+            preview, _good(display), load_rule_set(), "song.mp3", output, report_path
+        )
+    failed = json.loads(report_path.read_text(encoding="utf-8"))
+    assert failed["ok"] is False
+    assert failed["rules_ok"] is True
+    assert failed["build_status"] == "failed"
+    assert failed["failure_stage"] == "native_sequence"
+    assert failed["sequence_written"] is False
+    assert not output.exists()
+
+    monkeypatch.setattr(sequence_writer_module, "build_new_sequence", original_builder)
+    result = build_from_timeline(
+        preview, _good(display), load_rule_set(), "song.mp3", output, report_path
+    )
+    succeeded = json.loads(report_path.read_text(encoding="utf-8"))
+    assert result.sequence_path.exists()
+    assert succeeded["ok"] is True
+    assert succeeded["build_status"] == "success"
+    assert succeeded["sequence_written"] is True
