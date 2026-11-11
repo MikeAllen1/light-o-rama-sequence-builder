@@ -2,7 +2,7 @@
 
 A display-independent command-line tool for building native Light-O-Rama S6 sequences from music and a required `.lorprev` display preview.
 
-**Project status:** Phase 1's native S6 LOREDIT reader/writer and Phase 2's standalone/embedded preview parser are complete and merged. Phase 3's fixed-tempo Timeline-to-native-sequence walking skeleton is in progress. Audio analysis, prop classification, rules, and intelligent choreography have not started.
+**Project status:** Phases 1–3 are complete and merged. Phase 3's generated native sequence opens in S6 and its fixture preview/events render. Phase 4 audio analysis is in progress on PR #9. Prop classification, rules, and intelligent choreography remain future work.
 
 ## Product workflow
 
@@ -12,7 +12,7 @@ The planned workflow is:
 2. Review and correct the prop map.
 3. `generate` — create a new native S6 `.loredit`, a Timeline JSON file, and a report.
 
-The implementation is deliberately staged. The first engineering milestone was proving that the tool can read and write a native S6 sequence that opens in Light-O-Rama S6. Audio analysis and intelligent choreography come later.
+The implementation is deliberately staged. The native S6 read/write path and fixed-tempo sequence-generation path are established. Phase 4 adds audio feature analysis; intelligent choreography comes later.
 
 See [docs/PLAN.md](docs/PLAN.md) for the phase order, acceptance criteria, and handoff log. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the intended system boundaries and data contracts. For the simple Phase 3 S6 playback check, follow [docs/PHASE3_VALIDATION.md](docs/PHASE3_VALIDATION.md); it provides a one-download ZIP generated automatically by GitHub Actions.
 
