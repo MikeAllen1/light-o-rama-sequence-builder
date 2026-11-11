@@ -86,7 +86,7 @@ def test_analyze_audio_detects_tempo_beats_onsets_and_hard_stop(tmp_path: Path) 
 
     analysis = report["analysis"]
     assert report["schema_version"] == "1.1"
-    assert analysis["beat_grid_status"] == "provisional"
+    assert analysis["beat_grid_status"] == "ambiguous"
     assert report["configuration"]["frame_seconds"] == pytest.approx(551 / 11_025)
     assert report["audio"]["duration_seconds"] == pytest.approx(8.0, abs=0.1)
     assert analysis["tempo"]["bpm"] == pytest.approx(120.0, abs=3.0)
@@ -195,6 +195,14 @@ def test_tempo_at_search_boundary_is_marked_low_confidence(tmp_path: Path) -> No
     assert tempo["confidence"] <= 0.1
     assert report["analysis"]["beats"]
     assert report["analysis"]["beats"][0]["confidence"] <= 0.1
+
+def test_beat_grid_status_requires_confidence_and_phase_support() -> None:
+    from lor_sequence_builder.audio_analysis import _beat_grid_status
+
+    assert _beat_grid_status(False, 1.0, 1.0) == "unavailable"
+    assert _beat_grid_status(True, 0.9, 0.1) == "ambiguous"
+    assert _beat_grid_status(True, 0.8, 0.25) == "provisional"
+
 
 def test_analysis_refuses_to_overwrite_outputs(tmp_path: Path) -> None:
     audio = tmp_path / "known.wav"
