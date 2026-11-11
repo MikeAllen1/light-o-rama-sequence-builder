@@ -82,6 +82,9 @@ A single global tempo is expected to drift whenever the arrangement changes temp
 
 ## Follow-up implementation in PR #12
 
+The report contract is now version 1.1 and includes an explicit `beat_grid_status`: `unavailable` when no grid is emitted, `ambiguous` when tempo confidence multiplied by phase confidence is below 0.20, and `provisional` otherwise. The CLI prints this status separately from average beat-grid confidence. `provisional` is deliberately not called `usable` or `verified`; the threshold is a conservative routing hint, not a calibrated quality guarantee. Consumers should require review before treating the grid as authoritative.
+
+
 The first attempted correction replaced the shortest qualifying local autocorrelation peak with the strongest local peak. CI exposed a clear regression: synthetic 120, 140, and 180 BPM material was returned as approximately 60–70 BPM, and the 220 BPM out-of-range case was returned as approximately 109 BPM. The same four failures reproduced on Linux and Windows.
 
 That change has been reverted. The current implementation restores the previous shortest-local-peak heuristic, which avoids the newly introduced slow-tempo regression but retains a known risk of selecting double-time aliases on real music. The configured-range confidence cap remains in place for estimates pinned near a search boundary. The boundary regression test uses a 220 BPM click track with a deliberately narrow 100–110 BPM search range. The existing alias heuristic returns approximately 109 BPM in that range, allowing the test to verify that an estimate pinned near the configured ceiling is marked low confidence. An earlier attempt to test a 180 BPM track with a 180 BPM ceiling was invalid: the heuristic returned 171.51 BPM, outside the boundary guard band.
