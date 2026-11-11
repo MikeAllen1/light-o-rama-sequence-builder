@@ -24,6 +24,7 @@ from lor_sequence_builder.audio_common import (
     AudioAnalysisError,
 )
 
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
