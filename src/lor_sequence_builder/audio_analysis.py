@@ -171,18 +171,18 @@ def _estimate_tempo(
     best_score = max(score for score, _ in candidates)
     if best_score <= 1e-12:
         return None, 0.0, None, None, 0.0
-    # Frame quantization can make the true beat lag score materially lower
-    # than a multiple of that lag. Restrict alias selection to local peaks,
-    # then prefer the shortest peak retaining half the strongest correlation.
-    # This remains a heuristic, not meter detection.
+    # Select the strongest local autocorrelation maximum, not the shortest
+    # peak above an arbitrary fraction of the strongest score. The previous
+    # shortest-peak rule systematically preferred double-time aliases.
+    # This still cannot resolve every musical half/double-time ambiguity; the
+    # confidence and candidate metadata must communicate that limitation.
     scores_by_lag = {lag: score for score, lag in candidates}
     local_peaks = [
-        lag for score, lag in candidates
+        (score, lag) for score, lag in candidates
         if score >= scores_by_lag.get(lag - 1, float("-inf"))
         and score >= scores_by_lag.get(lag + 1, float("-inf"))
-        and score >= best_score * 0.50
     ]
-    best_lag = min(local_peaks) if local_peaks else max(candidates)[1]
+    best_lag = max(local_peaks, default=max(candidates))[1]
     # Parabolic interpolation around the discrete correlation peak reduces
     # BPM quantization error for tempos whose beat period is not an integer
     # number of 50 ms analysis frames.
@@ -200,6 +200,11 @@ def _estimate_tempo(
     mean_score = math.fsum(positive) / len(positive) if positive else 0.0
     confidence = max(0.0, min(1.0, (best_score - mean_score) / (abs(best_score) + 1e-12)))
     bpm = 60.0 / (refined_lag * FRAME_SECONDS)
+    # A peak at the configured search boundary is censored evidence: a stronger
+    # candidate may exist just outside the requested range. Do not report it
+    # with ordinary confidence.
+    if bpm <= min_bpm + 1.5 or bpm >= max_bpm - 1.5:
+        confidence = min(confidence, 0.1)
     # Phase maximizes onset strength sampled at the candidate beat period.
     period = best_lag
     phase_scores = [
