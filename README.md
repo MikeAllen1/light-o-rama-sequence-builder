@@ -2,7 +2,7 @@
 
 A display-independent command-line tool for building native Light-O-Rama S6 sequences from music and a required `.lorprev` display preview.
 
-**Project status:** Phases 0 through 6b are complete and merged. Phase 7 (the first full show planner) is built and waiting for an owner playback check in S6. Phase 4 audio analysis runs on librosa and is accepted for songs in 4; swung and rubato recordings are a known limitation. Singing-face lip sync is future work (Phase 8). See [docs/PLAN.md](docs/PLAN.md) for the authoritative status.
+**Project status:** Phases 0 through 6b are complete and merged. Phase 7 (the first full show planner) is built and waiting for an owner playback check in S6. Phase 4 audio analysis runs on librosa and is accepted for songs in 4. Phase 8 (singing faces, and vocal-guided beats for swung or rubato songs) is built and waiting for an owner check. See [docs/PLAN.md](docs/PLAN.md) for the authoritative status.
 
 ## Product workflow
 
@@ -120,6 +120,8 @@ uv run lor-sequence-builder analyze-audio .\song.mp3 --output-json .\song.analys
 The report contains tempo (with a stability confidence), beats from a dynamic-programming beat tracker, downbeats chosen from harmonic change, onsets, an energy curve, four-bar phrase candidates, unlabelled section candidates (self-similarity plus loudness change at bar starts, and broad energy transitions), and hard-stop candidates. Every inferred event records its method and a heuristic confidence. The formal contract is [audio-analysis-v2.schema.json](docs/schemas/audio-analysis-v2.schema.json). Output files must be new paths and are never overwritten.
 
 Add `--beats-per-bar 3` for songs counted in 3; the default is 4.
+
+Swung or rubato songs where the band follows the singer: add `--vocals .\song-vocals.wav` (a vocals-only track of the same song). In stretches where someone is singing, beats are then re-placed using the singer's note onsets and a tempo that can drift with them, but only where that lines up with the music better than the plain beat grid; everywhere else the beats are unchanged. The report lists those stretches under `beat_guidance`, and `generate` does this automatically whenever it has vocals.
 
 Score the analysis against timing grids you placed by hand in an existing sequence for the same song:
 

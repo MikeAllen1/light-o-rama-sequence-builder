@@ -352,6 +352,43 @@
               }
             }
           }
+        },
+        "beat_guidance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "method",
+            "stretches"
+          ],
+          "description": "Present when a vocals-only track guided beat placement in singer-led stretches.",
+          "properties": {
+            "source": {
+              "type": "string"
+            },
+            "method": {
+              "type": "string"
+            },
+            "stretches": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "start",
+                  "end"
+                ],
+                "properties": {
+                  "start": {
+                    "$ref": "#/$defs/time"
+                  },
+                  "end": {
+                    "$ref": "#/$defs/time"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }

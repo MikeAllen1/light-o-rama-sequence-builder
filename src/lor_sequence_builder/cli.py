@@ -113,6 +113,10 @@ def _build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--min-bpm", type=int, default=60, help="minimum tempo to search (default: 60)")
     analyze.add_argument("--max-bpm", type=int, default=200, help="maximum tempo to search (default: 200)")
     analyze.add_argument(
+        "--vocals",
+        help="vocals-only track of the same song; guides beats where the band follows the singer",
+    )
+    analyze.add_argument(
         "--beats-per-bar",
         type=int,
         choices=(3, 4),
@@ -314,6 +318,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 min_bpm=options.min_bpm,
                 max_bpm=options.max_bpm,
                 beats_per_bar=options.beats_per_bar,
+                vocals_path=options.vocals,
             )
             analysis = report["analysis"]
             tempo = analysis["tempo"]
@@ -334,6 +339,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"Onsets: {len(analysis['onsets'])}")
             print(f"Section candidates: {len(analysis['section_candidates'])}")
             print(f"Hard stops: {len(analysis['hard_stops'])}")
+            if "beat_guidance" in analysis:
+                stretches = analysis["beat_guidance"]["stretches"]
+                print(f"Vocal-guided stretches: {len(stretches)}")
+                for stretch in stretches:
+                    print(f"  {stretch['start']:.1f}s to {stretch['end']:.1f}s")
             return 0
         if options.command == "pulse":
             if options.duration_seconds is not None and not math.isfinite(

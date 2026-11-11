@@ -845,6 +845,10 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
     canvas = _Canvas(constraints.caps)
     planner = _Planner(display, constraints, sections, canvas)
     notes = list(music.notes)
+    guidance = analysis.get("analysis", {}).get("beat_guidance")
+    if isinstance(guidance, dict) and guidance.get("stretches"):
+        notes.append(f"Beats in {len(guidance['stretches'])} singer-led stretch(es) were placed "
+                     "with the vocals' help.")
     notes.append("Section labels (intro, verse, chorus, finale, outro) are guesses from "
                  "loudness, not recognition.")
 

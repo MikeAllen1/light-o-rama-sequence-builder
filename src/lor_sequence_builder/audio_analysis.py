@@ -617,8 +617,13 @@ def analyze_audio(
     min_bpm: int = MIN_BPM,
     max_bpm: int = MAX_BPM,
     beats_per_bar: int = 4,
+    vocals_path: str | Path | None = None,
 ) -> dict[str, Any]:
-    """Analyze audio and write a versioned JSON report and an SVG diagnostic plot."""
+    """Analyze audio and write a versioned JSON report and an SVG diagnostic plot.
+
+    With ``vocals_path`` (a vocals-only track of the same song), beats in
+    singer-led stretches are placed with the singer's help (see vocal_beats.py).
+    """
     source = Path(audio_path)
     json_path = Path(json_output)
     plot_path = Path(plot_output)
@@ -650,6 +655,22 @@ def analyze_audio(
         bpm, beat_frames, tempo_stability, beat_contrast = _track_beats(
             envelope, min_bpm, max_bpm
         )
+        guidance: dict[str, Any] | None = None
+        guided: list[tuple[float, float]] = []
+        if vocals_path is not None and bpm is not None:
+            from lor_sequence_builder.vocal_beats import vocal_guided_beats
+            from lor_sequence_builder.vocals import vocal_events
+
+            vocal_samples, vocal_duration = decode_audio(vocals_path)
+            events = vocal_events(vocal_samples, vocal_duration)
+            beat_frames, guided = vocal_guided_beats(
+                envelope, vocal_samples, beat_frames, bpm, events["regions"]
+            )
+            guidance = {
+                "source": Path(vocals_path).name,
+                "method": "vocal-guided dynamic-tempo beat tracking in singer-led stretches",
+                "stretches": [{"start": a, "end": b} for a, b in guided],
+            }
         beat_times = [round(float(t), 3) for t in _frames_to_times(beat_frames)]
         beat_confidence = round(beat_contrast, 4)
 
@@ -729,7 +750,11 @@ def analyze_audio(
                 },
                 "beats": [
                     {"time": value, "confidence": beat_confidence,
-                     "method": "librosa_dynamic_programming_beat_tracker"}
+                     "method": (
+                         "vocal_guided_dynamic_tempo_beat_tracker"
+                         if any(a <= value < b for a, b in guided)
+                         else "librosa_dynamic_programming_beat_tracker"
+                     )}
                     for value in beat_times
                 ],
                 "downbeats": [
@@ -742,6 +767,7 @@ def analyze_audio(
                 "phrase_boundaries": phrases,
                 "section_candidates": sections,
                 "hard_stops": stops,
+                **({"beat_guidance": guidance} if guidance is not None else {}),
             },
         }
         serialized = json.dumps(report, indent=2, sort_keys=True) + "\n"

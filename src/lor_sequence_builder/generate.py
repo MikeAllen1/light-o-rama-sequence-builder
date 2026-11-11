@@ -126,10 +126,22 @@ def generate_show(
             raise SequenceWriteError(f"Output already exists; refusing to overwrite: "
                                      f"{paths[name]}")
 
+    paths["sequence"].parent.mkdir(parents=True, exist_ok=True)
+    vocals_audio: Path | None = None
+    if vocals_path is not None and Path(vocals_path).suffix.lower() != ".json":
+        vocals_audio = Path(vocals_path)
+    elif will_separate:
+        assert audio_path is not None
+        if progress is not None:
+            progress("Splitting the vocals out of the song for the singing faces. This can "
+                     "take a few minutes; the vocals are saved so later runs can reuse them "
+                     "with --vocals.")
+        vocals_audio = separate_vocals(audio_path, paths["vocals_audio"])
+
     if audio_path is not None:
-        paths["sequence"].parent.mkdir(parents=True, exist_ok=True)
+        # With vocals, beats in singer-led stretches are placed with the singer's help.
         analyze_audio(audio_path, paths["analysis"], paths["plot"],
-                      beats_per_bar=beats_per_bar)
+                      beats_per_bar=beats_per_bar, vocals_path=vocals_audio)
         analysis = load_analysis(paths["analysis"])
         written_analysis: Path | None = paths["analysis"]
         default_music = Path(audio_path).name
@@ -142,21 +154,12 @@ def generate_show(
     vocals: dict[str, Any] | None = None
     written_vocals: Path | None = None
     vocals_note: str | None = None
-    if vocals_path is not None:
-        if Path(vocals_path).suffix.lower() == ".json":
-            vocals = load_vocals(vocals_path)
-        else:
-            vocals = analyze_vocals(vocals_path, paths["vocals"], "supplied vocals file")
-            written_vocals = paths["vocals"]
-    elif will_separate:
-        assert audio_path is not None
-        if progress is not None:
-            progress("Splitting the vocals out of the song for the singing faces. This can "
-                     "take a few minutes; the vocals are saved so later runs can reuse them "
-                     "with --vocals.")
-        separate_vocals(audio_path, paths["vocals_audio"])
-        vocals = analyze_vocals(paths["vocals_audio"], paths["vocals"], "separated on this PC")
+    if vocals_audio is not None:
+        source = "separated on this PC" if vocals_path is None else "supplied vocals file"
+        vocals = analyze_vocals(vocals_audio, paths["vocals"], source)
         written_vocals = paths["vocals"]
+    elif vocals_path is not None:
+        vocals = load_vocals(vocals_path)
     elif wants_vocals:
         vocals_note = (
             "Face mouths stay still: pass a vocals-only file with --vocals, or install "
