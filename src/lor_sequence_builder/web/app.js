@@ -244,10 +244,10 @@
     const analysis = state.analysis && state.analysis.analysis;
     if (analysis) {
       if (analysis.beats && analysis.beats.length) lanes.push({
-        label: "Estimated beats", source: "librosa", kind: "beats", events: analysis.beats
+        label: "Beat candidates", source: "librosa", kind: "beats", events: analysis.beats
       });
       if (analysis.downbeats && analysis.downbeats.length) lanes.push({
-        label: "Estimated downbeats", source: "librosa", kind: "downbeats", events: analysis.downbeats
+        label: "Downbeat candidates", source: "librosa", kind: "downbeats", events: analysis.downbeats
       });
       if (analysis.onsets && analysis.onsets.length) lanes.push({
         label: "Audio transients", source: "librosa", kind: "onsets", events: analysis.onsets
@@ -293,7 +293,8 @@
         ? confidences.reduce((sum, value) => sum + value, 0) / confidences.length
         : null;
       const methods = Array.from(new Set(items.map((event) => event.method).filter(Boolean)));
-      badge.textContent = source + (average == null ? "" : " · " + average.toFixed(2));
+      badge.textContent = source + (average == null ? "" : " · c " + average.toFixed(2));
+      if (average != null && average < 0.2) badge.classList.add("low-confidence");
       div.title = source + (methods.length ? "; method: " + methods.join(", ") : "") +
         (average == null ? "" :
           "; mean heuristic confidence " + average.toFixed(3) + " (not a probability)");
@@ -544,7 +545,24 @@
         ctx.stroke();
         return;
       }
-      for (const event of lane.events) {
+      let laneEvents = lane.events;
+      if (lane.kind === "onsets") {
+        const strongestByPixel = new Map();
+        for (const event of laneEvents) {
+          const time = Number(event.time);
+          if (!Number.isFinite(time) || time < 0) continue;
+          const pixel = Math.floor(time * pps);
+          const existing = strongestByPixel.get(pixel);
+          if (!existing || (Number(event.strength) || 0) > (Number(existing.strength) || 0)) {
+            strongestByPixel.set(pixel, event);
+          }
+        }
+        laneEvents = Array.from(strongestByPixel.values());
+      }
+      const onsetMaximum = lane.kind === "onsets"
+        ? Math.max(0.000001, ...laneEvents.map((event) => Number(event.strength) || 0))
+        : 1;
+      for (const event of laneEvents) {
         const time = event.time != null ? Number(event.time) : Number(event.start);
         if (!Number.isFinite(time) || time < 0) continue;
         const x = time * pps;
@@ -574,12 +592,29 @@
             }
           }
         } else {
+          const rawConfidence = Number(event.confidence);
+          const confidence = Number.isFinite(rawConfidence)
+            ? Math.max(0, Math.min(1, rawConfidence))
+            : 0.35;
+          const lowConfidence = (lane.kind === "beats" || lane.kind === "downbeats") &&
+            confidence < 0.2;
+          ctx.save();
+          if (lane.kind === "onsets") {
+            const strength = Math.max(0, Number(event.strength) || 0);
+            ctx.globalAlpha = 0.25 + 0.65 * strength / onsetMaximum;
+          } else if (lane.kind === "beats" || lane.kind === "downbeats") {
+            ctx.globalAlpha = 0.12 + 0.58 * confidence;
+          } else {
+            ctx.globalAlpha = 0.8;
+          }
           ctx.strokeStyle = color;
           ctx.lineWidth = lane.kind === "downbeats" ? 2 : 1;
+          ctx.setLineDash(lowConfidence ? [2, 3] : []);
           ctx.beginPath();
           ctx.moveTo(Math.floor(x) + .5, y + (lane.kind === "onsets" ? 10 : 2));
           ctx.lineTo(Math.floor(x) + .5, y + MARKER_HEIGHT - 3);
           ctx.stroke();
+          ctx.restore();
         }
       }
     });

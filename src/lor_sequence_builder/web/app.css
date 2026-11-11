@@ -109,6 +109,7 @@ main { height: calc(100% - 66px); }
 .label-wave { height: 94px; color: #83b9c8; font-size: 9px; letter-spacing: 1px; background: #17222b; }
 .marker-label { height: 22px; color: #9eacb8; font-size: 9px; background: #151e27; }
 .marker-label .source { color: #647687; margin-left: auto; font-size: 8px; }
+.marker-label .source.low-confidence { color: #7b8792; opacity: .75; }
 .track-label { height: 22px; font-size: 10px; color: #9aa9b6; gap: 7px; }
 .track-label.group { height: 22px; background: #1b2732; color: #d0dbe4; font-weight: 750; letter-spacing: .25px; }
 .track-label.prop { color: #d3dce4; padding-left: 19px; background: #18212a; }
