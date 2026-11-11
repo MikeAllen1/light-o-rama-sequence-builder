@@ -224,6 +224,36 @@ def _detect_onsets(envelope: FloatArray) -> list[dict[str, Any]]:
     ]
 
 
+HIGH_BAND_HZ = 5000.0
+
+
+def _high_hits(samples: npt.NDArray[np.float32]) -> list[dict[str, Any]]:
+    """Hits in the high frequencies: tambourine, sleigh bells, hi-hats, shakers."""
+    envelope = np.asarray(
+        librosa.onset.onset_strength(y=samples, sr=SAMPLE_RATE, hop_length=HOP_LENGTH,
+                                     fmin=HIGH_BAND_HZ, n_mels=32),
+        dtype=np.float64,
+    )
+    frames = np.asarray(
+        librosa.onset.onset_detect(onset_envelope=envelope, sr=SAMPLE_RATE,
+                                   hop_length=HOP_LENGTH, units="frames"),
+        dtype=np.int64,
+    )
+    if frames.size == 0:
+        return []
+    reference = float(np.percentile(envelope[frames], 90)) or 1.0
+    events = []
+    for frame, time in zip(frames, _frames_to_times(frames), strict=True):
+        strength = float(envelope[frame]) / reference
+        if strength >= 0.35:
+            events.append({
+                "time": round(float(time), 3),
+                "confidence": round(min(1.0, strength), 4),
+                "method": "librosa_onset_detect_above_5khz",
+            })
+    return events
+
+
 def _fit_tempo_bounds(bpm: float, min_bpm: int, max_bpm: int) -> float | None:
     """Return an octave-equivalent tempo inside the requested range, if one exists."""
     if not math.isfinite(bpm) or bpm <= 0:
@@ -652,6 +682,7 @@ def analyze_audio(
         rms = _frame_rms(samples)
         envelope = _onset_envelope(samples)
         onsets = _detect_onsets(envelope)
+        high_hits = _high_hits(samples)
         bpm, beat_frames, tempo_stability, beat_contrast = _track_beats(
             envelope, min_bpm, max_bpm
         )
@@ -763,6 +794,7 @@ def analyze_audio(
                     for value in downbeats
                 ],
                 "onsets": onsets,
+                "high_hits": high_hits,
                 "energy": energy,
                 "phrase_boundaries": phrases,
                 "section_candidates": sections,

@@ -389,6 +389,13 @@
               }
             }
           }
+        },
+        "high_hits": {
+          "type": "array",
+          "description": "Hits in the high frequencies (tambourine, sleigh bells, hi-hats). Optional; added after v2.0 was first published.",
+          "items": {
+            "$ref": "#/$defs/timedEvent"
+          }
         }
       }
     }

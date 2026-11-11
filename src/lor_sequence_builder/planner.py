@@ -562,11 +562,6 @@ class _Planner:
             self.light(pid, window.section_index, t, min(window.end, t + length),
                        "fade" if self.soft else "on", intensity, 0)
 
-    def breathe(self, pid: str, window: _Window, intensity: int) -> None:
-        """Swell on each bar and fade away by the next one."""
-        for start, end in _bars(window):
-            self.light(pid, window.section_index, start, end, "fade", intensity, 0)
-
     def steady(self, pid: str, window: _Window, intensity: int, kind: str = "on") -> None:
         self.light(pid, window.section_index, window.start, window.end, kind, intensity)
 
@@ -622,7 +617,11 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
             singles = [*singles, members[0]]
             continue
         moved = True
-        if row.role == "mini_tree":
+        if level == LOW and row.role != "arch":
+            # Quiet parts still answer every beat, gently.
+            for pid in members:
+                planner.pulse(pid, window, intensity=60)
+        elif row.role == "mini_tree":
             if level == MID and variant == 0 or level == HIGH and variant == 1:
                 planner.alternate(members, window)
             elif level == MID:
@@ -632,19 +631,16 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
                     planner.pulse(pid, window, per_beat=2)
         elif row.role == "arch":
             if level == LOW and variant == 0:
-                moved = planner.chase(row, members, window, every=2, intensity=80)
+                moved = planner.chase(row, members, window, every=1, intensity=70)
             elif level == LOW:
                 for pid in members:
-                    planner.breathe(pid, window, 70)
+                    planner.pulse(pid, window, intensity=60)
             elif level == MID and variant == 0 or level == HIGH and variant == 1:
                 moved = planner.chase(row, members, window, every=1, intensity=100)
             elif level == MID:
                 planner.alternate(members, window)
             else:
                 moved = planner.fill(row, members, window)
-        elif level == LOW:
-            for pid in members:
-                planner.steady(pid, window, 60)
         elif level == MID and variant == 0:
             moved = planner.chase(row, members, window, every=1, intensity=100)
         elif level == MID:
@@ -675,13 +671,15 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
         elif prop.role in {"mini_tree", "icicles"}:
             # A tree or icicle line on its own (not in a row) pulses with the music.
             if level == LOW:
-                planner.steady(pid, window, 50)
+                planner.pulse(pid, window, intensity=60)
             elif level == MID:
                 planner.pulse(pid, window, "beats" if variant == 0 else "bars", 90)
             else:
                 planner.pulse(pid, window, per_beat=2 if variant == 0 else 1)
         elif prop.role == "snowflake":
-            if level == MID and variant == 0:
+            if level == LOW:
+                planner.pulse(pid, window, intensity=60)
+            elif level == MID and variant == 0:
                 planner.pulse(pid, window, "bars")
             elif level == MID or level == HIGH and variant == 1:
                 planner.pulse(pid, window, intensity=70 if level == MID else 100)
@@ -691,7 +689,8 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
             if level == HIGH and variant == 0:
                 planner.pulse(pid, window)
             else:
-                planner.steady(pid, window, {LOW: 50, MID: 80, HIGH: 100}[level])
+                # Outlines are the quiet base the rest of the show plays against.
+                planner.steady(pid, window, {LOW: 30, MID: 50, HIGH: 70}[level])
         elif prop.role == "singing_face":
             if level >= MID:
                 planner.steady(pid, window, 100)
@@ -699,19 +698,99 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
             if level == HIGH and variant == 0:
                 planner.pulse(pid, window, "bars")
             else:
-                planner.steady(pid, window, {LOW: 70, MID: 100, HIGH: 100}[level])
-        elif level >= MID:
-            planner.steady(pid, window, 60 if level == MID else 80)
+                planner.pulse(pid, window, intensity={LOW: 60, MID: 90, HIGH: 100}[level])
+        else:
+            planner.pulse(pid, window, intensity={LOW: 50, MID: 70, HIGH: 90}[level])
 
+
+
+# ---------------------------------------------------------------- focus and handoffs
+
+# Always-on base layer the leads play against. A face that is not singing holds
+# with the base rather than taking a turn as a lead.
+BASE_ROLES = frozenset({"star", "outline", "singing_face"})
+# How many groups lead at once, by energy level; the finale uses every group.
+LEADS = {LOW: 2, MID: 2, HIGH: 3}
+# The centerpiece keeps playing through mid and loud parts instead of taking turns.
+CENTERPIECE_ROLES = frozenset({"mega_tree"})
+# Sparkle on high-pitched hits (tambourine, sleigh bells) where there is at least
+# this many per beat.
+SPARKLE_DENSITY = 0.5
+SPARKLE_LENGTH = 12
+
+
+@dataclass(frozen=True, slots=True)
+class _Group:
+    role: str
+    props: tuple[str, ...]
+    x: float
+
+
+def _groups(display: Display, rows: list[_Row], singles: list[str]) -> list[_Group]:
+    """Groups that take turns leading, ordered left to right across the yard."""
+    groups: list[_Group] = []
+
+    def center(props: list[str]) -> float:
+        xs = [c[0] for c in (display.props[p].center for p in props) if c is not None]
+        return sum(xs) / len(xs) if xs else 0.0
+
+    for row in rows:
+        groups.append(_Group(row.role, row.props, center(list(row.props))))
+    by_role: dict[str, list[str]] = defaultdict(list)
+    for pid in singles:
+        role = display.props[pid].role
+        if role in BASE_ROLES:
+            continue
+        if role == "mega_tree":
+            groups.append(_Group(role, (pid,), center([pid])))
+        else:
+            by_role[role].append(pid)
+    for role, props in sorted(by_role.items()):
+        groups.append(_Group(role, tuple(props), center(props)))
+    return sorted(groups, key=lambda g: (g.x, g.role))
+
+
+def _leads(groups: list[_Group], turn: int, level: int, everything: bool,
+           skip: _Group | None) -> set[str]:
+    candidates = [g for g in groups if g is not skip
+                  and (g.role not in CENTERPIECE_ROLES or level == LOW)]
+    if not candidates:
+        return set()
+    if everything:
+        return {p for g in candidates for p in g.props}
+    count = min(len(candidates), LEADS[level])
+    start = turn % len(candidates)
+    chosen = [candidates[(start + i) % len(candidates)] for i in range(count)]
+    return {p for g in chosen for p in g.props}
+
+
+def _sparkle_group(groups: list[_Group]) -> _Group | None:
+    for role in ("snowflake", "decor"):
+        for group in groups:
+            if group.role == role and len(group.props) >= 2:
+                return group
+    return None
+
+
+def _hits_in(hits: list[int], window: _Window) -> list[int]:
+    return [h for h in hits if window.start <= h < window.end]
+
+
+def _sparkle(planner: _Planner, window: _Window, props: list[str], hits: list[int]) -> None:
+    """Flash a few of the sparkle props on each high-pitched hit."""
+    if not props:
+        return
+    share = max(1, len(props) // 3)
+    for index, hit in enumerate(hits):
+        following = hits[index + 1] if index + 1 < len(hits) else window.end
+        end = min(window.end, hit + SPARKLE_LENGTH, following)
+        if end - hit < 3:
+            continue
+        for k in range(share):
+            pid = props[(index * share + k) % len(props)]
+            planner.light(pid, window.section_index, hit, end, "fade", 100, 0)
 
 BARS_PER_PHRASE = 4
-# The intro brings props in a few kinds at a time, one phrase after another.
-_INTRO_TIERS: tuple[frozenset[str], ...] = (
-    frozenset({"star", "outline", "snowflake"}),
-    frozenset({"star", "outline", "snowflake", "mega_tree", "singing_face", "decor"}),
-)
-
-
 def _phrases(window: _Window) -> list[_Window]:
     """Four-bar phrases counted from the first bar start; short leftovers join a neighbor."""
     marks = [d for d in window.downbeats if window.start <= d < window.end]
@@ -981,6 +1060,11 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
             notes.append("No face has separate mouth props, so faces light while someone "
                          "sings but their mouths do not move.")
     rows, singles = _rows(display, usable - singing)
+    groups = _groups(display, rows, singles)
+    base = {p for p in usable - singing if display.props[p].role in BASE_ROLES}
+    sparkle = _sparkle_group(groups)
+    hits = _times(analysis, "high_hits")
+    turn = 0
     last_window = windows[-1] if windows else None
     for window in windows:
         section = sections[window.section_index]
@@ -991,7 +1075,8 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
             and not any(a < window.end and window.start < b
                         for a, b in keep_spans.get(pid, []))
         }
-        start = _accent(planner, window, active)
+        upcoming = _leads(groups, turn, section.level, label == "finale", None)
+        start = _accent(planner, window, {p for p in active if p in base or p in upcoming})
         end = window.end
         closing: int | None = None
         if window is last_window and window.section_index == len(sections) - 1:
@@ -1002,13 +1087,22 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
         body = _Window(window.section_index, start, end,
                        tuple(b for b in window.beats if start <= b < end),
                        tuple(d for d in window.downbeats if start <= d < end), False)
+        everything = label == "finale"
         for index, phrase in enumerate(_phrases(body)):
-            phrase_active = active
-            if window.section_index == 0 and label == "intro" and index < len(_INTRO_TIERS):
-                tier = _INTRO_TIERS[index]
-                phrase_active = {p for p in active if display.props[p].role in tier}
+            beats_here = max(1, len(phrase.beats))
+            phrase_hits = _hits_in(hits, phrase)
+            sparkling = sparkle is not None and len(phrase_hits) / beats_here >= SPARKLE_DENSITY
+            leads = _leads(groups, turn, section.level, everything,
+                           sparkle if sparkling else None)
+            turn += 1
+            centerpiece = {p for g in groups if g.role in CENTERPIECE_ROLES
+                           and section.level >= MID for p in g.props}
+            phrase_active = {p for p in active if p in base or p in leads or p in centerpiece}
             _look(planner, phrase, rows, singles, phrase_active, variant=index % 2,
                   flip=(window.section_index + index) % 2 == 1)
+            if sparkling and sparkle is not None:
+                _sparkle(planner, phrase, [p for p in sparkle.props if p in active],
+                         phrase_hits)
         if closing is not None:
             # The song's last bar: everything still in use fades out together.
             for pid in sorted(active):
