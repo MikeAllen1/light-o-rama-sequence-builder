@@ -59,6 +59,8 @@ def _rhythmic_track(path: Path, duration: float = 8.0, bpm: float = 120.0) -> No
     for onset, amplitude in events:
         start = int(onset * rate)
         count = int(0.03 * rate)
+        if start + count > total:
+            continue
         for offset in range(count):
             envelope = min(1.0, offset / 30, (count - offset) / 30)
             samples[start + offset] = int(
