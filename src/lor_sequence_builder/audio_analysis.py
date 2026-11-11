@@ -148,7 +148,7 @@ def _detect_onsets(flux: list[float]) -> list[dict[str, Any]]:
 
 def _estimate_tempo(
     flux: list[float], min_bpm: int, max_bpm: int
-) -> tuple[float | None, float, int | None, int | None]:
+) -> tuple[float | None, float, float | None, int | None]:
     if len(flux) < 40:
         return None, 0.0, None, None
     # Autocorrelation of onset strength; frame spacing is 50 ms.
@@ -206,7 +206,7 @@ def _estimate_tempo(
         for phase in range(period)
     ]
     phase = max(range(period), key=lambda item: phase_scores[item])
-    return round(bpm, 2), round(confidence, 4), best_lag, phase
+    return round(bpm, 2), round(confidence, 4), refined_lag, phase
 
 
 def _energy_curve(rms: list[float]) -> list[dict[str, Any]]:
@@ -249,7 +249,7 @@ def _hard_stops(
 
 
 def _phrase_boundaries(
-    duration: float, bpm: float | None, phase_frames: int | None, beat_lag: int | None
+    duration: float, bpm: float | None, phase_frames: int | None, beat_lag: float | None
 ) -> list[dict[str, Any]]:
     if bpm is None or beat_lag is None or phase_frames is None:
         return []
