@@ -1,8 +1,8 @@
 # Implementation Plan
 
-**Status:** Phases 0 through 4 complete and merged. Phase 4 was accepted by the owner on 2026-11-11 with swung and rubato songs as a known limitation.  
-**Current phase:** none active  
-**Next phase:** 4b, the scratch-built sequence writer (requires owner approval to start), then 5, prop classification.
+**Status:** Phases 0 through 6 complete and merged. Phase 6b (requirements intake) is built and in review.  
+**Current phase:** Phase 6b — requirements intake review.  
+**Next phase:** Phase 7 — Planner v1; Phase 8 — Vocals follows Phase 7. See the phase sections and linked GitHub issues/PRs below for acceptance gates.
 
 ## Product objective and fixed requirements
 
