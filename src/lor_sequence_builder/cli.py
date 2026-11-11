@@ -67,6 +67,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"Excluded props: {result.excluded_prop_count}")
             print(f"Beats: {result.beat_count}")
             print(f"Pulse events: {result.event_count}")
+            for excluded in result.excluded_props:
+                print(f"  Excluded prop {excluded.prop_id} ({excluded.name}): {excluded.reason}")
             return 0
         if options.command == "inspect-preview":
             model = read_lorprev(options.preview)
