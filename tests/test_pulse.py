@@ -4,8 +4,8 @@ import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from defusedxml.ElementTree import parse as safe_parse
 import pytest
+from defusedxml.ElementTree import parse as safe_parse
 
 from lor_sequence_builder.loredit import read_loredit
 from lor_sequence_builder.pulse import PulseGenerationError, build_pulse_sequence
