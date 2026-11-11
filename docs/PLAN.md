@@ -1,8 +1,8 @@
 # Implementation Plan
 
-**Status:** Phases 0–3 complete and merged. Phase 4 baseline failed real-song review; the librosa rework is in review.  
-**Current phase:** 4 rework and owner acceptance  
-**Next phase:** 4b, the scratch-built sequence writer (blocked until Phase 4 is accepted and the owner approves), then 5, prop classification.
+**Status:** Phases 0 through 4 complete and merged. Phase 4 was accepted by the owner on 2026-11-11 with swung and rubato songs as a known limitation.  
+**Current phase:** none active  
+**Next phase:** 4b, the scratch-built sequence writer (requires owner approval to start), then 5, prop classification.
 
 ## Product objective and fixed requirements
 
@@ -76,7 +76,7 @@ Build fixed-tempo "pulse every supported prop on the beat" → Timeline → writ
 **Done when:** The fixed-tempo pipeline generates a native v15 sequence and deterministic Timeline; S6 opens the generated file; preview and generated events render; unsupported/excluded props are enumerated.
 
 ### Phase 4 — Audio analysis
-**Status: Baseline merged; acceptance review remains open.** PR #9 was squash-merged into `master` as `2b962bd39d51b052c3f97d76876a29176dc627ae` after all required CI checks passed on final head `36a98f824dcd883d032b3a49240aa8957f20d91e`.
+**Status: Complete. Accepted by the owner on 2026-11-11** after the librosa rework (PR #17). The original baseline (PR #9) failed real-song review; its history follows. PR #9 was squash-merged into `master` as `2b962bd39d51b052c3f97d76876a29176dc627ae` after all required CI checks passed on final head `36a98f824dcd883d032b3a49240aa8957f20d91e`.
 
 Delivered: bounded FFmpeg normalization; deterministic RMS/positive-energy-flux/autocorrelation analysis; tempo, beat and provisional downbeat candidates; onsets; energy curve; fixed 16-beat phrase candidates; energy-transition candidates; sustained near-silence candidates including leading silence; versioned JSON and formal v1.0 JSON Schema; SVG diagnostic plot; CLI confidence reporting; Linux and Windows tests; CodeQL.
 
@@ -102,7 +102,9 @@ Rework results on five owner songs (bars shown as detected, and after shifting o
 
 **Mr. Grinch:** the owner's two beat grids agree with each other only 82%, and an independent tracker also scores 0.82 against them, so beat ground truth is itself uncertain on this loosely swung recording. Its harmony does not clearly mark bars, and the analyzer correctly reports low bar confidence (0.07).
 
-**Proposed acceptance (owner decision):** accept Phase 4 for songs in 4 (beats 0.96 to 0.98, bars 0.87 to 0.97 after the grid offset), with swung or triple-feel songs recorded as a known limitation: beats near 0.8 and bars unreliable. Later phases must use bar confidence and allow a reviewed bar offset or meter override rather than trusting downbeats blindly.
+**Acceptance (owner, 2026-11-11):** accepted for songs in 4 (beats 0.96 to 0.98, bars 0.87 to 0.97 after the grid offset). Known limitation: swung or rubato recordings, where the band follows the singer's phrasing, reach about 0.81 beat agreement (0.90 against beats where the owner's two grids agree), and their bars are unreliable. Later phases must use bar confidence and allow a reviewed bar offset or meter override rather than trusting downbeats blindly.
+
+**Swing investigation (before acceptance):** on Mr. Grinch, none of these improved beat agreement without hurting the steady songs: stiffer or looser tempo tracking, a drifting local tempo, drum-only (percussive) or bass-band onset envelopes, re-spacing weak stretches between confident beats, snapping beats to nearby onsets (with and without a late-onset penalty), predominant-local-pulse beats, and a neural beat and downbeat tracker (beat_this; it scored lower on every song, added about 900 MB, and called Mr. Grinch 2 or 4, not 3). Zooming into the misses showed the owner's beats following vocal phrasing with spacing between 0.40 and 0.72 s while onsets alone cannot separate beats from swung notes. The planned fix is vocal-guided beat placement in Phase 8.
 
 Owner songs and sequences used for review are kept local and never committed.
 
@@ -131,7 +133,7 @@ Build section-aware choreography with basic effects.
 **Done when:** Real song produces a Timeline and sequence passing rules; owner opens and plays it in LOR and confirms it looks intentional, not random or merely beat-flashing; effects feel integrated into the arrangement. Mandatory human gate.
 
 ### Phase 8 — Vocals
-Build vocal separation, vocal regions, syllable onsets, and singing-face choreography.
+Build vocal separation, vocal regions, syllable onsets, and singing-face choreography. Also use vocal phrasing to guide beat placement where the band follows the singer (rubato or loosely swung stretches), and re-score Mr. Grinch-style songs with `evaluate-analysis` to confirm the gain without regressing steady songs.
 
 **Done when:** A supported singing face lip-syncs to words/syllables, rests during instrumentals, and keeps outline on whenever mouth channels are active; owner opens/plays result in LOR and confirms visual behavior. Mandatory human gate.
 

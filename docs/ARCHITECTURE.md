@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** Phases 0–3 merged; Phase 4 audio-analysis baseline merged with real-song acceptance review open. See PLAN.md for authoritative status.  
+**Status:** Phases 0 through 4 merged; Phase 4b (scratch-built writer) is next. See PLAN.md for authoritative status.  
 **Project:** Light-O-Rama Sequence Builder  
 **V1 interface:** Command line  
 **Target output:** Native Light-O-Rama S6 `.loredit` sequence  
