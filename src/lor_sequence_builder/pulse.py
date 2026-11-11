@@ -15,7 +15,7 @@ from lor_sequence_builder.loredit import (
     read_loredit,
     write_loredit,
 )
-from lor_sequence_builder.lorprev import PropModel, RawElement, read_lorprev
+from lor_sequence_builder.lorprev import RawElement, read_lorprev
 from lor_sequence_builder.timeline import (
     ExcludedProp,
     PulseEvent,
