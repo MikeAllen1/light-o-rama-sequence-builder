@@ -27,6 +27,19 @@ The reference lanes are ordered like a DAW arrangement: lyrics and vocals direct
 
 The shared horizontal extent covers the longer of the sequence and selected audio, so neither the lighting sequence nor an audio tail is silently clipped when their durations differ. Audio analysis timestamps are seconds from the decoded audio start and are mapped onto the same horizontal time axis as the sequence's centisecond timestamps. Native timing grids and inferred audio-analysis events remain visually and semantically distinct.
 
+## Building a new show
+
+**New show** (or **Build a new show** on the start page) runs the whole generator from the browser, one step at a time:
+
+1. **Your display:** choose the S6 preview (.lorprev). The panel says what it found (for example "4 arches, 1 mega tree, 4 mini trees") and lists any prop it cannot sequence, with the reason.
+2. **The song:** choose the audio file; it is analyzed on this computer.
+3. **Requirements (optional):** keep props on, never use them, keep them dark during chosen parts of the song, or limit their brightness, chosen from the display's own kinds of props, groups and prop names. With a translator configured (`ANTHROPIC_API_KEY`), they can also be typed in plain English. Requirements are remembered per display in the user's data folder (`%LOCALAPPDATA%\lor-sequence-builder\requirements` on Windows), keyed by the preview's own id, so the next show for the same display starts with them.
+4. **Generate:** set the audio file name as S6 should find it, choose whether faces sing (needs the vocals add-on), and generate. Every rule is checked; the panel lists the song's parts, the props used and left out, and the planner's notes. **Plan picture** opens the whole show at a glance; **Open in the workspace** loads the sequence with the song and its analysis so it can be reviewed against the music, and **Save sequence** downloads `<song> (generated).loredit`.
+
+The files are kept in a private temporary folder for the session (at most four sessions, two hours each) and deleted when the session ends or the workspace stops. The endpoints accept only same-origin requests on the loopback address, with the same size limits as the command line.
+
+Fine-tuning belongs in S6: the workspace's own editing is for quick fixes and for checking a show against the music.
+
 ## Editing
 
 Effects can be edited in place; nothing is written until **Export edited copy**.
@@ -87,7 +100,13 @@ Run with:
 uv run lor-sequence-ui
 ```
 
-The server binds to `127.0.0.1` only. The browser sends selected audio to a bounded local endpoint; the server runs the existing FFmpeg/librosa pipeline in a temporary directory and deletes the upload and outputs afterward. No audio is sent to a remote service. The original selected audio and LOREDIT remain read-only; an edited sequence is checked by a second bounded local endpoint (`/api/export`, same-origin only, 50 MiB) and nothing is kept on disk.
+The server binds to `127.0.0.1` only. The browser sends selected audio to bounded local endpoints; FFmpeg/librosa analysis and waveform processing run on the user's computer. No audio or preview is sent to a remote service. The original selected audio and LOREDIT remain read-only; an edited sequence is checked by a same-origin local endpoint and downloaded as a new file.
+
+### Guided new-show workflow
+
+The browser can also create a show from a `.lorprev` preview, selected audio, and structured or plain-English requirements. Preview, audio, analysis, generated sequence, picture, and rule report are held in a per-show temporary session. At most four sessions are retained. A session becomes invalid after two hours without activity; its temporary folder is removed on the next session cleanup or server shutdown. Only the latest generated result is retained in a session, so repeated generation does not accumulate output files.
+
+Structured requirements are validated locally and remembered in the user's local application cache. If plain-English requirement translation is configured, only that text and the required preview-derived context are sent to the configured Anthropic API; audio files are not sent. Generation and rule checking remain local. A failed rule check returns its report to the browser rather than presenting an unusable sequence as a successful result.
 
 The browser parser rejects DTD/entity declarations and enforces the 50 MiB, 100,000-element, and 256-level bounds used by the sequence reader. Only S6 v15 sequences are supported.
 

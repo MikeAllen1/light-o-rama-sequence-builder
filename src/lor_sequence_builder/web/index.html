@@ -18,7 +18,8 @@
       </div>
     </div>
     <div class="toolbar">
-      <label class="tool-button primary">
+      <button id="newShowButton" class="tool-button primary" type="button">New show</button>
+      <label class="tool-button">
         <span>Open sequence</span>
         <input id="sequenceFile" type="file" accept=".loredit,.xml,application/xml,text/xml">
       </label>
@@ -63,7 +64,8 @@
       <h1>See the music.<br><span>Shape the show.</span></h1>
       <p>Open an actual Light-O-Rama S6 sequence and its audio. The workspace builds its tracks from the sequence's real props, channels, timing grids, and effects.</p>
       <div class="welcome-actions">
-        <label class="tool-button primary large">
+        <button id="welcomeNewShow" class="tool-button primary large" type="button">Build a new show</button>
+        <label class="tool-button large">
           <span>Open a .LOREDIT sequence</span>
           <input id="welcomeSequenceFile" type="file" accept=".loredit,.xml,application/xml,text/xml">
         </label>
@@ -74,8 +76,69 @@
       </div>
       <div class="welcome-note">Your files stay on this computer. Audio analysis runs through the local Python engine when this workspace is started with <code>lor-sequence-ui</code>.</div>
       <div class="capability-strip">
-        <span>Native S6 tracks</span><span>Shared timebase</span><span>Real waveform</span><span>Beat analysis</span><span>Effect editing</span>
+        <span>Generate from your preview</span><span>Native S6 tracks</span><span>Shared timebase</span><span>Real waveform</span><span>Beat analysis</span><span>Effect editing</span>
       </div>
+    </section>
+
+    <section id="newShow" class="new-show hidden" aria-labelledby="newShowTitle">
+      <div class="new-show-head">
+        <div>
+          <div class="welcome-kicker">NEW SHOW</div>
+          <h2 id="newShowTitle">Build a show for your display</h2>
+          <p>Everything runs on this computer. The result opens in the workspace to review; save it and fine-tune it in S6.</p>
+        </div>
+        <button id="closeNewShow" class="tool-button subtle" type="button">Close</button>
+      </div>
+      <ol class="show-steps">
+        <li class="show-step">
+          <h3>1. Your display</h3>
+          <p>The S6 preview (.lorprev) for your yard. The program reads what each prop is from it.</p>
+          <label class="tool-button primary"><span>Choose preview</span>
+            <input id="showDisplayFile" type="file" accept=".lorprev,.xml,application/xml,text/xml"></label>
+          <div id="displayStatus" class="step-status"></div>
+        </li>
+        <li class="show-step">
+          <h3>2. The song</h3>
+          <p>The audio file S6 will play. It is analyzed here for beats, bars, sections and hits.</p>
+          <label id="showSongLabel" class="tool-button primary disabled"><span>Choose song</span>
+            <input id="showSongFile" type="file" disabled accept="audio/*,.mp3,.mp4,.wav,.flac,.m4a,.ogg,.opus"></label>
+          <div id="songStatus" class="step-status"></div>
+        </li>
+        <li class="show-step">
+          <h3>3. Requirements <span class="optional">optional</span></h3>
+          <p>Anything the show must do on your display. They are remembered for this display.</p>
+          <div class="requirement-form">
+            <label class="edit-field"><span>Requirement</span><select id="requirementKind"></select></label>
+            <label class="edit-field"><span>Props (Ctrl-click for several)</span>
+              <select id="requirementProps" multiple size="5"></select></label>
+            <div id="requirementSections" class="section-picks hidden"></div>
+            <label class="edit-field hidden"><span>Brightness %</span>
+              <input id="requirementMax" type="number" min="0" max="100" step="5" value="60"></label>
+            <button id="addRequirement" class="tool-button" type="button" disabled>Add</button>
+          </div>
+          <div class="plain-requirements">
+            <textarea id="plainRequirements" rows="2" placeholder="Or in your own words: keep the star on, never use the blue arches, quiet during the verses"></textarea>
+            <button id="translateRequirements" class="tool-button" type="button" disabled>Add from text</button>
+            <div id="plainNote" class="step-note"></div>
+          </div>
+          <ul id="requirementList" class="requirement-list"></ul>
+          <div id="requirementStatus" class="step-status"></div>
+        </li>
+        <li class="show-step">
+          <h3>4. Generate</h3>
+          <label class="edit-field wide"><span>Audio file name S6 should play (as it appears in S6's audio folder)</span>
+            <input id="musicFilename" type="text"></label>
+          <label class="sing-option hidden"><input id="singFaces" type="checkbox" checked> Sing the faces</label>
+          <div id="singNote" class="step-note"></div>
+          <div class="generate-actions">
+            <button id="generateShow" class="tool-button primary" type="button" disabled>Generate show</button>
+            <button id="openGenerated" class="tool-button" type="button" disabled>Open in the workspace</button>
+            <button id="pictureGenerated" class="tool-button subtle" type="button" disabled>Plan picture</button>
+          </div>
+          <div id="generateStatus" class="step-status"></div>
+          <ul id="showNotes" class="show-notes"></ul>
+        </li>
+      </ol>
     </section>
 
     <section id="editor" class="editor hidden">
