@@ -85,7 +85,8 @@ def test_analyze_audio_detects_tempo_beats_onsets_and_hard_stop(tmp_path: Path) 
     report = analyze_audio(audio, report_path, plot_path)
 
     analysis = report["analysis"]
-    assert report["schema_version"] == "1.0"
+    assert report["schema_version"] == "1.1"
+    assert analysis["beat_grid_status"] == "provisional"
     assert report["configuration"]["frame_seconds"] == pytest.approx(551 / 11_025)
     assert report["audio"]["duration_seconds"] == pytest.approx(8.0, abs=0.1)
     assert analysis["tempo"]["bpm"] == pytest.approx(120.0, abs=3.0)
@@ -174,6 +175,7 @@ def test_competing_offbeat_accents_reduce_beat_grid_confidence(tmp_path: Path) -
     analysis = report["analysis"]
     assert analysis["tempo"]["bpm"] == pytest.approx(120.0, abs=5.0)
     assert analysis["beats"]
+    assert analysis["beat_grid_status"] == "ambiguous"
     assert analysis["beats"][0]["confidence"] <= 0.05
 
 
@@ -285,6 +287,7 @@ def test_silence_does_not_fabricate_a_tempo(tmp_path: Path) -> None:
     assert report["analysis"]["tempo"]["bpm"] is None
     assert report["analysis"]["beats"] == []
     assert report["analysis"]["downbeats"] == []
+    assert report["analysis"]["beat_grid_status"] == "unavailable"
 
 
 def test_energy_transition_produces_unlabelled_section_candidate(tmp_path: Path) -> None:
@@ -430,13 +433,13 @@ def test_analysis_schema_documents_the_emitted_v1_contract() -> None:
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
 
     assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
-    assert schema["properties"]["schema_version"]["const"] == "1.0"
+    assert schema["properties"]["schema_version"]["const"] == "1.1"
     assert set(schema["required"]) == {
         "schema_version", "audio", "tool_versions", "configuration", "analysis"
     }
     analysis_required = set(schema["properties"]["analysis"]["required"])
     assert analysis_required == {
-        "method", "provenance", "limitations", "tempo", "beats", "downbeats",
+        "method", "provenance", "limitations", "beat_grid_status", "tempo", "beats", "downbeats",
         "onsets", "energy", "phrase_boundaries", "section_candidates", "hard_stops",
     }
 
