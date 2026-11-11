@@ -102,15 +102,15 @@ Every stage has typed Pydantic inputs and outputs. A stage may use the public mo
 
 **Responsibilities:**
 - Parse XML with `defusedxml`; reject DTD/entity expansion and malformed XML.
-- Identify the root/schema family and preview format revision before interpreting fields.
+- Identify the root/schema family (`PreviewClass`) before interpreting fields. `PreviewClass/@Revision` is an edit counter that S6 increments each time a preview is saved. It is not a format version: it is recorded as metadata only and must never be used to accept, reject, or interpret a preview.
 - Parse into raw, loss-minimizing typed models: display metadata, props, prop IDs, groups, geometry/position, shape/grid, channel count and assignments, device/controller references, color/channel capability, and any other relevant metadata present in the preview.
 - Preserve source identifiers and provenance for every channel and prop.
-- Fail clearly on unsupported preview revisions rather than best-effort parsing that could corrupt assignments.
+- Fail clearly on structurally unsupported or ambiguous constructs rather than best-effort parsing that could corrupt assignments.
 - Treat names and descriptive metadata as untrusted text.
 
 **Outputs:** `RawDisplayModel` and `RawPropModel[]`.
 
-**Known preview references:** Revision 0 is covered by a small synthetic fixture; Revision 1 by the supplied standalone `.lorprev`; Revision 56 by the `PreviewClass` extracted from the supplied S6 6.6.0.12 `.loredit`. Revision 58 is accepted by the parser but has no committed fixture yet. The Revision 56 fixture contains 51 props and a real `PropGroup` with five `member` references. These internal preview revisions are distinct from the LOREDIT `saveFileVersion` and S6 application build.
+**Known preview references:** a small synthetic fixture, the supplied standalone S6 `.lorprev` export, and the `PreviewClass` extracted from the supplied S6 6.6.0.12 `.loredit` (51 props and a real `PropGroup` with five `member` references). Fixture file names include the edit revision of the source preview for traceability only. The LOREDIT `saveFileVersion` is a real format version and remains gated; preview edit revisions are not.
 
 **Controller/channel interpretation:** Each LOR prop `ChannelGrid` row exposes network, Unit ID, and the circuit value present in that row; each DMX row exposes universe and channel. These are address fields, not a complete interpretation of every field or channel-range behavior. Remaining row fields are retained verbatim and are not yet semantically interpreted. The parser retains the complete original value and source locator. `Undetermined` is a recognized unassigned device type. Later phases must not infer channel counts, ranges, color semantics, or controller capabilities from unparsed fields.
 
@@ -206,7 +206,7 @@ The exact `.loredit` schema is not to be inferred from memory. The supplied real
 
 **Responsibilities:**
 - Require exact prop-ID set equality, semantic equality of every complete `PropClass` subtree (all attributes, master-prop references, shapes, and geometry), and semantic equality of all `PropGroup` records (member references and arrangement). Numeric geometry/layout coordinates may differ only by 1e-6 to tolerate export formatting. Never remap IDs based on names or order.
-- The independent integration fixture derives its standalone preview from the template's embedded Revision 56 PreviewClass (both sides Revision 56). Preview revision markers may differ in real use; physical display content must match.
+- The independent integration fixture derives its standalone preview from the template's embedded PreviewClass. Edit revision values may differ between a standalone preview and a sequence's embedded copy and are ignored; physical display content must match.
 - Support only `DeviceType=LOR` with `TraditionalType=Single Color`, `Multicolor_string_1_ch`, or `Channel_per_color`, complete LOR ChannelGrid addresses, and matching native channel records.
 - Exclude unsupported device/prop types and any prop without a provable native mapping explicitly in Timeline JSON. A missing SeqProp, incomplete address, ChannelGrid/native-channel count mismatch, or unverified coordinate pattern is a per-prop exclusion with a reason; no event is generated for it.
 - AC/DC values remain recognized by the preview parser for legacy compatibility but are explicitly excluded from Phase 3 because their native mapping has not been verified.
@@ -343,7 +343,7 @@ Any other unsupported channel or effect type follows the same explicit-report-an
 
 Errors should identify the stage, input, and corrective action without dumping sensitive file contents. Examples:
 - Preview missing/unreadable/empty: stop before classification or generation.
-- Unsupported preview revision: report detected revision and supported revisions.
+- Unsupported preview structure: report the construct, its locator, and why it cannot be interpreted safely.
 - Preview has zero props: stop with a clear error.
 - Prop classification uncertain: produce a review flag and evidence; do not silently assume.
 - Unsupported channel type: list prop/channel identity and reason.
@@ -365,7 +365,7 @@ Errors should identify the stage, input, and corrective action without dumping s
 ## 14. Open technical questions to resolve during fixture-led phases
 
 These are implementation questions, not permission to guess:
-- Which `.lorprev` revisions and S6 application versions will be officially supported?
+- Which S6 application versions and LOREDIT `saveFileVersion` values will be officially supported?
 - Which exact `.loredit` elements/attributes are required for each supported channel/effect type?
 - How are timing grids, event boundaries, effect settings, and sequence references represented across supported versions?
 - Which preview properties encode physical segment order/orientation reliably, and which require user overrides?

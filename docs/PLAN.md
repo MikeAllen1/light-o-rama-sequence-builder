@@ -34,7 +34,7 @@ These differ from the original stack proposal. They are intentional and accepted
 ## Open decisions (owner input required before the phase that depends on them)
 
 1. **Sequence creation without a template.** The writer currently requires an existing native `.loredit` whose embedded preview exactly matches the `.lorprev`, then clears its effects. The planned `generate` command takes only audio, preview, and props.yaml, so a typical user has no matching template. Decide before Phase 5 is approved: (a) build a blank native v15 sequence from a preview (requires new fixtures and an S6 open-test human gate), or (b) make a matching sequence file an official `generate` input. Phases 6 and 7 build on this decision.
-2. **Preview Revision 58.** `SUPPORTED_PREVIEW_REVISIONS` accepts `58`, but no committed fixture covers it, and the Phase 3 integration fixture is Revision 56 on both sides. Per the fixture policy, either commit a sanitized Revision 58 fixture with golden tests or remove `58` from the supported set.
+2. **Preview Revision (resolved 2026-11-11).** Owner clarified that `PreviewClass/@Revision` is an edit counter incremented on each save, not a format version. The parser's revision allowlist (which rejected any preview not at revision 0, 1, 56, or 58) was removed; the value is now optional metadata. Compatibility is judged by structure. Do not reintroduce revision-based gating.
 3. **Fixture diversity before Phase 5.** All current real fixtures derive from the same 51-prop display. Classifier golden tests need 2 to 3 previews from materially different displays (different size, messy naming, legacy AC/DC) before Phase 5 can claim display independence.
 4. **License.** An MIT `LICENSE` was added in the docs-cleanup PR as a proposed default. The owner should confirm or replace it before merge.
 
@@ -66,7 +66,7 @@ Build fixture-driven sequence reader/writer for native .loredit.
 ### Phase 2 — Preview parser
 Build .lorprev / embedded PreviewClass → raw PropModel plus display/channel/controller/group data.
 
-**Done when:** Golden tests pass on every fixture preview; revision detection and unsupported-version errors work; missing/unreadable/malformed/zero-prop previews fail; every entity has source provenance; unsupported types are explicitly reported.
+**Done when:** Golden tests pass on every fixture preview; preview edit revision is recorded as metadata but never gates parsing; missing/unreadable/malformed/zero-prop previews fail; every entity has source provenance; unsupported types are explicitly reported.
 
 ### Phase 3 — Walking skeleton
 Build fixed-tempo "pulse every supported prop on the beat" → Timeline → writer.
