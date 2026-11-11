@@ -928,6 +928,40 @@ def test_direct_effect_rejects_invalid_numeric_field_types(
         _check(display, timeline)
 
 
+
+@pytest.mark.parametrize(
+    ("timeline", "field"),
+    [
+        (
+            Choreography(
+                duration_centiseconds=SONG, effects=(),
+                sections=(Section("intro", cast(Any, "0"), 100),),
+            ),
+            r"sections\[0\]\.start_centisecond",
+        ),
+        (
+            Choreography(
+                duration_centiseconds=SONG, effects=(),
+                hard_stops_centiseconds=(cast(Any, "50"),),
+            ),
+            r"hard_stops_centiseconds\[0\]",
+        ),
+        (
+            Choreography(
+                duration_centiseconds=SONG, effects=(),
+                vocal_regions=((0, cast(Any, "50")),),
+            ),
+            r"vocal_regions\[0\]\[1\]",
+        ),
+    ],
+)
+def test_direct_choreography_rejects_invalid_section_stop_and_vocal_times(
+    timeline: Choreography, field: str
+) -> None:
+    with pytest.raises(ChoreographyError, match=field):
+        _check(classic_yard(), timeline)
+
+
 def test_duplicate_group_names_union_members_for_name_selectors() -> None:
     builder = classic_yard()
     root = builder.element()
