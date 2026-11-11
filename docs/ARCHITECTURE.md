@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** Phase 2 merged; Phase 3 fixed-tempo Timeline walking skeleton in progress  
+**Status:** Phases 0–3 complete and merged; Phase 4 real-audio acceptance review in progress on PR #12  
 **Project:** Light-O-Rama Sequence Builder  
 **V1 interface:** Command line  
 **Target output:** Native Light-O-Rama S6 `.loredit` sequence  
