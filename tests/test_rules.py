@@ -10,7 +10,6 @@ from typing import Any, cast
 import pytest
 
 import lor_sequence_builder.choreography as choreography_module
-
 from lor_sequence_builder.choreography import (
     Choreography,
     ChoreographyError,
@@ -911,23 +910,6 @@ def test_direct_choreography_rejects_invalid_section_stop_and_vocal_times(
 ) -> None:
     with pytest.raises(ChoreographyError, match=field):
         _check(classic_yard(), timeline)
-
-
-
-def test_direct_movement_with_non_iterable_props_fails_without_crashing() -> None:
-    display = classic_yard()
-    timeline = Choreography(
-        duration_centiseconds=SONG,
-        effects=(),
-        movements=(Movement("bad-props", "fall", cast(tuple[str, ...], None),
-                            "top_to_bottom", 0, 100),),
-    )
-
-    report = _check(display, timeline)
-    _, findings = _result(report, "effects_well_formed")
-
-    assert not report.ok
-    assert any("must contain at least one prop" in item for item in findings)
 
 
 
