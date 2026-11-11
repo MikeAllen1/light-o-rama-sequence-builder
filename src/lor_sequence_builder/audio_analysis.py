@@ -35,7 +35,9 @@ MAX_DURATION_SECONDS = 30 * 60
 MIN_DURATION_SECONDS = 2.0
 MAX_DECODED_SAMPLES = SAMPLE_RATE * MAX_DURATION_SECONDS
 # 16-bit mono PCM plus the canonical 44-byte WAV header.
-MAX_NORMALIZED_BYTES = MAX_DECODED_SAMPLES * 2 + 44
+# Allow one second beyond the accepted duration so _read_samples can report
+# the established duration-limit error instead of FFmpeg truncating at 30:00.
+MAX_NORMALIZED_BYTES = (SAMPLE_RATE * (MAX_DURATION_SECONDS + 2) * 2) + 44
 MIN_BPM = 60
 MAX_BPM = 200
 SUPPORTED_BEATS_PER_BAR = (3, 4)
