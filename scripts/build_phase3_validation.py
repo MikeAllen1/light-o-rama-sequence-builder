@@ -11,7 +11,10 @@ import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
-from lor_sequence_builder.loredit import read_loredit
+from lor_sequence_builder.loredit import (
+    read_loredit,
+    strip_local_preview_background_references,
+)
 from lor_sequence_builder.pulse import build_pulse_sequence
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,30 +46,15 @@ def _decode_fixture(source: Path, destination: Path) -> None:
 
 
 def _strip_local_background_references(template: Path) -> None:
-    """Remove workstation-specific preview image paths from the test template.
-
-    S6 stores scene backgrounds as local file paths. Carrying one into a
-    distributable fixture can cause another machine to resolve a private photo
-    if that same path happens to exist there.
-    """
+    """Remove workstation-specific preview image paths from the test template."""
     tree = ET.parse(template)
-    removed = 0
-    for element in tree.iter():
-        for attribute in tuple(element.attrib):
-            if attribute.casefold() in {
-                "backgroundfile",
-                "backgroundimage",
-                "backgroundimagefile",
-            }:
-                del element.attrib[attribute]
-                removed += 1
+    removed = strip_local_preview_background_references(tree.getroot())
     if removed == 0:
         raise RuntimeError(
             "Expected a workstation-specific preview background reference, "
             "but none was found; review the fixture before packaging."
         )
     tree.write(template, encoding="utf-8", xml_declaration=True)
-
 
 def _assert_no_local_background_references(sequence: Path) -> None:
     """Fail package creation if any local preview background reference survives."""
