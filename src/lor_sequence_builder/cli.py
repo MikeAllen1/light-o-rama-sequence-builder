@@ -7,11 +7,9 @@ import sys
 from collections.abc import Sequence
 
 from lor_sequence_builder.audio_analysis import analyze_audio
-from lor_sequence_builder.audio_common import (
-    MAX_BPM as MAX_AUDIO_BPM,
-    MIN_BPM as MIN_AUDIO_BPM,
-    AudioAnalysisError,
-)
+from lor_sequence_builder.audio_common import MAX_BPM as MAX_AUDIO_BPM
+from lor_sequence_builder.audio_common import MIN_BPM as MIN_AUDIO_BPM
+from lor_sequence_builder.audio_common import AudioAnalysisError
 from lor_sequence_builder.loredit import LoreditError, read_loredit, write_loredit
 from lor_sequence_builder.lorprev import LorprevError, read_lorprev
 from lor_sequence_builder.pulse import MAX_BPM as MAX_PULSE_BPM
