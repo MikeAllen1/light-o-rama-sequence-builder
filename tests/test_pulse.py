@@ -8,7 +8,6 @@ import pytest
 
 from lor_sequence_builder.loredit import read_loredit
 from lor_sequence_builder.pulse import PulseGenerationError, build_pulse_sequence
-
 from tests.fixture_builders import write_synthetic_loredit
 
 
