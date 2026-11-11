@@ -315,3 +315,44 @@ def test_cli_pulse_rejects_non_finite_duration(
     assert code == 2
     assert "finite number" in capsys.readouterr().err
     assert not (tmp_path / "invalid.loredit").exists()
+
+
+def test_new_sequence_excludes_pixel_string_types(tmp_path: Path) -> None:
+    preview = _synthetic_preview(tmp_path)
+    candidate = next(
+        prop for prop in preview.findall("PropClass")
+        if prop.get("DeviceType") == "LOR"
+        and prop.get("TraditionalType") == "Single Color"
+    )
+    candidate.set("StringType", "Pixel")
+
+    built = build_new_sequence(preview, 12_000, "song.mp3")
+
+    sequence_ids = {
+        item.get("id") for item in built.document.root.findall("./SequenceProps/SeqProp")
+    }
+    assert candidate.get("id") not in sequence_ids
+    excluded = next(item for item in built.excluded_props if item.prop_id == candidate.get("id"))
+    assert "StringType 'Pixel'" in excluded.reason
+
+
+def test_new_sequence_rejects_reserved_fixed_timing_grid_name(tmp_path: Path) -> None:
+    preview = _synthetic_preview(tmp_path)
+    with pytest.raises(NewSequenceError, match="unique and non-empty"):
+        build_new_sequence(
+            preview, 12_000, "song.mp3",
+            timing_grids=(FreeTimingGrid("Fixed Grid: 0.05", ()),),
+        )
+
+
+def test_new_sequence_rejects_excessive_channel_grid_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import lor_sequence_builder.new_sequence as new_sequence_module
+
+    monkeypatch.setattr(new_sequence_module, "MAX_CHANNEL_GRID_ENTRIES_PER_PROP", 2)
+    preview = _synthetic_preview(tmp_path)
+    candidate = next(prop for prop in preview.findall("PropClass") if prop.get("DeviceType") == "LOR")
+    candidate.set("ChannelGrid", "N,1,1;N,1,2;N,1,3")
+    with pytest.raises(NewSequenceError, match="ChannelGrid exceeds the 2 entry limit"):
+        build_new_sequence(preview, 12_000, "song.mp3")

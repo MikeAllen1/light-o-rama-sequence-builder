@@ -65,8 +65,8 @@ def _strip_local_background_references(template: Path) -> None:
 def build_package(destination: Path) -> None:
     """Generate, validate, and package the sample sequence and Timeline."""
     destination.parent.mkdir(parents=True, exist_ok=True)
-    if destination.exists():
-        destination.unlink()
+    if destination.exists() or destination.is_symlink():
+        raise FileExistsError(f"Refusing to overwrite existing validation package: {destination}")
 
     with tempfile.TemporaryDirectory(prefix="lor-phase3-validation-") as temp_dir:
         work = Path(temp_dir)
@@ -118,10 +118,11 @@ def build_package(destination: Path) -> None:
         if not timeline["events"] or not timeline["beat_positions_centiseconds"]:
             raise RuntimeError("Generated Timeline contains no pulse events or beat positions.")
 
-        with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-            archive.write(sequence, "Phase3-Test.loredit")
-            archive.write(timeline_path, "Phase3-Test.timeline.json")
-            archive.writestr("README-FIRST.txt", PACKAGE_README)
+        with destination.open("xb") as package_stream:
+            with zipfile.ZipFile(package_stream, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                archive.write(sequence, "Phase3-Test.loredit")
+                archive.write(timeline_path, "Phase3-Test.timeline.json")
+                archive.writestr("README-FIRST.txt", PACKAGE_README)
 
         print(f"Package: {destination}")
         print(f"Native LOREDIT version: {document.save_file_version}")

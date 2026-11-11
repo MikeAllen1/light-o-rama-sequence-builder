@@ -488,3 +488,33 @@ def test_missing_revision_is_accepted(tmp_path: Path) -> None:
     model = read_lorprev(source)
     assert model.revision is None
     assert len(model.props) == 1
+
+
+def test_channel_grid_entry_limits_are_enforced_before_materializing_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(lorprev_module, "MAX_CHANNEL_GRID_ENTRIES_PER_PROP", 2)
+    source = tmp_path / "too-many-channel-entries.lorprev"
+    source.write_text(
+        '<PreviewClass><PropClass id="p" DeviceType="LOR" '
+        'ChannelGrid="N,1,1;N,1,2;N,1,3" /></PreviewClass>',
+        encoding="utf-8",
+    )
+    with pytest.raises(LorprevError, match="ChannelGrid exceeds the 2 entry limit"):
+        read_lorprev(source)
+
+
+def test_total_channel_grid_entry_limit_is_enforced(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(lorprev_module, "MAX_CHANNEL_GRID_ENTRIES_TOTAL", 2)
+    source = tmp_path / "too-many-total-channel-entries.lorprev"
+    source.write_text(
+        '<PreviewClass>'
+        '<PropClass id="a" DeviceType="LOR" ChannelGrid="N,1,1;N,1,2" />'
+        '<PropClass id="b" DeviceType="LOR" ChannelGrid="N,1,3" />'
+        '</PreviewClass>',
+        encoding="utf-8",
+    )
+    with pytest.raises(LorprevError, match="total ChannelGrid entry limit"):
+        read_lorprev(source)

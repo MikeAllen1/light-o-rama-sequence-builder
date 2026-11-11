@@ -67,3 +67,19 @@ def test_inspect_preview_reports_group_membership(tmp_path: Path, capsys: pytest
     output = capsys.readouterr().out
     assert "Prop groups: 1" in output
     assert "  Test Group: 2 members, arrangement=Preview" in output
+
+
+def test_module_entry_point_defines_helpers_before_dispatch() -> None:
+    import subprocess
+    import sys
+
+    preview = Path(__file__).parent / "fixtures" / "synthetic_display.lorprev"
+    result = subprocess.run(
+        [sys.executable, "-m", "lor_sequence_builder.cli", "analyze-preview", str(preview)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Props:" in result.stdout

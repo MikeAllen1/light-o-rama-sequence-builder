@@ -13,6 +13,8 @@ from defusedxml.common import DefusedXmlException
 MAX_LORPREV_BYTES = 20 * 1024 * 1024
 MAX_XML_DEPTH = 256
 MAX_LORPREV_ELEMENTS = 100_000
+MAX_CHANNEL_GRID_ENTRIES_PER_PROP = 10_000
+MAX_CHANNEL_GRID_ENTRIES_TOTAL = 100_000
 
 
 class LorprevError(ValueError):
@@ -318,11 +320,23 @@ def read_lorprev(path: str | Path) -> PropModel:
 
     channel_entries: list[ChannelGridEntry] = []
     geometry_points: list[GeometryPoint] = []
+    total_channel_entries = 0
     for prop in prop_nodes:
         channel_grid = prop.attributes.get("ChannelGrid")
         device_type_value = prop.attributes.get("DeviceType")
         device_type = device_type_value.value if device_type_value is not None else None
         if channel_grid is not None:
+            entry_count = channel_grid.value.count(";") + 1
+            if entry_count > MAX_CHANNEL_GRID_ENTRIES_PER_PROP:
+                raise LorprevError(
+                    f"Prop ChannelGrid exceeds the {MAX_CHANNEL_GRID_ENTRIES_PER_PROP} entry limit"
+                )
+            total_channel_entries += entry_count
+            if total_channel_entries > MAX_CHANNEL_GRID_ENTRIES_TOTAL:
+                raise LorprevError(
+                    "LORPREV exceeds the total ChannelGrid entry limit "
+                    f"of {MAX_CHANNEL_GRID_ENTRIES_TOTAL}"
+                )
             for entry_index, entry in enumerate(channel_grid.value.split(";")):
                 raw_fields = tuple(entry.split(","))
                 assignment: dict[str, str | None] = {
