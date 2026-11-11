@@ -137,6 +137,46 @@ def test_tempo_estimator_handles_syncopation_and_uneven_beat_accents(
     )
 
 
+def test_competing_offbeat_accents_reduce_beat_grid_confidence(tmp_path: Path) -> None:
+    """A louder offbeat must not be presented as a certain metrical phase."""
+    import array
+
+    audio = tmp_path / "offbeat-dominant.wav"
+    rate = 11_025
+    duration = 12.0
+    samples = array.array("h", [0] * int(rate * duration))
+    beat_seconds = 0.5
+    event_time = 0.3
+    event_index = 0
+    while event_time + 0.04 < duration:
+        amplitude = 4_000 if event_index % 2 == 0 else 15_000
+        start = int(event_time * rate)
+        count = int(0.03 * rate)
+        for offset in range(count):
+            envelope = min(1.0, offset / 30, (count - offset) / 30)
+            samples[start + offset] = int(
+                amplitude * envelope * math.sin(2.0 * math.pi * 880 * offset / rate)
+            )
+        event_index += 1
+        event_time = 0.3 + event_index * beat_seconds / 2.0
+
+    with wave.open(str(audio), "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(rate)
+        output.writeframes(samples.tobytes())
+
+    report = analyze_audio(
+        audio, tmp_path / "offbeat.json", tmp_path / "offbeat.svg",
+        min_bpm=100, max_bpm=140,
+    )
+
+    analysis = report["analysis"]
+    assert analysis["tempo"]["bpm"] == pytest.approx(120.0, abs=5.0)
+    assert analysis["beats"]
+    assert analysis["beats"][0]["confidence"] < analysis["tempo"]["confidence"]
+
+
 def test_analysis_refuses_to_overwrite_outputs(tmp_path: Path) -> None:
     audio = tmp_path / "known.wav"
     _click_track(audio)
