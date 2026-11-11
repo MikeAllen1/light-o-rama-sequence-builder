@@ -76,8 +76,11 @@ jobs:
           echo "f95f189668268b8ec2c8acce6ea034cf36f93ba99a09f2654d0cfbd89c5c0ebd  $archive" | sha256sum --check -
           mkdir -p "$install_dir"
           tar -xJf "$archive" --strip-components=1 -C "$install_dir"
-          echo "$install_dir/bin" >> "$GITHUB_PATH"
-          ffmpeg -version
+          ffmpeg_bin="$(find "$install_dir" -type f -name ffmpeg -print -quit)"
+          test -n "$ffmpeg_bin"
+          chmod +x "$ffmpeg_bin"
+          echo "$(dirname "$ffmpeg_bin")" >> "$GITHUB_PATH"
+          "$ffmpeg_bin" -version
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
