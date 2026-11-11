@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import urllib.request
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from pathlib import Path
@@ -428,3 +429,13 @@ def test_guided_chase_direction_is_asked_for_each_group_in_a_role() -> None:
     ]
     assert any("group 'Arches'" in prompt for prompt in script.prompts)
     assert any("group 'Porch Arches'" in prompt for prompt in script.prompts)
+
+
+def test_api_transport_refuses_redirects_before_forwarding_credentials() -> None:
+    from lor_sequence_builder.requirements_intake import _RejectRedirects
+
+    request = urllib.request.Request(API_URL, headers={"x-api-key": "test-secret"})
+    handler = _RejectRedirects()
+    assert handler.redirect_request(
+        request, None, 302, "Found", {}, "https://attacker.example/collect"
+    ) is None

@@ -69,6 +69,16 @@ Ask = Callable[[str], str]
 Say = Callable[[str], None]
 
 
+class _RejectRedirects(urllib.request.HTTPRedirectHandler):
+    """Do not forward the API key to a redirect target."""
+
+    def redirect_request(
+        self, req: urllib.request.Request, fp: Any, code: int, msg: str,
+        headers: Any, newurl: str,
+    ) -> None:
+        return None
+
+
 class IntakeError(ValueError):
     """Raised when requirements cannot be gathered or saved."""
 
@@ -230,7 +240,7 @@ Transport = Callable[[str, dict[str, str], bytes], bytes]
 def _urllib_transport(url: str, headers: dict[str, str], body: bytes) -> bytes:
     request = urllib.request.Request(url, data=body, headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(request, timeout=90) as response:
+        with urllib.request.build_opener(_RejectRedirects()).open(request, timeout=90) as response:
             data: bytes = response.read(MAX_RESPONSE_BYTES + 1)
     except urllib.error.HTTPError as exc:
         detail = exc.read(2000).decode("utf-8", "replace")
