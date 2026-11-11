@@ -679,7 +679,7 @@ def test_requirement_type_must_be_text(tmp_path: Path, kind: str) -> None:
 def test_timeline_movement_count_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(choreography_module, "MAX_MOVEMENTS", 1)
     data = {
-        "schema_version": "1.0",
+        "schema_version": "choreography-1.0",
         "duration_centiseconds": SONG,
         "effects": [],
         "movements": [
