@@ -48,6 +48,118 @@ def _center(prop: DisplayProp) -> tuple[float, float]:
     assert prop.center is not None
     return prop.center
 
+CLUSTER_COMPARISON_BUDGET = 2_000_000
+
+
+@dataclass(slots=True)
+class _KDNode:
+    index: int
+    left: _KDNode | None = None
+    right: _KDNode | None = None
+    bounds: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+
+
+def _nearest_distances(points: list[tuple[float, float]]) -> list[float]:
+    """Exact nearest-neighbor distances using a bounding-box KD tree."""
+    if len(points) < 2:
+        return [math.inf] * len(points)
+    duplicates: dict[tuple[float, float], list[int]] = {}
+    for index, point in enumerate(points):
+        duplicates.setdefault(point, []).append(index)
+    nearest = [math.inf] * len(points)
+    for indices in duplicates.values():
+        if len(indices) > 1:
+            for index in indices:
+                nearest[index] = 0.0
+
+    def build(indices: list[int], depth: int = 0) -> _KDNode | None:
+        if not indices:
+            return None
+        axis = depth % 2
+        indices.sort(key=lambda index: points[index][axis])
+        middle = len(indices) // 2
+        node = _KDNode(indices[middle])
+        node.left = build(indices[:middle], depth + 1)
+        node.right = build(indices[middle + 1:], depth + 1)
+        x, y = points[node.index]
+        boxes = [child.bounds for child in (node.left, node.right) if child is not None]
+        node.bounds = (
+            min([x, *(box[0] for box in boxes)]),
+            min([y, *(box[1] for box in boxes)]),
+            max([x, *(box[2] for box in boxes)]),
+            max([y, *(box[3] for box in boxes)]),
+        )
+        return node
+
+    root = build(list(range(len(points))))
+    if root is None:
+        return nearest
+
+    def box_distance(point: tuple[float, float],
+                     bounds: tuple[float, float, float, float]) -> float:
+        x, y = point
+        dx = max(bounds[0] - x, 0.0, x - bounds[2])
+        dy = max(bounds[1] - y, 0.0, y - bounds[3])
+        return math.hypot(dx, dy)
+
+    for target, point in enumerate(points):
+        if nearest[target] == 0.0:
+            continue
+        best = math.inf
+
+        def visit(node: _KDNode | None) -> None:
+            nonlocal best
+            if node is None or box_distance(point, node.bounds) >= best:
+                return
+            if node.index != target:
+                best = min(best, math.dist(point, points[node.index]))
+            children = [child for child in (node.left, node.right) if child is not None]
+            children.sort(key=lambda child: box_distance(point, child.bounds))
+            for child in children:
+                visit(child)
+
+        visit(root)
+        nearest[target] = best
+    return nearest
+
+
+def _cluster_groups(props: list[DisplayProp], spacing: float) -> list[list[DisplayProp]] | None:
+    """Connected components via spatial hashing; stop at a fixed comparison budget."""
+    parent = list(range(len(props)))
+
+    def find(index: int) -> int:
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    def union(left: int, right: int) -> None:
+        a, b = find(left), find(right)
+        if a != b:
+            parent[a] = b
+
+    reach = CLUSTER_REACH * spacing
+    cell_size = max(reach, 1e-9)
+    buckets: dict[tuple[int, int], list[int]] = {}
+    comparisons = 0
+    for index, prop in enumerate(props):
+        x, y = _center(prop)
+        cell = (math.floor(x / cell_size), math.floor(y / cell_size))
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for other in buckets.get((cell[0] + dx, cell[1] + dy), ()):
+                    comparisons += 1
+                    if comparisons > CLUSTER_COMPARISON_BUDGET:
+                        return None
+                    if math.dist((x, y), _center(props[other])) <= reach:
+                        union(index, other)
+        buckets.setdefault(cell, []).append(index)
+
+    groups: dict[int, list[DisplayProp]] = {}
+    for index, prop in enumerate(props):
+        groups.setdefault(find(index), []).append(prop)
+    return list(groups.values())
+
 
 def _bands(props: list[DisplayProp], axis: int, gap: float) -> list[list[DisplayProp]]:
     """Split props into bands whose coordinate on ``axis`` stays within ``gap`` steps."""
@@ -79,8 +191,7 @@ def formation(display: Display, prop_ids: set[str] | list[str],
     if len(props) == 1:
         return Formation("single", (), (props[0].prop_id, *unplaced), ("chase", "left_to_right"))
 
-    nearest = sorted(min(math.dist(_center(a), _center(b)) for b in props if b is not a)
-                     for a in props)
+    nearest = sorted(_nearest_distances([_center(prop) for prop in props]))
     spacing = nearest[len(nearest) // 2] or 1e-6
     gap = ALIGN * spacing
 
@@ -105,22 +216,11 @@ def formation(display: Display, prop_ids: set[str] | list[str],
     if row_ok:
         return build("rows", rows, ("chase", "left_to_right"))
 
-    # Clusters: neighbors within reach of each other, joined into groups.
-    parent = list(range(len(props)))
-
-    def find(i: int) -> int:
-        while parent[i] != i:
-            parent[i] = parent[parent[i]]
-            i = parent[i]
-        return i
-
-    for i, j in itertools.combinations(range(len(props)), 2):
-        if math.dist(_center(props[i]), _center(props[j])) <= CLUSTER_REACH * spacing:
-            parent[find(i)] = find(j)
-    groups: dict[int, list[DisplayProp]] = {}
-    for i, prop in enumerate(props):
-        groups.setdefault(find(i), []).append(prop)
-    clusters = [sorted(g, key=lambda p: _center(p)[0]) for g in groups.values()
+    # Clusters: spatial hashing avoids comparing every prop with every other prop.
+    groups = _cluster_groups(props, spacing)
+    if groups is None:
+        return build("scatter", [], ("chase", "left_to_right"))
+    clusters = [sorted(g, key=lambda p: _center(p)[0]) for g in groups
                 if len(g) >= 2 and _spread([_center(p)[0] for p in g], gap)]
     in_clusters = sum(len(c) for c in clusters) / len(props)
     if len(clusters) >= 2 and in_clusters >= COVERAGE:
