@@ -6,6 +6,7 @@ unknown elements and attributes are retained rather than interpreted or rebuilt.
 
 from __future__ import annotations
 
+import itertools
 import os
 import tempfile
 import xml.etree.ElementTree as ET
@@ -162,6 +163,43 @@ def _validate_sequence_prop_references(root: ET.Element) -> None:
             "SequenceProps contains prop IDs missing from PreviewClass; "
             f"S6 may discard them when saving: {joined}"
         )
+
+
+def effect_timing_problems(document: LoreditDocument, limit: int = 20) -> list[str]:
+    """Return timing problems in the sequence's effects (empty when all are valid).
+
+    Each effect must have whole-number centisecond times, a start before its end,
+    and lie within the sequence (S6 tolerates one second past the end). Effects on
+    one channel must not overlap. An exact duplicate (same start and end) is not
+    counted: S6 itself saves those in some sequences and plays them normally.
+    """
+    total = document.total_centiseconds
+    problems: list[str] = []
+    sequence_props = document.root.find("SequenceProps")
+    for prop in [] if sequence_props is None else sequence_props.findall("SeqProp"):
+        name = prop.attrib.get("name") or prop.attrib.get("id", "?")
+        for index, channel in enumerate(prop.findall("channel")):
+            spans: list[tuple[int, int]] = []
+            for effect in channel.findall("effect"):
+                try:
+                    start = int(effect.attrib["startCentisecond"])
+                    end = int(effect.attrib["endCentisecond"])
+                except (KeyError, ValueError):
+                    problems.append(f"{name} channel {index + 1}: effect without valid times")
+                    continue
+                if start < 0 or end <= start or end > total + 100:
+                    problems.append(
+                        f"{name} channel {index + 1}: effect {start}-{end} cs is out of range")
+                spans.append((start, end))
+            spans.sort()
+            for earlier, later in itertools.pairwise(spans):
+                start = later[0]
+                if start < earlier[1] and later != earlier:
+                    problems.append(
+                        f"{name} channel {index + 1}: effects overlap at {start} cs")
+            if len(problems) >= limit:
+                return problems[:limit]
+    return problems
 
 
 def write_loredit(document: LoreditDocument, output_path: str | Path) -> Path:

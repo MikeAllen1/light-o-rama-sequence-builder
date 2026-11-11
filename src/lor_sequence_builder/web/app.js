@@ -29,6 +29,15 @@
     collapsedGroups: new Set(),
     collapsedProps: new Set(),
     selectedEffect: null,
+    // Editing: selection is a list of {channel, effect}; effects are replaced, never
+    // changed in place, so undo can restore a channel's earlier effect list.
+    selection: [],
+    undo: [],
+    redo: [],
+    dirty: false,
+    drag: null,
+    clipboard: null,
+    cursorCs: 0,
     animationFrame: 0,
     audioRequestId: 0,
     sequenceRequestId: 0,
@@ -109,7 +118,9 @@
           row: channelNode.getAttribute("row") || "0",
           col: channelNode.getAttribute("col") || "0",
           color: channelNode.getAttribute("color") || "0",
-          effects: []
+          effects: [],
+          node: channelNode,
+          edited: false
         };
         for (const effectNode of channelNode.children) {
           if (effectNode.localName !== "effect") continue;
@@ -182,6 +193,7 @@
 
     const audioName = root.getAttribute("musicFilename") || "";
     return {
+      doc,
       filename,
       name: root.getAttribute("musicTitle") || root.getAttribute("name") || filename,
       artist: root.getAttribute("musicArtist") || "",
@@ -303,6 +315,7 @@
     let onTime = 0;
     for (const time of moments) {
       let best = null;
+      let bestChange = null;
       let low = 0;
       let high = changes.length - 1;
       while (low < high) {
@@ -313,7 +326,10 @@
       for (const index of [low - 1, low]) {
         if (index >= 0 && index < changes.length) {
           const offset = changes[index] - time;
-          if (best == null || Math.abs(offset) < Math.abs(best)) best = offset;
+          if (best == null || Math.abs(offset) < Math.abs(best)) {
+            best = offset;
+            bestChange = changes[index];
+          }
         }
       }
       if (best == null) continue;
@@ -322,6 +338,7 @@
       else if (distance <= SYNC_NEAR_MISS) {
         const ms = Math.round(distance * 1000);
         flagged.push({ time, offset_ms: Math.round(best * 1000),
+          change_cs: Math.round(bestChange * 100),
           method: "nearest big lighting change is " + ms + " ms " + (best < 0 ? "early" : "late") });
       }
     }
@@ -369,8 +386,17 @@
     }
     if (lane && lane.kind === "offbeat") {
       const hit = lane.events.find((item) => Math.abs(item.time - seconds) < 0.02);
-      if (hit) add("Strong musical moment; " + hit.method + " (on time is within " +
-        Math.round(SYNC_ON_TIME * 1000) + " ms).", true);
+      if (hit) {
+        add("Strong musical moment; " + hit.method + " (on time is within " +
+          Math.round(SYNC_ON_TIME * 1000) + " ms).", true);
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "tool-button inspector-action";
+        button.id = "retimeButton";
+        button.textContent = "Retime the lighting change to this moment";
+        button.addEventListener("click", () => retimeToMoment(hit));
+        inspector.appendChild(button);
+      }
     }
     const found = effectsAt(seconds, 10);
     const starting = found.filter((item) => Math.abs(item.effect.start - seconds * 100) <= 10);
@@ -992,10 +1018,17 @@
       });
     }
 
+    const preview = state.drag && state.drag.preview;
     state.rows.forEach((row, index) => {
       if (row.kind !== "channel") return;
       const y = index * ROW_HEIGHT;
-      for (const effect of row.channel.effects) {
+      const effects = preview && preview.changes.has(row.channel)
+        ? preview.changes.get(row.channel) : row.channel.effects;
+      if (row.channel.edited) {
+        ctx.fillStyle = "rgba(240, 196, 92, .55)";
+        ctx.fillRect(0, y + 1, 3, ROW_HEIGHT - 2);
+      }
+      for (const effect of effects) {
         const x1 = effect.start / 100 * pps;
         const x2 = effect.end / 100 * pps;
         const blockWidth = Math.max(1.5, x2 - x1);
@@ -1031,10 +1064,11 @@
           ctx.lineTo(x2, y + ROW_HEIGHT / 2);
           ctx.stroke();
         }
-        if (state.selectedEffect === effect) {
-          ctx.strokeStyle = "#f3f7fa";
+        if (isSelected(effect) || (preview && preview.selected.has(effect))) {
+          ctx.strokeStyle = preview && preview.error ? "#ff6b6b" : "#f3f7fa";
           ctx.lineWidth = 1.5;
           ctx.strokeRect(x1, y + 3, blockWidth, ROW_HEIGHT - 6);
+          ctx.lineWidth = 1;
         }
       }
     });
@@ -1104,19 +1138,32 @@
       if (file.size > MAX_XML_BYTES) throw new Error("Sequence exceeds the 50 MiB input limit.");
       const xmlText = await file.text();
       if (requestId !== state.sequenceRequestId) return;
+      if (state.dirty && !window.confirm("Discard the unexported edits to " +
+        state.sequence.filename + "?")) return;
       const doc = parseXmlDocument(xmlText);
       state.sequence = parseSequence(doc, file.name);
+      const head = new Uint8Array(await file.slice(0, 3).arrayBuffer());
+      const declaration = xmlText.replace(/^\uFEFF/, "").match(/^<\?xml[^?]*\?>/);
+      state.sequence.source = {
+        bom: head[0] === 0xEF && head[1] === 0xBB && head[2] === 0xBF,
+        crlf: xmlText.slice(0, 65536).includes("\r\n"),
+        declaration: declaration ? declaration[0] : '<?xml version="1.0" encoding="utf-8"?>',
+        spacedEmpty: / \/>/.test(xmlText.slice(0, 65536)),
+        trailing: (xmlText.match(/>(\s*)$/) || ["", ""])[1].replace(/\r\n/g, "\n")
+      };
+      resetEditing();
       state.collapsedGroups.clear();
       state.collapsedProps.clear();
       state.selectedEffect = null;
       $("welcome").classList.add("hidden");
       $("editor").classList.remove("hidden");
-      $("inspectorContent").textContent = "Select an effect block to inspect its native settings and exact timing.";
+      renderEditInspector();
       renderSequenceStats();
       refreshTimeline();
       setBanner("Loaded " + state.sequence.props.length + " native props, " +
         state.sequence.channelCount + " channels, and " + state.sequence.effectCount.toLocaleString() +
-        " effects. Source sequence remains read-only.", "good");
+        " effects. Edits stay here until you export a new copy; the source file is never changed.",
+        "good");
       if (state.audioBuffer) compareDurations();
     } catch (error) {
       if (requestId !== state.sequenceRequestId) return;
@@ -1399,54 +1446,11 @@
     }
   }
 
-  function inspectEffect(effect, row) {
-    state.selectedEffect = effect;
-    const attrs = effect.attributes;
-    const lines = [
-      row.prop.name + " · Channel " + (row.channelIndex + 1),
-      effect.type + " · " + formatCentiseconds(effect.start) +
-        " → " + formatCentiseconds(effect.end),
-      "Duration: " + ((effect.end - effect.start) / 100).toFixed(2) + " s",
-      "Intensity: " + (attrs.intensity != null ? attrs.intensity :
-        (attrs.startIntensity != null ? attrs.startIntensity + " → " + attrs.endIntensity : "not specified")),
-      "Native attributes: " + Object.keys(attrs).map((key) => key + "=" + attrs[key]).join(" · ")
-    ];
-    const inspector = $("inspectorContent");
-    inspector.replaceChildren();
-    lines.forEach((line, index) => {
-      const item = document.createElement("div");
-      if (index < 2) item.className = "inspector-primary";
-      item.textContent = line;
-      inspector.appendChild(item);
-    });
-    drawTracks(Number($("tracksCanvas").width), state.pxPerSecond);
-  }
-
   function seekFromPointer(event, canvas) {
     if (!state.sequence) return;
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const seconds = Math.max(0, Math.min(getTimelineDurationSeconds(), x / state.pxPerSecond));
-    seekAudio(seconds);
-  }
-
-  function handleTrackClick(event) {
-    if (!state.sequence) return;
-    const canvas = $("tracksCanvas");
-    const rect = canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-    const rowIndex = Math.floor(y / ROW_HEIGHT);
-    const row = state.rows[rowIndex];
-    const seconds = Math.max(0, x / state.pxPerSecond);
-    if (row && row.kind === "channel") {
-      const cs = seconds * 100;
-      const effect = row.channel.effects.find((item) => cs >= item.start && cs < item.end);
-      if (effect) {
-        inspectEffect(effect, row);
-        return;
-      }
-    }
     seekAudio(seconds);
   }
 
@@ -1458,6 +1462,897 @@
   function tickPlayback() {
     updatePlayhead();
     if (!audio.paused && !audio.ended) state.animationFrame = requestAnimationFrame(tickPlayback);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Effect editing. Every change goes through applyChanges(), which checks the
+  // result (no overlaps, no zero-length effects, nothing past the end) and records
+  // the channels' earlier effect lists so undo can put them back. Effects are
+  // never changed in place: an edited effect is a new object.
+
+  const EDITABLE_TYPES = ["INTENSITY", "TWINKLE", "SHIMMER"];
+  const SNAP_PIXELS = 8;
+  const EDGE_PIXELS = 5;
+  const DRAG_THRESHOLD = 3;
+  const DEFAULT_LENGTH_CS = 50;
+  const MAX_UNDO = 300;
+
+  function resetEditing() {
+    state.selection = [];
+    state.selectionSet = new Set();
+    state.selectedEffect = null;
+    state.undo = [];
+    state.redo = [];
+    state.dirty = false;
+    state.drag = null;
+    state.clipboard = null;
+    state.cursorCs = 0;
+    state.channelInfo = new Map();
+    for (const prop of state.sequence.props) {
+      prop.channels.forEach((channel, index) => state.channelInfo.set(channel, { prop, index }));
+    }
+    updateEditControls();
+  }
+
+  function isSelected(effect) {
+    return Boolean(state.selectionSet && state.selectionSet.has(effect));
+  }
+
+  function channelName(channel) {
+    const info = state.channelInfo.get(channel);
+    return info ? info.prop.name + " channel " + (info.index + 1) : "a channel";
+  }
+
+  function sortEffects(effects) {
+    return effects.slice().sort((a, b) => a.start - b.start || a.end - b.end);
+  }
+
+  // Known attributes first, in the order native files use, then anything else as it was.
+  function makeEffect(start, end, attributes) {
+    const ordered = { startCentisecond: String(start), endCentisecond: String(end) };
+    for (const key of ["intensity", "startIntensity", "endIntensity"]) {
+      if (attributes[key] != null) ordered[key] = attributes[key];
+    }
+    for (const key of Object.keys(attributes)) {
+      if (!(key in ordered)) ordered[key] = attributes[key];
+    }
+    return { start, end, type: ordered.settings || "UNKNOWN", attributes: ordered };
+  }
+
+  function withTimes(effect, start, end) {
+    return makeEffect(start, end, effect.attributes);
+  }
+
+  function checkChannel(channel, effects) {
+    const before = new Set(channel.effects);
+    const limit = state.sequence.durationCs;
+    for (let index = 0; index < effects.length; index++) {
+      const effect = effects[index];
+      if (!before.has(effect)) {
+        if (effect.start < 0) return "an effect would start before the song";
+        if (effect.end <= effect.start) return "an effect would have no length";
+        if (effect.end > limit) return "an effect would run past the end of the sequence";
+      }
+      // Overlaps already in the source (S6 sometimes saves exact duplicates) are
+      // left alone; an edit may not create a new one.
+      const previous = index ? effects[index - 1] : null;
+      if (previous && previous.end > effect.start &&
+          !(before.has(previous) && before.has(effect))) {
+        return "effects would overlap on " + channelName(channel);
+      }
+    }
+    return null;
+  }
+
+  function checkChanges(changes) {
+    for (const [channel, effects] of changes) {
+      const sorted = sortEffects(effects);
+      changes.set(channel, sorted);
+      const problem = checkChannel(channel, sorted);
+      if (problem) return problem;
+    }
+    return null;
+  }
+
+  function setSelection(items) {
+    state.selection = items;
+    state.selectionSet = new Set(items.map((item) => item.effect));
+    state.selectedEffect = items.length === 1 ? items[0].effect : null;
+    renderEditInspector();
+    updateEditControls();
+  }
+
+  function selectionFrom(channels, wanted) {
+    const items = [];
+    for (const channel of channels) {
+      for (const effect of channel.effects) {
+        if (wanted.has(effect)) items.push({ channel, effect });
+      }
+    }
+    return items;
+  }
+
+  function perform(command, side) {
+    for (const [channel, effects] of command[side]) {
+      channel.effects = effects;
+      channel.edited = side === "after" ? true : command.wasEdited.get(channel);
+    }
+    afterEdit();
+  }
+
+  function applyChanges(label, changes, selected) {
+    if (!changes.size) return false;
+    const problem = checkChanges(changes);
+    if (problem) {
+      setBanner("Not changed: " + problem + ".", "warn");
+      drawTracks(Number($("tracksCanvas").width), state.pxPerSecond);
+      return false;
+    }
+    const command = { label, before: new Map(), after: changes, wasEdited: new Map() };
+    for (const channel of changes.keys()) {
+      command.before.set(channel, channel.effects);
+      command.wasEdited.set(channel, channel.edited);
+    }
+    perform(command, "after");
+    state.undo.push(command);
+    if (state.undo.length > MAX_UNDO) state.undo.shift();
+    state.redo = [];
+    setSelection(selectionFrom(changes.keys(), new Set(selected || [])));
+    setBanner(label + ". Undo with Ctrl+Z.", "good");
+    return true;
+  }
+
+  function changedEffects(command, side, other) {
+    const kept = new Set();
+    for (const effects of command[other].values()) effects.forEach((effect) => kept.add(effect));
+    const changed = new Set();
+    for (const effects of command[side].values()) {
+      effects.forEach((effect) => { if (!kept.has(effect)) changed.add(effect); });
+    }
+    return changed;
+  }
+
+  function undoEdit() {
+    const command = state.undo.pop();
+    if (!command) return;
+    perform(command, "before");
+    state.redo.push(command);
+    setSelection(selectionFrom(command.before.keys(), changedEffects(command, "before", "after")));
+    setBanner("Undid: " + command.label + ".", "good");
+  }
+
+  function redoEdit() {
+    const command = state.redo.pop();
+    if (!command) return;
+    perform(command, "after");
+    state.undo.push(command);
+    setSelection(selectionFrom(command.after.keys(), changedEffects(command, "after", "before")));
+    setBanner("Redid: " + command.label + ".", "good");
+  }
+
+  function afterEdit() {
+    const sequence = state.sequence;
+    let count = 0;
+    let edited = 0;
+    const types = {};
+    for (const prop of sequence.props) {
+      for (const channel of prop.channels) {
+        count += channel.effects.length;
+        if (channel.edited) edited += 1;
+        for (const effect of channel.effects) types[effect.type] = (types[effect.type] || 0) + 1;
+      }
+    }
+    sequence.effectCount = count;
+    sequence.effectTypes = types;
+    state.editedChannels = edited;
+    state.syncCheck = null;
+    state.dirty = true;
+    renderSequenceStats();
+    refreshTimeline();
+    updateEditControls();
+  }
+
+  function updateEditControls() {
+    const has = state.selection.length > 0;
+    const set = (id, enabled) => { const element = $(id); if (element) element.disabled = !enabled; };
+    set("undoButton", state.undo.length > 0);
+    set("redoButton", state.redo.length > 0);
+    set("deleteButton", has);
+    set("duplicateButton", has);
+    set("exportButton", Boolean(state.sequence));
+    const status = $("editStatus");
+    if (status) {
+      status.textContent = !state.sequence ? "" : !state.undo.length && !state.dirty
+        ? "No edits"
+        : (state.dirty ? "Unexported edits" : "Exported") + " · " + state.undo.length +
+          " change(s) · " + (state.editedChannels || 0) + " channel(s)";
+      status.classList.toggle("dirty", state.dirty);
+    }
+  }
+
+  // --- Snapping --------------------------------------------------------------
+
+  function snapEnabled(id) {
+    const box = $("snap-" + id);
+    return Boolean(box && box.checked);
+  }
+
+  function snapCandidates(exclude) {
+    const times = [];
+    const addEvents = (events) => {
+      for (const event of events || []) {
+        const time = Number(event.time != null ? event.time : event.start);
+        if (Number.isFinite(time)) times.push(Math.round(time * 100));
+      }
+    };
+    const sequence = state.sequence;
+    if (snapEnabled("grid")) {
+      for (const grid of sequence.timingGrids) {
+        for (const cs of timingGridMarks(grid)) times.push(cs);
+      }
+    }
+    const analysis = state.analysis && state.analysis.analysis;
+    if (analysis) {
+      if (snapEnabled("beats")) addEvents(analysis.beats);
+      if (snapEnabled("downbeats")) addEvents(analysis.downbeats);
+      if (snapEnabled("onsets")) addEvents(analysis.onsets);
+      if (snapEnabled("hits")) {
+        addEvents(analysis.high_hits);
+        addEvents(analysis.crashes);
+      }
+    }
+    if (snapEnabled("vocal") && state.vocals) addEvents(state.vocals.syllables);
+    if (snapEnabled("words") && state.lyrics) {
+      for (const line of state.lyrics.lines) {
+        times.push(Math.round(line.start * 100));
+        for (const word of line.words || []) times.push(Math.round(word.start * 100));
+      }
+    }
+    if (snapEnabled("edges")) {
+      for (const prop of sequence.props) {
+        for (const channel of prop.channels) {
+          for (const effect of channel.effects) {
+            if (exclude && exclude.has(effect)) continue;
+            times.push(effect.start, effect.end);
+          }
+        }
+      }
+    }
+    return Float64Array.from(times).sort();
+  }
+
+  // The nearest candidate within SNAP_PIXELS, or null.
+  function snapTarget(cs, candidates) {
+    if (!candidates || !candidates.length) return null;
+    let low = 0;
+    let high = candidates.length - 1;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (candidates[middle] < cs) low = middle + 1;
+      else high = middle;
+    }
+    let best = null;
+    for (const index of [low - 1, low]) {
+      if (index >= 0 && index < candidates.length &&
+          (best == null || Math.abs(candidates[index] - cs) < Math.abs(best - cs))) {
+        best = candidates[index];
+      }
+    }
+    return best != null && Math.abs(best - cs) / 100 * state.pxPerSecond <= SNAP_PIXELS
+      ? best : null;
+  }
+
+  function snap(cs, candidates, free) {
+    if (free) return cs;
+    const target = snapTarget(cs, candidates);
+    return target == null ? cs : target;
+  }
+
+  // --- Edit operations ---------------------------------------------------------
+
+  function groupByChannel(items) {
+    const groups = new Map();
+    for (const item of items) {
+      if (!groups.has(item.channel)) groups.set(item.channel, new Set());
+      groups.get(item.channel).add(item.effect);
+    }
+    return groups;
+  }
+
+  function moveChanges(items, delta) {
+    const changes = new Map();
+    const selected = [];
+    for (const [channel, effects] of groupByChannel(items)) {
+      changes.set(channel, channel.effects.map((effect) => {
+        if (!effects.has(effect)) return effect;
+        const moved = withTimes(effect, effect.start + delta, effect.end + delta);
+        selected.push(moved);
+        return moved;
+      }));
+    }
+    return { changes, selected };
+  }
+
+  function trimChanges(item, edge, cs) {
+    const effect = item.effect;
+    const start = edge === "start" ? Math.min(cs, effect.end - 1) : effect.start;
+    const end = edge === "end" ? Math.max(cs, effect.start + 1) : effect.end;
+    const trimmed = withTimes(effect, start, end);
+    const changes = new Map([[item.channel,
+      item.channel.effects.map((other) => other === effect ? trimmed : other)]]);
+    return { changes, selected: [trimmed] };
+  }
+
+  function newEffect(start, end) {
+    return makeEffect(start, end, { intensity: "100", settings: "INTENSITY" });
+  }
+
+  function createChanges(channel, start, end) {
+    const created = newEffect(start, end);
+    return { changes: new Map([[channel, channel.effects.concat([created])]]), selected: [created] };
+  }
+
+  function deleteSelection() {
+    if (!state.selection.length) return;
+    const changes = new Map();
+    for (const [channel, effects] of groupByChannel(state.selection)) {
+      changes.set(channel, channel.effects.filter((effect) => !effects.has(effect)));
+    }
+    applyChanges("Deleted " + state.selection.length + " effect(s)", changes, []);
+  }
+
+  function addCopies(items, offset, label) {
+    const changes = new Map();
+    const selected = [];
+    for (const item of items) {
+      const list = changes.get(item.channel) || item.channel.effects.slice();
+      const copy = withTimes(item.effect, item.effect.start + offset, item.effect.end + offset);
+      list.push(copy);
+      selected.push(copy);
+      changes.set(item.channel, list);
+    }
+    return applyChanges(label, changes, selected);
+  }
+
+  function selectionSpan(items) {
+    let start = Infinity;
+    let end = -Infinity;
+    for (const item of items) {
+      start = Math.min(start, item.effect.start);
+      end = Math.max(end, item.effect.end);
+    }
+    return { start, end };
+  }
+
+  function duplicateSelection() {
+    if (!state.selection.length) return;
+    const span = selectionSpan(state.selection);
+    addCopies(state.selection, span.end - span.start,
+      "Duplicated " + state.selection.length + " effect(s)");
+  }
+
+  function copySelection() {
+    if (!state.selection.length) return false;
+    state.clipboard = { items: state.selection.slice(), start: selectionSpan(state.selection).start };
+    setBanner("Copied " + state.selection.length + " effect(s). Click a time and press Ctrl+V to paste.",
+      "good");
+    return true;
+  }
+
+  function pasteClipboard() {
+    const clip = state.clipboard;
+    if (!clip) return;
+    const live = clip.items.filter((item) => state.channelInfo.has(item.channel));
+    addCopies(live, state.cursorCs - clip.start, "Pasted " + live.length + " effect(s) at " +
+      formatCentiseconds(state.cursorCs));
+  }
+
+  function nudgeSelection(delta) {
+    if (!state.selection.length) return;
+    const span = selectionSpan(state.selection);
+    if (span.start + delta < 0) return;
+    const result = moveChanges(state.selection, delta);
+    applyChanges("Nudged " + state.selection.length + " effect(s) " +
+      (delta > 0 ? "+" : "") + (delta / 100).toFixed(2) + " s", result.changes, result.selected);
+  }
+
+  function setProperties(items, values) {
+    const changes = new Map();
+    const selected = [];
+    for (const item of items) {
+      const effect = item.effect;
+      const attributes = Object.assign({}, effect.attributes);
+      if (values.type && EDITABLE_TYPES.includes(effect.type)) attributes.settings = values.type;
+      const type = attributes.settings;
+      if (EDITABLE_TYPES.includes(type) && values.intensity) {
+        delete attributes.intensity;
+        delete attributes.startIntensity;
+        delete attributes.endIntensity;
+        if (type === "INTENSITY" && values.intensity.fade) {
+          attributes.startIntensity = String(values.intensity.start);
+          attributes.endIntensity = String(values.intensity.end);
+        } else {
+          attributes.intensity = String(values.intensity.level);
+        }
+      }
+      const start = values.start != null ? values.start : effect.start;
+      const end = values.end != null ? values.end : effect.end;
+      const replacement = makeEffect(start, end, attributes);
+      const list = changes.get(item.channel) || item.channel.effects.slice();
+      list[list.indexOf(effect)] = replacement;
+      changes.set(item.channel, list);
+      selected.push(replacement);
+    }
+    return applyChanges("Changed " + items.length + " effect(s)", changes, selected);
+  }
+
+  // Move every effect that starts at the flagged lighting change onto the musical
+  // moment, and keep each channel continuous: an effect that ended exactly where the
+  // moved one started (or would now overlap it) ends at the new time.
+  function retimeToMoment(hit) {
+    const from = hit.change_cs;
+    const to = Math.round(hit.time * 100);
+    if (from == null || from === to || !state.sequence) return;
+    const changes = new Map();
+    const moved = [];
+    for (const prop of state.sequence.props) {
+      for (const channel of prop.channels) {
+        if (!channel.effects.some((item) => item.start === from)) continue;
+        const list = [];
+        for (const effect of channel.effects) {
+          if (effect.start === from) {
+            if (to >= effect.end) {
+              setBanner("Not changed: the effect on " + channelName(channel) +
+                " would have no length.", "warn");
+              return;
+            }
+            const replacement = withTimes(effect, to, effect.end);
+            moved.push(replacement);
+            list.push(replacement);
+          } else if (effect.start < from && (effect.end === from || effect.end > to)) {
+            if (to <= effect.start) {
+              setBanner("Not changed: the effect before it on " + channelName(channel) +
+                " would have no length.", "warn");
+              return;
+            }
+            list.push(withTimes(effect, effect.start, to));
+          } else {
+            list.push(effect);
+          }
+        }
+        changes.set(channel, list);
+      }
+    }
+    applyChanges("Retimed " + moved.length + " effect(s) from " + formatCentiseconds(from) +
+      " to " + formatCentiseconds(to), changes, moved);
+  }
+
+  // --- Pointer editing on the tracks ------------------------------------------------
+
+  function trackHit(event) {
+    const canvas = $("tracksCanvas");
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const row = state.rows[Math.floor(y / ROW_HEIGHT)];
+    const cs = Math.max(0, Math.min(state.sequence.durationCs,
+      Math.round(x / state.pxPerSecond * 100)));
+    const hit = { row, cs, x, effect: null, edge: null };
+    if (!row || row.kind !== "channel") return hit;
+    const pps = state.pxPerSecond;
+    for (const effect of row.channel.effects) {
+      const x1 = effect.start / 100 * pps;
+      const x2 = effect.end / 100 * pps;
+      if (x < x1 - EDGE_PIXELS || x > x2 + EDGE_PIXELS) continue;
+      const inside = x >= x1 && x < x2;
+      if (x2 - x1 >= 2 * EDGE_PIXELS + 2 || !inside) {
+        if (Math.abs(x - x2) <= EDGE_PIXELS) return Object.assign(hit, { effect, edge: "end" });
+        if (Math.abs(x - x1) <= EDGE_PIXELS) return Object.assign(hit, { effect, edge: "start" });
+      }
+      if (inside) return Object.assign(hit, { effect });
+    }
+    return hit;
+  }
+
+  function handleTrackPointerDown(event) {
+    if (!state.sequence || event.button !== 0) return;
+    const hit = trackHit(event);
+    state.cursorCs = hit.cs;
+    const additive = event.shiftKey || event.ctrlKey || event.metaKey;
+    const base = { startX: event.clientX, moved: false, preview: null };
+    if (hit.effect) {
+      const item = { channel: hit.row.channel, effect: hit.effect };
+      if (hit.edge) {
+        setSelection([item]);
+        state.drag = Object.assign(base, { mode: "trim", edge: hit.edge, item,
+          candidates: snapCandidates(new Set([hit.effect])) });
+      } else if (additive) {
+        setSelection(isSelected(hit.effect)
+          ? state.selection.filter((other) => other.effect !== hit.effect)
+          : state.selection.concat([item]));
+        return;
+      } else {
+        const wasSelected = isSelected(hit.effect);
+        if (!wasSelected) setSelection([item]);
+        state.drag = Object.assign(base, { mode: "move", item, wasSelected, origin: hit.cs,
+          items: state.selection.slice(), candidates: snapCandidates(state.selectionSet) });
+      }
+    } else {
+      if (!additive) setSelection([]);
+      seekAudio(hit.cs / 100);
+      if (hit.row && hit.row.kind === "channel") {
+        const candidates = snapCandidates();
+        state.drag = Object.assign(base, { mode: "create", channel: hit.row.channel, candidates,
+          origin: snap(hit.cs, candidates, event.altKey) });
+      }
+    }
+    if (state.drag) $("tracksCanvas").setPointerCapture(event.pointerId);
+  }
+
+  function dragPreview(drag, hit, free) {
+    if (drag.mode === "move") {
+      let delta = hit.cs - drag.origin;
+      const anchor = drag.item.effect;
+      if (!free) {
+        const startTarget = snapTarget(anchor.start + delta, drag.candidates);
+        const endTarget = snapTarget(anchor.end + delta, drag.candidates);
+        const startShift = startTarget == null ? null : startTarget - (anchor.start + delta);
+        const endShift = endTarget == null ? null : endTarget - (anchor.end + delta);
+        if (startShift != null && (endShift == null || Math.abs(startShift) <= Math.abs(endShift))) {
+          delta += startShift;
+        } else if (endShift != null) {
+          delta += endShift;
+        }
+      }
+      const span = selectionSpan(drag.items);
+      delta = Math.max(delta, -span.start);
+      delta = Math.min(delta, state.sequence.durationCs - span.end);
+      const result = moveChanges(drag.items, delta);
+      result.label = "Moved " + drag.items.length + " effect(s) " + (delta >= 0 ? "+" : "") +
+        (delta / 100).toFixed(2) + " s";
+      result.delta = delta;
+      return result;
+    }
+    if (drag.mode === "trim") {
+      const result = trimChanges(drag.item, drag.edge, snap(hit.cs, drag.candidates, free));
+      const effect = result.selected[0];
+      result.label = "Trimmed to " + formatCentiseconds(effect.start) + " → " +
+        formatCentiseconds(effect.end);
+      return result;
+    }
+    const other = snap(hit.cs, drag.candidates, free);
+    const start = Math.min(drag.origin, other);
+    const end = Math.max(drag.origin, other);
+    if (end - start < 1) return null;
+    const result = createChanges(drag.channel, start, end);
+    result.label = "Added an effect " + formatCentiseconds(start) + " → " + formatCentiseconds(end);
+    return result;
+  }
+
+  function handleTrackPointerMove(event) {
+    if (!state.sequence) return;
+    const drag = state.drag;
+    const canvas = $("tracksCanvas");
+    if (!drag) {
+      const hit = trackHit(event);
+      canvas.style.cursor = hit.edge ? "ew-resize" : hit.effect ? "grab" : "crosshair";
+      return;
+    }
+    if (!drag.moved && Math.abs(event.clientX - drag.startX) < DRAG_THRESHOLD) return;
+    drag.moved = true;
+    const preview = dragPreview(drag, trackHit(event), event.altKey);
+    if (preview) {
+      preview.selected = new Set(preview.selected);
+      preview.error = checkChanges(preview.changes);
+      setBanner(preview.label + (preview.error ? ": not allowed, " + preview.error : "") +
+        (event.altKey ? " (snapping off)" : ""), preview.error ? "warn" : "");
+    }
+    drag.preview = preview;
+    drawTracks(Number(canvas.width), state.pxPerSecond);
+  }
+
+  function handleTrackPointerUp() {
+    const drag = state.drag;
+    state.drag = null;
+    if (!drag) return;
+    if (!drag.moved) {
+      if (drag.mode === "move" && drag.wasSelected) setSelection([drag.item]);
+      drawTracks(Number($("tracksCanvas").width), state.pxPerSecond);
+      return;
+    }
+    const preview = drag.preview;
+    if (preview && !preview.error && !(drag.mode === "move" && preview.delta === 0)) {
+      applyChanges(preview.label, preview.changes, Array.from(preview.selected));
+    } else {
+      if (preview && preview.error) setBanner("Not changed: " + preview.error + ".", "warn");
+      drawTracks(Number($("tracksCanvas").width), state.pxPerSecond);
+    }
+  }
+
+  function handleTrackDoubleClick(event) {
+    if (!state.sequence) return;
+    const hit = trackHit(event);
+    if (!hit.row || hit.row.kind !== "channel" || hit.effect) return;
+    const candidates = snapCandidates();
+    const start = snap(hit.cs, candidates, event.altKey);
+    let end = start + DEFAULT_LENGTH_CS;
+    for (const cs of candidates) {
+      if (cs > start + 5) {
+        if (cs - start <= 400) end = cs;
+        break;
+      }
+    }
+    end = Math.min(end, state.sequence.durationCs);
+    const result = createChanges(hit.row.channel, start, end);
+    applyChanges("Added an effect " + formatCentiseconds(start) + " → " + formatCentiseconds(end),
+      result.changes, result.selected);
+  }
+
+  function handleEditKey(event) {
+    if (!state.sequence || $("editor").classList.contains("hidden")) return;
+    const target = event.target;
+    if (target && ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
+    const mod = event.ctrlKey || event.metaKey;
+    const key = event.key.toLowerCase();
+    let handled = true;
+    if (mod && key === "z" && !event.shiftKey) undoEdit();
+    else if (mod && (key === "y" || (key === "z" && event.shiftKey))) redoEdit();
+    else if (mod && key === "d") duplicateSelection();
+    else if (mod && key === "c") handled = copySelection();
+    else if (mod && key === "x") { if (copySelection()) deleteSelection(); }
+    else if (mod && key === "v") pasteClipboard();
+    else if (!mod && (key === "delete" || key === "backspace")) deleteSelection();
+    else if (key === "escape") setSelection([]);
+    else if (!mod && (key === "arrowleft" || key === "arrowright") && state.selection.length) {
+      nudgeSelection((key === "arrowleft" ? -1 : 1) * (event.shiftKey ? 10 : 1));
+    } else handled = false;
+    if (handled) event.preventDefault();
+  }
+
+  // --- Inspector ---------------------------------------------------------------
+
+  function field(labelText, input) {
+    const label = document.createElement("label");
+    label.className = "edit-field";
+    const span = document.createElement("span");
+    span.textContent = labelText;
+    label.append(span, input);
+    return label;
+  }
+
+  function numberInput(id, value, min, max, step) {
+    const input = document.createElement("input");
+    input.type = "number";
+    input.id = id;
+    input.value = String(value);
+    input.min = String(min);
+    if (max != null) input.max = String(max);
+    input.step = String(step);
+    return input;
+  }
+
+  function intensityOf(effect) {
+    const attrs = effect.attributes;
+    const level = Number(attrs.intensity != null ? attrs.intensity :
+      attrs.endIntensity != null ? Math.max(Number(attrs.startIntensity), Number(attrs.endIntensity))
+        : 100);
+    return {
+      fade: attrs.startIntensity != null && attrs.endIntensity != null,
+      level: Number.isFinite(level) ? level : 100,
+      start: Number(attrs.startIntensity != null ? attrs.startIntensity : level),
+      end: Number(attrs.endIntensity != null ? attrs.endIntensity : level)
+    };
+  }
+
+  function renderEditInspector() {
+    const inspector = $("inspectorContent");
+    inspector.replaceChildren();
+    const items = state.selection;
+    const add = (text, primary) => {
+      const item = document.createElement("div");
+      if (primary) item.className = "inspector-primary";
+      item.textContent = text;
+      inspector.appendChild(item);
+    };
+    if (!items.length) {
+      add("Select an effect block to inspect or edit it. Drag to move, drag an edge to trim, " +
+        "drag on an empty row to draw, double-click to add one.");
+      return;
+    }
+    const first = items[0].effect;
+    if (items.length === 1) {
+      const attrs = first.attributes;
+      add(channelName(items[0].channel) + " · " + first.type, true);
+      add(formatCentiseconds(first.start) + " → " + formatCentiseconds(first.end) + " · " +
+        ((first.end - first.start) / 100).toFixed(2) + " s");
+      add("Native attributes: " + Object.keys(attrs).map((key) => key + "=" + attrs[key]).join(" · "));
+    } else {
+      const channels = new Set(items.map((item) => item.channel)).size;
+      add(items.length + " effects selected on " + channels + " channel(s)", true);
+    }
+    const editable = items.every((item) => EDITABLE_TYPES.includes(item.effect.type));
+    const form = document.createElement("div");
+    form.className = "edit-form";
+    const current = intensityOf(first);
+    let type = null;
+    let fade = null;
+    if (editable) {
+      type = document.createElement("select");
+      type.id = "editType";
+      for (const name of EDITABLE_TYPES) {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = name.charAt(0) + name.slice(1).toLowerCase();
+        type.appendChild(option);
+      }
+      type.value = first.type;
+      form.appendChild(field("Effect", type));
+      fade = document.createElement("input");
+      fade.type = "checkbox";
+      fade.id = "editFade";
+      fade.checked = current.fade;
+      form.appendChild(field("Fade", fade));
+      form.appendChild(field("Level %", numberInput("editIntensity", current.level, 0, 100, 1)));
+      form.appendChild(field("From %", numberInput("editStartIntensity", current.start, 0, 100, 1)));
+      form.appendChild(field("To %", numberInput("editEndIntensity", current.end, 0, 100, 1)));
+      const sync = () => {
+        const fading = type.value === "INTENSITY" && fade.checked;
+        fade.disabled = type.value !== "INTENSITY";
+        $("editIntensity").parentElement.classList.toggle("hidden", fading);
+        $("editStartIntensity").parentElement.classList.toggle("hidden", !fading);
+        $("editEndIntensity").parentElement.classList.toggle("hidden", !fading);
+      };
+      type.addEventListener("change", sync);
+      fade.addEventListener("change", sync);
+      inspector.appendChild(form);
+      sync();
+    } else {
+      add("This effect type's own settings are kept as they are; its timing can still change.");
+      inspector.appendChild(form);
+    }
+    if (items.length === 1) {
+      form.appendChild(field("Start s", numberInput("editStart", (first.start / 100).toFixed(2), 0,
+        null, 0.01)));
+      form.appendChild(field("End s", numberInput("editEnd", (first.end / 100).toFixed(2), 0,
+        null, 0.01)));
+    }
+    const apply = document.createElement("button");
+    apply.type = "button";
+    apply.id = "editApply";
+    apply.className = "tool-button primary";
+    apply.textContent = "Apply";
+    apply.addEventListener("click", () => {
+      const values = {};
+      const percent = (id) => {
+        const value = Number($(id).value);
+        if (!Number.isInteger(value) || value < 0 || value > 100) {
+          throw new Error("intensities are whole numbers from 0 to 100");
+        }
+        return value;
+      };
+      try {
+        if (editable) {
+          values.type = type.value;
+          const fading = type.value === "INTENSITY" && fade.checked;
+          values.intensity = fading
+            ? { fade: true, start: percent("editStartIntensity"), end: percent("editEndIntensity") }
+            : { fade: false, level: percent("editIntensity") };
+        }
+        if (items.length === 1) {
+          values.start = Math.round(Number($("editStart").value) * 100);
+          values.end = Math.round(Number($("editEnd").value) * 100);
+          if (!Number.isFinite(values.start) || !Number.isFinite(values.end)) {
+            throw new Error("times must be numbers of seconds");
+          }
+        }
+      } catch (error) {
+        setBanner("Not changed: " + error.message + ".", "warn");
+        return;
+      }
+      setProperties(items, values);
+    });
+    form.appendChild(apply);
+  }
+
+  // --- Export ----------------------------------------------------------------
+
+  function rewriteChannelNode(channel) {
+    const node = channel.node;
+    const doc = node.ownerDocument;
+    const before = node.previousSibling;
+    const indent = before && before.nodeType === 3 ? before.nodeValue.split("\n").pop() : "";
+    const inner = indent + "  ";
+    const others = Array.from(node.children).filter((child) => child.localName !== "effect");
+    node.replaceChildren();
+    const children = channel.effects.map((effect) => {
+      const element = doc.createElementNS(null, "effect");
+      for (const key of Object.keys(effect.attributes)) {
+        const value = key === "startCentisecond" ? String(effect.start)
+          : key === "endCentisecond" ? String(effect.end) : effect.attributes[key];
+        element.setAttribute(key, value);
+      }
+      return element;
+    }).concat(others);
+    for (const child of children) {
+      node.appendChild(doc.createTextNode("\n" + inner));
+      node.appendChild(child);
+    }
+    if (children.length) node.appendChild(doc.createTextNode("\n" + indent));
+  }
+
+  function serializeSequence() {
+    const sequence = state.sequence;
+    for (const prop of sequence.props) {
+      for (const channel of prop.channels) if (channel.edited) rewriteChannelNode(channel);
+    }
+    const source = sequence.source;
+    let text = new XMLSerializer().serializeToString(sequence.doc)
+      .replace(/^<\?xml[^?]*\?>\s*/, "");
+    if (source.spacedEmpty) text = text.replace(/([^\s/])\/>/g, "$1 />");
+    text = source.declaration + "\n" + text + source.trailing;
+    if (source.crlf) text = text.replace(/\r?\n/g, "\r\n");
+    return (source.bom ? "﻿" : "") + text;
+  }
+
+  async function exportEdited() {
+    const sequence = state.sequence;
+    if (!sequence) return;
+    const text = serializeSequence();
+    if (text.length > MAX_XML_BYTES) {
+      setBanner("The edited sequence exceeds the 50 MiB limit.", "error");
+      return;
+    }
+    let response;
+    let result = {};
+    try {
+      response = await fetch("/api/export", {
+        method: "POST", headers: { "Content-Type": "application/xml" }, body: text
+      });
+      result = await response.json().catch(() => ({}));
+    } catch (error) {
+      setBanner("The local workspace engine is not reachable, so the edited sequence was not " +
+        "checked or saved. Start it with lor-sequence-ui.", "error");
+      return;
+    }
+    if (!response.ok) {
+      setBanner("Not exported: " + (result.error || "the check failed (" + response.status + ")"),
+        "error");
+      return;
+    }
+    const name = sequence.filename.replace(/\.(loredit|xml)$/i, "") + " (edited).loredit";
+    const url = URL.createObjectURL(new Blob([text], { type: "application/xml" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    state.dirty = false;
+    updateEditControls();
+    setBanner("Checked and saved " + name + " with " + result.effects.toLocaleString() +
+      " effects. Your original file is unchanged.", "good");
+  }
+
+  function setupEditing() {
+    const canvas = $("tracksCanvas");
+    canvas.addEventListener("pointerdown", handleTrackPointerDown);
+    canvas.addEventListener("pointermove", handleTrackPointerMove);
+    canvas.addEventListener("pointerup", handleTrackPointerUp);
+    canvas.addEventListener("pointercancel", () => {
+      state.drag = null;
+      if (state.sequence) drawTracks(Number(canvas.width), state.pxPerSecond);
+    });
+    canvas.addEventListener("dblclick", handleTrackDoubleClick);
+    document.addEventListener("keydown", handleEditKey);
+    $("undoButton").addEventListener("click", undoEdit);
+    $("redoButton").addEventListener("click", redoEdit);
+    $("deleteButton").addEventListener("click", deleteSelection);
+    $("duplicateButton").addEventListener("click", duplicateSelection);
+    $("exportButton").addEventListener("click", exportEdited);
+    window.addEventListener("beforeunload", (event) => {
+      if (state.dirty) event.preventDefault();
+    });
   }
 
   function setup() {
@@ -1530,7 +2425,7 @@
     });
     $("waveformCanvas").addEventListener("click", (event) => seekFromPointer(event, $("waveformCanvas")));
     $("markersCanvas").addEventListener("click", handleMarkerClick);
-    $("tracksCanvas").addEventListener("click", handleTrackClick);
+    setupEditing();
   }
 
   setup();

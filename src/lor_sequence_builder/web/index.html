@@ -74,7 +74,7 @@
       </div>
       <div class="welcome-note">Your files stay on this computer. Audio analysis runs through the local Python engine when this workspace is started with <code>lor-sequence-ui</code>.</div>
       <div class="capability-strip">
-        <span>Native S6 tracks</span><span>Shared timebase</span><span>Real waveform</span><span>Beat analysis</span><span>Effect inspection</span>
+        <span>Native S6 tracks</span><span>Shared timebase</span><span>Real waveform</span><span>Beat analysis</span><span>Effect editing</span>
       </div>
     </section>
 
@@ -95,6 +95,27 @@
 
       <div class="analysis-banner" id="analysisBanner" role="status">
         <span class="status-dot"></span><span id="analysisMessage">Open the matching audio to build its waveform and analyze musical events.</span>
+      </div>
+
+      <div class="edit-bar" id="editBar">
+        <button id="undoButton" class="tool-button subtle" type="button" disabled title="Undo (Ctrl+Z)">Undo</button>
+        <button id="redoButton" class="tool-button subtle" type="button" disabled title="Redo (Ctrl+Y)">Redo</button>
+        <button id="duplicateButton" class="tool-button subtle" type="button" disabled title="Duplicate after the selection (Ctrl+D)">Duplicate</button>
+        <button id="deleteButton" class="tool-button subtle" type="button" disabled title="Delete (Del)">Delete</button>
+        <span class="toolbar-divider"></span>
+        <span class="snap-heading" title="Moves, trims and new effects snap to these within 8 pixels. Hold Alt to place freely.">SNAP TO</span>
+        <label class="snap-option"><input type="checkbox" id="snap-grid" checked>LOR grids</label>
+        <label class="snap-option"><input type="checkbox" id="snap-beats" checked>Beats</label>
+        <label class="snap-option"><input type="checkbox" id="snap-downbeats" checked>Bars</label>
+        <label class="snap-option"><input type="checkbox" id="snap-onsets">Transients</label>
+        <label class="snap-option"><input type="checkbox" id="snap-hits">Hits &amp; crashes</label>
+        <label class="snap-option"><input type="checkbox" id="snap-vocal">Vocal onsets</label>
+        <label class="snap-option"><input type="checkbox" id="snap-words">Lyric words</label>
+        <label class="snap-option"><input type="checkbox" id="snap-edges">Effect edges</label>
+        <span class="snap-hint">Alt: no snap · arrows nudge</span>
+        <span class="edit-spacer"></span>
+        <span id="editStatus" class="edit-status">No edits</span>
+        <button id="exportButton" class="tool-button primary" type="button" disabled title="Check the edited sequence and download it as a new file">Export edited copy</button>
       </div>
 
       <div class="timeline-workspace">
@@ -137,7 +158,7 @@
           <span><i class="legend-syllable"></i>Syllable / hold</span>
           <span><i class="legend-native"></i>Native LOR grid</span>
         </div>
-        <div class="read-only-note">REFERENCE VIEW · SOURCE FILES ARE READ-ONLY</div>
+        <div class="read-only-note">EDITS STAY HERE UNTIL EXPORTED · THE SOURCE FILE IS NEVER CHANGED</div>
       </footer>
       <audio id="audioPlayer" preload="metadata" hidden></audio>
     </section>
