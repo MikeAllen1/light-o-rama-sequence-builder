@@ -45,8 +45,8 @@ def _run_track(uv: str, audio: Path, output_dir: Path, index: int) -> dict[str, 
         str(svg_path),
     ]
     try:
-        completed = subprocess.run(
-            command,  # noqa: S603 - fixed uv executable and argument list; no shell is used
+        completed = subprocess.run(  # noqa: S603 - fixed uv executable and argument list; no shell is used
+            command,
             cwd=Path(__file__).resolve().parents[1],
             capture_output=True,
             text=True,
