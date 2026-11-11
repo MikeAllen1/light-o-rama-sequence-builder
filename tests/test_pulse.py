@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 from defusedxml.ElementTree import parse as safe_parse
 import pytest
