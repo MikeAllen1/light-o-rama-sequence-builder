@@ -134,7 +134,7 @@ Create small test sequences in the installed S6 application and save them normal
 3. **Multi-prop sequence** — several props, groups, and different element types.
 4. **Motion-effect sequence** — include a motion effect if the installed S6 license supports it.
 
-Keep each original S6 file unchanged. Place sanitized copies under a local `tests/fixtures/` directory for analysis. Do not commit copyrighted music, personal media, or private preview details.
+Keep each original S6 file unchanged and outside the repository. Use runtime-generated synthetic XML for committed tests; do not commit owner files or sanitized/derived copies. Do not commit copyrighted music, personal media, or private preview details.
 
 ## Broader format support gate
 
@@ -153,7 +153,7 @@ The `inspect` command is diagnostic only. The `roundtrip` command writes a new c
 
 The approved V13 source fixture was sanitized into a neutral 51-prop grid and opened by the owner in Light-O-Rama S6. The owner confirmed that the layout displayed without the house background. The writer-generated round-trip output was also opened in S6 and the owner confirmed it was fine. The audio reference uses the relative placeholder `synthetic_source.wav`; S6 prompts the owner to locate the WAV, which then plays.
 
-The compact automated fixture committed at `tests/fixtures/basic_show.loredit.gz` is a reduced derivative of the approved source. It retains 48 sequence props, 51 preview prop identities, 81 channels, 8 timing grids, and representative INTENSITY, TWINKLE, and SHIMMER effects. Preview shape geometry is omitted from the compact fixture because Phase 1 tests sequence read/write preservation, not preview rendering. The full owner-tested neutral-grid sequence and audio are not committed.
+The earlier compact owner-derived fixture has been removed from the current branch tree. Phase 1 tests now generate a fictional v15 sequence at runtime with 48 sequence props, 51 preview prop identities, representative channels, 8 timing grids, and INTENSITY, TWINKLE, and SHIMMER effects. This synthetic input is not an owner-file derivative. The full owner-tested neutral-grid sequence and audio remain outside the repository. Earlier commits on `master` and in Git history still require coordinated cleanup; removing files from the current tree does not erase their historical blobs.
 
 The reader/writer implementation:
 
