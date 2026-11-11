@@ -2,7 +2,7 @@
 
 A display-independent command-line tool for building native Light-O-Rama S6 sequences from music and a required `.lorprev` display preview.
 
-**Project status:** Phases 0 through 6b are complete and merged. Phase 7 (the first full show planner) is built and waiting for an owner playback check in S6. Phase 4 audio analysis runs on librosa and is accepted for songs in 4. Phase 8 (singing faces, and vocal-guided beats for swung or rubato songs) is built and waiting for an owner check. See [docs/PLAN.md](docs/PLAN.md) for the authoritative status.
+**Project status:** Phases 0 through 6b are complete and merged. Phase 7 (the first full show planner) is built and waiting for an owner playback check in S6. Phase 4 audio analysis runs on librosa and is accepted for songs in 4. Phase 8 (singing faces) is built and waiting for an owner check. See [docs/PLAN.md](docs/PLAN.md) for the authoritative status.
 
 ## Product workflow
 
@@ -90,7 +90,7 @@ That needs the vocals on their own. Either:
   uv sync --locked --extra vocals
   ```
 
-  It is a large install (PyTorch), downloads a 67 MB model the first time, and then runs offline. Splitting takes a few minutes per song; the result is saved as `Song.vocals.wav` and `Song.vocals.json`, and either can be passed to `--vocals` next time. `--no-vocals` skips it.
+  It is a large install (PyTorch), downloads a 67 MB model the first time, and then runs offline. Splitting takes a few minutes per song (about 6 on a 2-core machine); the result is saved as `Song.vocals.wav` and `Song.vocals.json`, and either can be passed to `--vocals` next time. `--no-vocals` skips it.
 
 Without vocals, face mouths stay still and the rest of the face lights with the show.
 
@@ -121,7 +121,7 @@ The report contains tempo (with a stability confidence), beats from a dynamic-pr
 
 Add `--beats-per-bar 3` for songs counted in 3; the default is 4.
 
-Swung or rubato songs where the band follows the singer: add `--vocals .\song-vocals.wav` (a vocals-only track of the same song). In stretches where someone is singing, beats are then re-placed using the singer's note onsets and a tempo that can drift with them, but only where that lines up with the music better than the plain beat grid; everywhere else the beats are unchanged. The report lists those stretches under `beat_guidance`, and `generate` does this automatically whenever it has vocals.
+Experimental, off by default: `--vocals .\song-vocals.wav` lets a vocals-only track re-place beats in stretches where the band's own tempo drifts (the band following the singer). It helped on generated rubato songs but not on the real songs it was checked against, where the plain beat tracker did as well or better, so `generate` only uses it with `--vocal-beats`. The report lists any re-placed stretches under `beat_guidance`.
 
 Score the analysis against timing grids you placed by hand in an existing sequence for the same song:
 

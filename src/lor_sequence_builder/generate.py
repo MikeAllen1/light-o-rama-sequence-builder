@@ -94,6 +94,7 @@ def generate_show(
     vocals_path: str | Path | None = None,
     separate: bool | None = None,
     progress: Callable[[str], None] | None = None,
+    vocal_beats: bool = False,
 ) -> GeneratedShow:
     """Build a show. Vocals for singing faces come from ``vocals_path`` (a vocals-only
     audio file, or a vocals JSON from an earlier run); otherwise, when the display
@@ -139,9 +140,10 @@ def generate_show(
         vocals_audio = separate_vocals(audio_path, paths["vocals_audio"])
 
     if audio_path is not None:
-        # With vocals, beats in singer-led stretches are placed with the singer's help.
+        # Vocal-guided beats are opt-in: on real songs they can hurt a steady band.
         analyze_audio(audio_path, paths["analysis"], paths["plot"],
-                      beats_per_bar=beats_per_bar, vocals_path=vocals_audio)
+                      beats_per_bar=beats_per_bar,
+                      vocals_path=vocals_audio if vocal_beats else None)
         analysis = load_analysis(paths["analysis"])
         written_analysis: Path | None = paths["analysis"]
         default_music = Path(audio_path).name

@@ -43,6 +43,8 @@ WINDOW_STEP_SECONDS = 1.5
 # The band counts as following the singer where its local tempo is this far from
 # the song's tempo (in octaves; 0.1 is about 7%).
 DRIFT_LIMIT = 0.1
+# ...and the singer-led beats themselves run at least this far off the song's tempo.
+TEMPO_CHANGE = 0.05
 # Local tempo estimates near the very start and end of a song are unreliable.
 SETTLE_SECONDS = 8.0
 
@@ -145,6 +147,17 @@ def vocal_guided_beats(
                 else:
                     chosen.append((cursor, stop))
             cursor += WINDOW_STEP_SECONDS
+    # Keep a stretch only when the singer-led beats really run at another tempo.
+    # A breakdown where the drums drop out can look like drift, but the singer
+    # stays on the band's tempo there, and the plain grid is already right.
+    period = 60.0 / bpm
+    kept_stretches = []
+    for a, b in chosen:
+        inside_times = guided_times[(guided_times >= a) & (guided_times < b)]
+        gaps = np.diff(inside_times)
+        if gaps.size >= 3 and float(np.median(np.abs(gaps / period - 1.0))) > TEMPO_CHANGE:
+            kept_stretches.append((a, b))
+    chosen = kept_stretches
     if not chosen:
         return beat_frames, []
 

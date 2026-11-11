@@ -114,7 +114,8 @@ def _build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--max-bpm", type=int, default=200, help="maximum tempo to search (default: 200)")
     analyze.add_argument(
         "--vocals",
-        help="vocals-only track of the same song; guides beats where the band follows the singer",
+        help="experimental: vocals-only track of the same song, to guide beats where the "
+        "band follows the singer",
     )
     analyze.add_argument(
         "--beats-per-bar",
@@ -190,6 +191,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--no-vocals", action="store_true",
         help="do not split vocals out of the song, even when the add-on is installed",
     )
+    generate.add_argument(
+        "--vocal-beats", action="store_true",
+        help="experimental: let the vocals guide beats where the band follows the singer",
+    )
     generate.add_argument("--beats-per-bar", type=int, choices=(3, 4), default=4,
                           help="4 for most songs, 3 for waltz time (default: 4)")
     generate.add_argument("--rules", action="append", default=[], help=_RULES_HELP)
@@ -246,7 +251,7 @@ def _generate(options: argparse.Namespace) -> int:
             audio_path=options.audio, analysis_path=options.analysis,
             music_filename=options.music_filename, beats_per_bar=options.beats_per_bar,
             vocals_path=options.vocals, separate=False if options.no_vocals else None,
-            progress=print,
+            progress=print, vocal_beats=options.vocal_beats,
         )
     except RulesFailedError as failed:
         print(failed.report.format_text())
