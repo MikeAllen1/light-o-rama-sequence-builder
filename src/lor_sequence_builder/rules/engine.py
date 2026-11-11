@@ -24,7 +24,15 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
-from lor_sequence_builder.choreography import Choreography, Effect, Movement, seconds
+from lor_sequence_builder.choreography import (
+    EFFECT_KINDS,
+    MOVEMENT_DIRECTIONS,
+    MOVEMENT_KINDS,
+    Choreography,
+    Effect,
+    Movement,
+    seconds,
+)
 from lor_sequence_builder.classifier import (
     PropClassification,
     classify_preview,
@@ -361,6 +369,11 @@ def _effects_well_formed(ctx: _Context) -> str | None:
     if duration <= 0:
         ctx.add(f"Timeline duration must be positive, found {duration}")
     for e in ctx.choreography.effects:
+        if e.kind not in EFFECT_KINDS:
+            ctx.add(
+                f"Effect kind {e.kind!r} is not supported; use one of {', '.join(EFFECT_KINDS)}",
+                e,
+            )
         if e.start_centisecond < 0:
             ctx.add("Effect starts before the song does", e)
         if e.end_centisecond > duration:
@@ -386,6 +399,20 @@ def _effects_well_formed(ctx: _Context) -> str | None:
     for movement_id in sorted(duplicate_movement_ids):
         ctx.add(f"Movement id {movement_id!r} is used more than once")
     for m in ctx.choreography.movements:
+        if m.kind not in MOVEMENT_KINDS:
+            ctx.add(
+                f"Movement {m.movement_id!r} has unsupported kind {m.kind!r}; use one of "
+                f"{', '.join(MOVEMENT_KINDS)}",
+                prop_id=m.prop_ids[0] if m.prop_ids else None,
+                centisecond=m.start_centisecond,
+            )
+        if m.direction not in MOVEMENT_DIRECTIONS:
+            ctx.add(
+                f"Movement {m.movement_id!r} has unsupported direction {m.direction!r}; "
+                f"use one of {', '.join(MOVEMENT_DIRECTIONS)}",
+                prop_id=m.prop_ids[0] if m.prop_ids else None,
+                centisecond=m.start_centisecond,
+            )
         if not 0 <= m.start_centisecond < m.end_centisecond <= duration:
             ctx.add(f"Movement {m.movement_id!r} must start before it ends, inside the song",
                     centisecond=m.start_centisecond)
