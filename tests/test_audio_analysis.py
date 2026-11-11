@@ -85,11 +85,11 @@ def test_analyze_audio_detects_tempo_beats_onsets_and_hard_stop(tmp_path: Path) 
     report = analyze_audio(audio, report_path, plot_path)
 
     analysis = report["analysis"]
-    assert report["schema_version"] == "1.1"
+    assert report["schema_version"] == "1.2"
     assert analysis["beat_grid_status"] == "ambiguous"
     assert report["configuration"]["frame_seconds"] == pytest.approx(551 / 11_025)
     assert report["audio"]["duration_seconds"] == pytest.approx(8.0, abs=0.1)
-    assert analysis["tempo"]["bpm"] == pytest.approx(120.0, abs=3.0)
+    assert analysis["tempo"]["bpm"] == pytest.approx(120.0, abs=3.0)\n    assert analysis["tempo"]["candidates"]\n    assert analysis["tempo"]["candidates"][0]["relative_score"] == 1.0
     assert len(analysis["beats"]) >= 10
     assert analysis["beats"][0]["time"] == pytest.approx(0.25, abs=0.12)
     assert len(analysis["downbeats"]) >= 2
