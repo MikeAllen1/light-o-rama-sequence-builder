@@ -205,16 +205,18 @@ The exact `.loredit` schema is not to be inferred from memory. The supplied real
 **Inputs:** Required standalone `.lorprev`, matching native S6 v15 `.loredit` template, integer fixed BPM, pulse duration.
 
 **Responsibilities:**
-- Require exact equality between standalone and embedded preview prop-ID sets and equality of each prop's `DeviceType`, `TraditionalType`, and `ChannelGrid` declarations. Never remap IDs based on names or order.
-- Limit the initial supported set to `DeviceType=LOR` with `TraditionalType=Single Color` or `Multicolor_string_1_ch`, complete LOR ChannelGrid addresses, and existing native channel records in the matching template.
-- Exclude unsupported prop/device types explicitly in Timeline JSON. If a prop inside the supported type boundary lacks a complete ChannelGrid or native channel mapping, fail before writing.
-- Use existing native `channel` row/col/color coordinates from the template as channel identities. Do not derive or invent these coordinates from ChannelGrid rows.
+- Require exact prop-ID set equality, semantic equality of every complete `PropClass` subtree (all attributes, master-prop references, shapes, and geometry), and semantic equality of all `PropGroup` records (member references and arrangement). Numeric geometry/layout coordinates may differ only by 1e-6 to tolerate export formatting. Never remap IDs based on names or order.
+- The independent integration fixture pairs an S6-exported standalone Revision 58 preview with a separate native S6 v15 sequence whose embedded preview is Revision 56. Preview revision markers may differ; physical display content must match.
+- Support only `DeviceType=LOR` with `TraditionalType=Single Color`, `Multicolor_string_1_ch`, or `Channel_per_color`, complete LOR ChannelGrid addresses, and matching native channel records.
+- Exclude unsupported device/prop types and any prop without a provable native mapping explicitly in Timeline JSON. A missing SeqProp, incomplete address, ChannelGrid/native-channel count mismatch, or unverified coordinate pattern is a per-prop exclusion with a reason; no event is generated for it.
+- AC/DC values remain recognized by the preview parser for legacy compatibility but are explicitly excluded from Phase 3 because their native mapping has not been verified.
+- Map each ChannelGrid entry to the native channel at the same index only when the entry count matches the channel count and the native coordinates match a verified S6 v15 pattern: row 0 + sequential col for Single Color/Multicolor_string_1_ch; row 0 + col 0 + sequential color for Channel_per_color. Carry network, Unit ID, circuit, preview index, and native row/col/color into every Timeline channel reference.
 - Generate deterministic integer-centisecond beat positions from an explicitly supplied integer BPM (30–300); no audio analysis or tempo inference occurs in this phase. Bound allocation to 50,000 beats and 250,000 events before event materialization.
 - Replace prior effects in the in-memory template copy with short `INTENSITY` pulses at each beat for every supported native channel.
 - Validate Timeline prop/channel references and event bounds before serialization; re-read the generated LOREDIT before publishing outputs.
 - Write a versioned Timeline JSON with SHA-256 fingerprints of the validated parsed XML trees, BPM, beat positions, supported/excluded props, and event references.
 
-This is a temporary engineering harness, not the final user workflow. It requires a compatible S6 sequence template because the current writer preserves a verified native v15 document rather than constructing a blank sequence. The template's embedded preview geometry and group arrangement are retained; Phase 3 checks prop IDs and channel declarations but does not merge geometry/group changes from the standalone preview. Use a template saved with the same physical layout as the standalone preview. The owner must open and play the output in S6; automated checks do not satisfy this human gate.
+This is a temporary engineering harness, not the final user workflow. It requires a compatible S6 sequence template because the current writer preserves a verified native v15 document rather than constructing a blank sequence. The standalone preview is not merged into the template: it is compared in full and must already describe the same prop geometry and group layout. Existing effects in the template copy are intentionally cleared and replaced by the generated pulses. The owner must open and play the output in S6 and confirm that the expected physical lights respond; automated checks do not satisfy this human gate.
 
 ### 5.8 `report`
 
