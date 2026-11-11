@@ -656,3 +656,19 @@ def test_checking_never_modifies_the_timeline() -> None:
     before = choreography_json(timeline)
     _check(display, timeline)
     assert choreography_json(timeline) == before
+
+ 
+@pytest.mark.parametrize("value", [".nan", ".inf", "-.inf"])
+def test_profile_rejects_non_finite_rule_values(tmp_path: Path, value: str) -> None:
+    profile = _profile(tmp_path, "schema_version: rules-1.0\nrules:\n"
+                                 f"  not_everything_at_once: {{max_share: {value}}}\n")
+    with pytest.raises(RuleProfileError, match="finite number"):
+        load_rule_set((profile,))
+
+
+@pytest.mark.parametrize("kind", ["[keep_on]", "{bad: value}"])
+def test_requirement_type_must_be_text(tmp_path: Path, kind: str) -> None:
+    profile = _profile(tmp_path, "schema_version: rules-1.0\nrequirements:\n"
+                                 f"  - type: {kind}\n    props: {{all: true}}\n")
+    with pytest.raises(RuleProfileError, match=r"requirements\[0\]\.type"):
+        load_rule_set((profile,))
