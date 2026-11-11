@@ -277,7 +277,6 @@ def test_failed_native_build_report_is_truthful_and_same_attempt_can_retry(
     assert succeeded["sequence_written"] is True
 
 
-
 def test_sequence_is_rolled_back_when_success_report_cannot_be_published(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
