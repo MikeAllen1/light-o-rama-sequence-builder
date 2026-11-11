@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import base64
-import gzip
 import json
-import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -11,27 +8,23 @@ import pytest
 
 from lor_sequence_builder.loredit import read_loredit
 from lor_sequence_builder.pulse import PulseGenerationError, build_pulse_sequence
-
-FIXTURE_DIR = Path(__file__).parent / "fixtures"
-FIXTURE = FIXTURE_DIR / "basic_show.loredit.gz"
-INDEPENDENT_TEMPLATE = FIXTURE_DIR / "s6_revision_56_independent_template.loredit.gz.b64"
+from tests.fixture_builders import write_synthetic_loredit
 
 
 def independent_inputs(tmp_path: Path) -> tuple[Path, Path]:
     preview_path = tmp_path / "independent.lorprev"
-    template_path = tmp_path / "independent-template.loredit"
-    template_path.write_bytes(gzip.decompress(base64.b64decode(INDEPENDENT_TEMPLATE.read_bytes())))
-    template_root = ET.parse(template_path).getroot()
+    template_path = write_synthetic_loredit(
+        tmp_path / "independent-template.loredit"
+    )
+    template_tree = ET.parse(template_path)
+    template_root = template_tree.getroot()
     preview_root = template_root.find("PreviewClass")
     assert preview_root is not None
-    for element in preview_root.iter():
-        for attribute in tuple(element.attrib):
-            if attribute.casefold() in {
-                "backgroundfile",
-                "backgroundimage",
-                "backgroundimagefile",
-            }:
-                del element.attrib[attribute]
+    first_prop = preview_root.find("PropClass")
+    assert first_prop is not None
+    shape = ET.SubElement(first_prop, "shape", {"ShapeName": "Synthetic Shape"})
+    ET.SubElement(shape, "point", {"x": "0", "y": "0"})
+    template_tree.write(template_path, encoding="utf-8", xml_declaration=True)
     ET.ElementTree(preview_root).write(
         preview_path, encoding="utf-8", xml_declaration=True
     )
@@ -40,35 +33,30 @@ def independent_inputs(tmp_path: Path) -> tuple[Path, Path]:
 
 @pytest.fixture
 def matching_inputs(tmp_path: Path) -> tuple[Path, Path]:
-    template = tmp_path / "template.loredit"
-    with gzip.open(FIXTURE, "rb") as source, template.open("wb") as target:
-        shutil.copyfileobj(source, target)
-
+    template = write_synthetic_loredit(tmp_path / "template.loredit")
     tree = ET.parse(template)
     root = tree.getroot()
     preview = root.find("PreviewClass")
     sequence_props = root.find("SequenceProps")
     assert preview is not None
     assert sequence_props is not None
-    # The compact source fixture has three preview-only props with no SeqProp.
-    # Build a deliberately matched test display from the exact prop IDs that
-    # already have native sequence-channel records; no channel IDs are invented.
+    # Keep only preview props with native sequence records, plus one explicit
+    # unsupported declaration to exercise the exclusion/reporting path.
     sequence_ids = {
         prop.get("id") for prop in sequence_props.findall("SeqProp")
     }
     for prop in list(preview.findall("PropClass")):
         if prop.get("id") not in sequence_ids:
             preview.remove(prop)
-    # Keep one explicit unsupported declaration so report/CLI exclusion paths
-    # remain covered after Channel_per_color gains verified support.
     first_prop = preview.find("PropClass")
     assert first_prop is not None
     first_prop.set("TraditionalType", "Unsupported Fixture Type")
     tree.write(template, encoding="utf-8", xml_declaration=True)
     preview_path = tmp_path / "display.lorprev"
-    ET.ElementTree(preview).write(preview_path, encoding="utf-8", xml_declaration=True)
+    ET.ElementTree(preview).write(
+        preview_path, encoding="utf-8", xml_declaration=True
+    )
     return preview_path, template
-
 
 def test_pulse_pipeline_writes_native_sequence_and_versioned_timeline(
     tmp_path: Path, matching_inputs: tuple[Path, Path]

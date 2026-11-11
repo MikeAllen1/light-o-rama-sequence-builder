@@ -3,21 +3,21 @@
 from __future__ import annotations
 
 import argparse
-import base64
-import gzip
 import json
+import sys
 import tempfile
-import uuid
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
+
+from defusedxml import ElementTree as SafeET
 
 from lor_sequence_builder.loredit import read_loredit
 from lor_sequence_builder.pulse import build_pulse_sequence
 
 ROOT = Path(__file__).resolve().parents[1]
-FIXTURES = ROOT / "tests" / "fixtures"
-TEMPLATE_FIXTURE = FIXTURES / "s6_revision_56_independent_template.loredit.gz.b64"
+sys.path.insert(0, str(ROOT))
+from tests.fixture_builders import write_synthetic_loredit
 
 PACKAGE_README = """PHASE 3 LIGHT-O-RAMA S6 TEST
 
@@ -36,15 +36,9 @@ physical channel mapping. Do not use this sample as a live-show sequence.
 """
 
 
-def _decode_fixture(source: Path, destination: Path) -> None:
-    """Decode the repository's base64-wrapped gzip fixture without modifying it."""
-    encoded = source.read_text(encoding="ascii")
-    destination.write_bytes(gzip.decompress(base64.b64decode(encoded, validate=True)))
-
-
 def _strip_local_background_references(template: Path) -> None:
     """Remove local image paths and isolate the test preview from S6 saved displays."""
-    tree = ET.parse(template)
+    tree = SafeET.parse(template, forbid_dtd=True, forbid_entities=True, forbid_external=True)
     root = tree.getroot()
     removed = 0
     for element in root.iter():
@@ -56,13 +50,10 @@ def _strip_local_background_references(template: Path) -> None:
             }:
                 del element.attrib[attribute]
                 removed += 1
-    if removed == 0:
-        raise RuntimeError("Expected a local preview background reference to sanitize.")
-
     preview_class = root.find("PreviewClass")
     if preview_class is None:
         raise RuntimeError("The native S6 template has no PreviewClass to isolate.")
-    preview_class.set("id", str(uuid.uuid4()))
+    preview_class.set("id", "synthetic-isolated-preview")
     preview_class.set("Name", "Isolated Phase 3 Test Preview")
     preview_class.set("EmbedBackgrounds", "False")
     preview_class.attrib.pop("LastSelectedSceneId", None)
@@ -73,9 +64,6 @@ def _strip_local_background_references(template: Path) -> None:
 
 def build_package(destination: Path) -> None:
     """Generate, validate, and package the sample sequence and Timeline."""
-    if not TEMPLATE_FIXTURE.is_file():
-        raise FileNotFoundError("The committed independent Phase 3 template fixture is missing.")
-
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
         destination.unlink()
@@ -87,9 +75,11 @@ def build_package(destination: Path) -> None:
         sequence = work / "Phase3-Test.loredit"
         timeline_path = work / "Phase3-Test.timeline.json"
 
-        _decode_fixture(TEMPLATE_FIXTURE, template)
+        write_synthetic_loredit(template)
         _strip_local_background_references(template)
-        template_root = ET.parse(template).getroot()
+        template_root = SafeET.parse(
+            template, forbid_dtd=True, forbid_entities=True, forbid_external=True
+        ).getroot()
         embedded_preview = template_root.find("PreviewClass")
         if embedded_preview is None:
             raise RuntimeError("The native S6 template does not contain an embedded PreviewClass.")

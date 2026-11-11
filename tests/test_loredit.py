@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import gzip
 import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -14,16 +13,12 @@ from lor_sequence_builder.loredit import (
     semantic_xml,
     write_loredit,
 )
-
-FIXTURE_GZIP = Path(__file__).parent / "fixtures" / "basic_show.loredit.gz"
+from tests.fixture_builders import write_synthetic_loredit
 
 
 @pytest.fixture
 def fixture_path(tmp_path: Path) -> Path:
-    fixture = tmp_path / "basic_show.loredit"
-    with gzip.open(FIXTURE_GZIP, "rb") as source, fixture.open("wb") as target:
-        shutil.copyfileobj(source, target)
-    return fixture
+    return write_synthetic_loredit(tmp_path / "synthetic-show.loredit")
 
 
 def test_fixture_has_expected_observed_structure(fixture_path: Path) -> None:
