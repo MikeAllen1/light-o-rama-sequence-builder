@@ -145,6 +145,29 @@ The v1.3 phase check leaves all ten beat grids ambiguous. The strongest competin
 The v1.3 changes improve timestamp granularity, suppress steady-tone periodic ripple, expose the selected tempo in the candidate list, and make competing phase evidence more conservative. They do not yet satisfy the tempo-alias acceptance criterion or prove that the analysis is musically actionable. Phase 4 remains open; Phase 5 remains blocked.
 
 
+
+## Independent tempo diagnostic cross-check
+
+As a diagnostic only, the ten same Library audio files were also evaluated with librosa 0.11.0's onset-strength beat tracker at 11.025 kHz mono. This is not ground truth and is not used to overwrite the repository result; beat trackers have their own metrical priors and can also choose half-time or double-time interpretations.
+
+| Track | Repository v1.3 BPM | librosa diagnostic BPM | Observation |
+|---|---:|---:|---|
+| Christmas Vacation Intro | 196.12 | 103.36 | Near double-time disagreement |
+| Under the Christmas Tree | 96.88 | 161.50 | Material disagreement |
+| It's the Most Wonderful Time | 200.45* | 103.36 | Boundary-censored, near double-time disagreement |
+| Siberian Sleigh Ride | 167.04 | 161.50 | Broad agreement |
+| Last Christmas | 115.99 | 117.45 | Broad agreement |
+| Jingle Bells | 123.15 | 123.05 | Broad agreement |
+| Christmas Time Is Here | 200.45* | 117.45 | Boundary-censored, material disagreement |
+| Deck the Halls | 193.91 | 95.70 | Near double-time disagreement |
+| Frosty the Snowman | 148.56 | 143.55 | Broad agreement |
+| You're a Mean One, Mr. Grinch | 160.81 | 107.67 | Material disagreement |
+
+*The repository estimate is at the configured upper search boundary and is confidence-capped.
+
+This independent check broadly agrees with four tracks, flags likely half/double-time interpretation on three, and materially disagrees on three more. It does not tell us which estimate is musically correct. It does confirm that the repository's selected BPM cannot yet be treated as authoritative across this set. The correct acceptance outcome is to retain candidate alternatives and abstain from treating unresolved beat grids as usable, not to force agreement with librosa.
+
+
 ## Packaged CLI recheck procedure
 
 The source-equivalent recheck above is not a substitute for running the installed project entry point. A repeatable harness is now available at `scripts/run_real_audio_review.py`. It invokes the locked `lor-sequence-builder analyze-audio` console command once for each of the ten named tracks, verifies that each run emits schema v1.3 JSON and an SVG, and writes per-track JSON/SVG files plus `summary.json` and `summary.csv`. It does not copy or modify the source audio and refuses to reuse a non-empty output directory.
