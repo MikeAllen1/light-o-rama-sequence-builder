@@ -97,23 +97,49 @@ The first attempted correction replaced the shortest qualifying local autocorrel
 
 That change has been reverted. The current implementation restores the previous shortest-local-peak heuristic, which avoids the newly introduced slow-tempo regression but retains a known risk of selecting double-time aliases on real music. The configured-range confidence cap remains in place for estimates pinned near a search boundary. The boundary regression test uses a 220 BPM click track with a deliberately narrow 100–110 BPM search range. The existing alias heuristic returns approximately 109 BPM in that range, allowing the test to verify that an estimate pinned near the configured ceiling is marked low confidence. An earlier attempt to test a 180 BPM track with a 180 BPM ceiling was invalid: the heuristic returned 171.51 BPM, outside the boundary guard band.
 
-This is a rollback, not a completed tempo fix. The ten real tracks have not been reprocessed against a validated replacement algorithm. The next implementation must compare tempo aliases using additional evidence and explicitly represent ambiguity rather than assuming that either the strongest or shortest autocorrelation peak is always musically correct.
+This rollback did not complete tempo alias selection. The v1.3 recheck below updates timing resolution and confidence behavior, but does not establish a musically correct tempo for every track. The next tempo improvement must compare aliases using additional evidence and preserve ambiguity rather than assuming that either the strongest or shortest autocorrelation peak is always musically correct.
 
 
 ## Production-sequence reference set supplied by the owner
 
 The owner supplied seven finalized 2026 display sequences as examples of the actual production style. These are reference material, not a claim that every event is perfect and not a replacement for the written display rules. They are kept outside the repository because the native files contain the owner's complete preview and channel programming.
 
-| Sequence | Duration | Events | Active props |
-|---|---:|---:|---:|
-| Christmas Vacation Intro | 48.57 s | 2,643 | 48 |
-| Merry Christmas | 209.25 s | 35,360 | 48 |
-| Curse of the Ice Queen | 111.49 s | 18,870 | 47 |
-| Underneath the Tree | 230.68 s | 39,506 | 48 |
-| First Snow | 231.69 s | 31,549 | 47 |
-| Christmas Eve / Sarajevo 12/24 | 203.17 s | 46,125 | 47 |
-| Rudolph the Red-Nosed Reindeer | 188.31 s | 20,947 | 48 |
+| Sequence | Duration | Events | Events/sec | Median event | Active props |
+|---|---:|---:|---:|---:|---:|
+| Christmas Vacation Intro | 48.57 s | 2,643 | 54.4 | 0.27 s | 48 |
+| Merry Christmas | 209.25 s | 35,360 | 169.0 | 0.10 s | 48 |
+| Curse of the Ice Queen | 111.49 s | 18,870 | 169.3 | 0.16 s | 47 |
+| Underneath the Tree | 230.68 s | 39,506 | 171.3 | 0.18 s | 48 |
+| First Snow | 231.69 s | 31,549 | 136.2 | 0.06 s | 47 |
+| Christmas Eve / Sarajevo 12/24 | 203.17 s | 46,125 | 227.0 | 0.06 s | 47 |
+| Rudolph the Red-Nosed Reindeer | 188.31 s | 20,947 | 111.2 | 0.13 s | 48 |
 
-The seven sequences contain 195,000 light events. Their event densities vary substantially, so raw event count is not a quality score. They are useful for studying prop distribution, effect density, short-event timing, and the owner's established visual style. Only Christmas Vacation Intro and Underneath the Tree have matching audio files in the separate ten-track analysis set; the other five are not treated as matched audio/sequence pairs.
+All seven files contain 49 configured props, with 47–48 showing event activity. The 195,000 total is a count of serialized effect records, not unique musical hits or a quality score. Exact duplicate records occur on Perimeter Lights in First Snow, Christmas Eve / Sarajevo, and Rudolph, so raw counts should be used descriptively rather than as a target. Only Christmas Vacation Intro and Underneath the Tree have matching audio files in the separate ten-track analysis set; the other five are not treated as matched audio/sequence pairs.
+
+The two matched pairs have closely aligned durations: Christmas Vacation Intro is 48.58 s in audio versus 48.57 s in the sequence; Underneath the Tree is 230.66 s in audio versus 230.68 s in the sequence. This confirms duration correspondence, not event-by-event musical alignment.
 
 The sequence files use centisecond timestamps. Their short-event distributions make the previous 50 ms audio-frame hop unsuitable for evaluating the owner's stated approximately 30 ms light lead. The analyzer therefore moves to a 10 ms hop with overlapping 50 ms RMS/energy-flux windows. This is a timing-resolution improvement only; it does not resolve tempo aliases, identify musical sections, or prove that any generated light event is musically correct. The JSON contract is version 1.3 and records both hop and window durations. Tempo estimation now rejects periodicity that explains less than 1% of onset-flux variance (preventing steady-tone window ripple from creating a tempo), and beat-phase confidence explicitly penalizes meaningful half-period accents. All seven production sequences remain owner-authored examples and are not automatically normalized or rewritten by the analyzer.
+
+
+## v1.3 ten-track recheck
+
+All ten supplied audio streams were reprocessed using an independent source-equivalent reproduction of the v1.3 feature and tempo logic: 50 ms RMS/energy-flux windows at a 10 ms hop, the 1% periodicity-variance floor, and half-period phase ambiguity penalty. This was not an invocation of the packaged CLI, so treat the figures as a reproducible source-equivalent check pending a final packaged-CLI run.
+
+| Track | Duration | Selected BPM | Tempo confidence | Onset candidates | Beat-grid status |
+|---|---:|---:|---:|---:|---|
+| Christmas Vacation Intro | 48.58 s | 196.12 | 0.6484 | 274 | ambiguous |
+| Under the Christmas Tree | 230.66 s | 96.88 | 0.6550 | 2,603 | ambiguous |
+| It's the Most Wonderful Time | 152.57 s | 200.45* | 0.1000 | 1,947 | ambiguous |
+| Siberian Sleigh Ride | 188.50 s | 167.04 | 0.7317 | 2,973 | ambiguous |
+| Last Christmas | 208.25 s | 115.99 | 0.7044 | 1,467 | ambiguous |
+| Jingle Bells | 161.94 s | 123.15 | 0.4552 | 1,236 | ambiguous |
+| Christmas Time Is Here | 165.84 s | 200.45* | 0.1000 | 415 | ambiguous |
+| Deck the Halls | 95.95 s | 193.91 | 0.7038 | 893 | ambiguous |
+| Frosty the Snowman | 142.68 s | 148.56 | 0.4931 | 887 | ambiguous |
+| You're a Mean One, Mr. Grinch | 151.53 s | 160.81 | 0.5610 | 1,114 | ambiguous |
+
+*200.45 BPM is at the configured upper search boundary and is confidence-capped. The two matched production sequences again agree with their source-audio durations within 0.02 seconds.
+
+The v1.3 phase check leaves all ten beat grids ambiguous. The strongest competing phase, including the half-period alternative, carries at least 46% of the selected phase score on this set. That is evidence that RMS/energy-flux alone cannot reliably decide which recurring accent is the metrical beat; it is not evidence that the songs have no beat. The selected BPM values also remain candidates rather than ground truth. Half/double-time alternatives remain material on several tracks, including Siberian Sleigh Ride, Deck the Halls, and Frosty the Snowman.
+
+The v1.3 changes improve timestamp granularity, suppress steady-tone periodic ripple, expose the selected tempo in the candidate list, and make competing phase evidence more conservative. They do not yet satisfy the tempo-alias acceptance criterion or prove that the analysis is musically actionable. Phase 4 remains open; Phase 5 remains blocked.
