@@ -437,6 +437,7 @@ def analyze_audio(
                 "provenance": "All timestamps are relative to the decoded audio stream start; frame features use 551-sample windows at 11025 Hz.",
                 "limitations": [
                     "Tempo is a single global estimate; tempo changes are not modeled.",
+                    "Strong repeating accents, syncopation, and subdivisions can create half-time or double-time ambiguity; tempo confidence is heuristic.",
                     "Downbeats assume the first detected beat is beat one and group every four beats.",
                     "Phrase boundaries are fixed 16-beat candidates, not semantic phrase detection.",
                     "Section candidates are energy transitions only; verse/chorus labels are not inferred.",
