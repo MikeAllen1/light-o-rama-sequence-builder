@@ -25,7 +25,9 @@ from lor_sequence_builder.timeline import (
 )
 
 SUPPORTED_DEVICE_TYPES = frozenset({"LOR"})
-SUPPORTED_TRADITIONAL_TYPES = frozenset({"Single Color", "Multicolor_string_1_ch"})
+SUPPORTED_TRADITIONAL_TYPES = frozenset(
+    {"Single Color", "Multicolor_string_1_ch", "Channel_per_color"}
+)
 MAX_BPM = 300
 MIN_BPM = 30
 MAX_TIMELINE_EVENTS = 250_000
@@ -366,12 +368,20 @@ def _build_timeline(
                     f"Native channel {index} is missing row, col, or color coordinates"
                 )
                 break
-            # Verified S6 v15 LOR fixtures use one native row and zero-based
-            # sequential columns. ChannelGrid entry order maps to that column.
-            if row != "0" or col != str(index):
+            # Verified S6 v15 mappings use ChannelGrid entry order. Ordinary
+            # one-channel/multichannel props index native channels by column;
+            # Channel_per_color indexes native channels by the color coordinate.
+            if traditional_type == "Channel_per_color":
+                expected_coordinates = ("0", "0", str(index))
+            else:
+                expected_coordinates = ("0", str(index), color)
+            if (row, col, color) != expected_coordinates:
                 mapping_error = (
-                    f"Native channel {index} has unverified coordinates row={row!r}, "
-                    f"col={col!r}; expected row='0', col={str(index)!r}"
+                    f"Native channel {index} has unverified coordinates "
+                    f"row={row!r}, col={col!r}, color={color!r}; "
+                    f"expected row={expected_coordinates[0]!r}, "
+                    f"col={expected_coordinates[1]!r}, "
+                    f"color={expected_coordinates[2]!r}"
                 )
                 break
             coordinates = (row, col, color)
