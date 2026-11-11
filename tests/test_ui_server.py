@@ -11,8 +11,8 @@ import pytest
 from lor_sequence_builder.ui_server import (
     _WEB_ROOT,
     SequencerRequestHandler,
-    _looks_like_mp3,
     _detect_audio_suffix,
+    _looks_like_mp3,
 )
 
 
@@ -108,5 +108,6 @@ def test_audio_container_detection_uses_content_not_client_filename() -> None:
     assert _detect_audio_suffix(b"RIFF" + bytes(4) + b"WAVE" + bytes(20)) == ".wav"
     assert _detect_audio_suffix(b"fLaC" + bytes(20)) == ".flac"
     assert _detect_audio_suffix(b"OggS" + bytes(20)) == ".ogg"
+    assert _detect_audio_suffix(bytes([255, 241, 80, 128]) + bytes(20)) == ".aac"
     assert _detect_audio_suffix(bytes(4) + b"ftypM4A " + bytes(20)) == ".m4a"
     assert _detect_audio_suffix(b"not-an-audio-container") is None
