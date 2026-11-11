@@ -6,6 +6,7 @@ import argparse
 import sys
 from collections.abc import Sequence
 
+from lor_sequence_builder.audio_analysis import AudioAnalysisError, analyze_audio
 from lor_sequence_builder.loredit import LoreditError, read_loredit, write_loredit
 from lor_sequence_builder.lorprev import LorprevError, read_lorprev
 from lor_sequence_builder.pulse import PulseGenerationError, build_pulse_sequence
@@ -38,6 +39,14 @@ def _build_parser() -> argparse.ArgumentParser:
         default=10,
         help="pulse duration in centiseconds (default: 10)",
     )
+    analyze = commands.add_parser(
+        "analyze-audio", help="analyze music and write JSON plus SVG diagnostics"
+    )
+    analyze.add_argument("audio", help="input audio file supported by FFmpeg")
+    analyze.add_argument("--output-json", required=True, help="new versioned analysis JSON path")
+    analyze.add_argument("--plot", required=True, help="new SVG diagnostic plot path")
+    analyze.add_argument("--min-bpm", type=int, default=60, help="minimum tempo to search (default: 60)")
+    analyze.add_argument("--max-bpm", type=int, default=200, help="maximum tempo to search (default: 200)")
     return parser
 
 
@@ -52,6 +61,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.print_help()
         return 0
     try:
+        if options.command == "analyze-audio":
+            report = analyze_audio(
+                options.audio,
+                options.output_json,
+                options.plot,
+                min_bpm=options.min_bpm,
+                max_bpm=options.max_bpm,
+            )
+            analysis = report["analysis"]
+            tempo = analysis["tempo"]
+            print(f"Analysis: {options.output_json}")
+            print(f"Diagnostic plot: {options.plot}")
+            print(f"Duration: {report['audio']['duration_seconds']} seconds")
+            print(f"Estimated tempo: {tempo['bpm']} BPM (confidence {tempo['confidence']})")
+            print(f"Beats: {len(analysis['beats'])}")
+            print(f"Downbeats: {len(analysis['downbeats'])}")
+            print(f"Onsets: {len(analysis['onsets'])}")
+            print(f"Section candidates: {len(analysis['section_candidates'])}")
+            print(f"Hard stops: {len(analysis['hard_stops'])}")
+            return 0
         if options.command == "pulse":
             result = build_pulse_sequence(
                 preview_path=options.preview,
@@ -118,7 +147,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         output = write_loredit(document, options.output)
         print(f"Wrote: {output}")
         return 0
-    except (LoreditError, LorprevError, PulseGenerationError, OSError) as exc:
+    except (AudioAnalysisError, LoreditError, LorprevError, PulseGenerationError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 

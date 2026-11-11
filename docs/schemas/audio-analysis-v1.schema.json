@@ -1,0 +1,366 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MikeAllen1/light-o-rama-sequence-builder/blob/master/docs/schemas/audio-analysis-v1.schema.json",
+  "title": "Light-O-Rama Sequence Builder Audio Analysis v1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "audio",
+    "tool_versions",
+    "configuration",
+    "analysis"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "audio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "file_name",
+        "sha256",
+        "duration_seconds",
+        "normalized_sample_rate",
+        "channels",
+        "sample_format"
+      ],
+      "properties": {
+        "file_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-fA-F0-9]{64}$"
+        },
+        "duration_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1800
+        },
+        "normalized_sample_rate": {
+          "const": 11025
+        },
+        "channels": {
+          "const": 1
+        },
+        "sample_format": {
+          "const": "signed 16-bit PCM"
+        }
+      }
+    },
+    "tool_versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "analyzer_schema",
+        "ffmpeg",
+        "python"
+      ],
+      "properties": {
+        "analyzer_schema": {
+          "const": "1.0"
+        },
+        "ffmpeg": {
+          "type": "string",
+          "minLength": 1
+        },
+        "python": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "frame_seconds",
+        "minimum_bpm",
+        "maximum_bpm",
+        "minimum_duration_seconds",
+        "maximum_duration_seconds",
+        "maximum_input_bytes",
+        "confidence_values"
+      ],
+      "properties": {
+        "frame_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "minimum_bpm": {
+          "type": "integer",
+          "minimum": 30,
+          "maximum": 299
+        },
+        "maximum_bpm": {
+          "type": "integer",
+          "minimum": 31,
+          "maximum": 300
+        },
+        "minimum_duration_seconds": {
+          "const": 2
+        },
+        "maximum_duration_seconds": {
+          "const": 1800
+        },
+        "maximum_input_bytes": {
+          "const": 209715200
+        },
+        "confidence_values": {
+          "const": "heuristic and uncalibrated"
+        }
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "provenance",
+        "limitations",
+        "tempo",
+        "beats",
+        "downbeats",
+        "onsets",
+        "energy",
+        "phrase_boundaries",
+        "section_candidates",
+        "hard_stops"
+      ],
+      "properties": {
+        "method": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provenance": {
+          "type": "string",
+          "minLength": 1
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tempo": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "bpm",
+            "confidence",
+            "method"
+          ],
+          "properties": {
+            "bpm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 30,
+              "maximum": 300
+            },
+            "confidence": {
+              "$ref": "#/$defs/confidence"
+            },
+            "method": {
+              "type": "string"
+            }
+          }
+        },
+        "beats": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/timedEvent"
+          }
+        },
+        "downbeats": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/timedEvent"
+          }
+        },
+        "onsets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "time",
+              "strength",
+              "confidence",
+              "method"
+            ],
+            "properties": {
+              "time": {
+                "$ref": "#/$defs/time"
+              },
+              "strength": {
+                "type": "number",
+                "minimum": 0
+              },
+              "confidence": {
+                "$ref": "#/$defs/confidence"
+              },
+              "method": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "energy": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "time",
+              "rms",
+              "method"
+            ],
+            "properties": {
+              "time": {
+                "$ref": "#/$defs/time"
+              },
+              "rms": {
+                "type": "number",
+                "minimum": 0
+              },
+              "method": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "phrase_boundaries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "time",
+              "kind",
+              "confidence",
+              "basis",
+              "method"
+            ],
+            "properties": {
+              "time": {
+                "$ref": "#/$defs/time"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "confidence": {
+                "$ref": "#/$defs/confidence"
+              },
+              "basis": {
+                "type": "string"
+              },
+              "method": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "section_candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "time",
+              "kind",
+              "relative_change",
+              "confidence",
+              "label",
+              "method"
+            ],
+            "properties": {
+              "time": {
+                "$ref": "#/$defs/time"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "relative_change": {
+                "type": "number",
+                "minimum": 0
+              },
+              "confidence": {
+                "$ref": "#/$defs/confidence"
+              },
+              "label": {
+                "type": "null"
+              },
+              "method": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "hard_stops": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "time",
+              "silence_duration",
+              "confidence",
+              "method"
+            ],
+            "properties": {
+              "time": {
+                "$ref": "#/$defs/time"
+              },
+              "silence_duration": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "confidence": {
+                "$ref": "#/$defs/confidence"
+              },
+              "method": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "time": {
+      "type": "number",
+      "minimum": 0
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "timedEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "time",
+        "confidence",
+        "method"
+      ],
+      "properties": {
+        "time": {
+          "$ref": "#/$defs/time"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "method": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
