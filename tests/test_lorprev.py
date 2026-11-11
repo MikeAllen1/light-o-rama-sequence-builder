@@ -341,7 +341,7 @@ def test_nested_unrecognized_shape_is_not_interpreted_as_prop_geometry(
     assert len(model.geometry_points) == 1
     assert model.geometry_points[0].x.value == "1"
     assert [node.tag for node in model.unrecognized_elements] == [
-        "ControllerClass", "shape"
+        "ControllerClass"
     ]
 
 
