@@ -149,9 +149,9 @@ def _detect_onsets(flux: list[float]) -> list[dict[str, Any]]:
 
 def _estimate_tempo(
     flux: list[float], min_bpm: int, max_bpm: int
-) -> tuple[float | None, float, float | None, int | None]:
+) -> tuple[float | None, float, float | None, int | None, float]:
     if len(flux) < 40:
-        return None, 0.0, None, None
+        return None, 0.0, None, None, 0.0
     # Autocorrelation of onset strength; frame spacing is 50 ms.
     mean = math.fsum(flux) / len(flux)
     centered = [value - mean for value in flux]
@@ -207,7 +207,21 @@ def _estimate_tempo(
         for phase in range(period)
     ]
     phase = max(range(period), key=lambda item: phase_scores[item])
-    return round(bpm, 2), round(confidence, 4), refined_lag, phase
+    # Adjacent frame offsets often represent the same transient smeared across
+    # neighboring analysis windows. Compare the winning phase with the strongest
+    # genuinely separate phase, not merely the second-highest adjacent frame.
+    separation = max(2, round(period * 0.2))
+    alternatives = [
+        score for offset, score in enumerate(phase_scores)
+        if min((offset - phase) % period, (phase - offset) % period) >= separation
+    ]
+    alternate_score = max(alternatives, default=0.0)
+    winning_score = phase_scores[phase]
+    phase_confidence = (
+        max(0.0, min(1.0, (winning_score - alternate_score) / (winning_score + 1e-12)))
+        if winning_score > 1e-12 else 0.0
+    )
+    return round(bpm, 2), round(confidence, 4), refined_lag, phase, round(phase_confidence, 4)
 
 
 def _energy_curve(rms: list[float]) -> list[dict[str, Any]]:
@@ -390,7 +404,9 @@ def analyze_audio(
             ffmpeg_version = _normalize(source, normalized)
             rms, flux, duration = _read_features(normalized)
         onsets = _detect_onsets(flux)
-        bpm, tempo_confidence, lag, phase = _estimate_tempo(flux, min_bpm, max_bpm)
+        bpm, tempo_confidence, lag, phase, phase_confidence = _estimate_tempo(
+            flux, min_bpm, max_bpm
+        )
         beat_times: list[float] = []
         downbeats: list[float] = []
         if lag is not None and phase is not None and bpm is not None:
@@ -439,6 +455,7 @@ def analyze_audio(
                 "limitations": [
                     "Tempo is a single global estimate; tempo changes are not modeled.",
                     "Strong repeating accents, syncopation, and subdivisions can create half-time or double-time ambiguity; tempo confidence is heuristic.",
+                    "Beat phase is selected from repeating onset energy; competing beat/offbeat phases reduce beat confidence and cannot be resolved reliably without musical context.",
                     "Downbeats assume the first detected beat is beat one and group every four beats.",
                     "Phrase boundaries are fixed 16-beat candidates, not semantic phrase detection.",
                     "Section candidates are energy transitions only; verse/chorus labels are not inferred.",
@@ -451,12 +468,14 @@ def analyze_audio(
                     "method": "onset-envelope autocorrelation",
                 },
                 "beats": [
-                    {"time": value, "confidence": tempo_confidence,
-                     "method": "global_onset_envelope_autocorrelation_grid"}
+                    {"time": value, "confidence": round(tempo_confidence * phase_confidence, 4),
+                     "method": "global_onset_envelope_autocorrelation_grid_with_phase_separation"}
                     for value in beat_times
                 ],
                 "downbeats": [
-                    {"time": value, "confidence": round(tempo_confidence * 0.7, 4),
+                    {"time": value, "confidence": round(
+                        tempo_confidence * phase_confidence * 0.7, 4
+                     ),
                      "method": "provisional_first_beat_plus_four_beat_meter_assumption"}
                     for value in downbeats
                 ],
