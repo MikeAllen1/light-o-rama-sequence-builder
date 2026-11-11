@@ -932,15 +932,19 @@ def test_direct_movement_with_non_iterable_props_fails_without_crashing() -> Non
 
 
 @pytest.mark.parametrize(
-    "field",
-    ["effects", "movements", "sections", "hard_stops_centiseconds", "vocal_regions"],
+    "field", ["effects", "movements", "sections", "hard_stops_centiseconds"]
 )
-def test_direct_choreography_rejects_non_tuple_collections(
-    field: str,
-) -> None:
+def test_direct_choreography_rejects_non_tuple_collections(field: str) -> None:
     base = Choreography(duration_centiseconds=SONG, effects=())
     timeline = dataclasses.replace(base, **{field: cast(Any, None)})
     with pytest.raises(ChoreographyError, match=field):
+        _check(classic_yard(), timeline)
+
+
+def test_direct_choreography_rejects_non_tuple_vocal_regions() -> None:
+    base = Choreography(duration_centiseconds=SONG, effects=())
+    timeline = dataclasses.replace(base, vocal_regions=cast(Any, []))
+    with pytest.raises(ChoreographyError, match="vocal_regions"):
         _check(classic_yard(), timeline)
 
 
