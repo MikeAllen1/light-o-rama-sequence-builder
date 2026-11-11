@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "light-o-rama-sequence-builder"
-dynamic = ["version"]
+version = "0.1.0"
 license = "MIT"
 description = "A display-independent Light-O-Rama S6 sequence builder"
 readme = "README.md"
@@ -17,8 +17,6 @@ lor-sequence-builder = "lor_sequence_builder.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.setuptools.dynamic]
-version = { attr = "lor_sequence_builder.__version__" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
