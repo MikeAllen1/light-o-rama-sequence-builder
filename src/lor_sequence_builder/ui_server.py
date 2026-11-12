@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qs, urlsplit
 
+from lor_sequence_builder import __version__
 from lor_sequence_builder.audio_analysis import (
     INPUT_DEMUXERS,
     MAX_INPUT_BYTES,
@@ -107,7 +108,7 @@ def _detect_audio_suffix(payload: bytes) -> str | None:
 class SequencerRequestHandler(SimpleHTTPRequestHandler):
     """Serve only packaged UI assets and accept bounded audio uploads for local analysis."""
 
-    server_version = "LORSequencer/0.1"
+    server_version = "LORSequencer/" + __version__
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, directory=str(_WEB_ROOT), **kwargs)
