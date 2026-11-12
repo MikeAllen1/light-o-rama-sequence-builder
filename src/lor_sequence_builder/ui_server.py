@@ -34,7 +34,8 @@ _MAX_JSON_BYTES = 256 * 1024
 # Shows being built from the browser (preview, song, requirements, generate).
 SHOWS = ShowSessions()
 _SHOW_STEPS = {"/api/show/start", "/api/show/audio", "/api/show/requirements",
-               "/api/show/generate", "/api/show/test"}
+               "/api/show/generate", "/api/show/test", "/api/show/batch",
+               "/api/show/batch-zip", "/api/show/batch-clear"}
 
 
 def _looks_like_mp3(data: bytes) -> bool:
@@ -158,6 +159,23 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
                     return
                 name = query.get("name", ["display.lorprev"])[0][:200]
                 self._send_json(200, SHOWS.start(payload, name))
+            elif path == "/api/show/batch":
+                payload = self._read_body("application/octet-stream", _MAX_UPLOAD_BYTES,
+                                          "Audio")
+                if payload is None:
+                    return
+                suffix = _detect_audio_suffix(payload)
+                if suffix is None or suffix not in INPUT_DEMUXERS:
+                    self.send_error(415, "Unsupported or unrecognized audio container")
+                    return
+                meter = query.get("beats_per_bar", ["4"])[0]
+                if meter not in {"3", "4"}:
+                    self.send_error(400, "beats_per_bar must be 3 or 4")
+                    return
+                style = query.get("style", [""])[0] or None
+                self._send_json(200, SHOWS.batch_song(
+                    token, payload, suffix, INPUT_DEMUXERS[suffix],
+                    query.get("name", ["song"])[0][:200], int(meter), style))
             elif path == "/api/show/audio":
                 payload = self._read_body("application/octet-stream", _MAX_UPLOAD_BYTES,
                                           "Audio")
@@ -203,6 +221,10 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
                             return
                     result = SHOWS.set_requirements(token, body, request_id=request_id)
                     self._send_json(200, result)
+                elif path == "/api/show/batch-zip":
+                    self._send_json(200, SHOWS.batch_zip(token))
+                elif path == "/api/show/batch-clear":
+                    self._send_json(200, SHOWS.batch_clear(token))
                 elif path == "/api/show/test":
                     self._send_json(200, SHOWS.display_test(token))
                 else:
