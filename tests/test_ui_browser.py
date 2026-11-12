@@ -342,6 +342,18 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                     page.locator("#reviewText").fill("Hello lights revised")
                     page.locator("#reviewApply").click()
                     assert "unsaved music review" in page.locator("#editStatus").inner_text().lower()
+                    page.locator("#sequenceFile").set_input_files(
+                        {
+                            "name": "browser-acceptance-reopened.loredit",
+                            "mimeType": "text/xml",
+                            "buffer": _sequence_xml().encode("utf-8"),
+                        }
+                    )
+                    page.locator("#analysisMessage").filter(
+                        has_text="Loaded 1 native props"
+                    ).wait_for(timeout=10000)
+                    assert "unsaved music review" in page.locator("#editStatus").inner_text().lower()
+                    assert not page.locator("#undoButton").is_disabled()
                     page.locator("#undoButton").click()
                     assert "unsaved music review" not in page.locator("#editStatus").inner_text().lower()
 
@@ -368,6 +380,38 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                     ).wait_for(timeout=10000)
                     assert page.locator("#audioPlayer").evaluate("(a) => a.src") == previous_audio_url
                     assert "unsaved music review" in page.locator("#editStatus").inner_text().lower()
+
+                    # Saving the review keeps its undo command available until a
+                    # successful audio replacement makes that history obsolete.
+                    with page.expect_download():
+                        page.locator("#saveReviewButton").click()
+                    assert not page.locator("#undoButton").is_disabled()
+                    previous_audio_url = page.locator("#audioPlayer").evaluate("(a) => a.src")
+                    page.locator("#audioFile").set_input_files(
+                        {
+                            "name": "replacement-accepted.wav",
+                            "mimeType": "audio/wav",
+                            "buffer": audio_path.read_bytes(),
+                        }
+                    )
+                    for _ in range(80):
+                        current_audio_url = page.locator("#audioPlayer").evaluate("(a) => a.src")
+                        if current_audio_url and current_audio_url != previous_audio_url:
+                            break
+                        page.wait_for_timeout(25)
+                    assert current_audio_url != previous_audio_url
+                    page.locator("#analysisMessage").filter(
+                        has_text="Audio analysis complete"
+                    ).wait_for(timeout=15000)
+                    assert page.locator("#undoButton").is_disabled()
+                    page.locator("#lyricsFile").set_input_files(
+                        {
+                            "name": "song.lrc",
+                            "mimeType": "text/plain",
+                            "buffer": b"[00:00.50]Hello lights\\n[00:00.50]Harmony\\n[00:01.50]Second line\\n",
+                        }
+                    )
+                    page.locator("#markerLabels").filter(has_text="Lyrics").wait_for()
 
                     # Imported analysis, vocals and lyrics must belong to this song.
                     # A failed import must leave the existing, correct lanes untouched.
