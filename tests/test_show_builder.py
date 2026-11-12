@@ -208,6 +208,28 @@ def test_batch_publish_failure_removes_partial_artifact(
     sessions.close()
 
 
+def test_batch_zip_rejects_oversized_archive_before_allocating_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    sessions = show_builder.ShowSessions()
+    token = sessions.start(preview, "yard.lorprev")["token"]
+    session = sessions.get(token)
+    done = session.path / "batch"
+    done.mkdir()
+    (done / "large.loredit").write_bytes(b"x" * 8)
+    (done / "large (generated).report.html").write_bytes(b"y" * 8)
+    session.batch.append({
+        "ok": True, "show": "large.loredit", "stem": "large", "file_name": "large.wav",
+    })
+    monkeypatch.setattr(show_builder, "MAX_BATCH_ARCHIVE_BYTES", 10)
+
+    with pytest.raises(show_builder.ShowBuildError, match="100 MiB download limit"):
+        sessions.batch_zip(token)
+
+    sessions.close()
+
+
 def test_batch_clear_failure_keeps_the_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     preview = _preview(tmp_path, classic_yard()).read_bytes()
     sessions = show_builder.ShowSessions()
