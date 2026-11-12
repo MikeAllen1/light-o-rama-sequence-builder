@@ -3120,8 +3120,8 @@
 
   const show = { token: null, summary: null, audioFile: null, analysis: null, raw: [],
     result: null, resultConfig: null, audioRequestId: 0, audioPending: false,
-    requirementsPending: false, requirementsRequestId: 0, batchRunning: false,
-    generationPending: false };
+    requirementsPending: false, requirementsRequestId: 0, displayRequestId: 0,
+    batchRunning: false, generationPending: false };
 
   function showMessage(id, text, kind) {
     const element = $(id);
@@ -3273,12 +3273,14 @@
   }
 
   async function chooseDisplay(file) {
-    if (!file) return;
+    if (!file || show.batchRunning || show.generationPending) return;
+    const requestId = ++show.displayRequestId;
     showMessage("displayStatus", "Reading " + file.name + "…");
     try {
       if (file.size > 20 * 1024 * 1024) throw new Error("A preview must be 20 MiB or smaller.");
       const summary = await postShow("/api/show/start?name=" + encodeURIComponent(file.name),
         await file.text(), "application/xml");
+      if (requestId !== show.displayRequestId) return;
       show.token = summary.token;
       show.summary = summary;
       show.test = null;
@@ -3288,10 +3290,10 @@
       show.analysis = null;
       show.audioFile = null;
       show.raw = summary.raw_requirements || [];
-      show.audioRequestId = 0;
+      show.audioRequestId += 1;
       show.audioPending = false;
       show.requirementsPending = false;
-      show.requirementsRequestId = 0;
+      show.requirementsRequestId += 1;
       invalidateGeneratedResult();
       show.songName = "";
       show.songSeconds = null;
@@ -3317,10 +3319,11 @@
           "use the form instead.";
       if (show.audioFile) await chooseSong(show.audioFile);
     } catch (error) {
+      if (requestId !== show.displayRequestId) return;
       showMessage("displayStatus", (error.message || String(error)) +
-        " The previously loaded display remains active.", "error");
+        (show.token ? " The previously loaded display remains active." : ""), "error");
     }
-    setStepEnabled();
+    if (requestId === show.displayRequestId) setStepEnabled();
   }
 
   async function chooseSong(file) {
