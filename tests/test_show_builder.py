@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import zipfile
 import os
 import shutil
 import threading
 import time
 from collections.abc import Iterator
+from io import BytesIO
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
@@ -421,6 +423,101 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
     document = read_loredit(target)
     assert document.root.attrib["musicFilename"] == "beat.wav"
     assert effect_timing_problems(document) == []
+
+
+def test_batch_zip_is_streamed_as_a_file_download(
+    server: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Windows can refuse to delete a file briefly after it has been streamed.
+    # That cleanup failure must not turn the successful download into an HTTP 500.
+    path_type = type(tmp_path)
+    original_unlink = path_type.unlink
+    failed_cleanup: list[Path] = []
+
+    def refuse_batch_cleanup(path: Path, *args: Any, **kwargs: Any) -> None:
+        if path.name.startswith("lor-batch-"):
+            failed_cleanup.append(path)
+            raise PermissionError("synthetic file-in-use failure")
+        original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(path_type, "unlink", refuse_batch_cleanup)
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    started = SHOWS.start(preview, "yard.lorprev")
+    token = started["token"]
+    session = SHOWS.get(token)
+    done = session.path / "batch"
+    done.mkdir()
+    (done / "Song (generated).loredit").write_text("<sequence/>", encoding="utf-8")
+    (done / "Song (generated).report.html").write_text("<html/>", encoding="utf-8")
+    session.batch.append({
+        "stem": "Song", "file_name": "Song.wav", "ok": True,
+        "show": "Song (generated).loredit",
+    })
+    try:
+        request = Request(
+            server + "/api/show/batch-zip?token=" + token,
+            data=b"{}", method="POST", headers={"Content-Type": "application/json"},
+        )
+        with urlopen(request, timeout=10) as response:
+            payload = response.read()
+            assert response.status == 200
+            assert response.headers.get_content_type() == "application/zip"
+            assert "Fictional%20Classic%20Yard%20shows.zip" in response.headers["Content-Disposition"]
+        archive = BytesIO(payload)
+        assert zipfile.is_zipfile(archive)
+        archive.seek(0)
+        with zipfile.ZipFile(archive) as zipped:
+            assert set(zipped.namelist()) == {
+                "Song (generated).loredit",
+                "Song (generated).report.html",
+                "Batch - read me.txt",
+            }
+        assert len(failed_cleanup) == 1
+        assert failed_cleanup[0].is_file()
+        original_unlink(failed_cleanup[0], missing_ok=True)
+    finally:
+        with SHOWS._lock:
+            SHOWS._drop(token)
+
+
+def test_batch_download_open_failure_returns_error_before_zip_headers(
+    server: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    started = SHOWS.start(preview, "yard.lorprev")
+    token = started["token"]
+    session = SHOWS.get(token)
+    done = session.path / "batch"
+    done.mkdir()
+    (done / "Song (generated).loredit").write_text("<sequence/>", encoding="utf-8")
+    (done / "Song (generated).report.html").write_text("<html/>", encoding="utf-8")
+    session.batch.append({
+        "stem": "Song", "file_name": "Song.wav", "ok": True,
+        "show": "Song (generated).loredit",
+    })
+
+    original_open = Path.open
+
+    def refuse_batch_open(path: Path, *args: Any, **kwargs: Any) -> Any:
+        if path.name.startswith("lor-batch-"):
+            raise PermissionError("synthetic archive-open failure")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", refuse_batch_open)
+    request = Request(
+        server + "/api/show/batch-zip?token=" + token,
+        data=b"{}", method="POST", headers={"Content-Type": "application/json"},
+    )
+    try:
+        with pytest.raises(HTTPError) as error:
+            urlopen(request, timeout=10)
+        assert error.value.code == 500
+        payload = json.loads(error.value.read())
+        assert payload["error"]
+    finally:
+        with SHOWS._lock:
+            SHOWS._drop(token)
+
 
 
 def test_session_expiration_is_enforced_when_a_token_is_used(tmp_path: Path) -> None:
