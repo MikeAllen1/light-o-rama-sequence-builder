@@ -157,7 +157,10 @@ def build_from_timeline(
     music_filename: str,
     output_path: str | Path,
     report_path: str | Path,
+    beats: tuple[int, ...] = (),
 ) -> WriteResult:
+    """``beats`` (centiseconds), when given, are written as a "Beats" timing grid, so
+    the Sequencer snaps hand edits to the song's beat."""
     preview_source = Path(preview_path)
     output = Path(output_path)
     report_output = Path(report_path)
@@ -231,7 +234,12 @@ def build_from_timeline(
             preview,
             choreography.duration_centiseconds,
             music_filename,
-            timing_grids=(FreeTimingGrid("Sections", sections),) if sections else (),
+            timing_grids=(
+                *((FreeTimingGrid("Beats", tuple(sorted(
+                    {b for b in beats if 0 <= b <= choreography.duration_centiseconds}))),)
+                  if beats else ()),
+                *((FreeTimingGrid("Sections", sections),) if sections else ()),
+            ),
         )
     except NewSequenceError as exc:
         _write_build_report(

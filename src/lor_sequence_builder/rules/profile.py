@@ -98,10 +98,11 @@ RULE_SPECS: dict[str, RuleSpec] = {
         RuleSpec("motion_stops_at_hard_stops", "Motion stops when the music stops", False, {}),
         RuleSpec(
             "not_everything_at_once",
-            "Not every channel is on at once for long",
+            "Not every channel is bright at once for long",
             False,
             {
                 "max_share": _Param(float, 0.0, 1.0),
+                "bright": _Param(int, 1, 100),
                 "max_seconds": _Param(float, 0.0, 600.0),
                 "allow_sections": _NAMES,
             },

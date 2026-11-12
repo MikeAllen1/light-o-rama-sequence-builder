@@ -248,9 +248,12 @@ def _generate(
                 tuple(ExcludedProp("", name, reason) for name, reason in lms_display.excluded),
             )
         else:
+            beats = tuple(round(float(b["time"]) * 100)
+                          for b in analysis.get("analysis", {}).get("beats", [])
+                          if isinstance(b, dict) and isinstance(b.get("time"), int | float))
             written = build_from_timeline(
                 preview_path, plan.choreography, rule_set, music_filename or default_music,
-                paths["sequence"], paths["report"],
+                paths["sequence"], paths["report"], beats=beats,
             )
     except RulesFailedError as failed:
         _write_new(paths["plan"], _plan_document(plan, failed.report, analysis))

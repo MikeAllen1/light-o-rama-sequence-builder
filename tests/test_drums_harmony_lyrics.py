@@ -22,6 +22,7 @@ from lor_sequence_builder.planner import Plan, plan_show
 from lor_sequence_builder.rules import check_choreography, display_from_preview, load_rule_set
 from lor_sequence_builder.style import get_style
 from tests.display_builders import family_yard
+from tests.style_helpers import leads_only
 from tests.test_lms import s4_sequence
 from tests.test_planner import synthetic_analysis
 
@@ -92,7 +93,7 @@ def test_kicks_snares_and_the_unexpected_chord_are_found(drum_analysis: dict[str
 def _plan(analysis: dict[str, Any], style: str = "classic") -> Plan:
     display = family_yard()
     plan = plan_show(analysis, display_from_preview(display.element()), load_rule_set(),
-                     style=get_style(style))
+                     style=leads_only(style))
     report = check_choreography(display.element(), plan.choreography, load_rule_set())
     assert report.ok, report.format_text()
     return plan
