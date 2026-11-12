@@ -2566,9 +2566,10 @@
     if (!state.sequence || $("editor").classList.contains("hidden") ||
         !$("viewer").classList.contains("hidden")) return;
     const target = event.target;
-    if (target && ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
+    if (target && (["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName) ||
+        target.isContentEditable)) return;
     const mod = event.ctrlKey || event.metaKey;
-    if (target && ["BUTTON", "A"].includes(target.tagName) && !mod) return;
+    if (target && ["BUTTON", "A", "AUDIO", "VIDEO"].includes(target.tagName) && !mod) return;
     const key = event.key.toLowerCase();
     let handled = true;
     if (mod && key === "z" && !event.shiftKey) undoEdit();
