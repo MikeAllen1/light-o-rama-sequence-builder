@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qs, urlsplit
 
-from lor_sequence_builder import __version__, progress
+from lor_sequence_builder import __version__, progress, recent_shows
 from lor_sequence_builder.audio_analysis import (
     INPUT_DEMUXERS,
     MAX_INPUT_BYTES,
@@ -132,6 +132,7 @@ def _heavy_turn(path: str) -> Iterator[None]:
         _heavy.release()
 
 
+_RECENT = {"/api/recent", "/api/recent/open", "/api/recent/remove", "/api/recent/clear"}
 # A preview the program was started with (right-click "Build a show", or --preview),
 # handed to the page once so New show opens with it.
 _startup_lock = threading.Lock()
@@ -229,7 +230,7 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
         parsed = urlsplit(self.path)
         if parsed.path not in {"/api/analyze", "/api/export", "/api/update", "/api/log",
                                "/api/diagnostics", "/api/progress", "/api/startup",
-                               *_SHOW_STEPS}:
+                               *_RECENT, *_SHOW_STEPS}:
             self.send_error(404, "This program has no such step.")
             return
         if not self._is_same_origin():
@@ -247,6 +248,9 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
 
             self._send_json(200, check_for_update())
             return
+        if parsed.path in _RECENT:
+            self._recent(parsed.path)
+            return
         if parsed.path == "/api/startup":
             self._send_json(200, _take_startup())
             return
@@ -259,6 +263,25 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
                 self._show_step(parsed.path, parse_qs(parsed.query))
                 return
             self._analyze(parsed.query)
+
+    def _recent(self, path: str) -> None:
+        body = self._read_json()
+        if body is None:
+            return
+        try:
+            if path == "/api/recent":
+                self._send_json(200, {"shows": recent_shows.listing()})
+            elif path == "/api/recent/open":
+                self._send_json(200, recent_shows.load(body.get("id", "")))
+            elif path == "/api/recent/remove":
+                recent_shows.remove(body.get("id", ""))
+                self._send_json(200, {"removed": True})
+            else:
+                self._send_json(200, {"removed": recent_shows.clear()})
+        except recent_shows.RecentShowError as exc:
+            self._send_json(404, {"error": str(exc)})
+        except OSError as exc:
+            self._send_json(500, {"error": friendly(exc)})
 
     def _show_step(self, path: str, query: dict[str, list[str]]) -> None:
         token = query.get("token", [""])[0]
