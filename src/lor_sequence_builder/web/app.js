@@ -45,6 +45,7 @@
     reviewSelection: null,
     reviewDrag: null,
     reviewDirty: false,
+    reviewRevision: 0,
     reviewBaseline: null,
     animationFrame: 0,
     audioRequestId: 0,
@@ -1476,6 +1477,7 @@
     if (!reviewAlreadyConfirmed && state.reviewDirty &&
         !window.confirm("Replace the unsaved music review?")) return;
     const requestId = ++state.audioRequestId;
+    const reviewRevisionAtStart = state.reviewRevision;
     state.audioDecodePending = true;
     setStepEnabled();
     state.analysisRequestId += 1;
@@ -1497,6 +1499,14 @@
       if (decoded && decoded.url) URL.revokeObjectURL(decoded.url);
       return;
     }
+    if (state.reviewRevision !== reviewRevisionAtStart && state.reviewDirty &&
+        !window.confirm("Replace the music-review changes made while the song was loading?")) {
+      if (decoded.url) URL.revokeObjectURL(decoded.url);
+      state.audioDecodePending = false;
+      setStepEnabled();
+      setBanner("Audio was not replaced. Your current song and music review remain loaded.", "warn");
+      return;
+    }
     state.audioDecodePending = false;
     setStepEnabled();
 
@@ -1513,6 +1523,7 @@
     state.waveformPeaks = decoded.peaks;
     state.audioUrl = decoded.url;
     state.analysis = presetAnalysis || null;
+    state.reviewRevision += 1;
     state.vocals = null;
     state.lyrics = null;
     state.reviewDirty = false;
@@ -1621,6 +1632,7 @@
       state.audioRequestId += 1; // A valid imported analysis supersedes in-flight auto-analysis.
       if (review || discardUnsavedReview) state.lyricRequestId += 1;
       state.analysis = data;
+      state.reviewRevision += 1;
       state.reviewLoaded = Boolean(review);
       state.reviewSaved = Boolean(review);
       state.reviewDirty = false;
@@ -1814,6 +1826,7 @@
       }
       if (state.reviewDirty && !window.confirm("Replace the unsaved music review?")) return;
       state.lyrics = data;
+      state.reviewRevision += 1;
       state.reviewSelection = null;
       state.reviewDirty = reviewHasChanges();
       refreshTimeline();
@@ -2946,6 +2959,7 @@
   }
 
   function afterMusicEdit(select) {
+    state.reviewRevision += 1;
     state.reviewDirty = reviewHasChanges();
     state.syncCheck = null;
     refreshTimeline();
