@@ -230,7 +230,7 @@ docs/                      Architecture, format evidence, and phased plan
 .github/workflows/         CI and CodeQL workflows
 SECURITY.md                Security policy
 CONTRIBUTING.md            Contribution rules and phase workflow
-LICENSE                    MIT license
+LICENSE                    MIT with the Commons Clause (free to use, not to sell)
 ```
 
 ## Scope and safety
@@ -243,3 +243,7 @@ LICENSE                    MIT license
 - No desktop wrapper or packaging yet; desktop delivery is deferred until the final stage. The browser workspace is local-only. Controller upload and live hardware playback remain out of scope. The browser workspace edits a copy in memory and exports a new file; it never changes the source sequence.
 
 This is an independent project and is not affiliated with or endorsed by Light-O-Rama.
+
+## License
+
+Free to use, copy, change and share, for your own display or anyone else's. The one thing you may not do is sell it: no selling the program, a copy of it, or a paid service that is mostly this program (for example, charging people for shows it generates). The terms are the MIT license with the Commons Clause; see [LICENSE](LICENSE). Bundled parts keep their own licenses (FFmpeg in the Windows app is LGPL).
