@@ -4260,7 +4260,7 @@
         show.testPending || show.displayPending || show.audioPending || show.requirementsPending) return;
     if (files.length > MAX_BATCH_SONGS) {
       showMessage("batchStatus", "A playlist can contain at most " + MAX_BATCH_SONGS +
-        " songs. Select 40 or fewer; the previous playlist has been kept.", "error");
+        " songs. No new playlist was started; select 40 or fewer.", "error");
       return;
     }
     const seenNames = new Set();
