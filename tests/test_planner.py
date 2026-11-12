@@ -429,6 +429,10 @@ def test_any_song_shape_plans_without_breaking_a_rule(seed: int) -> None:
     if rng.random() < 0.3:  # waltz time
         analysis["configuration"]["beats_per_bar"] = 3
         analysis["analysis"]["downbeats"] = analysis["analysis"]["beats"][::3]
+    if not analysis["analysis"]["beats"]:
+        with pytest.raises(PlanningError, match="will not invent a tempo"):
+            _plan(ALL_DISPLAYS[0](), analysis)
+        return
     for make in ALL_DISPLAYS:
         _, report = _plan(make(), analysis)
         assert report.ok, f"{make.__name__}: {report.format_text()}"
