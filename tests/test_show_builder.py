@@ -200,7 +200,19 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
             page.locator("#showDisplayFile").set_input_files(str(preview))
             page.locator("#displayStatus.good").wait_for(timeout=20000)
             assert "arches" in page.locator("#displayStatus").inner_text()
+            # Building a display test locks the display selection until its response
+            # arrives; otherwise an old display's test could be attached to a new one.
+            page.evaluate("""() => {
+              const original = window.fetch.bind(window);
+              window.fetch = (...args) => {
+                const url = typeof args[0] === "string" ? args[0] : args[0].url;
+                return url.includes("/api/show/test?")
+                  ? new Promise((resolve) => setTimeout(() => resolve(original(...args)), 700))
+                  : original(...args);
+              };
+            }""")
             page.locator("#makeTest").click()
+            assert page.locator("#showDisplayFile").is_disabled()
             page.locator("#testStatus.good").wait_for(timeout=30000)
             with page.expect_download() as test_files:
                 page.locator("#saveTest").click()
@@ -209,6 +221,19 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
             page.locator("#songStatus.good").wait_for(timeout=60000)
             assert "BPM" in page.locator("#songStatus").inner_text()
             assert page.locator("#musicFilename").input_value() == "beat.wav"
+
+            # A rejected replacement must leave the previously analyzed song usable.
+            bad_audio = tmp_path / "rejected.wav"
+            bad_audio.write_bytes(b"synthetic audio upload")
+            page.route("**/api/show/audio?*", lambda route: route.fulfill(
+                status=422, content_type="application/json",
+                body='{"error":"synthetic upload failure"}'))
+            page.locator("#showSongFile").set_input_files(str(bad_audio))
+            page.locator("#songStatus.error").wait_for(timeout=10000)
+            assert "beat.wav" in page.locator("#songStatus").inner_text()
+            assert page.locator("#musicFilename").input_value() == "beat.wav"
+            assert not page.locator("#generateShow").is_disabled()
+            page.unroute("**/api/show/audio?*")
             assert "S6 will look for beat.wav" in page.locator("#musicNote").inner_text()
             page.locator("#musicFilename").fill("Beat.mp3")
             assert "your song file is beat.wav" in page.locator("#musicNote.warn").inner_text()
