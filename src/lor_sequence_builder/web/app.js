@@ -1514,7 +1514,8 @@
         if (review.lyrics != null) checkLyrics(review.lyrics);
       }
       const analysis = data.analysis;
-      const currentDuration = currentMusicDuration();
+      const currentDuration = state.audioBuffer && Number.isFinite(state.audioBuffer.duration)
+        ? state.audioBuffer.duration : null;
       const incomingDuration = Number(data.audio && data.audio.duration_seconds);
       if (currentDuration != null && Math.abs(incomingDuration - currentDuration) > 1) {
         throw new Error("This analysis is for a different-length recording. Choose the analysis that matches the selected song.");
