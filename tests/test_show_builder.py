@@ -145,6 +145,25 @@ def test_requirement_persistence_failure_does_not_publish_session_state(
     sessions.close()
 
 
+def test_song_upload_rejects_names_that_would_be_truncated(tmp_path: Path) -> None:
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    sessions = show_builder.ShowSessions()
+    token = sessions.start(preview, "yard.lorprev")["token"]
+    long_name = "x" * 201 + ".wav"
+
+    with pytest.raises(show_builder.ShowBuildError, match="200 characters"):
+        sessions.add_audio(token, b"audio", ".wav", "ffmpeg", long_name, 4)
+    with pytest.raises(show_builder.ShowBuildError, match="200 characters"):
+        sessions.batch_song(token, b"audio", ".wav", "ffmpeg", long_name, 4, None)
+
+    session = sessions.get(token)
+    assert session.audio_path is None
+    assert session.analysis_path is None
+    assert session.audio_revision == 0
+    assert session.batch == []
+    sessions.close()
+
+
 def test_batch_publish_failure_removes_partial_artifact(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
