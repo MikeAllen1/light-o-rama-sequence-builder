@@ -266,6 +266,37 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                     page.locator("#undoButton").click()
                     assert "unsaved music review" not in page.locator("#editStatus").inner_text().lower()
 
+                    # Import lyrics while automatic analysis is still pending.
+                    # Analysis must still populate the beat lanes and leave the
+                    # imported lyrics available to save.
+                    previous_audio_url = page.locator("#audioPlayer").evaluate("(a) => a.src")
+                    page.evaluate("""() => {
+                      const nativeFetch = window.fetch.bind(window);
+                      window.__delayNextAnalysis = true;
+                      window.fetch = function (input, init) {
+                        const url = typeof input === "string" ? input : input.url;
+                        if (window.__delayNextAnalysis && url.includes("/api/analyze")) {
+                          window.__delayNextAnalysis = false;
+                          return new Promise((resolve, reject) => setTimeout(
+                            () => nativeFetch(input, init).then(resolve, reject), 1200
+                          ));
+                        }
+                        return nativeFetch(input, init);
+                      };
+                    }""")
+                    page.locator("#audioFile").set_input_files(
+                        {
+                            "name": "lyrics-before-analysis.wav",
+                            "mimeType": "audio/wav",
+                            "buffer": audio_path.read_bytes(),
+                        }
+                    )
+                    for _ in range(80):
+                        current_audio_url = page.locator("#audioPlayer").evaluate("(a) => a.src")
+                        if current_audio_url and current_audio_url != previous_audio_url:
+                            break
+                        page.wait_for_timeout(25)
+                    assert current_audio_url != previous_audio_url
                     page.locator("#lyricsFile").set_input_files(
                         {
                             "name": "song.lrc",
@@ -274,11 +305,17 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                         }
                     )
                     page.locator("#markerLabels").filter(has_text="Lyrics").wait_for()
+                    page.locator("#analysisMessage").filter(
+                        has_text="Audio analysis complete"
+                    ).wait_for(timeout=15000)
+                    assert "Beat candidates" in page.locator("#markerLabels").inner_text()
+                    assert not page.locator("#saveReviewButton").is_disabled()
+                    page.locator("#waveformCanvas").click(position={"x": 88, "y": 45})
+                    seconds = page.locator("#audioPlayer").evaluate("(a) => a.currentTime")
+                    pixels_per_second = 88 / seconds
                     # Lyrics sit first, right under the waveform.
                     first_lane = page.locator("#markerLabels > div").first.inner_text()
                     assert first_lane.startswith("Lyrics")
-                    seconds = page.locator("#audioPlayer").evaluate("(a) => a.currentTime")
-                    pixels_per_second = 88 / seconds
                     page.locator("#markersCanvas").click(
                         position={"x": 0.9 * pixels_per_second, "y": 11}
                     )
