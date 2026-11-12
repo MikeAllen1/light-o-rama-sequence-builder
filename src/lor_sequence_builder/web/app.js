@@ -4265,14 +4265,24 @@
     setStepEnabled();
     showMessage("batchStatus", "Packaging the completed shows and reports…");
     try {
-      const result = await postShow("/api/show/batch-zip?token=" + encodeURIComponent(token),
-        "{}", "application/json");
+      const response = await fetch(
+        "/api/show/batch-zip?token=" + encodeURIComponent(token),
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
+      );
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload && payload.error ? payload.error
+          : "The playlist archive could not be downloaded (code " + response.status + ").");
+      }
       if (token !== show.token || !show.batchReady || show.batchConfig !== currentBatchConfig()) {
         showMessage("batchStatus", "The playlist changed while it was being packaged. Build it again before saving.", "warn");
         return;
       }
-      download(bytesFromBase64(result.zip), result.zip_name, "application/zip");
-      showMessage("batchStatus", "Saved " + result.count + " completed show(s) in " + result.zip_name + ".", "good");
+      const disposition = response.headers.get("Content-Disposition") || "";
+      const encodedName = disposition.match(/filename\\*=UTF-8''([^;]+)/i);
+      const fileName = encodedName ? decodeURIComponent(encodedName[1]) : "shows.zip";
+      download(await response.blob(), fileName, "application/zip");
+      showMessage("batchStatus", "Saved the completed playlist as " + fileName + ".", "good");
     } catch (error) {
       showMessage("batchStatus", error.message || String(error), "error");
     } finally {
