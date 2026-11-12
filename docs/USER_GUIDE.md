@@ -93,6 +93,10 @@ It takes a few minutes per song. Without it, the mouths stay still and the repor
 
 In the workspace, the lanes above the tracks can be corrected by ear: move or add beats, bars, crashes and hits, name the sections (Verse, Chorus, Bridge...), fix lyric words, and fit an even tempo between two bars you confirm. **Save music review** writes a `.review.json`; generating from it (`generate --analysis song.review.json`) uses your corrections and your section names. Lyrics can be loaded from LRC, SRT or VTT files; `uv sync --extra lyrics` adds offline transcription. See [SEQUENCER_UI.md](SEQUENCER_UI.md).
 
+## Keyboard shortcuts
+
+In the workspace: **Space** or **K** play and pause, **J** and **L** go back and forward 5 seconds, **Home** goes to the start, **Y** shows the yard view, and **?** lists them all. Everything else can be reached with **Tab**.
+
 ## Fine-tuning
 
 Fine-tune in the S6 Sequencer: it is the full editor. The workspace's own editing is for quick fixes and for checking a show against the music before you open it in S6.

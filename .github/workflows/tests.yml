@@ -45,7 +45,7 @@ jobs:
         run: uv run --no-sync --with playwright==1.56.0 python -m playwright install chromium
 
       - name: Run tests, browser tests included
-        run: uv run --no-sync --with pytest==9.2.0 --with playwright==1.56.0 python -m pytest -ra
+        run: uv run --no-sync --with pytest==9.2.0 --with playwright==1.56.0 --with axe-playwright-python==0.1.8 python -m pytest -ra
 
   quality:
     name: Tests, lint, types, and dependency audit
@@ -91,7 +91,7 @@ jobs:
         run: uv run --no-sync --with playwright==1.56.0 python -m playwright install chromium --with-deps
 
       - name: Run tests
-        run: uv run --no-sync --with pytest==9.2.0 --with playwright==1.56.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 --with types-PyYAML==6.0.12.20260906 python -m pytest
+        run: uv run --no-sync --with pytest==9.2.0 --with playwright==1.56.0 --with axe-playwright-python==0.1.8 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 --with types-PyYAML==6.0.12.20260906 python -m pytest
 
       - name: Check lint
         run: uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 --with types-PyYAML==6.0.12.20260906 ruff check .
