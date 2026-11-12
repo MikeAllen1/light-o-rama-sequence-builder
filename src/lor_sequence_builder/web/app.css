@@ -40,6 +40,14 @@ button { color: inherit; }
 .tool-button.primary:hover { background: #cc5426; }
 .tool-button.subtle { background: transparent; border-color: #3f3933; color: #b4ada4; }
 .tool-button.large { min-height: 42px; padding: 0 17px; }
+.tool-menu { position: relative; }
+.tool-menu-panel { position: fixed; z-index: 30; display: flex; flex-direction: column; gap: 4px;
+  padding: 6px; background: #26221f; border: 1px solid #4a433c; border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); }
+.tool-menu-panel.hidden { display: none; }
+.tool-button.menu-item { justify-content: flex-start; min-width: 170px; }
+.tool-button.is-disabled { opacity: 0.45; cursor: not-allowed; }
+.tool-button.is-disabled:hover { border-color: #3f3933; background: transparent; }
 .visually-hidden, .tool-button input[type="file"], .link-button input[type="file"] {
   position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
   overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }

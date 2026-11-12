@@ -1323,7 +1323,60 @@
     updatePlayhead();
   }
 
+  // "More": optional files, each usable only once what it belongs to is open. The
+  // tooltip says what the file is, or what to open first.
+  function syncMoreMenu() {
+    const ready = {
+      analysisFile: Boolean(state.sequence) && !state.audioDecodePending,
+      vocalsFile: Boolean(state.audioBuffer || state.analysis) && !state.audioDecodePending
+    };
+    for (const [id, enabled] of Object.entries(ready)) {
+      const input = $(id);
+      const label = $(id + "Label");
+      if (!input || !label) continue;
+      input.disabled = !enabled;
+      label.classList.toggle("is-disabled", !enabled);
+      label.setAttribute("aria-disabled", String(!enabled));
+      label.title = enabled ? label.dataset.ready : label.dataset.waiting;
+    }
+  }
+
+  function setMoreMenu(open) {
+    const panel = $("moreMenu");
+    const button = $("moreButton");
+    if (!panel || !button) return;
+    if (open) {
+      syncMoreMenu();
+      const box = button.getBoundingClientRect();
+      panel.style.top = Math.round(box.bottom + 4) + "px";
+      panel.style.left = Math.round(box.left) + "px";
+    }
+    panel.classList.toggle("hidden", !open);
+    button.setAttribute("aria-expanded", String(open));
+  }
+
+  function setupMoreMenu() {
+    $("moreButton").addEventListener("click", (event) => {
+      event.stopPropagation();
+      setMoreMenu($("moreMenu").classList.contains("hidden"));
+    });
+    for (const id of ["analysisFile", "vocalsFile"]) {
+      $(id).addEventListener("change", () => setMoreMenu(false));
+    }
+    document.addEventListener("click", (event) => {
+      if (!event.target.closest || !event.target.closest(".tool-menu")) setMoreMenu(false);
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !$("moreMenu").classList.contains("hidden")) {
+        setMoreMenu(false);
+        $("moreButton").focus();
+      }
+    });
+    syncMoreMenu();
+  }
+
   function refreshTimeline() {
+    syncMoreMenu();
     if (!state.sequence) return;
     buildRows();
     buildLanes();
@@ -1694,6 +1747,9 @@
       if (requestId !== state.analysisRequestId) return;
       let data = JSON.parse(analysisText);
       if (!data || typeof data !== "object") throw new Error("Analysis JSON must contain an object.");
+      if (data.schema_version === "vocals-1.0") {
+        throw new Error("That is a singing timing file. Open it with More ▾ › Open singing timing.");
+      }
       let review = null;
       if (data.schema_version === REVIEW_SCHEMA) {
         // A saved music review: the corrected analysis, reviewed lyrics and meter.
@@ -1823,6 +1879,10 @@
       if (requestId !== state.vocalRequestId) return;
       const data = JSON.parse(vocalsText);
       if (!data || typeof data !== "object") throw new Error("Vocal JSON must contain an object.");
+      if (data.schema_version === REVIEW_SCHEMA || data.schema_version === "2.0") {
+        throw new Error("That is a music review or song analysis. Open it with More ▾ › " +
+          "Open music review.");
+      }
       const duration = Number(data.duration_seconds);
       const currentDuration = currentMusicDuration();
       if (currentDuration != null && Math.abs(duration - currentDuration) > 1) {
@@ -2264,6 +2324,7 @@
   }
 
   function updateEditControls() {
+    syncMoreMenu();
     const has = state.selection.length > 0;
     const set = (id, enabled) => { const element = $(id); if (element) element.disabled = !enabled; };
     set("undoButton", state.undo.length > 0);
@@ -3641,8 +3702,8 @@
     state.reviewDirty = false;
     state.reviewSaved = true;
     updateEditControls();
-    setBanner("Saved " + base + ".review.json. Open it again with Load analysis, or generate from it " +
-      "with --analysis.", "good");
+    setBanner("Saved " + base + ".review.json. Open it again with More ▾ › Open music review, or " +
+      "generate from it with --analysis.", "good");
   }
 
   // ---------------------------------------------------------------------------
@@ -5690,6 +5751,7 @@
     setupNewShow();
     setupYard();
     setupHero();
+    setupMoreMenu();
     setupUpdates();
     $("clearRecent").addEventListener("click", clearRecent);
     setupDiagnostics();

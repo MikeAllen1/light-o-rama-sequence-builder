@@ -97,7 +97,7 @@ Every marker carries a status: `auto` (an estimate), `confirmed` (placed or conf
 
 Fitting one stretch at a time is how tempo changes and rubato passages get an accurate grid: anchor the bars you can hear, fit between them, and leave steady stretches alone. Changing the meter after you start a review does not re-run the analysis; it sets the meter used for fitting.
 
-**Save music review** downloads `<name>.review.json` (`music-review-1.0`): the corrected analysis (still a valid audio-analysis v2.0 report, with the optional `status` and section `label` fields), the reviewed lyrics and the meter. **Load analysis** opens it again; once a review is loaded, opening the audio does not replace it with a fresh analysis. The generator accepts it in place of an analysis:
+**Save music review** downloads `<name>.review.json` (`music-review-1.0`): the corrected analysis (still a valid audio-analysis v2.0 report, with the optional `status` and section `label` fields), the reviewed lyrics and the meter. **More ▾ › Open music review** opens it again (enabled once a sequence is open); once a review is loaded, opening the audio does not replace it with a fresh analysis. The generator accepts it in place of an analysis:
 
 ```powershell
 uv run lor-sequence-builder generate --preview display.lorprev --analysis song.review.json --output song.loredit

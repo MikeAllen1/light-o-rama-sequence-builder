@@ -92,7 +92,7 @@ It takes a few minutes per song. Without it, the mouths stay still and the repor
 
 ## Music review and lyrics
 
-In the workspace, the lanes above the tracks can be corrected by ear: move or add beats, bars, crashes and hits, name the sections (Verse, Chorus, Bridge...), fix lyric words, and fit an even tempo between two bars you confirm. **Save music review** writes a `.review.json`; generating from it (`generate --analysis song.review.json`) uses your corrections and your section names. Lyrics can be loaded from LRC, SRT or VTT files; `uv sync --extra lyrics` adds offline transcription. See [SEQUENCER_UI.md](SEQUENCER_UI.md).
+In the workspace, the lanes above the tracks can be corrected by ear: move or add beats, bars, crashes and hits, name the sections (Verse, Chorus, Bridge...), fix lyric words, and fit an even tempo between two bars you confirm. **Save music review** writes a `.review.json`; **More ▾ › Open music review** opens it again later, and generating from it (`generate --analysis song.review.json`) uses your corrections and your section names. Lyrics can be loaded from LRC, SRT or VTT files; `uv sync --extra lyrics` adds offline transcription. See [SEQUENCER_UI.md](SEQUENCER_UI.md).
 
 ## Keyboard shortcuts
 
@@ -129,3 +129,13 @@ Every show New show builds is also kept on this computer, and the start page lis
 ## Privacy
 
 Your previews, songs and sequences stay on your computer. Requirements and recent shows are kept in your user data folder (`%LOCALAPPDATA%\lor-sequence-builder` on Windows). Two things ever reach the internet. When the program starts, it asks GitHub whether a newer version has been published; that request carries nothing about you or your files. If one is out, a note in the corner links to the installer: **Later** skips that version, and **Stop checking** turns the check off (or set `LOR_NO_UPDATE_CHECK=1`). **Check for updates** at the bottom of the start page asks on demand. The other is requirement text you type in your own words, and only when you have set up a translator key yourself.
+
+## The More menu
+
+The workspace's **More ▾** button holds two optional files. You do not need either for a normal show: opening the audio analyzes the song.
+
+- **Open music review**: a `.review.json` you saved with **Save music review** (or a song's `.analysis.json` from the command line). It brings back your corrected beats, sections and lyrics. Available once a sequence is open.
+- **Open singing timing**: the `.vocals.json` saved with a show that has singing faces. It adds singing lanes for lining up mouth effects with the words. Available once the song (or its music review) is open.
+
+Hover an item to see what it takes, or what to open first. Choosing the wrong kind of file says which item it belongs to.
+
