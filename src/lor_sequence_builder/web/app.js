@@ -2808,8 +2808,10 @@
       if (requestId === state.exportRequestId && state.sequence === sequence) {
         setBanner("Not saved: " + problemText(error), "error");
       } else {
-        logProblem("An export of a previous workspace could not be completed: " + problemText(error),
-          "export");
+        const message = "Not saved: " + sequence.filename + " could not be exported: " +
+          problemText(error) + ". The current workspace was not changed.";
+        setBanner(message, "error");
+        logProblem(message, "export");
       }
       return;
     } finally {
