@@ -1438,8 +1438,8 @@
         callEngine("/api/analyze?beats_per_bar=" + meter + "&progress=" + key, file,
           "application/octet-stream"));
       if (requestId !== state.audioRequestId) return;
-      if (state.reviewDirty || state.reviewLoaded) {
-        // Never replace reviewed markers with fresh estimates.
+      if (state.reviewDirty || state.reviewLoaded || state.reviewSaved) {
+        // Never replace reviewed or saved markers with fresh estimates.
         setBanner("Audio loaded. Your music review is kept; the fresh automatic analysis was not " +
           "applied over it.", "good");
         return;
@@ -5083,7 +5083,7 @@
       if (show.token && show.audioFile && !show.batchRunning && !show.generationPending) {
         chooseSong(show.audioFile);
       }
-      const keepReview = state.reviewDirty || state.reviewLoaded;
+      const keepReview = state.reviewDirty || state.reviewLoaded || state.reviewSaved;
       state.reviewRevision += 1;
       if (keepReview) {
         state.reviewDirty = reviewHasChanges();
