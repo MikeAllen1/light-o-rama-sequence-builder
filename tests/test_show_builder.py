@@ -6,8 +6,8 @@ import json
 import threading
 import time
 import zipfile
-from io import BytesIO
 from collections.abc import Iterator
+from io import BytesIO
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
