@@ -2433,6 +2433,8 @@
       preview.error = checkChanges(preview.changes);
       setBanner(preview.label + (preview.error ? ": not allowed, " + preview.error : "") +
         (event.altKey ? " (snapping off)" : ""), preview.error ? "warn" : "");
+    } else {
+      setBanner("No valid change at this position; an effect needs a positive length.", "warn");
     }
     drag.preview = preview;
     drawTracks(Number(canvas.width), state.pxPerSecond);
