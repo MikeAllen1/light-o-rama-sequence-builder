@@ -116,8 +116,8 @@ def test_a_slow_soft_sequencer_gets_a_slow_soft_style(tmp_path: Path) -> None:
     # The loud parts peak at the brightness this person uses.
     assert style.brightness[HIGH] == 60 and style.brightness[LOW] < style.brightness[MID]
     # Lights that stay on much longer than Elegant's move on slower grids.
-    assert STYLES["elegant"].part("arch_row").grid[MID] == "bar"
-    assert style.part("arch_row").grid[MID] == "phrase"
+    assert STYLES["elegant"].part("family").grid[MID] == "bar"
+    assert style.part("family").grid[MID] == "phrase"
     assert "Peaks at 60% brightness." in changes
 
 
