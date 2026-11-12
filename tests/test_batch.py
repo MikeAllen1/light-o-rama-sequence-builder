@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-import base64
 import io
+import json
 import zipfile
 from pathlib import Path
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
 import pytest
 
@@ -42,17 +44,33 @@ def test_the_workspace_builds_a_playlist(server: str, tmp_path: Path) -> None:  
     assert [r["show"] for r in results] == ["Jingle (generated).loredit",
                                             "Silent (generated).loredit",
                                             "Jingle (2) (generated).loredit"]
-    status, saved = _json(f"{server}/api/show/batch-zip?token={token}", {})
-    assert status == 200 and saved["count"] == 3
-    archive = zipfile.ZipFile(io.BytesIO(base64.b64decode(saved["zip"])))
+    request = Request(
+        f"{server}/api/show/batch-zip?token={token}",
+        data=b"{}", method="POST", headers={"Content-Type": "application/json"},
+    )
+    with urlopen(request, timeout=10) as response:
+        payload = response.read()
+        assert response.status == 200
+        assert response.headers.get_content_type() == "application/zip"
+        assert response.headers["Content-Disposition"].endswith(
+            "Fictional%20Classic%20Yard%20shows.zip"
+        )
+    archive = zipfile.ZipFile(io.BytesIO(payload))
     names = set(archive.namelist())
     assert "Silent (generated).report.html" in names and "Batch - read me.txt" in names
     sequence = tmp_path / "out.loredit"
     sequence.write_bytes(archive.read("Silent (generated).loredit"))
     assert read_loredit(sequence).root.attrib["musicFilename"] == "Silent.wav"
     status, _ = _json(f"{server}/api/show/batch-clear?token={token}", {})
-    status, empty = _json(f"{server}/api/show/batch-zip?token={token}", {})
-    assert status == 422 and "No batch shows" in empty["error"]
+    assert status == 200
+    empty_request = Request(
+        f"{server}/api/show/batch-zip?token={token}",
+        data=b"{}", method="POST", headers={"Content-Type": "application/json"},
+    )
+    with pytest.raises(HTTPError) as error:
+        urlopen(empty_request, timeout=10)
+    assert error.value.code == 422
+    assert "No batch shows" in json.loads(error.value.read())["error"]
 
 
 def test_the_cli_builds_a_folder_of_songs(tmp_path: Path,
