@@ -1,4 +1,8 @@
-"""Song plus preview in, native S6 sequence out.
+"""Song plus display in, native sequence out.
+
+The display is an S5/S6 preview (``.lorprev``), which makes an S5/S6 ``.loredit``,
+or one of the user's own S4 sequences (``.lms``), which makes a new S4 ``.lms``
+with the same channels.
 
 ``generate`` runs the whole pipeline: analyze the audio (or reuse an analysis),
 read the display from the preview, plan the show with the active rules and
@@ -10,7 +14,9 @@ can be reviewed. Inputs are never modified and no output is overwritten.
 from __future__ import annotations
 
 import json
+import tempfile
 from collections.abc import Callable
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -20,6 +26,7 @@ from lor_sequence_builder.audio_analysis import analyze_audio
 from lor_sequence_builder.choreography import choreography_json
 from lor_sequence_builder.classifier import classify_preview
 from lor_sequence_builder.evaluation import load_analysis
+from lor_sequence_builder.lms import LmsError, display_from_lms, preview_bytes, read_lms
 from lor_sequence_builder.lorprev import read_lorprev
 from lor_sequence_builder.plan_preview import plan_svg
 from lor_sequence_builder.planner import Plan, display_has_mouths, plan_show
@@ -30,9 +37,11 @@ from lor_sequence_builder.sequence_writer import (
     RulesFailedError,
     SequenceWriteError,
     build_from_timeline,
+    build_lms_from_timeline,
 )
 from lor_sequence_builder.show_report import ReportInputs, render_report
-from lor_sequence_builder.style import get_style
+from lor_sequence_builder.style import Style, get_style
+from lor_sequence_builder.timeline import ExcludedProp
 from lor_sequence_builder.vocal_separation import separate_vocals, separation_available
 from lor_sequence_builder.vocals import analyze_vocals, load_vocals
 
@@ -100,7 +109,8 @@ def generate_show(
     vocal_beats: bool = False,
     style: str | None = None,
 ) -> GeneratedShow:
-    """Build a show. Vocals for singing faces come from ``vocals_path`` (a vocals-only
+    """Build a show. ``preview_path`` is a ``.lorprev`` (S5/S6 output, ``.loredit``)
+    or the user's own S4 sequence (``.lms`` output with the same channels). Vocals for singing faces come from ``vocals_path`` (a vocals-only
     audio file, or a vocals JSON from an earlier run); otherwise, when the display
     has face mouths, they are split out of the song if the add-on is installed.
     ``separate`` forces separation on (True) or off (False)."""
@@ -110,9 +120,45 @@ def generate_show(
         chosen_style = get_style(style)
     except ValueError as exc:
         raise SequenceWriteError(str(exc)) from exc
+    with ExitStack() as stack:
+        return _generate(stack, preview_path, output_path, rule_set, audio_path, analysis_path,
+                         music_filename, beats_per_bar, vocals_path, separate, progress,
+                         vocal_beats, chosen_style)
+
+
+def _generate(
+    stack: ExitStack,
+    preview_path: str | Path,
+    output_path: str | Path,
+    rule_set: RuleSet,
+    audio_path: str | Path | None,
+    analysis_path: str | Path | None,
+    music_filename: str | None,
+    beats_per_bar: int,
+    vocals_path: str | Path | None,
+    separate: bool | None,
+    progress: Callable[[str], None] | None,
+    vocal_beats: bool,
+    chosen_style: Style,
+) -> GeneratedShow:
     paths = output_paths(output_path)
-    if paths["sequence"].suffix.lower() != ".loredit":
-        raise SequenceWriteError("Sequence output must use the .loredit extension")
+    s4 = Path(preview_path).suffix.lower() == ".lms"
+    expected = ".lms" if s4 else ".loredit"
+    if paths["sequence"].suffix.lower() != expected:
+        raise SequenceWriteError(
+            "An S4 display (.lms) makes an S4 sequence: use the .lms extension" if s4
+            else "Sequence output must use the .loredit extension")
+    lms_template = None
+    lms_display = None
+    if s4:
+        try:
+            lms_template = read_lms(preview_path)
+            lms_display = display_from_lms(lms_template, Path(preview_path).stem)
+        except LmsError as exc:
+            raise SequenceWriteError(str(exc)) from exc
+        folder = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="lor-s4-")))
+        preview_path = folder / "display.lorprev"
+        preview_path.write_bytes(preview_bytes(lms_display))
     needed = ["sequence", "timeline", "plan", "picture", "report", "summary"]
     if audio_path is not None:
         needed += ["analysis", "plot"]
@@ -186,10 +232,17 @@ def generate_show(
     report_step("Checking the rules and writing the sequence",
                 0.88 if vocals_audio is not None else 0.6)
     try:
-        written = build_from_timeline(
-            preview_path, plan.choreography, rule_set, music_filename or default_music,
-            paths["sequence"], paths["report"],
-        )
+        if lms_template is not None and lms_display is not None:
+            written = build_lms_from_timeline(
+                preview_path, lms_template, lms_display.prop_channels, plan.choreography,
+                rule_set, music_filename or default_music, paths["sequence"], paths["report"],
+                tuple(ExcludedProp("", name, reason) for name, reason in lms_display.excluded),
+            )
+        else:
+            written = build_from_timeline(
+                preview_path, plan.choreography, rule_set, music_filename or default_music,
+                paths["sequence"], paths["report"],
+            )
     except RulesFailedError as failed:
         _write_new(paths["plan"], _plan_document(plan, failed.report, analysis))
         raise
