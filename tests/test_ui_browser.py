@@ -146,6 +146,9 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                     inspector = page.locator("#inspectorContent").inner_text()
                     assert "Tree" in inspector
                     assert "INTENSITY" in inspector
+                    page.locator("#editApply").click()
+                    assert page.locator("#undoButton").is_disabled()
+                    assert "unsaved sequence" not in page.locator("#editStatus").inner_text().lower()
 
                     # Undoing back to the exact loaded channel arrays must clear the
                     # unsaved indicator; an undone edit is not still pending work.
