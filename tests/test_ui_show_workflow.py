@@ -69,7 +69,7 @@ def test_uncertain_requirement_update_requires_display_resync(workspace_url: str
         page.route("**/api/show/start*", start_display)
         page.route("**/api/show/requirements?*", lose_requirements_response)
         page.goto(workspace_url)
-        page.locator("#openNewShow").click()
+        page.locator("#welcomeNewShow").click()
         display_file = {
             "name": "yard.lorprev", "mimeType": "application/xml", "buffer": b"<preview/>",
         }
