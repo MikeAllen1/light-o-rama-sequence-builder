@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, cast
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 from lor_sequence_builder import __version__
 from lor_sequence_builder.audio_analysis import (
@@ -263,7 +263,10 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
                     result = SHOWS.set_requirements(token, body, request_id=request_id)
                     self._send_json(200, result)
                 elif path == "/api/show/batch-zip":
-                    self._send_json(200, SHOWS.batch_zip(token))
+                    result = SHOWS.batch_zip(token)
+                    self._send_download_file(
+                        Path(result["zip_path"]), result["zip_name"], "application/zip"
+                    )
                 elif path == "/api/show/batch-clear":
                     self._send_json(200, SHOWS.batch_clear(token))
                 elif path == "/api/show/test":
@@ -400,6 +403,25 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
         steps = body.get("steps")
         clean = [str(step) for step in steps[:100]] if isinstance(steps, list) else []
         self._send_json(200, {"text": report(str(body.get("browser", "")), clean)})
+
+    def _send_download_file(self, path: Path, name: str, content_type: str) -> None:
+        """Stream a generated file to the client and always remove its temporary copy."""
+        try:
+            size = path.stat().st_size
+            fallback = name.encode("ascii", "ignore").decode("ascii").replace('"', "")
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(size))
+            self.send_header(
+                "Content-Disposition",
+                f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{quote(name)}',
+            )
+            self.end_headers()
+            with path.open("rb") as source:
+                while chunk := source.read(1024 * 1024):
+                    self.wfile.write(chunk)
+        finally:
+            path.unlink(missing_ok=True)
 
     def _send_json(self, status: int, payload: dict[str, Any]) -> None:
         if status >= 400:
