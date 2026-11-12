@@ -3530,7 +3530,8 @@
     result: null, resultConfig: null, audioRequestId: 0, audioPending: false, audioUncertain: false,
     analysisMeter: null, requirementsPending: false, requirementsRequestId: 0, displayRequestId: 0,
     displayPending: false, testPending: false, batchRunning: false, batchToken: null,
-    batchConfig: null, batchReady: false, batchZipPending: false, generationPending: false };
+    batchConfig: null, batchReady: false, batchUncertain: false, batchZipPending: false,
+    generationPending: false };
 
   function showMessage(id, text, kind) {
     const element = $(id);
@@ -3745,7 +3746,7 @@
       show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending);
     setRequirementControlsLocked(show.requirementsPending || show.batchRunning || show.generationPending ||
       show.batchZipPending || show.displayPending || show.testPending);
-    $("saveBatch").disabled = !show.batchReady || show.batchRunning || show.batchZipPending ||
+    $("saveBatch").disabled = !show.batchReady || show.batchUncertain || show.batchRunning || show.batchZipPending ||
       show.generationPending || show.displayPending || show.audioPending || show.requirementsPending ||
       show.testPending;
     $("closeNewShow").disabled = generatedActionsBlocked() || show.requirementsPending;
@@ -3771,6 +3772,7 @@
       show.batchToken = null;
       show.batchConfig = null;
       show.batchReady = false;
+      show.batchUncertain = false;
       $("saveBatch").disabled = true;
       $("batchList").replaceChildren();
       showMessage("batchStatus", "");
@@ -4250,8 +4252,8 @@
     const batchMeter = $("meterSelect").value;
     const batchStyle = chosenStyle() || "";
     const batchConfig = currentBatchConfig();
-    const previousBatchIsUsable = show.batchReady && show.batchToken === batchToken &&
-      show.batchConfig === currentBatchConfig();
+    const previousBatchIsUsable = show.batchReady && !show.batchUncertain &&
+      show.batchToken === batchToken && show.batchConfig === currentBatchConfig();
     show.batchRunning = true;
     setShowConfigurationLocked(true);
     setStepEnabled();
@@ -4260,15 +4262,22 @@
       await postShow("/api/show/batch-clear?token=" + encodeURIComponent(batchToken), "{}",
         "application/json");
     } catch (error) {
-      // The server keeps the old archive when reset fails. Preserve its UI state too.
+      const status = error && Number.isInteger(error.status) ? error.status : null;
+      const sessionExpired = status === 422 &&
+        /put away after a long break/i.test(String(error.message || ""));
+      show.batchUncertain = status == null || status >= 500 || sessionExpired;
+      if (show.batchUncertain) show.batchReady = false;
       show.batchRunning = false;
       setShowConfigurationLocked(false);
       setStepEnabled();
-      $("saveBatch").disabled = !previousBatchIsUsable;
-      showMessage("batchStatus", "The previous batch could not be cleared, so no new songs were built: " +
-        (error.message || String(error)), "error");
+      $("saveBatch").disabled = !previousBatchIsUsable || show.batchUncertain;
+      showMessage("batchStatus", show.batchUncertain
+        ? "The server's playlist state is uncertain. Start the batch again to reset and rebuild before downloading."
+        : "The previous batch could not be cleared, so no new songs were built: " +
+          (error.message || String(error)), "error");
       return;
     }
+    show.batchUncertain = false;
     show.batchToken = batchToken;
     show.batchConfig = batchConfig;
     show.batchReady = false;
@@ -4312,24 +4321,41 @@
           rows[i].title = result.problem || "";
         }
       } catch (error) {
+        const status = error && Number.isInteger(error.status) ? error.status : null;
+        const sessionExpired = status === 422 &&
+          /put away after a long break/i.test(String(error.message || ""));
+        const uncertain = status == null || status >= 500 || sessionExpired;
         rows[i].className = "error";
-        rows[i].textContent = file.name + ": " + (error.message || String(error));
+        rows[i].textContent = file.name + (uncertain
+          ? ": upload outcome is uncertain; restart the playlist before downloading"
+          : ": " + (error.message || String(error)));
+        if (uncertain) {
+          show.batchUncertain = true;
+          for (let rest = i + 1; rest < rows.length; rest++) {
+            rows[rest].className = "error";
+            rows[rest].textContent = files[rest].name + ": not attempted because the previous upload outcome is uncertain";
+          }
+          break;
+        }
       }
     }
     show.batchRunning = false;
     setShowConfigurationLocked(false);
     setStepEnabled();
-    show.batchReady = built > 0 && show.token === batchToken &&
+    show.batchReady = built > 0 && !show.batchUncertain && show.token === batchToken &&
       show.batchConfig === currentBatchConfig();
-    $("saveBatch").disabled = !show.batchReady;
-    showMessage("batchStatus", built + " of " + files.length + " shows built" +
-      (totalSeconds ? ", " + formatTime(totalSeconds) + " of music in all." : ".") +
-      (built ? " Save all shows downloads them with their reports." : ""), built ? "good" : "error");
+    $("saveBatch").disabled = !show.batchReady || show.batchUncertain;
+    showMessage("batchStatus", show.batchUncertain
+      ? "A song upload may have committed without a confirmation. Restart the playlist before downloading."
+      : built + " of " + files.length + " shows built" +
+        (totalSeconds ? ", " + formatTime(totalSeconds) + " of music in all." : ".") +
+        (built ? " Save all shows downloads them with their reports." : ""),
+      show.batchUncertain ? "warn" : built ? "good" : "error");
   }
 
   async function saveBatch() {
     const token = show.batchToken;
-    if (show.batchZipPending || show.batchRunning || show.generationPending ||
+    if (show.batchZipPending || show.batchRunning || show.batchUncertain || show.generationPending ||
         show.displayPending || show.audioPending || show.requirementsPending || show.testPending) return;
     if (!show.batchReady || !token || token !== show.token ||
         !show.batchConfig || show.batchConfig !== currentBatchConfig()) {
