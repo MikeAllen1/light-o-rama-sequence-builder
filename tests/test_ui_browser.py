@@ -199,7 +199,7 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                         {
                             "name": "song.lrc",
                             "mimeType": "text/plain",
-                            "buffer": b"[00:00.50]Hello lights\n[00:01.50]Second line\n",
+                            "buffer": b"[00:00.50]Hello lights\n[00:00.50]Harmony\n[00:01.50]Second line\n",
                         }
                     )
                     page.locator("#markerLabels").filter(has_text="Lyrics").wait_for()
