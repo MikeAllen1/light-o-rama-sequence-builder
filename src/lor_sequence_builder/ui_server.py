@@ -467,23 +467,33 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
 
     def _send_download_file(self, path: Path, name: str, content_type: str) -> None:
         """Stream a generated file to the client and always remove its temporary copy."""
+        headers_sent = False
         try:
-            size = path.stat().st_size
-            fallback = name.encode("ascii", "ignore").decode("ascii").replace('"', "")
-            self.send_response(200)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(size))
-            self.send_header(
-                "Content-Disposition",
-                f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{quote(name)}',
-            )
-            self.end_headers()
+            # Open and size the file before sending 200 headers. If it disappeared or
+            # cannot be opened, the route can still return a clean JSON error.
             with path.open("rb") as source:
+                size = os.fstat(source.fileno()).st_size
+                fallback = name.encode("ascii", "ignore").decode("ascii").replace('"', "")
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(size))
+                self.send_header(
+                    "Content-Disposition",
+                    f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{quote(name)}',
+                )
+                self.end_headers()
+                headers_sent = True
                 while chunk := source.read(1024 * 1024):
                     self.wfile.write(chunk)
+        except OSError as exc:
+            if not headers_sent:
+                raise
+            # Once the ZIP response has started, never append a JSON error body.
+            # A disconnected client gets a truncated transfer and can retry cleanly.
+            from lor_sequence_builder.diagnostics import write_log
+
+            write_log("server", f"Batch archive stream ended early: {exc}")
         finally:
-            # A cleanup failure must not turn an already-sent successful download
-            # into a second HTTP error response (or corrupt the ZIP stream).
             try:
                 path.unlink(missing_ok=True)
             except OSError as exc:
