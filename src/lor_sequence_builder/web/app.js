@@ -3686,7 +3686,7 @@
 
   function generatedActionsBlocked() {
     return state.audioDecodePending || show.audioPending || show.requirementsPending ||
-      show.displayPending || show.generationPending || show.batchRunning ||
+      show.requirementsUncertain || show.displayPending || show.generationPending || show.batchRunning ||
       show.batchZipPending || show.testPending;
   }
 
@@ -3725,9 +3725,9 @@
       "requirementMax", "addRequirement", "translateRequirements", "plainRequirements"]) {
       const element = $(id);
       if (!element) continue;
-      if ("disabled" in element) element.disabled = locked;
+      if ("disabled" in element) element.disabled = disabled;
       element.querySelectorAll("input, select, textarea, button").forEach((child) => {
-        child.disabled = locked;
+        child.disabled = disabled;
       });
     }
     $("requirementList").querySelectorAll("button").forEach((button) => { button.disabled = disabled; });
@@ -3781,7 +3781,7 @@
 
   async function chooseDisplay(file) {
     if (!file || show.batchRunning || show.batchZipPending || show.generationPending ||
-        show.displayPending || show.testPending) return;
+        show.displayPending || show.testPending || show.requirementsPending) return;
     const requestId = ++show.displayRequestId;
     show.displayPending = true;
     setShowConfigurationLocked(true);
