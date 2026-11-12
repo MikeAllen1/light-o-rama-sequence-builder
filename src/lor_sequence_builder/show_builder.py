@@ -69,6 +69,7 @@ MAX_SESSIONS = 4
 SESSION_SECONDS = 12 * 60 * 60
 MAX_REQUIREMENTS = 50
 MAX_BATCH_SONGS = 40
+MAX_BATCH_ARCHIVE_BYTES = 100 * 1024 * 1024
 
 
 class ShowBuildError(ValueError):
@@ -555,12 +556,22 @@ class ShowSessions:
             shows = [entry for entry in session.batch if entry.get("ok")]
             if not shows:
                 raise ShowBuildError("No batch shows have been built yet")
+            artifacts = [
+                path
+                for entry in shows
+                for path in (done / entry["show"],
+                             done / f"{entry['stem']} (generated).report.html")
+            ]
+            total_bytes = sum(path.stat().st_size for path in artifacts)
+            if total_bytes > MAX_BATCH_ARCHIVE_BYTES:
+                raise ShowBuildError(
+                    "This playlist's show files exceed the 100 MiB download limit. "
+                    "Save the playlist in smaller batches."
+                )
             bundle = io.BytesIO()
             with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
-                for entry in shows:
-                    for path in (done / entry["show"],
-                                 done / f"{entry['stem']} (generated).report.html"):
-                        archive.write(path, path.name)
+                for path in artifacts:
+                    archive.write(path, path.name)
                 lines = ["Shows in this batch", ""]
                 for entry in session.batch:
                     lines.append(f"{entry['file_name']}: " + (
