@@ -229,6 +229,10 @@ def _build_parser() -> argparse.ArgumentParser:
                         help="answer questions instead of describing requirements")
     intake.add_argument("--fresh", action="store_true",
                         help="ignore saved requirements and start over")
+    commands.add_parser("doctor", help="check this computer is ready, and how to fix what is not")
+    demo = commands.add_parser(
+        "demo", help="build a show for an invented yard and song, to try everything out")
+    demo.add_argument("folder", help="new or empty folder for the demo files")
     return parser
 
 
@@ -301,6 +305,7 @@ def _generate(options: argparse.Namespace) -> int:
     print(f"Plan: {show.plan_path}")
     print(f"Plan picture: {show.picture_path}")
     print(f"Rule report: {show.report_path}")
+    print(f"Show report (open in a browser): {show.summary_path}")
     if show.analysis_path is not None:
         print(f"Analysis: {show.analysis_path}")
     if show.vocals_path is not None:
@@ -341,6 +346,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.print_help()
         return 0
     try:
+        if options.command == "doctor":
+            from lor_sequence_builder.doctor import print_checks, run_checks
+
+            return print_checks(run_checks())
+        if options.command == "demo":
+            from lor_sequence_builder.demo import build_demo
+
+            try:
+                built = build_demo(options.folder)
+            except FileExistsError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return 2
+            print(f"Demo show for an invented yard and song, in {Path(options.folder)}:")
+            print("  Preview: Demo Yard.lorprev")
+            print("  Song: Demo Song.wav")
+            print(f"  Sequence: {built.sequence_path.name}")
+            print(f"  Show report (open in a browser): {built.summary_path.name}")
+            print(f"  Plan picture: {built.picture_path.name}")
+            print("Every rule passed." if built.report.ok else "Some rules did not pass.")
+            return 0
         if options.command == "analyze-audio":
             report = analyze_audio(
                 options.audio,

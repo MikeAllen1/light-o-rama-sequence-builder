@@ -18,6 +18,7 @@ from typing import Any
 from lor_sequence_builder.artifacts import write_new_text_atomically
 from lor_sequence_builder.audio_analysis import analyze_audio
 from lor_sequence_builder.choreography import choreography_json
+from lor_sequence_builder.classifier import classify_preview
 from lor_sequence_builder.evaluation import load_analysis
 from lor_sequence_builder.lorprev import read_lorprev
 from lor_sequence_builder.plan_preview import plan_svg
@@ -29,6 +30,7 @@ from lor_sequence_builder.sequence_writer import (
     SequenceWriteError,
     build_from_timeline,
 )
+from lor_sequence_builder.show_report import ReportInputs, render_report
 from lor_sequence_builder.vocal_separation import separate_vocals, separation_available
 from lor_sequence_builder.vocals import analyze_vocals, load_vocals
 
@@ -40,6 +42,7 @@ class GeneratedShow:
     plan_path: Path
     picture_path: Path
     report_path: Path
+    summary_path: Path
     analysis_path: Path | None
     vocals_path: Path | None
     vocals_note: str | None
@@ -56,6 +59,7 @@ def output_paths(output_path: str | Path) -> dict[str, Path]:
         "plan": stem.with_name(stem.name + ".plan.json"),
         "picture": stem.with_name(stem.name + ".plan.svg"),
         "report": stem.with_name(stem.name + ".rules.json"),
+        "summary": stem.with_name(stem.name + ".report.html"),
         "analysis": stem.with_name(stem.name + ".analysis.json"),
         "vocals": stem.with_name(stem.name + ".vocals.json"),
         "vocals_audio": stem.with_name(stem.name + ".vocals.wav"),
@@ -102,7 +106,7 @@ def generate_show(
     paths = output_paths(output_path)
     if paths["sequence"].suffix.lower() != ".loredit":
         raise SequenceWriteError("Sequence output must use the .loredit extension")
-    needed = ["sequence", "timeline", "plan", "picture", "report"]
+    needed = ["sequence", "timeline", "plan", "picture", "report", "summary"]
     if audio_path is not None:
         needed += ["analysis", "plot"]
     preview = preview_element(read_lorprev(preview_path))
@@ -177,6 +181,14 @@ def generate_show(
         _write_new(paths["plan"], _plan_document(plan, failed.report, analysis))
         raise
     _write_new(paths["plan"], _plan_document(plan, written.report, analysis))
+    music = music_filename or default_music
+    _write_new(paths["summary"], render_report(ReportInputs(
+        title=paths["sequence"].stem, music_filename=music, display=display,
+        classifications=classify_preview(preview), plan=plan, report=written.report,
+        duration_centiseconds=plan.choreography.duration_centiseconds,
+        files={"Sequence": paths["sequence"].name, "Plan picture": paths["picture"].name,
+               "Rule details": paths["report"].name, "Timeline": paths["timeline"].name},
+    )))
     return GeneratedShow(paths["sequence"], paths["timeline"], paths["plan"], paths["picture"],
-                         paths["report"], written_analysis, written_vocals, vocals_note, plan,
-                         written.report)
+                         paths["report"], paths["summary"], written_analysis, written_vocals,
+                         vocals_note, plan, written.report)

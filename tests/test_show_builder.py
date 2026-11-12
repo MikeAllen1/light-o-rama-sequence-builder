@@ -92,6 +92,7 @@ def test_a_show_is_built_step_by_step_and_requirements_are_remembered(
     assert status == 200, show
     assert show["rules_ok"] and show["file_name"] == "beat (generated).loredit"
     assert show["picture"].startswith("<svg") and show["sections"]
+    assert show["summary"].startswith("<!doctype html>") and "Check in the yard" in show["summary"]
     saved = tmp_path / "out.loredit"
     saved.write_text(show["sequence"], encoding="utf-8")
     document = read_loredit(saved)
@@ -159,6 +160,11 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
             page.locator("#generateShow").click()
             page.locator("#generateStatus.good").wait_for(timeout=60000)
             assert "Every rule passed" in page.locator("#generateStatus").inner_text()
+            with page.context.expect_page() as report_page:
+                page.locator("#reportGenerated").click()
+            report_page.value.wait_for_load_state()
+            assert "Check in the yard" in report_page.value.content()
+            report_page.value.close()
             page.locator("#openGenerated").click()
             page.locator("#editor").wait_for(state="visible")
             assert page.locator("#exportButton").inner_text() == "Save sequence"

@@ -117,6 +117,20 @@ jobs:
           print(f"Verified browser assets in {wheels[0].name}")
           PY
 
+      - name: Install the wheel in a clean environment and run doctor and demo
+        run: |
+          set -euo pipefail
+          uv export --locked --no-dev --no-emit-project --format requirements-txt --output-file "$RUNNER_TEMP/requirements.txt"
+          uv venv "$RUNNER_TEMP/clean" --python 3.12
+          VIRTUAL_ENV="$RUNNER_TEMP/clean" uv pip install --require-hashes -r "$RUNNER_TEMP/requirements.txt"
+          VIRTUAL_ENV="$RUNNER_TEMP/clean" uv pip install --no-deps dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/clean/bin/lor-sequence-builder" doctor
+          "$RUNNER_TEMP/clean/bin/lor-sequence-builder" demo "$RUNNER_TEMP/demo-show"
+          test -s "$RUNNER_TEMP/demo-show/Demo Song.loredit"
+          test -s "$RUNNER_TEMP/demo-show/Demo Song.report.html"
+          "$RUNNER_TEMP/clean/bin/lor-sequence-ui" --help
+
       - name: Audit installed dependencies
         run: uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 --with types-PyYAML==6.0.12.20260906 --with setuptools==84.1.0 pip-audit --skip-editable
 
