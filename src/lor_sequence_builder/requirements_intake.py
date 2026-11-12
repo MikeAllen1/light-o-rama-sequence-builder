@@ -209,6 +209,8 @@ Requirement types:
 - max_intensity: props never exceed `max` percent brightness.
 - quiet_during: props are dark during `sections`.
 - move_direction: chases (or `movement`: fill, fall) across these props run in `direction`.
+- light_whole: every channel of each prop shows the same light (for example two-color \
+arches that must never light one side alone).
 
 Choose props with exactly one of: {"all": true}, {"role": ...}, {"group": ...}, or \
 {"names": [...]}. Use only names, roles and groups that appear in the display below, \

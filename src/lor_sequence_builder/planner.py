@@ -541,6 +541,13 @@ class _Constraints:
     keep_on: dict[str, list[str] | None] = field(default_factory=dict)
     quiet: dict[str, set[str]] = field(default_factory=lambda: defaultdict(set))
     directions: list[tuple[set[str], str, str]] = field(default_factory=list)
+    # Channels that show exactly what another channel shows: the other channels of a
+    # prop that lights whole, and a second prop wired to the same circuit.
+    copies: dict[tuple[str, int], list[tuple[str, int]]] = field(
+        default_factory=lambda: defaultdict(list))
+    # Props that only follow another prop (whole circuits shared), by the prop they
+    # follow.
+    followers: dict[str, str] = field(default_factory=dict)
 
 
 def _words(name: str) -> set[str]:
@@ -600,12 +607,31 @@ def _constraints(display: Display, rule_set: RuleSet, vocals_known: bool) -> _Co
                                        "the allowed colors")
                 else:
                     c.channels[pid] = keep
+            elif req.type == "light_whole":
+                allowed = c.channels.get(pid, [])
+                if len(allowed) > 1:
+                    c.channels[pid] = allowed[:1]
+                    c.copies[(pid, allowed[0])].extend((pid, ch) for ch in allowed[1:])
         if req.type == "move_direction":
             c.directions.append((set(chosen), req.params.get("movement", "chase"),
                                  req.params["direction"]))
     for pid in c.excluded:
         c.channels.pop(pid, None)
         c.keep_on.pop(pid, None)
+    # One circuit drawn as two props: the prop with more channels (the mega tree whose
+    # last channel is also the roofline) leads, and the other shows the same light.
+    for outlet in display.shared_outlets():
+        owner = max(outlet, key=lambda pc: (display.props[pc[0]].channel_count,
+                                            display.props[pc[0]].name, -pc[1]))
+        for pid, channel in outlet:
+            if (pid, channel) == owner or pid in c.excluded:
+                continue
+            if channel in c.channels.get(pid, []):
+                c.channels[pid].remove(channel)
+            c.copies[owner].append((pid, channel))
+            if not c.channels.get(pid):
+                c.channels.pop(pid, None)
+                c.followers[pid] = display.props[owner[0]].name
     return c
 
 
@@ -2007,6 +2033,17 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
             canvas.put(pid, channel, start, end, color=planner.color(pid, channel))
 
     usable = set(constraints.channels)
+    if vocals is None:
+        # Nobody is singing as far as we know: a face shows its resting mouth exactly
+        # when its outline is on, never one without the other.
+        for face in _faces(display, rule_set, usable):
+            rest = face.mouths.get("closed")
+            if face.outline and rest is not None and rest in usable:
+                outline = face.outline[0]
+                constraints.channels.pop(rest, None)
+                usable.discard(rest)
+                for channel in range(display.props[rest].channel_count):
+                    constraints.copies[(outline, 0)].append((rest, channel))
     regions: list[tuple[int, int]] = []
     singing: set[str] = set()
     if vocals is not None:
@@ -2330,6 +2367,12 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
         notes.append("Arrangement: " + "; ".join(
             f"{counts[kind]} {names[kind]}" for kind in names if counts[kind]) + ".")
 
+    for source, targets in constraints.copies.items():
+        for pid, channel in targets:
+            canvas.effects[(pid, channel)] = [
+                dataclasses.replace(e, prop_id=pid, channel_index=channel, color=None,
+                                    movement_id=None)
+                for e in canvas.effects.get(source, [])]
     effects = tuple(sorted(
         (e for items in canvas.effects.values() for e in _joined(items)),
         key=lambda e: (e.start_centisecond, e.prop_id, e.channel_index),
@@ -2337,6 +2380,10 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
     used = {e.prop_id for e in effects}
     for pid in sorted(usable - used, key=lambda p: display.props[p].name):
         notes.append(f"{display.props[pid].name} had no part in this song's plan.")
+    for pid, leader in sorted(constraints.followers.items(),
+                              key=lambda item: display.props[item[0]].name):
+        notes.append(f"{display.props[pid].name} is wired to the same circuit as {leader}, "
+                     "so it shows the same light.")
     for _, kind, required in constraints.directions:
         if not any(m.direction == required for m in canvas.movements if m.kind == kind):
             notes.append(f"No {kind} could run {required.replace('_', ' ')} as required; those "
