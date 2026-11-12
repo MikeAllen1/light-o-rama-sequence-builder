@@ -101,6 +101,7 @@ When a new version is out, the app says so in the bottom corner. Download the in
 
 | Problem | What to do |
 | --- | --- |
+| A button does nothing, or something looks wrong | Click **Copy diagnostics** at the bottom of the start page and paste it into your message or GitHub issue. It has the version, the system checks, your last clicks and recent errors. Home folder paths are shortened, but error lines can name files you chose, so read it over first. The log itself is in `%LOCALAPPDATA%\lor-sequence-builder\logs`. |
 | Something is not set up | Run `uv run lor-sequence-builder doctor` in the program folder. It checks Python, the libraries, FFmpeg, audio decoding, the workspace files and the data folders, and says how to fix each problem. |
 | "FFmpeg is required" | Install it: `winget install --id Gyan.FFmpeg -e` on Windows, `brew install ffmpeg` on macOS, `sudo apt install ffmpeg` on Debian or Ubuntu. Open a new window afterwards. |
 | "uv" is not recognized | Install uv (README quick start, step 1), then open a new window. |

@@ -445,3 +445,7 @@ The workspace's welcome screen is a landing page: what the program does in plain
 ## Update check
 
 Once per start the workspace asks GitHub for the project's latest published release (a fixed HTTPS address, five-second timeout, at most 1 MB, remembered for six hours). If it is newer than the running version, a corner note links to the installer. Links are only passed on when they point at this project's own release pages and downloads; drafts, pre-releases and an empty release list are not news, and being offline is quiet. **Later** skips that version, **Stop checking** turns it off, `LOR_NO_UPDATE_CHECK=1` turns it off for the whole program, and the start page has a manual **Check for updates** with the running version. Tests never reach GitHub.
+
+## Diagnostics
+
+Refused requests and errors from the page go to `logs/workspace.log` in the user data folder (one line each, home paths shortened to `~`, the user name removed, at most 500 lines a run, rolled over at 512 KB), next to the desktop app's `desktop.log`. The page keeps the last 60 clicks in memory (button names and which file box was used, never file names). **Copy diagnostics** on the start page gathers the version, system, every `doctor` check, those steps and the end of both logs, shows it in the viewer and copies it.

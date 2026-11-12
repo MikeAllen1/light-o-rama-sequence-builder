@@ -3485,7 +3485,10 @@
     const html = type === "image/svg+xml"
       ? "<!doctype html><meta charset=\"utf-8\"><body style=\"margin:0;background:#12100e\">" +
         content + "</body>"
-      : content;
+      : type === "text/plain"
+        ? "<!doctype html><meta charset=\"utf-8\"><pre style=\"margin:0;padding:16px;" +
+          "font:12px/1.5 Consolas,monospace;white-space:pre-wrap\">" + escapeHtml(content) + "</pre>"
+        : content;
     $("viewerFrame").srcdoc = html;
     $("viewer").classList.remove("hidden");
     $("viewerClose").focus();
@@ -4132,6 +4135,68 @@
     checkForUpdate(false);
   }
 
+  // Help when something "does nothing": page errors go to the local log, the last
+  // few clicks are kept in memory, and Copy diagnostics gathers both with the
+  // version and system checks for pasting into a message.
+  const steps = [];
+
+  function escapeHtml(text) {
+    return String(text).replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[c]);
+  }
+
+  function remember(step) {
+    steps.push(new Date().toISOString().slice(11, 19) + " " + step);
+    if (steps.length > 60) steps.shift();
+  }
+
+  function logProblem(message, where) {
+    remember("problem: " + String(message).slice(0, 160));
+    fetch("/api/log", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: String(message).slice(0, 1500), where }) }).catch(() => {});
+  }
+
+  async function copyDiagnostics() {
+    $("copyDiagnostics").textContent = "Gathering…";
+    try {
+      const result = await postShow("/api/diagnostics",
+        JSON.stringify({ browser: navigator.userAgent, steps }), "application/json");
+      showViewer("Diagnostics", result.text, "LOR Sequencer diagnostics.txt", "text/plain");
+      let copied = false;
+      try {
+        await navigator.clipboard.writeText(result.text);
+        copied = true;
+      } catch { /* the viewer still shows it, with Save a copy */ }
+      $("viewerTitle").textContent = copied
+        ? "Diagnostics (copied: paste it into your message)"
+        : "Diagnostics (select it all and copy, or Save a copy)";
+    } catch (error) {
+      setBanner("Diagnostics could not be gathered: " + (error.message || String(error)), "warn");
+    }
+    $("copyDiagnostics").textContent = "Copy diagnostics";
+  }
+
+  function setupDiagnostics() {
+    window.addEventListener("error", (event) => logProblem(event.message,
+      (event.filename || "").split("/").pop() + ":" + event.lineno));
+    window.addEventListener("unhandledrejection", (event) => logProblem(
+      event.reason && event.reason.message ? event.reason.message : String(event.reason),
+      "promise"));
+    document.addEventListener("click", (event) => {
+      const target = event.target.closest && event.target.closest("button, label, a");
+      if (!target) return;
+      const name = target.id || (target.querySelector("input") || {}).id ||
+        (target.textContent || "").trim().slice(0, 30);
+      remember("click " + name + (target.disabled ? " (disabled)" : ""));
+    }, true);
+    document.addEventListener("change", (event) => {
+      if (event.target.type === "file" && event.target.files && event.target.files[0]) {
+        remember("chose a file for " + event.target.id);
+      }
+    }, true);
+    $("copyDiagnostics").addEventListener("click", copyDiagnostics);
+  }
+
   function setup() {
     const bindFile = (id, handler) => $(id).addEventListener("change", (event) => {
       const file = event.target.files && event.target.files[0];
@@ -4211,6 +4276,7 @@
     setupYard();
     setupHero();
     setupUpdates();
+    setupDiagnostics();
   }
 
   setup();
