@@ -3741,11 +3741,12 @@
     const hasProps = hasSequenceableProps();
     $("watchTest").disabled = !show.test || generatedActionsBlocked();
     $("saveTest").disabled = !show.test || generatedActionsBlocked();
-    $("makeTest").disabled = !show.token || !hasProps || show.requirementsUncertain || show.batchRunning || show.generationPending ||
-      show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending ||
-      show.requirementsUncertain;
-    $("showSongFile").disabled = !show.token || !hasProps || show.requirementsUncertain || show.batchRunning || show.generationPending ||
-      show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending || show.requirementsUncertain;
+    $("makeTest").disabled = !show.token || !hasProps || show.requirementsUncertain || show.batchRunning ||
+      show.generationPending || show.batchZipPending || show.displayPending || show.testPending ||
+      show.audioPending || show.requirementsPending;
+    $("showSongFile").disabled = !show.token || !hasProps || show.requirementsUncertain || show.batchRunning ||
+      show.generationPending || show.batchZipPending || show.displayPending || show.testPending ||
+      show.audioPending || show.requirementsPending;
     $("meterSelect").disabled = state.audioDecodePending || show.requirementsUncertain || show.batchRunning || show.generationPending ||
       show.batchZipPending || show.displayPending || show.testPending || show.audioPending ||
       show.requirementsPending;
