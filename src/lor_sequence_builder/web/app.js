@@ -1526,7 +1526,7 @@
       const discardUnsavedReview = state.reviewDirty;
       if (discardUnsavedReview && !window.confirm("Replace the unsaved music review?")) return;
       state.audioRequestId += 1; // A valid imported analysis supersedes in-flight auto-analysis.
-      if (review) state.lyricRequestId += 1;
+      if (review || discardUnsavedReview) state.lyricRequestId += 1;
       state.analysis = data;
       state.reviewLoaded = Boolean(review);
       state.reviewSaved = Boolean(review);
