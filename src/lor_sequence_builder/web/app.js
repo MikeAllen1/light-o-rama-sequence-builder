@@ -3212,6 +3212,7 @@
     $("newShow").classList.add("hidden");
     if (state.sequence) $("editor").classList.remove("hidden");
     else $("welcome").classList.remove("hidden");
+    refreshRecent();
   }
 
   function bytesFromBase64(text) {
@@ -4645,6 +4646,108 @@
     }
   }
 
+  // Recent shows: every show New show built is kept on this computer; the start page
+  // lists them to open (with the yard view), save again, read the report or remove.
+  function madeWhen(text) {
+    const made = new Date(text);
+    if (Number.isNaN(made.getTime())) return "";
+    return made.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + ", " +
+      made.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
+
+  async function refreshRecent() {
+    let shows = [];
+    try {
+      shows = (await callEngine("/api/recent", "{}", "application/json")).shows || [];
+    } catch {
+      return;
+    }
+    $("recentShows").classList.toggle("hidden", shows.length === 0);
+    $("recentList").replaceChildren(...shows.map((item) => {
+      const row = document.createElement("li");
+      const text = document.createElement("div");
+      const name = document.createElement("strong");
+      name.textContent = item.file_name.replace(/ \(generated\)\.loredit$|\.loredit$/i, "");
+      const detail = document.createElement("span");
+      detail.textContent = [item.display, item.style, madeWhen(item.made)].filter(Boolean)
+        .join(" · ");
+      text.append(name, detail);
+      const actions = document.createElement("div");
+      actions.className = "recent-actions";
+      const button = (label, title, run) => {
+        const element = document.createElement("button");
+        element.type = "button";
+        element.className = "tool-button";
+        element.textContent = label;
+        element.setAttribute("aria-label", label + ": " + name.textContent);
+        element.title = title;
+        element.addEventListener("click", run);
+        actions.appendChild(element);
+        return element;
+      };
+      button("Open", "Open it in the workspace with the yard view", () => openRecent(item.id));
+      button("Save", "Save the .loredit again", () => saveRecent(item.id));
+      if (item.has_report) button("Report", "Read its show report", () => reportRecent(item.id));
+      const remove = button("Remove", "Remove it from this list and this computer",
+        () => removeRecent(item.id));
+      remove.classList.add("quiet");
+      row.append(text, actions);
+      return row;
+    }));
+  }
+
+  async function loadRecent(id) {
+    try {
+      return await callEngine("/api/recent/open", JSON.stringify({ id }), "application/json");
+    } catch (error) {
+      showMessage("recentStatus", problemText(error), "error");
+      refreshRecent();
+      return null;
+    }
+  }
+
+  async function openRecent(id) {
+    if (state.dirty && !window.confirm("Discard the unexported edits to " +
+      state.sequence.filename + "?")) return;
+    const show = await loadRecent(id);
+    if (!show) return;
+    openSequenceText(show.sequence, show.file_name, false);
+    state.sequence.generated = true;
+    updateEditControls();
+    toggleYard(true);
+    setBanner("Opened " + show.file_name + ". To play it with the music, choose Open audio and " +
+      "pick " + (show.song || "its song") + ".", "good");
+  }
+
+  async function saveRecent(id) {
+    const show = await loadRecent(id);
+    if (show) download(show.sequence, show.file_name, "application/xml");
+  }
+
+  async function reportRecent(id) {
+    const show = await loadRecent(id);
+    if (show && show.summary) {
+      showViewer("Show report", show.summary,
+        show.file_name.replace(/\.loredit$/i, ".report.html"), "text/html");
+    }
+  }
+
+  async function removeRecent(id) {
+    try {
+      await callEngine("/api/recent/remove", JSON.stringify({ id }), "application/json");
+      showMessage("recentStatus", "");
+    } catch (error) {
+      showMessage("recentStatus", problemText(error), "error");
+    }
+    refreshRecent();
+  }
+
+  async function clearRecent() {
+    if (!window.confirm("Remove every recent show from this computer?")) return;
+    await callEngine("/api/recent/clear", "{}", "application/json").catch(() => {});
+    refreshRecent();
+  }
+
   // Started from a preview (right-click "Build a show with LOR Sequencer"): open New
   // show with that display already chosen.
   async function openStartupPreview() {
@@ -4774,7 +4877,9 @@
     setupYard();
     setupHero();
     setupUpdates();
+    $("clearRecent").addEventListener("click", clearRecent);
     setupDiagnostics();
+    refreshRecent();
     openStartupPreview();
   }
 
