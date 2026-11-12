@@ -233,6 +233,47 @@ def line_drawn_yard() -> DisplayBuilder:
     return d
 
 
+def family_yard() -> DisplayBuilder:
+    """A full front yard with families of look-alike props: pillars, outlines, pairs of
+    decorations, two kinds of arches and a big tree. (Fictional.)"""
+    d = DisplayBuilder("Fictional Family Yard")
+    lines = "Lines-Unconnected"
+    for i in range(3):
+        d.add(f"Pillar {i + 1}", "outline", shape=lines, channels=1, colors=("White",),
+              unit="40", points=[(-0.5 + 0.25 * i, -0.4), (-0.5 + 0.25 * i, 0.0)])
+    d.add("Roof Line", "outline", shape=lines, channels=1, colors=("Multi",), unit="40",
+          points=[(-0.7, 0.5), (0.0, 0.7), (0.7, 0.5)])
+    d.add("Garage Outline", "outline", shape=lines, channels=1, colors=("White",), unit="40",
+          points=_box(0.55, 0.1, 0.25, 0.2))
+    for i in range(4):
+        d.add(f"Arch {i + 1}", "arch", shape="Arch", channels=4, unit="41",
+              box=(-0.8 + 0.4 * i, -0.6, 0.15, 0.1))
+    for i in range(3):
+        d.add(f"Mini Arch {i + 1}", "arch", shape="Arch", channels=1, unit="42",
+              box=(-0.85 + 0.1 * i, -0.2, 0.05, 0.04))
+    d.add("Reindeer Left", "decor", shape=lines, channels=1, colors=("White",), unit="43",
+          points=_box(-0.3, -0.3, 0.1, 0.1))
+    d.add("Reindeer Right", "decor", shape=lines, channels=1, colors=("White",), unit="43",
+          points=_box(0.3, -0.25, 0.1, 0.12))
+    for i in range(3):
+        d.add(f"Snowman {i + 1}", "decor", shape=lines, channels=1, colors=("White",),
+              unit="43", points=_box(-0.1 + 0.17 * i, -0.45 + 0.07 * i, 0.05, 0.12 + 0.02 * i))
+    for i in range(2):
+        d.add(f"Homemade Tree {i + 1}", "mini_tree", shape="Tree", channels=1,
+              colors=("Orange",), unit="44", box=(-0.95 + 0.6 * i, -0.15 + 0.1 * i, 0.06,
+                                                  0.12 + 0.04 * i))
+    d.add("Mega Tree", "mega_tree", shape="Tree", channels=16, unit="45",
+          box=(0.0, 0.2, 0.2, 0.4))
+    d.add("Star", "star", shape="Star", channels=1, colors=("White",), unit="46",
+          box=(0.0, 0.45, 0.05, 0.05))
+    for i in range(6):
+        d.add(f"Snowflake {i + 1}", "snowflake", shape="Snowflake", channels=1,
+              colors=("White",), unit="47",
+              box=(0.8 - 0.06 * (i % 2), 0.55 - 0.12 * (i // 2), 0.04, 0.04))
+    return d
+
+
 ALL_DISPLAYS = (
     classic_yard, roofline_house, misleading_names, unsupported_hardware, line_drawn_yard,
+    family_yard,
 )

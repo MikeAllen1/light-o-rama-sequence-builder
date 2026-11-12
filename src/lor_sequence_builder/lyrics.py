@@ -113,6 +113,23 @@ def import_lyrics(path: str | Path) -> dict[str, Any]:
     return parse_lyrics_text(text, source.name)
 
 
+def read_lyrics(path: str | Path) -> dict[str, Any]:
+    """A lyrics file for planning: LRC, SRT or VTT, or a lyrics JSON this program wrote."""
+    source = Path(path)
+    if source.suffix.lower() != ".json":
+        return import_lyrics(source)
+    try:
+        if source.stat().st_size > MAX_LYRICS_BYTES:
+            raise LyricsError(f"{source.name}: lyrics file exceeds 2 MiB")
+        data = json.loads(source.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise LyricsError(f"Cannot read lyrics file: {source}") from exc
+    if not isinstance(data, dict) or data.get("schema_version") != LYRICS_SCHEMA_VERSION \
+            or not isinstance(data.get("lines"), list):
+        raise LyricsError(f"{source.name} is not a lyrics file from this program")
+    return data
+
+
 def lines_from_segments(segments: Any) -> list[dict[str, Any]]:
     """Turn recognizer segments (with word timings) into lyric lines."""
     lines = []

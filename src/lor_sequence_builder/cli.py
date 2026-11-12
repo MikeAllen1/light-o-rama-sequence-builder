@@ -217,6 +217,9 @@ def _build_parser() -> argparse.ArgumentParser:
                           help=_IGNORE_HELP)
     generate.add_argument("--style", choices=sorted(STYLES), default=DEFAULT_STYLE,
                           help="character of the show: classic (default), energetic, elegant")
+    generate.add_argument("--lyrics",
+                          help="timed lyrics (LRC, SRT, VTT, or a lyrics JSON) so props a line "
+                               "names light when it is sung")
     asking = generate.add_mutually_exclusive_group()
     asking.add_argument("--ask-requirements", action="store_true",
                         help="always ask about specific requirements first")
@@ -315,7 +318,8 @@ def _generate_batch(options: argparse.Namespace) -> int:
     for number, song in enumerate(songs, 1):
         print(f"[{number}/{len(songs)}] {song.name}")
         try:
-            show = generate_show(options.preview, target / f"{song.stem}.loredit", rule_set,
+            suffix = ".lms" if str(options.preview).lower().endswith(".lms") else ".loredit"
+            show = generate_show(options.preview, target / f"{song.stem}{suffix}", rule_set,
                                  audio_path=song, music_filename=song.name,
                                  beats_per_bar=options.beats_per_bar, separate=False,
                                  style=options.style)
@@ -352,6 +356,7 @@ def _generate(options: argparse.Namespace) -> int:
             music_filename=options.music_filename, beats_per_bar=options.beats_per_bar,
             vocals_path=options.vocals, separate=False if options.no_vocals else None,
             progress=print, vocal_beats=options.vocal_beats, style=options.style,
+            lyrics_path=options.lyrics,
         )
     except RulesFailedError as failed:
         print(failed.report.format_text())

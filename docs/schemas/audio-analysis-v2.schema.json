@@ -431,6 +431,27 @@
               }
             }
           }
+        },
+        "kicks": {
+          "type": "array",
+          "description": "Kick drum candidates: percussive onsets in the 30-120 Hz band, with relative strength. Optional, heuristic.",
+          "items": {
+            "$ref": "#/$defs/strengthEvent"
+          }
+        },
+        "snares": {
+          "type": "array",
+          "description": "Snare (or clap) candidates: percussive onsets in the 1-5 kHz band away from kicks, with relative strength. Optional, heuristic.",
+          "items": {
+            "$ref": "#/$defs/strengthEvent"
+          }
+        },
+        "harmonic_departures": {
+          "type": "array",
+          "description": "Bars (by start time) whose harmony leans on notes the rest of the song rarely plays, such as a borrowed chord or a key change. Optional, heuristic.",
+          "items": {
+            "$ref": "#/$defs/strengthEvent"
+          }
         }
       }
     }
@@ -475,6 +496,34 @@
         "fitted"
       ],
       "description": "Optional. Set by a music review: confirmed (placed or confirmed by a person), fitted (spread evenly between confirmed bars) or auto (an estimate)."
+    },
+    "strengthEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "time",
+        "strength",
+        "confidence",
+        "method"
+      ],
+      "properties": {
+        "time": {
+          "$ref": "#/$defs/time"
+        },
+        "strength": {
+          "type": "number",
+          "minimum": 0
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "method": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        }
+      }
     }
   }
 }
