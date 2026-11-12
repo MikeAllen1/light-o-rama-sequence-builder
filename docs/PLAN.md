@@ -503,3 +503,16 @@ The start page's **Watch a demo show** builds the show for the built-in invented
 - Not yet: the display test for S4, RGB/DMX channels in S4, and multi-channel props (a mega tree's channels are separate props, grouped by its S4 channel group).
 - **Owner verification pending:** open a generated `.lms` in the S4 Sequencer and play it. Tests use invented sequences only; the owner's S4 and S5 files are not in the repository.
 
+## Planner v3: styles choose the motion
+
+Two outside reviews of generated shows found the styles about 90% the same show, look-alike props in lockstep, a flat energy curve and section marks off the phrases. The planner now:
+
+- Lets each style choose, per prop kind and level, the motion and the grid it moves on (`style.Part`), with alternatives a returning part can use; plus phrase length, how louder parts are entered (flash, dark beat, swell), spin width and snowflake fall speed.
+- Never gives look-alike props one timeline: rows chase, bounce, fill, wave or take turns; loose families trade, breathe in turn or ripple, in order across the yard.
+- Snaps detected section changes to four-bar phrase lines (choosing the bar the count starts from that fits the changes best; reviewed marks are kept).
+- Grows the show through the song (`style.arc`), makes the last loud part the fullest, and stages a song's closing hits left, right, everything, then fades from the edges inward.
+
+Measured on the fictional family yard (tests/test_styles.py): shared exact placements between styles went from 91% / 75% / 72% to 17% / 11% / 5%; look-alike pairs in lockstep from 12 to 0 in every style; the last chorus is now 1.7x (Classic) and 1.3x (High energy) as lit as the first, where before it was dimmer.
+
+Still to come: kick/snare separation, lyric cues from the music review, and chord-change moments (signals the analysis does not yet provide).
+

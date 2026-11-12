@@ -50,13 +50,15 @@ To try everything without your own files, run `uv run lor-sequence-builder demo 
 
 ### Styles
 
-The same song and display can be arranged with a different character:
+The same song and display can be arranged with a different character. A style decides what each kind of prop does and what it moves on (a whole phrase, a bar, every other beat, the beat, or the half beat), so the three styles are genuinely different shows, not one show with different brightness:
 
-- **Classic** (default): balanced. A few groups lead and hand off, chases on the beat, build-ups, a flash on the crashes.
-- **High energy:** more of the yard leads at once, every chase on every beat, sharp hits instead of fades, more flashes. For fast, loud songs.
-- **Elegant:** fewer props at a time, slower chases that fade in and out, softer brightness, no flashes, twinkling stars and outlines. For ballads.
+- **Classic** (default): arches chase on the beat and bounce back in the big parts, decorations take turns, the mega tree spins, a flash opens each louder part.
+- **High energy:** motion on the half beat, bouncing chases, outlines that pulse with the beat, a mega tree that fills bar by bar, sharp hits, and a dark beat before each big part so it lands harder. For fast, loud songs.
+- **Elegant:** motion on bars and phrases instead of beats. Arches fill and wave, decorations breathe one after another, the mega tree breathes and turns slowly, louder parts swell in, softer brightness, no flashes. For ballads.
 
-A style changes how much happens and how it feels, never what each kind of prop follows or which rules the show must pass. On the command line: `generate ... --style energetic`.
+In every style, look-alike props (two reindeer, three pillars, a row of snowmen) never do exactly the same thing at the same time; they take turns, ripple or breathe one after another. The show grows as the song goes, so the last chorus is the fullest; Classic and High energy move a returning chorus or verse a new way, while Elegant repeats it. When a song ends on a few big hits, the left side lights on the first, the right on the next and the whole display on the last, then it fades out from the edges inward. Section changes are moved onto four-bar phrase lines unless you marked them yourself in a music review.
+
+A style never changes which rules the show must pass. On the command line: `generate ... --style energetic`.
 
 Section names (verse, chorus) are guesses from loudness. To name them yourself, use the music review (below).
 

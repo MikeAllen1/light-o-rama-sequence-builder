@@ -23,6 +23,7 @@ from lor_sequence_builder.rules import (
     load_rule_set,
 )
 from lor_sequence_builder.sequence_writer import SequenceWriteError
+from lor_sequence_builder.style import get_style
 from tests.display_builders import (
     ALL_DISPLAYS,
     DisplayBuilder,
@@ -421,7 +422,9 @@ def test_a_big_display_and_a_full_song_plan_quickly() -> None:
     plan, report = _plan(display, analysis)
     elapsed = time.perf_counter() - started
     assert report.ok, report.format_text()
-    assert len(plan.choreography.effects) > 5000
+    # Every prop takes part, in a plan of thousands of effects, quickly.
+    assert len({e.prop_id for e in plan.choreography.effects}) == 29
+    assert len(plan.choreography.effects) > 1500
     assert elapsed < 30
 
 
@@ -602,15 +605,25 @@ def _shape(plan: Plan, start: int, end: int) -> set[tuple[Any, ...]]:
             if start + 100 <= e.start_centisecond < end}
 
 
-def test_a_part_that_comes_back_repeats_its_look_and_the_last_chorus_lifts() -> None:
+def test_a_part_that_comes_back_keeps_its_handoffs_moves_anew_and_the_last_chorus_lifts(
+) -> None:
     display = classic_yard()
     plan, report = _plan(display, synthetic_analysis(duration=96.0, sections=SONG_FORM))
     assert report.ok, report.format_text()
     assert [s.label for s in plan.sections] == ["intro", "verse", "chorus", "verse", "chorus",
                                                 "outro"]
-    first, second = _shape(plan, 1600, 3200), _shape(plan, 4800, 6400)
-    assert len(first & second) >= 0.9 * len(first)  # the second verse repeats the first
     assert ("repeat", 4800) in plan.moments and ("repeat", 6400) in plan.moments
+    # Classic varies a returning part: the same groups lead, but they move differently.
+    assert ("variation", 4800) in plan.moments
+    first, second = _shape(plan, 1600, 3200), _shape(plan, 4800, 6400)
+    assert len(first & second) < 0.9 * len(first)
+    assert (_roles_lit(plan, display, 1600, 3200) == _roles_lit(plan, display, 4800, 6400))
+    # Elegant repeats a returning part exactly.
+    elegant = plan_show(synthetic_analysis(duration=96.0, sections=SONG_FORM),
+                        display_from_preview(display.element()), load_rule_set(),
+                        style=get_style("elegant"))
+    first, second = _shape(elegant, 1600, 3200), _shape(elegant, 4800, 6400)
+    assert len(first & second) >= 0.9 * len(first)
 
     # The last chorus brings in one more lead group than the first (on a display with
     # more groups than a loud part normally uses).
@@ -659,7 +672,8 @@ def test_crashes_and_returns_from_a_stop_flash_the_display() -> None:
     assert kinds == [("crash", 4050), ("return", 5700), ("crash", 7025)]
     flashing = {e.prop_id for e in plan.choreography.effects
                 if e.start_centisecond == 4050 and e.kind == "fade" and e.end_intensity == 0}
-    assert len(flashing) >= 8
+    # Everything not in the middle of a chase flashes (a chase is never cut).
+    assert len(flashing) >= 6
     assert "crash(es) flash the display" in " ".join(plan.notes)
     assert plan.to_dict()["moments"][0]["kind"]
 
@@ -676,3 +690,49 @@ def test_two_songs_on_one_display_get_different_shows() -> None:
     # The same song twice is the same show.
     again, _ = _plan(display, synthetic_analysis(duration=96.0, sections=SONG_FORM))
     assert again.choreography == one.choreography
+
+
+def test_section_changes_move_onto_phrase_lines() -> None:
+    # At 120 BPM a bar is 2 s, so phrase lines fall every 8 s. One change is detected
+    # a bar late, another half a second early: both land on the lines.
+    analysis = synthetic_analysis(duration=64.0,
+                                  sections=((0.0, 0.1), (18.0, 0.5), (31.5, 0.9)))
+    plan, report = _plan(classic_yard(), analysis)
+    assert report.ok, report.format_text()
+    assert [s.start_centisecond for s in plan.sections] == [0, 1600, 3200]
+    assert any("four-bar phrase line" in note for note in plan.notes)
+    # A person's own section marks from a music review stay where they are.
+    analysis["analysis"]["section_candidates"] = [{"time": 18.0, "label": "verse"},
+                                                  {"time": 31.5, "label": "chorus"}]
+    plan, _ = _plan(classic_yard(), analysis)
+    assert [s.start_centisecond for s in plan.sections] == [0, 1800, 3200]
+
+
+def test_the_closing_hits_light_left_then_right_then_everything() -> None:
+    display = classic_yard()
+    analysis = synthetic_analysis(duration=40.0, sections=((0.0, 0.2), (16.0, 0.9)))
+    # Three closing chords a second apart, then the sound rings out.
+    analysis["analysis"]["onsets"] = (
+        [{"time": t, "strength": 0.5} for t in range(1, 34)]
+        + [{"time": t, "strength": 1.0} for t in (34.0, 35.0, 36.0)])
+    plan, report = _plan(display, analysis)
+    assert report.ok, report.format_text()
+    assert ("finale_hits", 3400) in plan.moments
+    props = display_from_preview(display.element()).props
+
+    def lit_at(time: int) -> set[str]:
+        return {e.prop_id for e in plan.choreography.effects
+                if e.start_centisecond <= time < e.end_centisecond
+                and max(e.start_intensity, e.end_intensity) > 0}
+
+    xs = {pid: (props[pid].center or (0.0, 0.0))[0] for pid in props}
+    first, second, last = lit_at(3450), lit_at(3550), lit_at(3650)
+    assert first and max(xs[p] for p in first) < min(xs[p] for p in second - first)
+    assert first < second <= last and len(last) >= len(props) - 1
+    # Then it fades out, the middle of the yard last.
+    finals = {e.prop_id: e.end_centisecond for e in plan.choreography.effects
+              if e.start_centisecond >= 3600}
+    middle = min(finals, key=lambda p: abs(xs[p]))
+    edge = max(finals, key=lambda p: abs(xs[p]))
+    assert finals[middle] > finals[edge]
+
