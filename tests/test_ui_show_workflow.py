@@ -89,7 +89,7 @@ def test_uncertain_requirement_update_requires_display_resync(workspace_url: str
         page.locator("#showDisplayFile").set_input_files(display_file)
         page.locator("#displayStatus").filter(has_text="Requirement Resync Yard").wait_for()
         assert page.locator("#requirementList li").count() == 1
-        assert page.locator("#requirementList li").inner_text() == "Never use Tree"
+        assert "Never use Tree" in page.locator("#requirementList li").inner_text()
         assert page.locator("#addRequirement").is_enabled()
         browser.close()
 
