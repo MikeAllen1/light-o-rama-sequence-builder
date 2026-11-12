@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import dataclasses
 import itertools
+import math
 import re
 import zlib
 from collections import defaultdict
@@ -76,6 +77,9 @@ class PlannedSection:
     start_centisecond: int
     end_centisecond: int
     energy: float
+    # Sections that sound alike (a verse and its return) share a part number, when
+    # the analysis has bar signatures; None when not known.
+    part: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,6 +144,9 @@ class _Music:
     labels: dict[int, str] = field(default_factory=dict)
     beats_per_bar: int = 4
     bar_phase: int = 0
+    # What each bar sounds like (start, harmony and tone colour), centred on the
+    # song's average, from the analysis's bar signatures.
+    bars: list[tuple[int, list[float]]] = field(default_factory=list)
 
 
 def _music(analysis: dict[str, Any]) -> _Music:
@@ -196,6 +203,11 @@ def _music(analysis: dict[str, Any]) -> _Music:
                      if 0 < t < duration})
     reviewed = any(isinstance(c, dict) and c.get("label")
                    for c in analysis.get("analysis", {}).get("section_candidates", []))
+    bars = _bar_vectors(analysis)
+    if not reviewed and bars:
+        # Where the song moves on to a different part (verse to chorus), even when
+        # the loudness barely changes.
+        starts = sorted(set(starts) | set(_repetition_starts(bars, downbeats, starts)))
     if not reviewed:
         # Detected changes land near, not on, the song's phrases; a person's own
         # section marks from a music review are left where they put them.
@@ -210,10 +222,64 @@ def _music(analysis: dict[str, Any]) -> _Music:
             labels[_snap(_cs(float(candidate["time"])), downbeats)] = (
                 candidate["label"].strip().lower())
     return _Music(duration, beats, downbeats, energy, starts, stops, notes, labels,
-                   beats_per_bar, phase)
+                   beats_per_bar, phase, bars)
+
+
+def _bar_vectors(analysis: dict[str, Any]) -> list[tuple[int, list[float]]]:
+    """Each bar's harmony and (at half weight) tone colour, minus the song's average,
+    so what is left is what makes this bar different from the rest of the song."""
+    raw: list[tuple[int, list[float]]] = []
+    for bar in analysis.get("analysis", {}).get("bar_signatures", []):
+        if not isinstance(bar, dict) or not isinstance(bar.get("time"), int | float):
+            continue
+        chroma, timbre = bar.get("chroma"), bar.get("timbre")
+        if not (isinstance(chroma, list) and len(chroma) == 12 and isinstance(timbre, list)
+                and len(timbre) == 6):
+            continue
+        raw.append((_cs(float(bar["time"])),
+                    [float(v) for v in chroma] + [0.5 * float(v) for v in timbre]))
+    if len(raw) < 8:
+        return []
+    mean = [sum(v[i] for _, v in raw) / len(raw) for i in range(18)]
+    return [(t, [x - m for x, m in zip(v, mean, strict=True)]) for t, v in raw]
 
 
 PHRASE_BARS = 4
+
+
+def _repetition_starts(bars: list[tuple[int, list[float]]], downbeats: list[int],
+                       starts: list[int]) -> list[int]:
+    """Phrase lines where the song moves on to a different part. Four-bar phrases are
+    grouped by how alike they sound bar for bar; a new part starts where the group
+    changes and stays changed for at least two phrases."""
+    by_time = dict(bars)
+    marks = [d for d in downbeats if d in by_time]
+    if len(marks) < 4 * PHRASE_BARS:
+        return []
+    # Count phrases from the bar most detected changes fall on.
+    index = {d: i for i, d in enumerate(marks)}
+    phases = [index[t] % PHRASE_BARS for t in starts if t in index]
+    phase = max(range(PHRASE_BARS), key=lambda p: (phases.count(p), -p)) if phases else 0
+    phrases = [marks[i:i + PHRASE_BARS] for i in range(phase, len(marks) - PHRASE_BARS + 1,
+                                                       PHRASE_BARS)]
+    groups: list[list[list[float]]] = []
+    kinds: list[int] = []
+    for phrase in phrases:
+        vectors = [by_time[t] for t in phrase]
+        alike = [sum(_cosine(a, b) for a, b in zip(vectors, rep, strict=True)) / len(vectors)
+                 for rep in groups]
+        best = max(range(len(alike)), key=lambda g: alike[g], default=-1)
+        if best >= 0 and alike[best] >= SAME_PART:
+            kinds.append(best)
+        else:
+            groups.append(vectors)
+            kinds.append(len(groups) - 1)
+    found = []
+    for k in range(1, len(kinds)):
+        # A change that the old part does not come straight back from.
+        if kinds[k] != kinds[k - 1] and (k + 1 == len(kinds) or kinds[k + 1] != kinds[k - 1]):
+            found.append(phrases[k][0])
+    return found
 
 
 def _on_phrases(starts: list[int], downbeats: list[int]) -> list[int]:
@@ -318,11 +384,99 @@ def _sections(music: _Music) -> list[PlannedSection]:
             label = "chorus" if level == HIGH else "verse"
         # A name from the music review wins over the guess. Its marker is matched to
         # the section that starts nearest it (within a second before, four after).
+        sections.append(PlannedSection(label, level, start, end, rel))
+    sections = _name_parts(sections, music)
+    # A name from the music review wins over the guess. Its marker is matched to
+    # the section that starts nearest it (within a second before, four after).
+    named_sections = []
+    for section in sections:
+        start, end = section.start_centisecond, section.end_centisecond
         named = [t for t in music.labels if start - 100 <= t < min(end, start + 400)]
         if named:
-            label = music.labels[min(named, key=lambda t: abs(t - start))]
-        sections.append(PlannedSection(label, level, start, end, rel))
-    return sections
+            section = dataclasses.replace(
+                section, label=music.labels[min(named, key=lambda t: abs(t - start))])
+        named_sections.append(section)
+    return named_sections
+
+
+# Two sections are the same part when their bars, matched in order, are this alike.
+SAME_PART = 0.6
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
+    norm = math.sqrt(sum(x * x for x in a) * sum(y * y for y in b))
+    return dot / norm if norm else 0.0
+
+
+def _alike(first: list[list[float]], second: list[list[float]]) -> float:
+    """How alike two sections sound, bar against bar in order (allowing a bar of
+    pickup either way): a returning verse plays the same chords in the same order."""
+    best = 0.0
+    for shift in (-1, 0, 1):
+        pairs = [(first[i], second[i + shift]) for i in range(len(first))
+                 if 0 <= i + shift < len(second)]
+        if len(pairs) >= 4:
+            best = max(best, sum(_cosine(a, b) for a, b in pairs) / len(pairs))
+    return best
+
+
+def _name_parts(sections: list[PlannedSection], music: _Music) -> list[PlannedSection]:
+    """Name sections by what repeats, not only by loudness: the loudest part that
+    comes back is the chorus, other parts that come back are verses, and a part
+    heard once between choruses is the bridge. Without bar signatures, or when
+    nothing repeats, the loudness names stand."""
+    if not music.bars or len(sections) < 3:
+        return sections
+    bars = [[v for t, v in music.bars if s.start_centisecond <= t < s.end_centisecond]
+            for s in sections]
+    count = len(sections)
+    part = list(range(count))
+
+    def root(i: int) -> int:
+        while part[i] != i:
+            i = part[i]
+        return i
+
+    for i in range(count):
+        for j in range(i + 1, count):
+            if bars[i] and bars[j] and _alike(bars[i], bars[j]) >= SAME_PART:
+                part[root(j)] = root(i)
+    groups: dict[int, list[int]] = defaultdict(list)
+    for i in range(count):
+        groups[root(i)].append(i)
+    repeating = [members for members in groups.values() if len(members) >= 2]
+    if not repeating:
+        return sections
+
+    def loudness(members: list[int]) -> float:
+        return sum(sections[i].energy for i in members) / len(members)
+
+    chorus = max(repeating, key=loudness)
+    median = sorted(s.energy for s in sections)[count // 2]
+    names: dict[int, str] = {}
+    if loudness(chorus) >= median:
+        for i in chorus:
+            names[i] = "chorus"
+    for members in repeating:
+        for i in members:
+            names.setdefault(i, "verse")
+    choruses = sorted(i for i, name in names.items() if name == "chorus")
+    for members in groups.values():
+        if len(members) == 1:
+            i = members[0]
+            if choruses and choruses[0] < i < choruses[-1]:
+                names[i] = "bridge"
+    named: list[PlannedSection] = []
+    numbers = {root(i): n for n, i in enumerate(sorted({root(i) for i in range(count)}))}
+    for i, section in enumerate(sections):
+        label = section.label
+        if i in names and label not in {"intro", "outro", "finale"}:
+            label = names[i]
+        named.append(dataclasses.replace(section, label=label, part=numbers[root(i)]))
+    music.notes.append("Section names come from which parts of the song repeat (and how "
+                       "loud they are), not from recognizing the words.")
+    return named
 
 
 @dataclass(frozen=True, slots=True)
@@ -1354,6 +1508,8 @@ def _same_part(first: PlannedSection, later: PlannedSection, music: _Music) -> b
     """
     if first.start_centisecond in music.labels or later.start_centisecond in music.labels:
         return True
+    if first.part is not None and later.part is not None:
+        return first.part == later.part
     a = first.end_centisecond - first.start_centisecond
     b = later.end_centisecond - later.start_centisecond
     bars = [y - x for x, y in itertools.pairwise(music.downbeats)]
@@ -1834,7 +1990,7 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
     if music.labels:
         notes.append(f"{len(music.labels)} section name(s) come from the music review; the "
                      "others are guesses from loudness.")
-    else:
+    elif not any(section.part is not None for section in sections):
         notes.append("Section labels (intro, verse, chorus, finale, outro) are guesses from "
                      "loudness, not recognition.")
 
@@ -1949,6 +2105,13 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
                 section_extra[si] = 0
                 motif_turn.setdefault(key, turn)
                 motif_flip.setdefault(key, si % 2)
+            if label == "bridge":
+                # The bridge is heard once: other groups lead, moving the other way and
+                # the other way round, so it stands apart from the verses and choruses.
+                section_turn[si] += max(1, len(groups) // 2)
+                section_flip[si] = 1 - section_flip[si]
+                occurrence[si] = max(occurrence[si], 1)
+                moments.append(("bridge", section.start_centisecond))
             # The show grows as the song goes: later mid and loud parts bring in up
             # to ``style.arc`` more lead groups.
             if section.level >= MID:
@@ -2162,7 +2325,8 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
                  "build": "build-up(s) before a louder part",
                  "crash": "crash(es) flash the display",
                  "return": "return(s) from a stop flash the display",
-                 "calm_base": "dark stretch(es) given a calm base"}
+                 "calm_base": "dark stretch(es) given a calm base",
+                 "bridge": "bridge(s) led by other props, moving the other way"}
         notes.append("Arrangement: " + "; ".join(
             f"{counts[kind]} {names[kind]}" for kind in names if counts[kind]) + ".")
 

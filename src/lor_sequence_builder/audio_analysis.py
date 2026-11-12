@@ -689,6 +689,35 @@ def _structural_sections(
     ]
 
 
+def _bar_signatures(spectra: _Spectra, beat_frames: IntArray, beat_chroma: FloatArray,
+                    beat_times: list[float], downbeat_indices: IntArray,
+                    ) -> list[dict[str, Any]]:
+    """What each bar sounds like, compactly: its harmony (12 pitch classes) and its
+    tone colour (6 timbre coefficients, relative to the song). Parts that come back
+    (a second verse, a last chorus) have bars that sound alike; the planner uses this
+    to tell a chorus from a verse and to find a bridge. Never names a part itself."""
+    marks = [int(i) for i in downbeat_indices if int(i) < beat_chroma.shape[1]]
+    if len(marks) < 4:
+        return []
+    mfcc = librosa.feature.mfcc(S=spectra.log_mel(), sr=SAMPLE_RATE, n_mfcc=7)
+    timbre = _beat_sync(mfcc, beat_frames)[1:7]
+    timbre = (timbre - timbre.mean(axis=1, keepdims=True)) / (
+        timbre.std(axis=1, keepdims=True) + 1e-9)
+    ends = [*marks[1:], min(beat_chroma.shape[1], marks[-1] + (marks[-1] - marks[-2]))]
+    bars: list[dict[str, Any]] = []
+    for a, b in zip(marks, ends, strict=True):
+        if b <= a:
+            continue
+        chroma = np.mean(beat_chroma[:, a:b], axis=1)
+        chroma = chroma / (float(np.linalg.norm(chroma)) + 1e-9)
+        tone = np.mean(timbre[:, a:min(b, timbre.shape[1])], axis=1) if a < timbre.shape[1] \
+            else np.zeros(6)
+        bars.append({"time": beat_times[a],
+                     "chroma": [round(float(v), 3) for v in chroma],
+                     "timbre": [round(float(v), 3) for v in tone]})
+    return bars
+
+
 def _energy_curve(rms: list[float]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     frames_per_second = round(1.0 / FRAME_SECONDS)
@@ -938,6 +967,7 @@ def analyze_audio(
         bar_confidence = 0.0
         structural: list[dict[str, Any]] = []
         departures: list[dict[str, Any]] = []
+        bar_signatures: list[dict[str, Any]] = []
         if bpm is not None and len(beat_times) >= 2 * beats_per_bar:
             progress.step("Finding the bars and the parts of the song", 0.55)
             beat_chroma = _beat_chroma(samples, beat_frames)
@@ -945,6 +975,8 @@ def analyze_audio(
             downbeat_indices = np.arange(phase, len(beat_times), beats_per_bar, dtype=np.int64)
             downbeats = [beat_times[int(i)] for i in downbeat_indices]
             departures = _harmonic_departures(beat_chroma, beat_times, downbeat_indices)
+            bar_signatures = _bar_signatures(spectra, beat_frames, beat_chroma, beat_times,
+                                             downbeat_indices)
             for beat_index, score in _structural_sections(
                 spectra, beat_frames, beat_chroma, downbeat_indices
             ):
@@ -1035,6 +1067,7 @@ def analyze_audio(
                 "kicks": kicks,
                 "snares": snares,
                 "harmonic_departures": departures,
+                "bar_signatures": bar_signatures,
                 "tempo_curve": _tempo_curve(envelope, bpm),
                 "energy": energy,
                 "phrase_boundaries": phrases,
