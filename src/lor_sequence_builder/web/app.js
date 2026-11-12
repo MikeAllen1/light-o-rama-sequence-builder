@@ -3622,7 +3622,7 @@
           : "The batch archive could not be downloaded (code " + response.status + ").");
       }
       const disposition = response.headers.get("Content-Disposition") || "";
-      const encodedName = disposition.match(/filename\\*=UTF-8''([^;]+)/i);
+      const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/i);
       const fileName = encodedName ? decodeURIComponent(encodedName[1]) : "shows.zip";
       download(await response.arrayBuffer(), fileName, "application/zip");
     } catch (error) {
