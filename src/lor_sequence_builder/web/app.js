@@ -3436,12 +3436,22 @@
     });
   }
 
+  function generatedActionsBlocked() {
+    return show.audioPending || show.requirementsPending || show.displayPending ||
+      show.generationPending || show.batchRunning || show.testPending;
+  }
+
+  function updateGeneratedControls() {
+    const ready = !generatedActionsBlocked() && resultIsCurrent();
+    for (const id of ["openGenerated", "saveGenerated", "pictureGenerated", "reportGenerated"]) {
+      $(id).disabled = !ready;
+    }
+  }
+
   function invalidateGeneratedResult() {
     show.result = null;
     show.resultConfig = null;
-    for (const id of ["openGenerated", "saveGenerated", "pictureGenerated", "reportGenerated"]) {
-      $(id).disabled = true;
-    }
+    updateGeneratedControls();
     $("showNotes").replaceChildren();
   }
 
@@ -3494,6 +3504,9 @@
       show.displayPending || show.testPending || show.audioPending || show.requirementsPending);
     setRequirementControlsLocked(show.requirementsPending || show.batchRunning || show.generationPending ||
       show.displayPending || show.testPending);
+    $("saveBatch").disabled = !show.batchReady || show.batchRunning ||
+      show.requirementsPending || show.displayPending;
+    updateGeneratedControls();
   }
 
   async function chooseDisplay(file) {
@@ -3840,6 +3853,7 @@
   }
 
   function saveGenerated() {
+    if (generatedActionsBlocked()) return;
     if (!resultIsCurrent() || !show.result.sequence) {
       invalidateGeneratedResult();
       showMessage("generateStatus", "This result no longer matches the selected show settings. Generate it again.", "warn");
@@ -3850,6 +3864,7 @@
 
   async function openGenerated() {
     const result = show.result;
+    if (generatedActionsBlocked()) return;
     if (!resultIsCurrent()) {
       invalidateGeneratedResult();
       showMessage("generateStatus", "This result no longer matches the selected show settings. Generate it again.", "warn");
@@ -3907,13 +3922,13 @@
   }
 
   function openReport() {
-    if (!resultIsCurrent()) return;
+    if (generatedActionsBlocked() || !resultIsCurrent()) return;
     showViewer("Show report", show.result.summary, stem(show.result.file_name) + ".report.html",
       "text/html");
   }
 
   function openPicture() {
-    if (!resultIsCurrent()) return;
+    if (generatedActionsBlocked() || !resultIsCurrent()) return;
     showViewer("Plan picture", show.result.picture, stem(show.result.file_name) + ".plan.svg",
       "image/svg+xml");
   }
