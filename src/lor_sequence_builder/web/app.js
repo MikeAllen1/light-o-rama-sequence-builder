@@ -1614,9 +1614,17 @@
         state.lyrics = review.lyrics != null ? review.lyrics : null;
         if (review.meter === 3 || review.meter === 4) {
           const previousMeter = $("meterSelect").value;
-          $("meterSelect").value = String(review.meter);
-          if (previousMeter !== String(review.meter) && show.token && show.audioFile) {
-            chooseSong(show.audioFile);
+          const nextMeter = String(review.meter);
+          $("meterSelect").value = nextMeter;
+          if (previousMeter !== nextMeter && show.token) {
+            invalidateGeneratedResult();
+            if (show.batchReady && show.batchConfig !== currentBatchConfig()) {
+              show.batchReady = false;
+              $("saveBatch").disabled = true;
+              showMessage("batchStatus", "Meter changed. Rebuild the playlist before saving it.", "warn");
+            }
+            if (show.audioFile) chooseSong(show.audioFile);
+            else setStepEnabled();
           }
         }
       } else if (discardUnsavedReview) {
