@@ -215,6 +215,45 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                     assert "Hello lights" in inspector
                     assert "Lyric text from an imported file" in inspector
                     assert "prop(s) lit" in inspector
+
+                    # Imported analysis, vocals and lyrics must belong to this song.
+                    # A failed import must leave the existing, correct lanes untouched.
+                    page.locator("#analysisFile").set_input_files(
+                        {
+                            "name": "wrong.analysis.json",
+                            "mimeType": "application/json",
+                            "buffer": json.dumps({"audio": {"duration_seconds": 20.0},
+                                                  "analysis": {}}).encode("utf-8"),
+                        }
+                    )
+                    page.locator("#analysisMessage").filter(
+                        has_text="different-length recording"
+                    ).wait_for()
+                    assert "Beat candidates" in page.locator("#markerLabels").inner_text()
+
+                    page.locator("#vocalsFile").set_input_files(
+                        {
+                            "name": "wrong.vocals.json",
+                            "mimeType": "application/json",
+                            "buffer": json.dumps({"duration_seconds": 20.0}).encode("utf-8"),
+                        }
+                    )
+                    page.locator("#analysisMessage").filter(
+                        has_text="different-length recording"
+                    ).wait_for()
+                    assert "Beat candidates" in page.locator("#markerLabels").inner_text()
+
+                    page.locator("#lyricsFile").set_input_files(
+                        {
+                            "name": "wrong.lrc",
+                            "mimeType": "text/plain",
+                            "buffer": b"[00:10.00]Too late for this song\\n",
+                        }
+                    )
+                    page.locator("#analysisMessage").filter(
+                        has_text="extend beyond the selected song"
+                    ).wait_for()
+                    assert "Lyrics" in page.locator("#markerLabels").inner_text()
                 finally:
                     browser.close()
     finally:
