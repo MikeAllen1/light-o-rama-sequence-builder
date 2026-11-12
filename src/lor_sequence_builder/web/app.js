@@ -3406,15 +3406,22 @@
   function setStepEnabled() {
     $("makeTest").disabled = !show.token || show.batchRunning || show.generationPending ||
       show.displayPending || show.testPending || show.audioPending || show.requirementsPending;
-    $("showSongFile").disabled = !show.token || show.batchRunning || show.generationPending || show.displayPending;
+    $("showSongFile").disabled = !show.token || show.batchRunning || show.generationPending ||
+      show.displayPending || show.testPending;
     $("showSongLabel").classList.toggle("disabled", !show.token);
-    $("addRequirement").disabled = !show.token;
-    $("translateRequirements").disabled = !show.token || !show.summary.can_translate;
+    $("addRequirement").disabled = !show.token || show.testPending || show.batchRunning ||
+      show.generationPending || show.displayPending || show.requirementsPending;
+    $("translateRequirements").disabled = !show.token || !show.summary.can_translate || show.testPending ||
+      show.batchRunning || show.generationPending || show.displayPending || show.requirementsPending;
     $("generateShow").disabled = !(show.token && show.analysis && !show.audioPending &&
-      !show.requirementsPending && !show.generationPending && !show.batchRunning && !show.displayPending);
-    $("batchFiles").disabled = !show.token || show.batchRunning || show.generationPending || show.displayPending;
-    $("batchLabel").classList.toggle("disabled", !show.token || show.batchRunning || show.generationPending || show.displayPending);
-    setRequirementControlsLocked(show.requirementsPending || show.batchRunning || show.generationPending || show.displayPending);
+      !show.requirementsPending && !show.generationPending && !show.batchRunning &&
+      !show.displayPending && !show.testPending);
+    $("batchFiles").disabled = !show.token || show.batchRunning || show.generationPending ||
+      show.displayPending || show.testPending || show.audioPending || show.requirementsPending;
+    $("batchLabel").classList.toggle("disabled", !show.token || show.batchRunning || show.generationPending ||
+      show.displayPending || show.testPending || show.audioPending || show.requirementsPending);
+    setRequirementControlsLocked(show.requirementsPending || show.batchRunning || show.generationPending ||
+      show.displayPending || show.testPending);
   }
 
   async function chooseDisplay(file) {
