@@ -16,6 +16,7 @@ from typing import Any, cast
 from urllib.parse import parse_qs, quote, urlsplit
 
 from lor_sequence_builder import __version__, progress, recent_shows
+from lor_sequence_builder.add_props import AddPropsError, AddSessions
 from lor_sequence_builder.audio_analysis import (
     INPUT_DEMUXERS,
     MAX_INPUT_BYTES,
@@ -39,6 +40,7 @@ _MAX_EXPORT_BYTES = 4 * MAX_LOREDIT_BYTES + 1024 * 1024
 _MAX_JSON_BYTES = 256 * 1024
 # Shows being built from the browser (preview, song, requirements, generate).
 SHOWS = ShowSessions()
+ADDS = AddSessions()
 _SHOW_STEPS = {"/api/show/start", "/api/show/audio", "/api/show/requirements",
                "/api/show/generate", "/api/show/test", "/api/show/batch",
                "/api/show/batch-zip", "/api/show/batch-clear"}
@@ -154,7 +156,7 @@ def _detect_audio_suffix(payload: bytes) -> str | None:
 # the rest wait their turn (and say so) instead of running the computer out of memory.
 HEAVY_AT_ONCE = 2
 _HEAVY_STEPS = {"/api/analyze", "/api/show/audio", "/api/show/generate", "/api/show/batch",
-                "/api/show/batch-zip", "/api/show/test", "/api/demo"}
+                "/api/show/batch-zip", "/api/show/test", "/api/demo", "/api/add/build"}
 _heavy = threading.BoundedSemaphore(HEAVY_AT_ONCE)
 
 
@@ -176,6 +178,9 @@ _RECENT = {"/api/recent", "/api/recent/open", "/api/recent/remove", "/api/recent
 # Learning a style from the user's own sequences: measure one file, keep a style from
 # the measurements, list or remove kept styles. Nothing is sent anywhere.
 _STYLES = {"/api/style/measure", "/api/style/keep", "/api/style/list", "/api/style/remove"}
+# Adding new props to a finished sequence: the sequence, then (S5/S6) the updated
+# preview and (optionally) the song, then build.
+_ADDS = {"/api/add/sequence", "/api/add/preview", "/api/add/audio", "/api/add/build"}
 # A preview the program was started with (right-click "Build a show", or --preview),
 # handed to the page once so New show opens with it.
 _startup_lock = threading.Lock()
@@ -299,7 +304,7 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
         parsed = urlsplit(self.path)
         if parsed.path not in {"/api/analyze", "/api/export", "/api/update", "/api/log",
                                "/api/diagnostics", "/api/progress", "/api/startup",
-                               "/api/demo", *_RECENT, *_STYLES, *_SHOW_STEPS}:
+                               "/api/demo", *_RECENT, *_STYLES, *_ADDS, *_SHOW_STEPS}:
             self.send_error(404, "This program has no such step.")
             return
         if not self._is_same_origin():
@@ -340,6 +345,9 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
             if parsed.path in _SHOW_STEPS:
                 self._show_step(parsed.path, parse_qs(parsed.query))
                 return
+            if parsed.path in _ADDS:
+                self._add_step(parsed.path, parse_qs(parsed.query))
+                return
             self._analyze(parsed.query)
 
     def _recent(self, path: str) -> None:
@@ -359,6 +367,47 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
         except recent_shows.RecentShowError as exc:
             self._send_json(404, {"error": str(exc)})
         except OSError as exc:
+            self._send_json(500, {"error": friendly(exc)})
+
+    def _add_step(self, path: str, query: dict[str, list[str]]) -> None:
+        token = query.get("token", [""])[0]
+        try:
+            if path == "/api/add/sequence":
+                name = Path(query.get("name", ["sequence.loredit"])[0][:200]).name
+                limit = MAX_LMS_BYTES if name.lower().endswith(".lms") else MAX_LOREDIT_BYTES
+                payload = self._read_body("application/octet-stream", limit, "Sequence")
+                if payload is None:
+                    return
+                self._send_json(200, ADDS.start(payload, name))
+            elif path == "/api/add/preview":
+                payload = self._read_body("application/xml", MAX_LORPREV_BYTES, "Preview")
+                if payload is None:
+                    return
+                self._send_json(200, ADDS.preview(token, payload))
+            elif path == "/api/add/audio":
+                payload = self._read_body("application/octet-stream", _MAX_UPLOAD_BYTES,
+                                          "Audio")
+                if payload is None:
+                    return
+                suffix = _detect_audio_suffix(payload)
+                if suffix is None or suffix not in INPUT_DEMUXERS:
+                    self.send_error(415, _NOT_AUDIO)
+                    return
+                self._send_json(200, ADDS.audio(token, payload, suffix, INPUT_DEMUXERS[suffix]))
+            else:
+                body = self._read_json()
+                if body is None:
+                    return
+                from lor_sequence_builder.rules import load_rule_set
+                from lor_sequence_builder.style import get_style
+
+                style_key = body.get("style")
+                style = (get_style(style_key) if isinstance(style_key, str) and style_key
+                         else None)
+                self._send_json(200, ADDS.build(token, load_rule_set(), style))
+        except (AddPropsError, AudioAnalysisError, ValueError, RuntimeError) as exc:
+            self._send_json(422, {"error": str(exc)})
+        except (OSError, MemoryError) as exc:
             self._send_json(500, {"error": friendly(exc)})
 
     def _style(self, path: str, query: dict[str, list[str]]) -> None:
@@ -743,6 +792,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     finally:
         server.server_close()
         SHOWS.close()
+        ADDS.close()
     return 0
 
 
