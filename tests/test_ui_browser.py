@@ -291,6 +291,14 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                     # editing and undoing must return to the saved baseline.
                     with page.expect_download():
                         page.locator("#saveReviewButton").click()
+
+                    # A saved review is still authoritative when its meter changes;
+                    # the app must preserve its corrections and mark the new meter unsaved.
+                    page.locator("#meterSelect").select_option("3")
+                    assert "unsaved music review" in page.locator("#editStatus").inner_text().lower()
+                    page.locator("#meterSelect").select_option("4")
+                    assert "unsaved music review" not in page.locator("#editStatus").inner_text().lower()
+
                     page.locator("#reviewText").fill("Hello lights revised")
                     page.locator("#reviewApply").click()
                     assert "unsaved music review" in page.locator("#editStatus").inner_text().lower()
