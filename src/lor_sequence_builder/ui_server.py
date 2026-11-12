@@ -114,7 +114,7 @@ def _detect_audio_suffix(payload: bytes) -> str | None:
 # the rest wait their turn (and say so) instead of running the computer out of memory.
 HEAVY_AT_ONCE = 2
 _HEAVY_STEPS = {"/api/analyze", "/api/show/audio", "/api/show/generate", "/api/show/batch",
-                "/api/show/test"}
+                "/api/show/batch-zip", "/api/show/test"}
 _heavy = threading.BoundedSemaphore(HEAVY_AT_ONCE)
 
 
