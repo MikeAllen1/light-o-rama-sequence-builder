@@ -84,7 +84,17 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             "skipped": [],
             "notes": [],
         }))
-        page.route("**/api/show/batch-clear*", lambda route: respond(route, {"cleared": True}))
+        fail_next_batch_clear = False
+
+        def clear_batch(route: object) -> None:
+            nonlocal fail_next_batch_clear
+            if fail_next_batch_clear:
+                fail_next_batch_clear = False
+                respond(route, {"error": "simulated reset failure"}, 500)
+            else:
+                respond(route, {"cleared": True})
+
+        page.route("**/api/show/batch-clear*", clear_batch)
         page.route("**/api/show/batch?*", lambda route: respond(route, {
             "ok": True, "duration": 3.0, "parts": 2, "props": 1,
         }))
@@ -158,6 +168,14 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             ])
             page.locator("#batchStatus").filter(has_text="Building 1 of 1").wait_for()
             page.locator("#batchStatus").filter(has_text="1 of 1 shows built").wait_for()
+            assert not page.locator("#saveBatch").is_disabled()
+            previous_playlist_rows = page.locator("#batchList").inner_text()
+            fail_next_batch_clear = True
+            page.locator("#batchFiles").set_input_files([
+                {"name": "replacement.wav", "mimeType": "audio/wav", "buffer": b"replacement"},
+            ])
+            page.locator("#batchStatus").filter(has_text="simulated reset failure").wait_for()
+            assert page.locator("#batchList").inner_text() == previous_playlist_rows
             assert not page.locator("#saveBatch").is_disabled()
             page.locator('input[name="showStyle"][value="classic"]').check()
             assert page.locator("#saveBatch").is_disabled()
