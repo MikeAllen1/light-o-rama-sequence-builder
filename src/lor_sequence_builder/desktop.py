@@ -142,7 +142,38 @@ def _open_window(url: str) -> bool:
     return True
 
 
+def _tell(message: str) -> None:
+    """Show a problem to someone with no console: a message box on Windows."""
+    print(message, file=sys.stderr)
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            ctypes.windll.user32.MessageBoxW(None, message, APP_NAME, 0x10)  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001, S110 - the message is already in the log
+            pass
+
+
 def main(argv: Sequence[str] | None = None) -> int:
+    """Start the app; a startup problem is shown in a message box and logged, so the app
+    never just vanishes."""
+    try:
+        return _main(argv)
+    except KeyboardInterrupt:
+        return 130
+    except Exception as error:  # noqa: BLE001 - every startup failure is shown and logged
+        from lor_sequence_builder.diagnostics import friendly, log_folder, log_unexpected
+
+        reference = log_unexpected(error, "desktop app start")
+        reason = friendly(error) if isinstance(error, (OSError, MemoryError)) else (
+            "Something went wrong inside the program.")
+        _tell(f"{APP_NAME} could not start. {reason}\n\nThe details are in "
+              f"{log_folder() / 'workspace.log'} (reference {reference}). Please include that "
+              "file when you report it.")
+        return 1
+
+
+def _main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="lor-sequencer", description=f"{APP_NAME} desktop app")
     parser.add_argument("--self-test", metavar="RESULT_JSON",
                         help="check this copy without opening a window; write the result here")
