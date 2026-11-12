@@ -13,7 +13,7 @@ Nothing is uploaded anywhere. The program runs on your computer and reads your f
 ## Your first show
 
 1. Double-click **Start LOR Sequencer**. Your browser opens the workspace.
-2. Click **New show**.
+2. Click **New show**. (Or right-click your preview in File Explorer and choose **Build a show with LOR Sequencer**: the app opens with that display already chosen. The installer offers this; S6 stays the program that opens previews.)
 3. **Your display:** choose the `.lorprev`. The panel says what it found, for example "7 arches, 14 snowflakes, 1 mega tree", and lists any prop it cannot sequence, with the reason (pixel and DMX props, or props that follow another prop).
 4. **The song:** choose the audio file. It is analyzed for beats, bars, sections, high-pitched hits (tambourine, sleigh bells) and cymbal crashes. A three-minute song takes a few seconds to half a minute.
 5. **Requirements (optional):** see below. Skip this the first time.

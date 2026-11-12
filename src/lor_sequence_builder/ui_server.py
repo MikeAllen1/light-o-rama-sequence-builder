@@ -133,6 +133,38 @@ def _heavy_turn(path: str) -> Iterator[None]:
 
 
 _RECENT = {"/api/recent", "/api/recent/open", "/api/recent/remove", "/api/recent/clear"}
+# A preview the program was started with (right-click "Build a show", or --preview),
+# handed to the page once so New show opens with it.
+_startup_lock = threading.Lock()
+_startup: dict[str, Any] = {}
+
+
+def offer_preview(path: str | Path) -> str:
+    """Remember a preview to open in New show; returns the address suffix that asks the
+    page for it. Raises ValueError with plain words when the file cannot be used."""
+    source = Path(path)
+    if source.suffix.lower() != ".lorprev" or not source.is_file():
+        raise ValueError(f"{source.name} is not an S6 preview (.lorprev) file")
+    if source.stat().st_size > MAX_LORPREV_BYTES:
+        raise ValueError(f"{source.name} is larger than a preview can be")
+    data = source.read_bytes()
+    try:
+        text = data.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"{source.name} is not a readable S6 preview") from exc
+    with _startup_lock:
+        _startup.clear()
+        _startup.update(name=source.name, text=text)
+    return "?start=preview"
+
+
+def _take_startup() -> dict[str, Any]:
+    with _startup_lock:
+        found = dict(_startup)
+        _startup.clear()
+    return {"preview": found or None}
+
+
 _NOT_AUDIO = ("That file does not look like a song this program can read. Use an MP3, M4A, "
               "WAV, FLAC or OGG file.")
 _PLAIN_ERRORS = {
@@ -197,7 +229,8 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
     def _post(self) -> None:
         parsed = urlsplit(self.path)
         if parsed.path not in {"/api/analyze", "/api/export", "/api/update", "/api/log",
-                               "/api/diagnostics", "/api/progress", *_RECENT, *_SHOW_STEPS}:
+                               "/api/diagnostics", "/api/progress", "/api/startup",
+                               *_RECENT, *_SHOW_STEPS}:
             self.send_error(404, "This program has no such step.")
             return
         if not self._is_same_origin():
@@ -217,6 +250,9 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
             return
         if parsed.path in _RECENT:
             self._recent(parsed.path)
+            return
+        if parsed.path == "/api/startup":
+            self._send_json(200, _take_startup())
             return
         if parsed.path == "/api/export":
             self._check_export()
@@ -507,6 +543,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--port", type=int, default=8765, help="local HTTP port (default: 8765)")
     parser.add_argument("--no-browser", action="store_true", help="do not open a browser tab")
+    parser.add_argument("--preview", metavar="LORPREV",
+                        help="open New show with this S6 preview already chosen")
     options = parser.parse_args(argv)
     if not 0 <= options.port <= 65535:
         parser.error("--port must be between 0 and 65535")
@@ -522,6 +560,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     server.daemon_threads = True
     address = server.server_address
     url = "http://127.0.0.1:" + str(address[1]) + "/"
+    if options.preview:
+        try:
+            url += offer_preview(options.preview)
+        except (OSError, ValueError) as exc:
+            print(f"Not opening that preview: {exc}")
     print("LOR Sequencing Workspace: " + url)
     print("Local only. Press Ctrl+C to stop.")
     if not options.no_browser:

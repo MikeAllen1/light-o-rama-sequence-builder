@@ -93,9 +93,9 @@ def _path(show_id: str, folder: Path | None) -> Path:
         root = folder or recent_folder()
         try:
             for path in root.iterdir():
-                if path.name == show_id and path.is_dir() and not path.is_symlink():
-                    if (path / _FILES["sequence"]).is_file():
-                        return path
+                if (path.name == show_id and path.is_dir() and not path.is_symlink()
+                        and (path / _FILES["sequence"]).is_file()):
+                    return path
         except OSError:
             pass
     raise RecentShowError("That recent show is not there any more")

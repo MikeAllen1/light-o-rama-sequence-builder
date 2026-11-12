@@ -478,3 +478,7 @@ Anything that takes more than a moment shows a bar, what the program is doing no
 ## Recent shows
 
 Every show New show builds (one song or each song of a playlist) is copied, with its report and plan picture and a small description (file, display, song, style, when), into `shows` in the user data folder; the newest 30 are kept. The start page lists them (hidden when there are none) with Open (workspace and yard view), Save, Report and Remove, plus Remove all. Ids are timestamps plus a random part and are checked before any file is touched; a full disk only means a show is not kept. Tests keep their recent shows in their own folder.
+
+## Opening previews from File Explorer
+
+The installer offers (checked by default) a right-click **Build a show with LOR Sequencer** on `.lorprev` files and lists the app under **Open with**, without changing the default program: S6 keeps opening previews on a double-click. Both run the app with `--preview PATH` (also on `lor-sequence-ui`), which hands the preview to the page once; New show opens with that display chosen. Only `.lorprev` files of a sensible size are accepted, and a file that cannot be used says why. Uninstalling removes the entries.
