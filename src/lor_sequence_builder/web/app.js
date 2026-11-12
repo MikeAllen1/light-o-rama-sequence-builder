@@ -3816,7 +3816,12 @@
           "&name=" + encodeURIComponent(file.name) + "&progress=" + key, file,
           "application/octet-stream");
       });
-      if (requestId !== show.audioRequestId || token !== show.token || payload.stale) return;
+      if (requestId !== show.audioRequestId || token !== show.token) return;
+      if (payload.stale) {
+        show.audioUncertain = true;
+        showMessage("songStatus", "The server rejected this stale song upload. Re-select a song to resync before generating.", "warn");
+        return;
+      }
       const report = payload && payload.report;
       const duration = report && report.audio && report.audio.duration_seconds;
       if (!report || !Number.isFinite(duration) || !report.analysis ||
