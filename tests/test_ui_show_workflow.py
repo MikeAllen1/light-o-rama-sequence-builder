@@ -49,7 +49,7 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
     }
     test_calls = 0
     sequence_xml = (
-        '<sequence totalCentiseconds="1000"><SequenceProps>'
+        '<sequence saveFileVersion="15" totalCentiseconds="1000"><SequenceProps>'
         '<SeqProp id="tree" name="Tree"><channel row="0" col="0" color="0"/>'
         '</SeqProp></SequenceProps></sequence>'
     )
