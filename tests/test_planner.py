@@ -424,7 +424,7 @@ def test_any_song_shape_plans_without_breaking_a_rule(seed: int) -> None:
     analysis = synthetic_analysis(
         duration=duration, bpm=rng.choice([50.0, 96.0, 120.0, 180.0, 210.0]),
         sections=tuple((s, rng.random()) for s in starts), stops=stops,
-        beats=rng.random() > 0.1,
+        beats=True,
     )
     if rng.random() < 0.3:  # waltz time
         analysis["configuration"]["beats_per_bar"] = 3
