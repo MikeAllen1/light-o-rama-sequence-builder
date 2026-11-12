@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import threading
 import time
+import zipfile
+from io import BytesIO
 from collections.abc import Iterator
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -16,7 +18,7 @@ import pytest
 
 from lor_sequence_builder import show_builder
 from lor_sequence_builder.loredit import effect_timing_problems, read_loredit
-from lor_sequence_builder.ui_server import SequencerRequestHandler
+from lor_sequence_builder.ui_server import SHOWS, SequencerRequestHandler
 from tests.display_builders import classic_yard
 from tests.test_audio_analysis import _rhythmic_track
 from tests.test_planner import _preview
@@ -210,6 +212,43 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
     document = read_loredit(target)
     assert document.root.attrib["musicFilename"] == "beat.wav"
     assert effect_timing_problems(document) == []
+
+
+def test_batch_zip_is_streamed_as_a_file_download(server: str, tmp_path: Path) -> None:
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    started = SHOWS.start(preview, "yard.lorprev")
+    token = started["token"]
+    session = SHOWS.get(token)
+    done = session.path / "batch"
+    done.mkdir()
+    (done / "Song (generated).loredit").write_text("<sequence/>", encoding="utf-8")
+    (done / "Song (generated).report.html").write_text("<html/>", encoding="utf-8")
+    session.batch.append({
+        "stem": "Song", "file_name": "Song.wav", "ok": True,
+        "show": "Song (generated).loredit",
+    })
+    try:
+        request = Request(
+            server + "/api/show/batch-zip?token=" + token,
+            data=b"{}", method="POST", headers={"Content-Type": "application/json"},
+        )
+        with urlopen(request, timeout=10) as response:
+            payload = response.read()
+            assert response.status == 200
+            assert response.headers.get_content_type() == "application/zip"
+            assert "Song shows.zip" in response.headers["Content-Disposition"]
+        archive = BytesIO(payload)
+        assert zipfile.is_zipfile(archive)
+        archive.seek(0)
+        with zipfile.ZipFile(archive) as zipped:
+            assert set(zipped.namelist()) == {
+                "Song (generated).loredit",
+                "Song (generated).report.html",
+                "Batch - read me.txt",
+            }
+    finally:
+        with SHOWS._lock:
+            SHOWS._drop(token)
 
 
 def test_session_expiration_is_enforced_when_a_token_is_used(tmp_path: Path) -> None:
