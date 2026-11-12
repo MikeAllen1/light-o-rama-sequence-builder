@@ -9,6 +9,7 @@ asks after generating a show:
 - Which of my requirements did it follow?
 - Did every rule pass?
 - How is the song laid out, and where are the big moments?
+- How does the show measure up, and what was fixed?
 - What should I check in the yard, because a program cannot see the lights?
 """
 
@@ -46,8 +47,18 @@ def _names(names: list[str], limit: int = 10) -> str:
 _MOMENT_WORDS = {
     "crash": "Crash flash", "return": "Back from a stop", "build": "Build-up",
     "repeat": "A part returns", "call_and_response": "Call and response",
-    "lift": "Louder part begins",
+    "lift": "Louder part begins", "drop": "Dark beat before a louder part",
+    "variation": "A part returns, moving a new way", "finale_hits": "Closing hits",
+    "departure": "Unexpected chord", "lyric_cue": "Lyric cue",
+    "calm_base": "Dark stretch given a calm base",
 }
+
+_CHECK_WORDS = {
+    "too_much_at_once": "Too much at once", "dead_air": "Dead air",
+    "lockstep": "Look-alikes in lockstep", "flat_energy": "Loud vs quiet",
+    "repetition": "Same look over and over", "on_the_music": "On the music",
+}
+_STATUS_WORDS = {"good": "Good", "fixed": "Fixed", "note": "Look at this"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,6 +172,14 @@ def render_report(inputs: ReportInputs) -> str:
             [escape(_MOMENT_WORDS.get(kind, kind)), str(counts[kind]),
              escape(", ".join(first[kind][:8]) + (" …" if len(first[kind]) > 8 else ""))]
             for kind in sorted(counts)]))
+
+    if plan.quality is not None:
+        parts.append(f"<h2>Quality check: {plan.quality.score}/100</h2>")
+        parts.append(table(["Check", "Result", "What we found", "Where"], [
+            [escape(_CHECK_WORDS.get(f.check, f.check)), _STATUS_WORDS.get(f.status, f.status),
+             escape(f.message), escape(", ".join(_time(t) for t in f.at[:6])
+                                       + (" …" if len(f.at) > 6 else ""))]
+            for f in plan.quality.findings]))
 
     parts.append("<h2>Your props</h2>")
     rows = []

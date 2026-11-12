@@ -1,0 +1,259 @@
+"""Quality check: look at a finished show the way a sequencing professional would.
+
+Passing the rules makes a show *valid*; this asks whether it is *good*:
+
+- **Too much at once**: most of the yard lit for a long stretch outside the finale
+  and the flashes leaves nothing to build to.
+- **Dead air**: the song is playing but nearly nothing is lit.
+- **Lockstep**: look-alike props doing exactly the same thing look machine-made.
+- **Flat energy**: loud parts should light more of the yard than quiet ones.
+- **Repetition**: the same look phrase after phrase.
+- **Off the music**: effects that start away from the beat, the drums and the
+  song's own onsets look random.
+
+Each check reports what it found and where; the planner fixes what it safely can
+(dead air) before the show is written, and the rest is reported.
+"""
+
+from __future__ import annotations
+
+import bisect
+import itertools
+from collections import defaultdict
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass, field
+from typing import Any
+
+from lor_sequence_builder.choreography import Effect, Movement
+
+# Sampling step for "how much is lit" (centiseconds).
+STEP = 10
+# Most of the yard lit (this share of props in use) for at least OVERLOAD_SPAN.
+OVERLOAD_SHARE = 0.85
+OVERLOAD_SPAN = 600
+# Nearly nothing lit (at most this share) for at least DEAD_SPAN while the song plays.
+DEAD_SHARE = 0.05
+DEAD_SPAN = 300
+# Loud parts should light at least this much more of the yard than quiet ones.
+CONTRAST = 1.15
+# An effect start within this of a musical event counts as on the music.
+ON_MUSIC = 4
+ON_MUSIC_GOOD = 0.75
+# Phrases this alike (by which props start when) count as the same look.
+SAME_LOOK = 0.9
+SAME_LOOK_RUN = 3
+
+
+@dataclass(frozen=True, slots=True)
+class Finding:
+    check: str
+    status: str  # "good", "fixed" or "note"
+    message: str
+    at: tuple[int, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"check": self.check, "status": self.status, "message": self.message,
+                "at_centiseconds": list(self.at)}
+
+
+@dataclass(frozen=True, slots=True)
+class QualityReport:
+    score: int
+    findings: tuple[Finding, ...]
+    measures: dict[str, float] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"score": self.score, "findings": [f.to_dict() for f in self.findings],
+                "measures": {k: round(v, 3) for k, v in self.measures.items()}}
+
+    def summary(self) -> str:
+        notes = [f for f in self.findings if f.status != "good"]
+        fixed = sum(1 for f in notes if f.status == "fixed")
+        left = len(notes) - fixed
+        parts = [f"Quality check: {self.score}/100"]
+        if fixed:
+            parts.append(f"{fixed} problem(s) fixed")
+        if left:
+            parts.append(f"{left} thing(s) to look at")
+        if not notes:
+            parts.append("nothing to fix")
+        return "; ".join(parts) + "."
+
+
+def _spans(times: Sequence[bool], step: int, minimum: int) -> list[tuple[int, int]]:
+    """Runs of True at least ``minimum`` long, as (start, end) centiseconds."""
+    runs: list[tuple[int, int]] = []
+    start: int | None = None
+    for index, value in enumerate([*times, False]):
+        if value and start is None:
+            start = index
+        elif not value and start is not None:
+            if (index - start) * step >= minimum:
+                runs.append((start * step, index * step))
+            start = None
+    return runs
+
+
+def lit_share(effects: Iterable[Effect], props: set[str], duration: int,
+              step: int = STEP) -> list[float]:
+    """The share of ``props`` lit at each step of the song."""
+    count = duration // step + 1
+    lit: list[set[str]] = [set() for _ in range(count)]
+    for e in effects:
+        if e.prop_id not in props or max(e.start_intensity, e.end_intensity) <= 0:
+            continue
+        for t in range(e.start_centisecond // step, min(count, -(-e.end_centisecond // step))):
+            lit[t].add(e.prop_id)
+    total = max(1, len(props))
+    return [len(s) / total for s in lit]
+
+
+def _near(times: list[int], value: int, tolerance: int) -> bool:
+    i = bisect.bisect_left(times, value - tolerance)
+    return i < len(times) and times[i] <= value + tolerance
+
+
+def _visible_starts(effects: Sequence[Effect], props: set[str],
+                    movements: Sequence[Movement]) -> list[int]:
+    """When something visibly begins: a movement counts once, at its start (its steps
+    divide the beat on purpose), and otherwise a prop counts when it lights up from
+    dark. A segment stepping on while the rest of its prop is lit (a spinning tree)
+    is part of a motion already under way."""
+    starts = [m.start_centisecond for m in movements if props.intersection(m.prop_ids)]
+    lit_until: dict[str, int] = defaultdict(lambda: -1)
+    for e in sorted(effects, key=lambda e: (e.start_centisecond, e.end_centisecond)):
+        if e.prop_id not in props:
+            continue
+        if e.movement_id is None and e.start_centisecond > lit_until[e.prop_id]:
+            starts.append(e.start_centisecond)
+        lit_until[e.prop_id] = max(lit_until[e.prop_id], e.end_centisecond)
+    return starts
+
+
+def check(
+    effects: Sequence[Effect],
+    duration: int,
+    props: set[str],
+    roles: dict[str, str],
+    sections: Sequence[tuple[int, int, int]],
+    music: Iterable[int],
+    phrases: Sequence[tuple[int, int]],
+    quiet: Sequence[tuple[int, int]] = (),
+    excused: Sequence[tuple[int, int]] = (),
+    fixed_dead_air: Sequence[tuple[int, int]] = (),
+    movements: Sequence[Movement] = (),
+) -> QualityReport:
+    """Check a show. ``sections`` are (start, end, level 0-2); ``music`` the times
+    of beats, drum hits and onsets; ``quiet`` where the song itself is silent or
+    nearly so; ``excused`` moments meant to light everything (finale, flashes)."""
+    findings: list[Finding] = []
+    measures: dict[str, float] = {}
+    share = lit_share(effects, props, duration)
+    measures["average_lit"] = sum(share) / max(1, len(share))
+
+    def inside(spans: Sequence[tuple[int, int]], t: int) -> bool:
+        return any(a <= t < b for a, b in spans)
+
+    # Too much at once.
+    over = _spans([s >= OVERLOAD_SHARE and not inside(excused, i * STEP)
+                   for i, s in enumerate(share)], STEP, OVERLOAD_SPAN)
+    measures["overload_seconds"] = sum(b - a for a, b in over) / 100
+    if over:
+        findings.append(Finding(
+            "too_much_at_once", "note",
+            f"Most of the yard is lit for {measures['overload_seconds']:.0f} s outside the "
+            "finale and flashes; the big moments have less to build from.",
+            tuple(a for a, _ in over)))
+    else:
+        findings.append(Finding("too_much_at_once", "good",
+                                "The yard is never all lit except at the big moments."))
+
+    # Dead air.
+    dead = _spans([s <= DEAD_SHARE and not inside(quiet, i * STEP)
+                   for i, s in enumerate(share)], STEP, DEAD_SPAN)
+    measures["dead_air_seconds"] = sum(b - a for a, b in dead) / 100
+    if dead:
+        findings.append(Finding(
+            "dead_air", "note",
+            f"Nearly nothing is lit for {measures['dead_air_seconds']:.0f} s while the song "
+            "plays.", tuple(a for a, _ in dead)))
+    elif fixed_dead_air:
+        findings.append(Finding(
+            "dead_air", "fixed",
+            f"{len(fixed_dead_air)} dark stretch(es) while the song played now hold a calm "
+            "base.", tuple(a for a, _ in fixed_dead_air)))
+    else:
+        findings.append(Finding("dead_air", "good", "Something is lit whenever the song plays."))
+
+    # Lockstep.
+    timelines: dict[str, list[tuple[int, int]]] = defaultdict(list)
+    for e in effects:
+        if e.prop_id in props:
+            timelines[e.prop_id].append((e.start_centisecond, e.end_centisecond))
+    by_role: dict[str, list[str]] = defaultdict(list)
+    for pid in sorted(props):
+        by_role[roles.get(pid, "unknown")].append(pid)
+    pairs = [(a, b) for pids in by_role.values() for a, b in itertools.combinations(pids, 2)
+             if len(timelines[a]) >= 10 and timelines[a] == timelines[b]]
+    measures["lockstep_pairs"] = len(pairs)
+    findings.append(Finding(
+        "lockstep", "note" if pairs else "good",
+        f"{len(pairs)} pair(s) of look-alike props move exactly together." if pairs else
+        "Look-alike props never move exactly together."))
+
+    # Flat energy.
+    by_level: dict[int, list[float]] = defaultdict(list)
+    for start, end, level in sections:
+        values = share[start // STEP:end // STEP]
+        if values:
+            by_level[level].append(sum(values) / len(values))
+    if len(by_level) >= 2:
+        low = min(by_level)
+        high = max(by_level)
+        quiet_lit = sum(by_level[low]) / len(by_level[low])
+        loud_lit = sum(by_level[high]) / len(by_level[high])
+        measures["loud_to_quiet"] = loud_lit / quiet_lit if quiet_lit else 0.0
+        flat = quiet_lit > 0 and loud_lit < CONTRAST * quiet_lit
+        findings.append(Finding(
+            "flat_energy", "note" if flat else "good",
+            "Loud parts light little more of the yard than quiet ones." if flat else
+            f"Loud parts light {loud_lit / quiet_lit:.1f}x as much of the yard as quiet "
+            "ones." if quiet_lit else "Quiet parts stay dark and loud parts light up."))
+
+    # Repetition.
+    looks = []
+    for start, end in phrases:
+        looks.append({(e.prop_id, (e.start_centisecond - start) // 25) for e in effects
+                      if start <= e.start_centisecond < end and e.prop_id in props})
+    run = longest = 1
+    where = 0
+    for k in range(1, len(looks)):
+        a, b = looks[k - 1], looks[k]
+        alike = bool(a or b) and len(a & b) / max(1, len(a | b)) >= SAME_LOOK
+        run = run + 1 if alike else 1
+        if run > longest:
+            longest, where = run, phrases[k - run + 1][0]
+    measures["longest_same_look"] = longest
+    findings.append(Finding(
+        "repetition", "note" if longest >= SAME_LOOK_RUN else "good",
+        f"The same look runs {longest} phrases in a row." if longest >= SAME_LOOK_RUN else
+        "No look repeats more than twice in a row.", (where,) if longest >= SAME_LOOK_RUN
+        else ()))
+
+    # On the music.
+    marks = sorted(set(music))
+    starts = _visible_starts(effects, props, movements)
+    on = sum(1 for t in starts if _near(marks, t, ON_MUSIC)) / max(1, len(starts))
+    measures["on_music"] = on
+    findings.append(Finding(
+        "on_the_music", "good" if on >= ON_MUSIC_GOOD else "note",
+        f"{on:.0%} of effects start on a beat, a drum hit or a note of the song."))
+
+    penalty = (min(25.0, measures["overload_seconds"] * 1.5)
+               + min(25.0, measures["dead_air_seconds"] * 3)
+               + min(20.0, 5.0 * len(pairs))
+               + (15.0 if any(f.check == "flat_energy" and f.status == "note"
+                              for f in findings) else 0.0)
+               + (10.0 if longest >= SAME_LOOK_RUN else 0.0)
+               + max(0.0, (ON_MUSIC_GOOD - on) * 40))
+    return QualityReport(max(0, round(100 - penalty)), tuple(findings), measures)
