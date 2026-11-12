@@ -48,6 +48,7 @@
     reviewBaseline: null,
     animationFrame: 0,
     audioRequestId: 0,
+    audioDecodePending: false,
     analysisRequestId: 0,
     sequenceRequestId: 0,
     vocalRequestId: 0,
@@ -1450,6 +1451,7 @@
     if (!reviewAlreadyConfirmed && state.reviewDirty &&
         !window.confirm("Replace the unsaved music review?")) return;
     const requestId = ++state.audioRequestId;
+    state.audioDecodePending = true;
     state.analysisRequestId += 1;
     state.lyricRequestId += 1;
     state.vocalRequestId += 1;
@@ -1458,6 +1460,7 @@
       decoded = await decodeWaveform(file, requestId);
     } catch (error) {
       if (requestId !== state.audioRequestId) return;
+      state.audioDecodePending = false;
       setBanner("That song could not be played here: " + problemText(error) +
         (state.audioFile ? " Your previous audio and music review are still loaded." : ""), "error");
       $("audioFile").value = "";
@@ -1467,6 +1470,7 @@
       if (decoded && decoded.url) URL.revokeObjectURL(decoded.url);
       return;
     }
+    state.audioDecodePending = false;
 
     // Commit the replacement only after the complete audio decode has succeeded.
     const previousUrl = state.audioUrl;
@@ -1507,6 +1511,11 @@
 
   async function loadAnalysis(file) {
     if (!file) return;
+    if (state.audioDecodePending) {
+      setBanner("Wait for the selected song to finish loading before importing its analysis.", "warn");
+      $("analysisFile").value = "";
+      return;
+    }
     const requestId = ++state.analysisRequestId;
     try {
       if (file.size > MAX_JSON_BYTES) throw new Error("Analysis JSON exceeds the 5 MiB input limit.");
@@ -1595,6 +1604,11 @@
 
   async function loadVocals(file) {
     if (!file) return;
+    if (state.audioDecodePending) {
+      setBanner("Wait for the selected song to finish loading before importing its vocal report.", "warn");
+      $("vocalsFile").value = "";
+      return;
+    }
     const requestId = ++state.vocalRequestId;
     try {
       if (file.size > MAX_JSON_BYTES) throw new Error("Vocal JSON exceeds the 5 MiB input limit.");
@@ -1704,6 +1718,11 @@
 
   async function loadLyrics(file) {
     if (!file) return;
+    if (state.audioDecodePending) {
+      setBanner("Wait for the selected song to finish loading before importing its lyrics.", "warn");
+      $("lyricsFile").value = "";
+      return;
+    }
     const requestId = ++state.lyricRequestId;
     try {
       if (file.size > MAX_JSON_BYTES) throw new Error("Lyrics file exceeds the 5 MiB input limit.");
