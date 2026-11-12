@@ -204,6 +204,7 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
             # arrives; otherwise an old display's test could be attached to a new one.
             page.evaluate("""() => {
               const original = window.fetch.bind(window);
+              window.__testOriginalFetch = original;
               window.fetch = (...args) => {
                 const url = typeof args[0] === "string" ? args[0] : args[0].url;
                 return url.includes("/api/show/test?")
@@ -214,6 +215,7 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
             page.locator("#makeTest").click()
             assert page.locator("#showDisplayFile").is_disabled()
             page.locator("#testStatus.good").wait_for(timeout=30000)
+            page.evaluate("window.fetch = window.__testOriginalFetch; delete window.__testOriginalFetch")
             with page.expect_download() as test_files:
                 page.locator("#saveTest").click()
             assert test_files.value.suggested_filename.endswith("display test.zip")
