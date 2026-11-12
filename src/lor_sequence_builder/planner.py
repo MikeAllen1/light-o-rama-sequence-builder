@@ -1061,14 +1061,14 @@ def _phrases(window: _Window) -> list[_Window]:
     """Four-bar phrases counted from the song's bar grid; short leftovers join a neighbor."""
     # Reconstruct missing bar starts after a hard stop using the preserved global
     # phase and meter, rather than collapsing the entire window into one phrase.
-    marks = [start for start, _ in _bars(window)]
+    bars = _bars(window)
+    marks = [start for start, _ in bars]
     cuts = [window.start]
     # A pickup before the first bar belongs to the first phrase.
     for index in range(BARS_PER_PHRASE, len(marks), BARS_PER_PHRASE):
         cuts.append(marks[index])
     cuts.append(window.end)
-    bar = (_bars(window)[0][1] - _bars(window)[0][0]
-           if marks else window.end - window.start)
+    bar = bars[0][1] - bars[0][0] if bars else window.end - window.start
     # A leftover shorter than two bars is folded into the phrase before it.
     while len(cuts) > 2 and cuts[-1] - cuts[-2] < 2 * bar:
         del cuts[-2]
