@@ -272,3 +272,13 @@ canvas { display: block; }
 .yard-caption span:first-child { font-weight: 800; letter-spacing: 1.5px; color: #6fb7c9; }
 .yard-note { color: #5d6a75; }
 .tool-button.active { border-color: var(--accent); color: var(--accent); }
+
+/* In-app viewer for reports and pictures */
+.viewer { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center;
+  background: rgba(3, 6, 9, .72); padding: 24px; }
+.viewer-box { width: min(1100px, 100%); height: min(88vh, 1000px); display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.viewer-head { display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.viewer-actions { display: flex; gap: 8px; }
+.viewer-frame { flex: 1; width: 100%; border: 0; background: #fbfcfd; }

@@ -235,7 +235,20 @@
         <div class="read-only-note">EDITS STAY HERE UNTIL EXPORTED · THE SOURCE FILE IS NEVER CHANGED</div>
       </footer>
       <audio id="audioPlayer" preload="metadata" hidden></audio>
+
     </section>
   </main>
+  <div id="viewer" class="viewer hidden" role="dialog" aria-modal="true" aria-labelledby="viewerTitle">
+        <div class="viewer-box">
+          <div class="viewer-head">
+            <strong id="viewerTitle">Report</strong>
+            <span class="viewer-actions">
+              <button id="viewerSave" class="tool-button" type="button">Save a copy</button>
+              <button id="viewerClose" class="tool-button subtle" type="button">Close</button>
+            </span>
+          </div>
+          <iframe id="viewerFrame" class="viewer-frame" sandbox="" title="Report"></iframe>
+        </div>
+      </div>
 </body>
 </html>
