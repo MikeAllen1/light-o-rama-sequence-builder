@@ -170,6 +170,22 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                     assert page.locator("#waveformCanvas").evaluate(
                         "(canvas) => canvas.width > 0 && canvas.height > 0"
                     )
+
+                    # Failed replacement decoding must preserve the active playback,
+                    # waveform and analysis rather than blanking the workspace.
+                    rejected_audio = Path(directory) / "rejected.wav"
+                    rejected_audio.write_bytes(b"not a wave file")
+                    page.locator("#audioFile").set_input_files(str(rejected_audio))
+                    page.locator("#analysisMessage").filter(
+                        has_text="That song could not be played here"
+                    ).wait_for(timeout=10000)
+                    assert not page.locator("#playButton").is_disabled()
+                    assert "Beat candidates" in page.locator("#markerLabels").inner_text()
+                    assert page.locator("#waveformCanvas").evaluate(
+                        "(canvas) => canvas.width > 0 && canvas.height > 0"
+                    )
+                    assert page.locator("#audioPlayer").evaluate("(player) => Boolean(player.src)")
+
                     waveform_pixels = page.locator("#waveformCanvas").evaluate(
                         """(canvas) => {
                           const data = canvas.getContext('2d').getImageData(
