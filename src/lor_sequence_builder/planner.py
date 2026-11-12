@@ -1496,9 +1496,12 @@ def _sparkle(planner: _Planner, window: _Window, props: list[str], hits: list[in
     if columns or bursts:
         # One fall per hit, but never closer together than a column takes to start
         # falling, so each fall reads.
+        gaps = [y - x for x, y in itertools.pairwise(window.beats)]
+        beat = sorted(gaps)[len(gaps) // 2] if gaps else 50
+        spacing = max(SPARKLE_SPACING, round(planner.style.sparkle_every * beat))
         spaced: list[int] = []
         for hit in hits:
-            if not spaced or hit - spaced[-1] >= SPARKLE_SPACING:
+            if not spaced or hit - spaced[-1] >= spacing:
                 spaced.append(hit)
         level = planner.sections[window.section_index].level
         planner.falls(window, columns, spaced, {LOW: 60, MID: 85, HIGH: 100}[level],
@@ -2059,9 +2062,9 @@ def _glow(planner: _Planner, canvas: _Canvas, window: _Window, props: list[str],
                     if cursor < b:
                         canvas.put(pid, channel, cursor, b, "on", hold, color=color)
                     continue
-                # Hit on each beat (each half beat in loud parts), decay to the glow by
-                # the next.
-                pulses = beats if level < HIGH else sorted(
+                # Hit on each beat (each half beat in loud parts, for styles that drive
+                # that hard), decay to the glow by the next.
+                pulses = beats if level < HIGH or not planner.style.glow_half_beats else sorted(
                     {*beats, *((x + y) // 2 for x, y in itertools.pairwise(beats))})
                 marks = [t for t in pulses if a <= t < b - 10]
                 cursor = a

@@ -136,6 +136,11 @@ class Style:
     # A hit of 0 only holds; None leaves the yard dark around the leads.
     glow: tuple[tuple[int, int] | None, tuple[int, int] | None,
                 tuple[int, int] | None] = (None, None, None)
+    # The glow hits on every half beat in loud parts (True) or stays on the beat.
+    glow_half_beats: bool = False
+    # Snowflakes falling on high-pitched hits fall at most once per this many beats
+    # (0: as often as each fall can be seen).
+    sparkle_every: float = 0
 
     def part(self, kind: str) -> Part:
         return self.parts[kind]
@@ -172,7 +177,7 @@ STYLES: dict[str, Style] = {
             mega_tree=Part(("rotate", ("rotate", "spiral"), ("spiral", "fill_up")),
                            ("beat", "beat", ("beat", "half_bar"))),
             family=Part(("trade", "trade", ("trade", "pulse")),
-                        ("bar", "snare", ("snare", "half"))),
+                        ("bar", "snare", ("snare", "beat"))),
             outline=Part(("base", "base", ("trade", "pulse")),
                          ("phrase", "phrase", "bar")),
             outline_row=Part(("alternate", "chase", ("chase", "bounce")),
@@ -214,7 +219,7 @@ STYLES: dict[str, Style] = {
         ),
         phrase_bars=4, entry="drop", arc=2, vary_repeats=True,
         spin_width=1, fall=(7, 10, 14),
-        glow=((70, 20), (100, 30), (100, 35)),
+        glow=((70, 20), (100, 30), (100, 35)), glow_half_beats=True,
         # Dynamic and aggressive: quick hits, strong contrast between quiet and loud,
         # frequent accents, but never so much light that the contrast is lost.
         profile=Profile(hold_beats=(0.2, 0.9), fade_share=(0.0, 0.5), calm_lit=0.5,
@@ -232,19 +237,20 @@ STYLES: dict[str, Style] = {
         flashes=False, crash_spacing=800, flash_length=80, sparkle_density=0.8,
         build_from=0.6, call_and_response=False, fall_every=(0, 0, 2),
         parts=_parts(
-            arch_row=Part(("wave", "wave", ("fill", "wave")), ("phrase", "phrase", "bar")),
-            row=Part(("wave", "wave", "fill"), ("phrase", "phrase", "bar")),
-            mega_tree=Part(("breathe", "rotate", ("rotate", "fill_up")),
-                           ("phrase", "half_bar", ("beat", "bar"))),
+            # Even the loud parts move on bars and phrases, with swells instead of cuts.
+            arch_row=Part(("wave", "wave", "wave"), ("phrase", "phrase", "phrase")),
+            row=Part(("wave", "wave", "wave"), ("phrase", "phrase", "phrase")),
+            mega_tree=Part(("breathe", "rotate", ("rotate", "breathe")),
+                           ("phrase", "half_bar", ("half_bar", "bar"))),
             family=Part(("breathe", "trade", ("breathe", "trade")),
-                        ("phrase", "bar", ("bar", "half_bar"))),
-            outline=Part(("twinkle", "breathe", "breathe"), ("phrase", "phrase", "bar")),
+                        ("phrase", "bar", ("phrase", "bar"))),
+            outline=Part(("twinkle", "breathe", "breathe"), ("phrase", "phrase", "phrase")),
             outline_row=Part(("wave", "wave", "fill"), ("phrase", "bar", "bar")),
             star=Part(("twinkle", "twinkle", "twinkle"), ("phrase", "phrase", "phrase")),
         ),
         phrase_bars=8, entry="swell", arc=1, vary_repeats=False,
         spin_width=3, fall=(22, 40, 60),
-        glow=(None, (0, 20), (0, 35)),
+        glow=(None, (0, 20), (0, 35)), sparkle_every=4,
         # Cinematic and refined: long lights and fades, few props at once, the whole
         # yard saved for the peaks, and almost no flashing.
         profile=Profile(hold_beats=(1.2, 8.0), fade_share=(0.35, 1.0), calm_lit=0.45,
