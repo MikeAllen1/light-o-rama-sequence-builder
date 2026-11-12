@@ -3237,7 +3237,11 @@
       "plainRequirements", "musicFilename", "singFaces", "meterSelect", "styleChoices",
       "closeNewShow"]) {
       const element = $(id);
-      if (element) element.disabled = locked;
+      if (!element) continue;
+      if ("disabled" in element) element.disabled = locked;
+      element.querySelectorAll("input, select, textarea, button").forEach((child) => {
+        child.disabled = locked;
+      });
     }
     $("requirementList").querySelectorAll("button").forEach((button) => { button.disabled = locked; });
   }
@@ -3246,14 +3250,18 @@
     for (const id of ["requirementKind", "requirementProps", "requirementSections",
       "requirementMax", "addRequirement", "translateRequirements", "plainRequirements"]) {
       const element = $(id);
-      if (element) element.disabled = locked;
+      if (!element) continue;
+      if ("disabled" in element) element.disabled = locked;
+      element.querySelectorAll("input, select, textarea, button").forEach((child) => {
+        child.disabled = locked;
+      });
     }
     $("requirementList").querySelectorAll("button").forEach((button) => { button.disabled = locked; });
   }
 
   function setStepEnabled() {
-    $("makeTest").disabled = !show.token;
-    $("showSongFile").disabled = !show.token;
+    $("makeTest").disabled = !show.token || show.batchRunning || show.generationPending;
+    $("showSongFile").disabled = !show.token || show.batchRunning || show.generationPending;
     $("showSongLabel").classList.toggle("disabled", !show.token);
     $("addRequirement").disabled = !show.token;
     $("translateRequirements").disabled = !show.token || !show.summary.can_translate;
@@ -3279,6 +3287,7 @@
       showMessage("testStatus", "");
       show.analysis = null;
       show.audioFile = null;
+      show.raw = summary.raw_requirements || [];
       show.audioRequestId = 0;
       show.audioPending = false;
       show.requirementsPending = false;
@@ -3318,6 +3327,8 @@
     if (!file || !show.token) return;
     const requestId = ++show.audioRequestId;
     show.audioPending = true;
+    show.audioFile = file;
+    show.analysis = null;
     invalidateGeneratedResult();
     $("musicFilename").value = file.name;
     show.songName = file.name;
@@ -3677,6 +3688,13 @@
     let built = 0;
     let totalSeconds = 0;
     for (let i = 0; i < files.length; i++) {
+      if (currentShowConfig() !== batchConfig || show.token !== batchToken) {
+        for (let rest = i; rest < rows.length; rest++) {
+          rows[rest].className = "error";
+          rows[rest].textContent = files[rest].name + ": not built; show settings changed during the batch";
+        }
+        break;
+      }
       const file = files[i];
       showMessage("batchStatus", "Building " + (i + 1) + " of " + files.length + "…");
       rows[i].textContent = file.name + ": analyzing and building…";
