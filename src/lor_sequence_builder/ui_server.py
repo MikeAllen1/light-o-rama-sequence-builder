@@ -310,7 +310,7 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
                         self.send_error(400, "request_id must be a positive integer")
                         return
                 report = SHOWS.add_audio(token, payload, suffix, INPUT_DEMUXERS[suffix],
-                                         query.get("name", ["song"])[0][:200], int(meter),
+                                         query.get("name", ["song"])[0], int(meter),
                                          request_id=request_id)
                 self._send_json(200, {"stale": True} if report.get("stale") else
                                 {"report": report})
