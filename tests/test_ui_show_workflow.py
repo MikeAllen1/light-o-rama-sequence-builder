@@ -74,9 +74,6 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             "skipped": [],
             "notes": [],
         }))
-        page.route("**/api/show/test*", lambda route: (
-            globals() if False else None
-        ))
         page.route("**/api/show/batch-clear*", lambda route: respond(route, {"cleared": True}))
         page.route("**/api/show/batch?*", lambda route: respond(route, {
             "ok": True, "duration": 3.0, "parts": 2, "props": 1,
@@ -109,7 +106,7 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             page.locator("#showSongFile").set_input_files({
                 "name": "song.wav", "mimeType": "audio/wav", "buffer": b"fake audio",
             })
-            page.locator("#songStatus").filter(has_text="3.00").wait_for()
+            page.locator("#songStatus").filter(has_text="song.wav").wait_for()
             page.locator("#generateShow").click()
             page.locator("#generateStatus").filter(has_text="Every rule passed").wait_for()
             assert not page.locator("#saveGenerated").is_disabled()
