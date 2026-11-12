@@ -48,7 +48,6 @@ from lor_sequence_builder.style import Style, get_style
 
 LOW, MID, HIGH = 0, 1, 2
 LEVEL_NAMES = ("low", "mid", "high")
-FALLBACK_BPM = 120
 SECTION_FALLBACK_BARS = 8
 MIN_SECTION_CENTISECONDS = 400
 
@@ -132,6 +131,8 @@ class _Music:
     notes: list[str]
     # Part names the user gave sections in a music review, by section start.
     labels: dict[int, str] = field(default_factory=dict)
+    beats_per_bar: int = 4
+    bar_phase: int = 0
 
 
 def _music(analysis: dict[str, Any]) -> _Music:
@@ -143,15 +144,29 @@ def _music(analysis: dict[str, Any]) -> _Music:
         raise PlanningError("Analysis has no audio duration")
     notes: list[str] = []
     beats = [b for b in _times(analysis, "beats") if 0 <= b < duration]
-    if len(beats) < 8:
-        step = round(6000 / FALLBACK_BPM)
-        beats = list(range(0, duration, step))
-        notes.append(f"No usable beat grid; planned on a steady {FALLBACK_BPM} BPM grid instead.")
+    if len(beats) < 2:
+        raise PlanningError(
+            "Audio analysis did not find a usable beat grid. Re-analyze the song; "
+            "the planner will not invent a tempo and generate choreography against it."
+        )
     beat_set = set(beats)
     downbeats = [d for d in _times(analysis, "downbeats") if d in beat_set]
+    # The analyzer records its configured meter in the report. Preserve that
+    # setting when its downbeat phase is unavailable instead of silently
+    # treating every song as 4/4.
+    configuration = analysis.get("configuration", {})
+    configured_meter = configuration.get("beats_per_bar", 4) if isinstance(
+        configuration, dict) else 4
+    beats_per_bar = configured_meter if configured_meter in (3, 4) else 4
     if len(downbeats) < 2:
-        downbeats = beats[::4]
-        notes.append("No usable bar starts; assumed a bar every four beats.")
+        phase = beats.index(downbeats[0]) % beats_per_bar if downbeats else 0
+        downbeats = [beat for index, beat in enumerate(beats)
+                     if index % beats_per_bar == phase]
+        notes.append(
+            f"Downbeat phase was unavailable; assumed a bar every {beats_per_bar} beats."
+        )
+    else:
+        phase = beats.index(downbeats[0]) % beats_per_bar
     energy: list[tuple[int, float]] = []
     for frame in analysis.get("analysis", {}).get("energy", []):
         if isinstance(frame, dict) and isinstance(frame.get("rms"), int | float):
@@ -174,7 +189,8 @@ def _music(analysis: dict[str, Any]) -> _Music:
                 and candidate["label"].strip() and isinstance(candidate.get("time"), int | float)):
             labels[_snap(_cs(float(candidate["time"])), downbeats)] = (
                 candidate["label"].strip().lower())
-    return _Music(duration, beats, downbeats, energy, starts, stops, notes, labels)
+    return _Music(duration, beats, downbeats, energy, starts, stops, notes, labels,
+                   beats_per_bar, phase)
 
 
 def _snap(time: int, grid: list[int]) -> int:
@@ -266,6 +282,9 @@ class _Window:
     # Beats of the section's window before this one starts: patterns that alternate
     # beat by beat keep the same footing however the window was cut.
     offset: int = 0
+    beats_per_bar: int = 4
+    bar_phase: int = 0
+    bar_offset: int = 0
 
 
 def _windows(music: _Music, sections: list[PlannedSection]) -> list[_Window]:
@@ -292,6 +311,11 @@ def _windows(music: _Music, sections: list[PlannedSection]) -> list[_Window]:
                 tuple(t for t in music.beats if a <= t < b),
                 tuple(t for t in music.downbeats if a <= t < b),
                 louder and piece_index == 0,
+                sum(1 for t in music.beats
+                    if section.start_centisecond <= t < a),
+                music.beats_per_bar,
+                music.bar_phase,
+                sum(1 for t in music.beats if t < a),
             ))
     return windows
 
@@ -535,7 +559,14 @@ def _beat_length(window: _Window, index: int) -> int:
 
 
 def _bars(window: _Window) -> list[tuple[int, int]]:
-    marks = list(window.downbeats) or list(window.beats[::4])
+    # When a stop splits a bar, a window may contain zero or one detected
+    # downbeat. Reconstruct the bar grid from the global beat phase, not from
+    # the first beat after the stop (and never assume 4/4).
+    if len(window.downbeats) >= 2:
+        marks = list(window.downbeats)
+    else:
+        first = (window.bar_phase - window.bar_offset) % window.beats_per_bar
+        marks = list(window.beats[first::window.beats_per_bar])
     bars = [(a, b) for a, b in itertools.pairwise(marks)]
     if marks and window.end - marks[-1] >= 50:
         typical = bars[-1][1] - bars[-1][0] if bars else window.end - marks[-1]
@@ -1027,16 +1058,17 @@ def _sparkle(planner: _Planner, window: _Window, props: list[str], hits: list[in
 
 BARS_PER_PHRASE = 4
 def _phrases(window: _Window) -> list[_Window]:
-    """Four-bar phrases counted from the first bar start; short leftovers join a neighbor."""
-    # Bars are counted from the window's first bar even when its body starts a beat
-    # later (after an accent), so phrases stay on the song's four-bar grid.
-    marks = [d for d in window.downbeats if d < window.end]
+    """Four-bar phrases counted from the song's bar grid; short leftovers join a neighbor."""
+    # Reconstruct missing bar starts after a hard stop using the preserved global
+    # phase and meter, rather than collapsing the entire window into one phrase.
+    bars = _bars(window)
+    marks = [start for start, _ in bars]
     cuts = [window.start]
     # A pickup before the first bar belongs to the first phrase.
     for index in range(BARS_PER_PHRASE, len(marks), BARS_PER_PHRASE):
         cuts.append(marks[index])
     cuts.append(window.end)
-    bar = (marks[1] - marks[0]) if len(marks) >= 2 else window.end - window.start
+    bar = bars[0][1] - bars[0][0] if bars else window.end - window.start
     # A leftover shorter than two bars is folded into the phrase before it.
     while len(cuts) > 2 and cuts[-1] - cuts[-2] < 2 * bar:
         del cuts[-2]
@@ -1046,7 +1078,8 @@ def _phrases(window: _Window) -> list[_Window]:
         phrases.append(_Window(window.section_index, a, b,
                                tuple(t for t in window.beats if a <= t < b),
                                tuple(t for t in window.downbeats if a <= t < b), False,
-                               window.offset + before))
+                               window.offset + before, window.beats_per_bar,
+                               window.bar_phase, window.bar_offset + before))
     return phrases
 
 
@@ -1400,7 +1433,9 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
         body = _Window(section_first[si], start, end,
                        tuple(b for b in window.beats if start <= b < end),
                        tuple(d for d in window.downbeats if d < end), False,
-                       sum(1 for b in window.beats if b < start))
+                       window.offset + sum(1 for b in window.beats if b < start),
+                       window.beats_per_bar, window.bar_phase,
+                       window.bar_offset + sum(1 for b in window.beats if b < start))
         everything = label == "finale"
         for phrase in _phrases(body):
             k = section_phrase[si]
@@ -1433,7 +1468,9 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
                     bar = _Window(phrase.section_index, a, b,
                                   tuple(t for t in phrase.beats if a <= t < b),
                                   tuple(t for t in phrase.downbeats if a <= t < b), False,
-                                  phrase.offset + sum(1 for t in phrase.beats if t < a))
+                                  phrase.offset + sum(1 for t in phrase.beats if t < a),
+                                  phrase.beats_per_bar, phrase.bar_phase,
+                                  phrase.bar_offset + sum(1 for t in phrase.beats if t < a))
                     _look(planner, bar, rows, singles,
                           steady_part | (sides[j % 2] & active), variant=1, flip=flip)
                 moments.append(("call_and_response", phrase.start))
