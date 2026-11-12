@@ -492,6 +492,15 @@ class ShowSessions:
             name = Path(file_name).name or f"song{suffix}"
             if len(name) > 200:
                 raise ShowBuildError("Song file name must be 200 characters or fewer.")
+            if any(
+                isinstance(entry.get("file_name"), str) and
+                entry["file_name"].casefold() == name.casefold()
+                for entry in session.batch
+            ):
+                raise ShowBuildError(
+                    f"The playlist already contains a song named {name!r}. "
+                    "Rename duplicate audio files before building."
+                )
             stem = file_stem(name)
             taken = {entry["stem"] for entry in session.batch}
             unique, n = stem, 2
