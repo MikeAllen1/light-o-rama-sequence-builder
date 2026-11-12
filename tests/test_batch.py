@@ -14,11 +14,11 @@ import pytest
 
 from lor_sequence_builder.cli import main
 from lor_sequence_builder.loredit import read_loredit
+from lor_sequence_builder.ui_server import SHOWS
 from tests.display_builders import classic_yard
 from tests.test_audio_analysis import _rhythmic_track
 from tests.test_planner import _preview
 from tests.test_show_builder import _json, _post, server  # noqa: F401
-from lor_sequence_builder.ui_server import SHOWS
 
 
 def _songs(folder: Path, *names: str) -> list[Path]:
