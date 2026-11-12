@@ -127,6 +127,7 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             page.locator("#batchFiles").set_input_files([
                 {"name": "one.wav", "mimeType": "audio/wav", "buffer": b"one"},
             ])
+            page.locator("#batchStatus").filter(has_text="Building 1 of 1").wait_for()
             page.locator("#batchStatus").filter(has_text="1 of 1 shows built").wait_for()
             assert not page.locator("#saveBatch").is_disabled()
             page.locator('input[name="showStyle"][value="classic"]').check()
@@ -136,6 +137,7 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             page.locator("#batchFiles").set_input_files([
                 {"name": "two.wav", "mimeType": "audio/wav", "buffer": b"two"},
             ])
+            page.locator("#batchStatus").filter(has_text="Building 1 of 1").wait_for()
             page.locator("#batchStatus").filter(has_text="1 of 1 shows built").wait_for()
             assert not page.locator("#saveBatch").is_disabled()
             summary["token"] = "display-two"
