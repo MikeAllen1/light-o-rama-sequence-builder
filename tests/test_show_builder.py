@@ -219,7 +219,7 @@ def test_session_expiration_is_enforced_when_a_token_is_used(tmp_path: Path) -> 
     session = sessions.get(token)
     folder = session.path
     session.last_used = time.monotonic() - show_builder.SESSION_SECONDS - 1
-    with pytest.raises(show_builder.ShowBuildError, match="expired"):
+    with pytest.raises(show_builder.ShowBuildError, match="put away after a long break"):
         sessions.get(token)
     assert not folder.exists()
 

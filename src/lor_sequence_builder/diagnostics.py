@@ -150,3 +150,37 @@ def report(browser: str = "", steps: list[str] | None = None,
         out += ["", f"End of {name}:"]
         out += [f"  {line}" for line in _tail(logs / name, 80)] or ["  (empty)"]
     return scrub("\n".join(out)) + "\n"
+
+
+# Every temporary folder the program makes starts with one of these.
+TEMP_PREFIXES = ("lor-new-show-", "lor-audio-", "lor-decode-", "lor-vocals-", "lor-doctor-",
+                 "lor-self-test-", "lor-sequencer-export-", "lor-sequencer-ui-")
+
+
+def sweep_leftovers(max_age_seconds: float = 24 * 60 * 60, folder: Path | None = None) -> int:
+    """Remove this program's temporary folders left behind by a forced close.
+
+    Only folders with the program's own prefixes, and only ones untouched for a day
+    (a running copy's folders are always newer), are removed. Never raises.
+    """
+    import shutil
+    import tempfile
+    import time
+
+    base = folder or Path(tempfile.gettempdir())
+    removed = 0
+    try:
+        candidates = list(base.iterdir())
+    except OSError:
+        return 0
+    cutoff = time.time() - max_age_seconds
+    for path in candidates:
+        try:
+            if (path.is_dir() and not path.is_symlink() and path.name.startswith(TEMP_PREFIXES)
+                    and path.stat().st_mtime < cutoff):
+                shutil.rmtree(path, ignore_errors=True)
+                removed += 1
+        except OSError:
+            continue
+    return removed
+
