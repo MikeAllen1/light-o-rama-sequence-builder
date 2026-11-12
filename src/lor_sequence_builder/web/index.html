@@ -196,6 +196,12 @@
           <h2><span class="step-number">4</span>Generate</h2>
           <div class="style-label">Style</div>
           <div id="styleChoices" class="style-choices" role="radiogroup" aria-label="Show style"></div>
+          <div class="learn-style">
+            <label class="edit-field"><span>Name</span><input id="learnStyleName" type="text" maxlength="60" value="My style"></label>
+            <label id="learnStyle" class="tool-button subtle" title="Choose a few .loredit or .lms sequences you made by hand. The program measures how you sequence (quick hits or long fades, busy or sparse, twinkle or steady) and makes a style that works the same way. Everything stays on this computer."><span>Learn my style from my sequences…</span>
+              <input id="learnStyleFiles" type="file" accept=".loredit,.lms" multiple></label>
+          </div>
+          <div id="learnStatus" class="step-status" role="status" aria-live="polite"></div>
           <label class="edit-field wide"><span>Audio file name the Sequencer should play (as it appears in its audio folder)</span>
             <input id="musicFilename" type="text" maxlength="260"></label>
           <div id="musicNote" class="step-note"></div>

@@ -3910,7 +3910,7 @@
     for (const id of ["showDisplayFile", "showSongFile", "requirementKind", "requirementProps",
       "requirementSections", "requirementMax", "addRequirement", "translateRequirements",
       "plainRequirements", "musicFilename", "singFaces", "meterSelect", "styleChoices",
-      "closeNewShow"]) {
+      "learnStyleFiles", "learnStyleName", "closeNewShow"]) {
       const element = $(id);
       if (!element) continue;
       if ("disabled" in element) element.disabled = locked;
@@ -4154,7 +4154,71 @@
       const about = document.createElement("span");
       about.textContent = style.description;
       label.append(radio, name, about);
+      if (style.learned) {
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "tool-button subtle remove-style";
+        remove.textContent = "Remove";
+        remove.setAttribute("aria-label", "Remove the style " + style.name);
+        remove.addEventListener("click", (event) => {
+          event.preventDefault();
+          removeLearnedStyle(style);
+        });
+        label.appendChild(remove);
+      }
       box.appendChild(label);
+    }
+    if (!box.querySelector('input[name="showStyle"]:checked')) {
+      const first = box.querySelector('input[name="showStyle"]');
+      if (first) first.checked = true;
+    }
+  }
+
+  async function learnStyle(files) {
+    const list = Array.from(files || []);
+    if (!list.length) return;
+    const name = $("learnStyleName").value.trim() || "My style";
+    const measured = [];
+    const problems = [];
+    for (const [index, file] of list.entries()) {
+      showMessage("learnStatus", "Measuring " + file.name + " (" + (index + 1) + " of " +
+        list.length + ")…");
+      try {
+        const result = await callEngine("/api/style/measure?name=" + encodeURIComponent(file.name),
+          file, "application/octet-stream");
+        measured.push(result.habits);
+      } catch (error) {
+        problems.push(problemText(error));
+      }
+    }
+    if (!measured.length) {
+      showMessage("learnStatus", "No style learned. " + problems.join(" "), "error");
+      return;
+    }
+    try {
+      const result = await callEngine("/api/style/keep",
+        JSON.stringify({ name, habits: measured }), "application/json");
+      fillStyles(result.styles, result.style.key);
+      $("styleChoices").dispatchEvent(new Event("change"));
+      const skipped = problems.length ? " Skipped: " + problems.join(" ") : "";
+      showMessage("learnStatus", "Learned \u201c" + result.style.name + "\u201d from " +
+        measured.length + " sequence(s). " + result.changes.join(" ") + skipped,
+        problems.length ? "warn" : "good");
+    } catch (error) {
+      showMessage("learnStatus", problemText(error), "error");
+    }
+  }
+
+  async function removeLearnedStyle(style) {
+    if (!window.confirm("Remove the style \u201c" + style.name + "\u201d?")) return;
+    try {
+      const chosen = chosenStyle();
+      const result = await callEngine("/api/style/remove", JSON.stringify({ key: style.key }),
+        "application/json");
+      fillStyles(result.styles, chosen === style.key ? null : chosen);
+      showMessage("learnStatus", "Removed \u201c" + style.name + "\u201d.");
+    } catch (error) {
+      showMessage("learnStatus", problemText(error), "error");
     }
   }
 
@@ -4742,6 +4806,10 @@
     $("musicFilename").addEventListener("input", () => {
       checkMusicName();
       invalidateGeneratedResult();
+    });
+    $("learnStyleFiles").addEventListener("change", (event) => {
+      const files = event.target.files;
+      learnStyle(files).finally(() => { event.target.value = ""; });
     });
     $("styleChoices").addEventListener("change", () => {
       invalidateGeneratedResult();

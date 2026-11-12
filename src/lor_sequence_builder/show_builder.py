@@ -60,7 +60,7 @@ from lor_sequence_builder.rules import (
 from lor_sequence_builder.rules.engine import Display
 from lor_sequence_builder.rules.profile import requirement_mapping
 from lor_sequence_builder.sequence_writer import RulesFailedError
-from lor_sequence_builder.style import DEFAULT_STYLE, STYLES
+from lor_sequence_builder.style import DEFAULT_STYLE, STYLES, get_style
 from lor_sequence_builder.vocal_separation import (
     model_folder,
     separate_vocals,
@@ -292,7 +292,7 @@ class ShowSessions:
             "faces": display_has_mouths(display, rules),
             "can_separate_vocals": separation_available(),
             "can_translate": translator_from_environment() is not None,
-            "styles": [STYLES[key].to_dict() for key in STYLES],
+            "styles": all_styles(),
             "default_style": DEFAULT_STYLE,
             "requirements": [describe_requirement(r) for r in session.requirements],
             "raw_requirements": [_raw(r) for r in session.requirements],
@@ -428,8 +428,9 @@ class ShowSessions:
             raise ShowBuildError("'sing' must be a JSON boolean")
         sing = sing_value
         style = body.get("style") or None
-        if style is not None and (not isinstance(style, str) or style not in STYLES):
+        if style is not None and not isinstance(style, str):
             raise ShowBuildError("Unknown style; choose one of: " + ", ".join(STYLES))
+        _check_style(style)
         with self.locked(token) as session:
             if session.analysis_path is None or session.audio_path is None:
                 raise ShowBuildError("Add the song before generating")
@@ -514,8 +515,7 @@ class ShowSessions:
         """Analyze one song and build its show with the session's display, requirements
         and the chosen style. The show is kept for :meth:`batch_zip`; the session's own
         song is untouched. Faces do not sing in batch shows (no vocal splitting)."""
-        if style is not None and style not in STYLES:
-            raise ShowBuildError("Unknown style; choose one of: " + ", ".join(STYLES))
+        _check_style(style)
         with self.locked(token) as session:
             if len(session.batch) >= MAX_BATCH_SONGS:
                 raise ShowBuildError(f"A batch holds up to {MAX_BATCH_SONGS} songs; save "
@@ -679,6 +679,24 @@ class ShowSessions:
             else:
                 session.batch.clear()
         return {"cleared": True}
+
+
+def all_styles() -> list[dict[str, Any]]:
+    """The built-in styles, then the ones learned from the user's own sequences."""
+    from lor_sequence_builder.style_learning import saved
+
+    return ([{**STYLES[key].to_dict(), "learned": False} for key in STYLES]
+            + [{**style.to_dict(), "learned": True} for style in saved()])
+
+
+def _check_style(style: str | None) -> None:
+    if style is None or style in STYLES:
+        return
+    try:
+        get_style(style)
+    except ValueError as exc:
+        raise ShowBuildError(str(exc) if style.startswith("mine:") else
+                             "Unknown style; choose one of: " + ", ".join(STYLES)) from exc
 
 
 def _keep_recent(sequence: Path, summary: Path, picture: Path, file_name: str, display: str,
