@@ -2032,8 +2032,32 @@
     afterEdit();
   }
 
+  function sameEffectArray(left, right) {
+    if (left.length !== right.length) return false;
+    for (let index = 0; index < left.length; index++) {
+      const a = left[index];
+      const b = right[index];
+      if (a === b) continue;
+      const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+      for (const key of keys) {
+        const av = a[key];
+        const bv = b[key];
+        if (key === "attrs" && av && bv) {
+          if (JSON.stringify(av) !== JSON.stringify(bv)) return false;
+        } else if (av !== bv) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
   function applyChanges(label, changes, selected) {
     if (!changes.size) return false;
+    if (Array.from(changes).every(([channel, after]) => sameEffectArray(channel.effects, after))) {
+      setBanner("No change was made.", "");
+      return false;
+    }
     const problem = checkChanges(changes);
     if (problem) {
       setBanner("Not changed: " + problem + ".", "warn");
@@ -2961,6 +2985,10 @@
       }
     } catch (error) {
       setBanner("Not changed: " + error.message + ".", "warn");
+      return false;
+    }
+    if (changes.every((change) => JSON.stringify(change.before) === JSON.stringify(change.after))) {
+      setBanner("No change was made.", "");
       return false;
     }
     const command = { label, music: changes };
