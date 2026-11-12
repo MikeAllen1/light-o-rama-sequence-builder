@@ -184,7 +184,7 @@ STYLES: dict[str, Style] = {
         "and wave, decorations that breathe one after another, a mega tree that breathes "
         "and turns slowly, louder parts that swell in, softer brightness and no flashes. "
         "For ballads and quiet songs.",
-        leads=(1, 2, 2), chase_hold=(1, 2, 2),
+        leads=(1, 2, 3), chase_hold=(1, 2, 2),
         soft=(True, True, True), brightness=(50, 75, 90),
         flashes=False, crash_spacing=800, flash_length=80, sparkle_density=0.8,
         build_from=0.6, call_and_response=False, fall_every=(0, 0, 2),

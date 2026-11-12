@@ -68,6 +68,19 @@ Everything is worked out on your computer; nothing is sent anywhere.
 
 A style never changes which rules the show must pass. On the command line: `generate ... --style energetic`.
 
+### The quality check
+
+Passing the rules makes a show valid; the quality check asks whether it is good. Every show is scored out of 100 and the report (`<show>.report.html`, and `quality` in the plan) lists what it found and where:
+
+- **Too much at once:** most of the yard lit for more than six seconds outside the finale and the flashes, which leaves the big moments nothing to build from.
+- **Dead air:** nearly nothing lit for three seconds or more while the song plays. This one is fixed before the show is written: the stars and outlines (or the showpiece) hold a calm base at 40%, from beat to beat. Silence in the song and parts your requirements keep dark are left dark.
+- **Look-alikes in lockstep:** two props of the same kind doing exactly the same thing.
+- **Loud vs quiet:** loud parts should light clearly more of the yard than quiet ones.
+- **Same look over and over:** the same props starting at the same moments three phrases running.
+- **On the music:** how many effects start on a beat, a drum hit or a note of the song. Steps inside a chase or a spin count once, where the motion starts.
+
+Like everything else, the check runs on your computer.
+
 Section names (verse, chorus) are guesses from loudness. To name them yourself, use the music review (below).
 
 ## Getting better results from your preview

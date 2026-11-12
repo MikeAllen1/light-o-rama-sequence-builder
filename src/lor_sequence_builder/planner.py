@@ -44,6 +44,8 @@ from typing import Any
 
 from lor_sequence_builder.choreography import Choreography, Effect, Movement, Section
 from lor_sequence_builder.formation import Formation, formation
+from lor_sequence_builder.quality import DEAD_SHARE, DEAD_SPAN, QualityReport, lit_share
+from lor_sequence_builder.quality import check as check_quality
 from lor_sequence_builder.rules import RuleSet, select_props
 from lor_sequence_builder.rules.engine import Display, DisplayProp
 from lor_sequence_builder.style import Style, get_style
@@ -91,6 +93,8 @@ class Plan:
     notes: tuple[str, ...]
     # Signature moments and arrangement choices, for the report: (kind, centisecond).
     moments: tuple[tuple[str, int], ...] = ()
+    # How the finished show measures up (see quality.py).
+    quality: QualityReport | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -106,6 +110,7 @@ class Plan:
             "effects": len(self.choreography.effects),
             "movements": len(self.choreography.movements),
             "moments": [{"kind": kind, "centisecond": time} for kind, time in self.moments],
+            "quality": None if self.quality is None else self.quality.to_dict(),
         }
 
 
@@ -1705,6 +1710,94 @@ def _joined(effects: list[Effect]) -> list[Effect]:
     return out
 
 
+# ---------------------------------------------------------------- quality
+
+# The song counts as quiet where it is this share of its loudest or less.
+QUIET_ENERGY = 0.08
+# Dead air is filled at this brightness: a calm base, not a new look.
+CALM_LEVEL = 40
+
+
+def _quiet_spans(music: _Music) -> list[tuple[int, int]]:
+    """Where the song itself is silent or nearly so: before the first beat, after the
+    last, hard stops, and stretches of very low energy."""
+    beat = music.beats[1] - music.beats[0]
+    spans = [(0, music.beats[0]), (music.beats[-1] + beat, music.duration), *music.stops]
+    loudest = max((v for _, v in music.energy), default=0.0)
+    start: int | None = None
+    for time, value in music.energy:
+        if loudest and value <= QUIET_ENERGY * loudest:
+            start = time if start is None else start
+        elif start is not None:
+            spans.append((start, time))
+            start = None
+    if start is not None:
+        spans.append((start, music.duration))
+    return [(a, b) for a, b in spans if b > a]
+
+
+def _music_marks(analysis: dict[str, Any], music: _Music,
+                 sections: list[PlannedSection]) -> list[int]:
+    """Times an effect can start on and look like it follows the music."""
+    halves = [(a + b) // 2 for a, b in itertools.pairwise(music.beats)]
+    marks = set(music.beats) | set(halves) | {s.start_centisecond for s in sections}
+    marks |= {end for _, end in music.stops} | {0}
+    for key in ("kicks", "snares", "onsets", "crashes", "high_hits"):
+        marks |= set(_times(analysis, key))
+    return sorted(marks)
+
+
+def _free_gaps(canvas: _Canvas, key: tuple[str, int], start: int,
+               end: int) -> list[tuple[int, int]]:
+    gaps = []
+    cursor = start
+    for e in sorted(canvas.effects[key], key=lambda e: e.start_centisecond):
+        if e.end_centisecond <= cursor or e.start_centisecond >= end:
+            continue
+        if e.start_centisecond > cursor:
+            gaps.append((cursor, e.start_centisecond))
+        cursor = max(cursor, e.end_centisecond)
+    if cursor < end:
+        gaps.append((cursor, end))
+    return gaps
+
+
+def _fill_dead_air(planner: _Planner, canvas: _Canvas, music: _Music,
+                   windows: list[_Window], calm: Callable[[_Window], list[str]],
+                   props: set[str], quiet: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Light a calm base wherever the song plays but the yard is dark. Returns the
+    stretches it filled. Each fill starts and ends on a beat."""
+    effects = [e for items in canvas.effects.values() for e in items]
+    share = lit_share(effects, props, music.duration, step=10)
+    dark = [s <= DEAD_SHARE and not any(a <= i * 10 < b for a, b in quiet)
+            for i, s in enumerate(share)]
+    filled: list[tuple[int, int]] = []
+    start: int | None = None
+    for index, value in enumerate([*dark, False]):
+        if value and start is None:
+            start = index
+        elif not value and start is not None:
+            a, b = start * 10, index * 10
+            start = None
+            if b - a < DEAD_SPAN:
+                continue
+            a = next((t for t in music.beats if t >= a), a)
+            b = max((t for t in music.beats if t <= b), default=b)
+            lit = False
+            for window in windows:
+                lo, hi = max(a, window.start), min(b, window.end)
+                if hi - lo < 50:
+                    continue
+                for pid in calm(window):
+                    for channel in planner.channels(pid, window.section_index):
+                        for g0, g1 in _free_gaps(canvas, (pid, channel), lo, hi):
+                            lit |= canvas.put(pid, channel, g0, g1, intensity=CALM_LEVEL,
+                                              color=planner.color(pid, channel))
+            if lit:
+                filled.append((a, b))
+    return filled
+
+
 def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
               vocals: dict[str, Any] | None = None, style: Style | None = None) -> Plan:
     """Plan a show. ``vocals`` is a vocal analysis (see vocals.py); without it faces
@@ -2022,6 +2115,23 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
     if final_hits and last_window is not None:
         _finale(planner, final_hits, sorted(active_in(last_window)), held)
         moments.append(("finale_hits", final_hits[0]))
+    # Where the song is silent, and where the rules ask every prop to stay dark.
+    quiet = _quiet_spans(music) + [(w.start, w.end) for w in windows
+                                   if not active_in(w) and not held]
+
+    def calm(window: _Window) -> list[str]:
+        here = active_in(window) - held
+        steady = sorted(p for p in here if p in base)
+        if steady:
+            return steady
+        if feature in here:
+            return [feature] if feature else []
+        return sorted(here)
+
+    filled = _fill_dead_air(planner, canvas, music, windows, calm, usable, quiet)
+    if filled:
+        moments.extend(("calm_base", a) for a, _ in filled)
+
     if moments:
         counts: dict[str, int] = defaultdict(int)
         for kind, _ in moments:
@@ -2036,7 +2146,8 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
                  "call_and_response": "phrase(s) of call and response",
                  "build": "build-up(s) before a louder part",
                  "crash": "crash(es) flash the display",
-                 "return": "return(s) from a stop flash the display"}
+                 "return": "return(s) from a stop flash the display",
+                 "calm_base": "dark stretch(es) given a calm base"}
         notes.append("Arrangement: " + "; ".join(
             f"{counts[kind]} {names[kind]}" for kind in names if counts[kind]) + ".")
 
@@ -2060,6 +2171,18 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
         hard_stops_centiseconds=tuple(start for start, _ in music.stops),
         vocal_regions=None if vocals is None else tuple(regions),
     )
+    excused = [(t, t + max(beat, style.flash_length)) for kind, t in moments
+               if kind in {"crash", "return", "lyric_cue", "lift"}]
+    if final_hits:
+        excused.append((final_hits[0] - 200, music.duration))
+    phrase_spans = [(p.start, p.end) for w in windows for p in _phrases(w)]
+    quality = check_quality(
+        effects, music.duration, usable,
+        {p: display.props[p].role for p in usable},
+        [(s.start_centisecond, s.end_centisecond, s.level) for s in sections],
+        _music_marks(analysis, music, sections), phrase_spans, quiet, excused, filled,
+        canvas.movements)
+    notes.append(quality.summary())
     return Plan(
         choreography=choreography,
         sections=tuple(sections),
@@ -2071,5 +2194,6 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
         )),
         notes=tuple(notes),
         moments=tuple(sorted(moments, key=lambda m: (m[1], m[0]))),
+        quality=quality,
     )
 
