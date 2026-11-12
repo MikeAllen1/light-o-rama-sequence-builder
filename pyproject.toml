@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "light-o-rama-sequence-builder"
-version = "0.1.6"
+version = "0.1.7"
 description = "A display-independent Light-O-Rama S6 sequence builder"
 readme = "README.md"
 license = "LicenseRef-MIT-Commons-Clause"
