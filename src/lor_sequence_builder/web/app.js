@@ -1461,6 +1461,7 @@
         state.reviewDirty = false;
       }
       state.reviewSaved = false;
+      updateEditControls();
       renderSequenceStats();
       refreshTimeline();
       const analysis = state.analysis.analysis;
