@@ -4013,7 +4013,15 @@
         encodeURIComponent(show.token) + "&request_id=" + requestId,
         JSON.stringify(text ? { requirements: raw, text } : { requirements: raw }),
         "application/json");
-      if (requestId !== show.requirementsRequestId || result.stale) return;
+      if (requestId !== show.requirementsRequestId) return;
+      if (result.stale) {
+        show.requirementsUncertain = true;
+        showMessage("requirementStatus",
+          "The server has a newer requirements revision than this workspace. " +
+          "Re-select the display to resync its saved profile before generating or building a playlist.",
+          "error");
+        return;
+      }
       show.requirementsUncertain = false;
       const requirementsChanged = JSON.stringify(show.raw) !== JSON.stringify(result.raw);
       show.raw = result.raw;
