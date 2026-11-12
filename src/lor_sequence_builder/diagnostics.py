@@ -154,7 +154,7 @@ def report(browser: str = "", steps: list[str] | None = None,
 
 # Every temporary folder the program makes starts with one of these.
 TEMP_PREFIXES = ("lor-new-show-", "lor-audio-", "lor-decode-", "lor-vocals-", "lor-doctor-",
-                 "lor-self-test-", "lor-sequencer-export-", "lor-sequencer-ui-")
+                 "lor-self-test-", "lor-sequencer-export-", "lor-sequencer-ui-", "lor-batch-")
 
 
 def sweep_leftovers(max_age_seconds: float = 24 * 60 * 60, folder: Path | None = None) -> int:
@@ -176,10 +176,21 @@ def sweep_leftovers(max_age_seconds: float = 24 * 60 * 60, folder: Path | None =
     cutoff = time.time() - max_age_seconds
     for path in candidates:
         try:
-            if (path.is_dir() and not path.is_symlink() and path.name.startswith(TEMP_PREFIXES)
-                    and path.stat().st_mtime < cutoff):
-                shutil.rmtree(path, ignore_errors=True)
-                removed += 1
+            if path.is_symlink() or not path.name.startswith(TEMP_PREFIXES):
+                continue
+            if path.stat().st_mtime >= cutoff:
+                continue
+            if path.is_dir():
+                # Count only successful removals; ignore_errors=True used to
+                # report success even when permissions or open handles prevented cleanup.
+                shutil.rmtree(path)
+            elif path.is_file() and path.name.startswith("lor-batch-"):
+                # Batch ZIPs are streamed from temporary files and can be left
+                # behind if the process is forcibly terminated mid-download.
+                path.unlink()
+            else:
+                continue
+            removed += 1
         except OSError:
             continue
     return removed
