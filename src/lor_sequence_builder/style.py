@@ -25,8 +25,10 @@ from dataclasses import dataclass, field
 
 LOW, MID, HIGH = 0, 1, 2
 
-# The musical grids a motion can move on, slowest first.
-GRIDS = ("phrase", "bar", "half_bar", "beat", "half")
+# The musical grids a motion can move on: a whole phrase, a bar, every other beat,
+# the beat, the half beat, or the drums (the kick or the snare; where a song has no
+# clear drum, the beat).
+GRIDS = ("phrase", "bar", "half_bar", "beat", "half", "kick", "snare")
 
 # What each kind of prop can do.
 #   rows of arches and other look-alike rows: chase, bounce, fill, wave, alternate
@@ -37,6 +39,7 @@ GRIDS = ("phrase", "bar", "half_bar", "beat", "half")
 MOTIONS = {
     "arch_row": ("chase", "bounce", "fill", "wave", "alternate"),
     "row": ("chase", "bounce", "fill", "wave", "alternate"),
+    "outline_row": ("chase", "bounce", "fill", "wave", "alternate"),
     "mega_tree": ("rotate", "spiral", "fill_up", "breathe", "twinkle"),
     "family": ("trade", "breathe", "pulse"),
     "outline": ("base", "breathe", "trade", "pulse", "twinkle"),
@@ -138,9 +141,11 @@ STYLES: dict[str, Style] = {
             mega_tree=Part(("rotate", ("rotate", "spiral"), ("spiral", "fill_up")),
                            ("beat", "half", ("half", "beat"))),
             family=Part(("trade", "trade", ("trade", "pulse")),
-                        ("bar", "beat", ("beat", "half"))),
+                        ("bar", "snare", ("snare", "half"))),
             outline=Part(("base", "base", ("trade", "pulse")),
                          ("phrase", "phrase", "bar")),
+            outline_row=Part(("alternate", "chase", ("chase", "bounce")),
+                             ("half_bar", "kick", "kick")),
             star=Part(("hold", "hold", "twinkle"), ("phrase", "phrase", "phrase")),
         ),
         phrase_bars=4, entry="flash", arc=1, vary_repeats=True,
@@ -163,9 +168,11 @@ STYLES: dict[str, Style] = {
             mega_tree=Part(("spiral", ("fill_up", "spiral"), ("rotate", "fill_up")),
                            ("half", "beat", "half")),
             family=Part(("pulse", "trade", ("pulse", "trade")),
-                        ("beat", "half", "half")),
+                        ("snare", "half", ("half", "snare"))),
             outline=Part(("pulse", ("trade", "pulse"), "pulse"),
                          ("bar", "beat", "beat")),
+            outline_row=Part(("chase", "alternate", ("alternate", "wave")),
+                             ("beat", "kick", "kick")),
             star=Part(("twinkle", "twinkle", "twinkle"), ("phrase", "phrase", "phrase")),
         ),
         phrase_bars=4, entry="drop", arc=2, vary_repeats=True,
@@ -188,6 +195,7 @@ STYLES: dict[str, Style] = {
                            ("phrase", "half_bar", ("beat", "bar"))),
             family=Part(("breathe", "breathe", "trade"), ("phrase", "bar", "half_bar")),
             outline=Part(("twinkle", "breathe", "breathe"), ("phrase", "phrase", "bar")),
+            outline_row=Part(("wave", "wave", "fill"), ("phrase", "bar", "bar")),
             star=Part(("twinkle", "twinkle", "twinkle"), ("phrase", "phrase", "phrase")),
         ),
         phrase_bars=8, entry="swell", arc=1, vary_repeats=False,

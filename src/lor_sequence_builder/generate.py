@@ -28,6 +28,7 @@ from lor_sequence_builder.classifier import classify_preview
 from lor_sequence_builder.evaluation import load_analysis
 from lor_sequence_builder.lms import LmsError, display_from_lms, preview_bytes, read_lms
 from lor_sequence_builder.lorprev import read_lorprev
+from lor_sequence_builder.lyrics import read_lyrics
 from lor_sequence_builder.plan_preview import plan_svg
 from lor_sequence_builder.planner import Plan, display_has_mouths, plan_show
 from lor_sequence_builder.progress import step as report_step
@@ -108,6 +109,7 @@ def generate_show(
     progress: Callable[[str], None] | None = None,
     vocal_beats: bool = False,
     style: str | None = None,
+    lyrics_path: str | Path | None = None,
 ) -> GeneratedShow:
     """Build a show. ``preview_path`` is a ``.lorprev`` (S5/S6 output, ``.loredit``)
     or the user's own S4 sequence (``.lms`` output with the same channels). Vocals for singing faces come from ``vocals_path`` (a vocals-only
@@ -120,10 +122,11 @@ def generate_show(
         chosen_style = get_style(style)
     except ValueError as exc:
         raise SequenceWriteError(str(exc)) from exc
+    lyrics = read_lyrics(lyrics_path) if lyrics_path is not None else None
     with ExitStack() as stack:
         return _generate(stack, preview_path, output_path, rule_set, audio_path, analysis_path,
                          music_filename, beats_per_bar, vocals_path, separate, progress,
-                         vocal_beats, chosen_style)
+                         vocal_beats, chosen_style, lyrics)
 
 
 def _generate(
@@ -140,6 +143,7 @@ def _generate(
     progress: Callable[[str], None] | None,
     vocal_beats: bool,
     chosen_style: Style,
+    lyrics: dict[str, Any] | None,
 ) -> GeneratedShow:
     paths = output_paths(output_path)
     s4 = Path(preview_path).suffix.lower() == ".lms"
@@ -208,6 +212,9 @@ def _generate(
         analysis = load_analysis(analysis_path)
         written_analysis = None
         default_music = str(analysis.get("audio", {}).get("file_name") or "")
+    if lyrics is not None:
+        # Timed lyrics let the planner cue the props a line names.
+        analysis = {**analysis, "lyrics": lyrics}
 
     vocals: dict[str, Any] | None = None
     written_vocals: Path | None = None

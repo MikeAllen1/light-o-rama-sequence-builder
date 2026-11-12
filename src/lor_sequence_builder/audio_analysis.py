@@ -213,6 +213,14 @@ class _Spectra:
                                               hop_length=HOP_LENGTH)) ** 2
         return self._power
 
+    @property
+    def percussive(self) -> npt.NDArray[np.float32]:
+        """The drum part of the spectrum (harmonic-percussive separation), made once."""
+        if getattr(self, "_percussive", None) is None:
+            _, percussive = librosa.decompose.hpss(self.power, margin=2.0)
+            self._percussive = np.asarray(percussive, dtype=np.float32)
+        return self._percussive
+
     def mel(self, fmin: float = 0.0, n_mels: int = 128) -> npt.NDArray[np.float32]:
         key = (fmin, n_mels)
         if key not in self._mel:
@@ -299,6 +307,97 @@ def _high_hits(samples: npt.NDArray[np.float32] | _Spectra) -> list[dict[str, An
                 "method": "librosa_onset_detect_above_5khz",
             })
     return events
+
+
+# Drum bands of the percussive part: the kick's thump, and the snare's (or a clap's)
+# crack, which sits above the kick and below the hi-hats and bells.
+KICK_BAND_HZ = (30.0, 120.0)
+SNARE_BAND_HZ = (1000.0, 5000.0)
+KICK_MINIMUM = 0.3
+# The snare band also hears the tail of a kick and other instruments' attacks, so
+# only clearer hits count.
+SNARE_MINIMUM = 0.45
+
+
+def _band_hits(spectra: _Spectra, band: tuple[float, float], method: str,
+               minimum: float) -> list[dict[str, Any]]:
+    freqs = librosa.fft_frequencies(sr=SAMPLE_RATE, n_fft=2048)
+    rows = (freqs >= band[0]) & (freqs < band[1])
+    part = spectra.percussive[rows]
+    if part.size == 0:
+        return []
+    envelope = np.asarray(
+        librosa.onset.onset_strength(S=librosa.power_to_db(part + 1e-10), sr=SAMPLE_RATE,
+                                     hop_length=HOP_LENGTH),
+        dtype=np.float64,
+    )
+    frames = np.asarray(
+        librosa.onset.onset_detect(onset_envelope=envelope, sr=SAMPLE_RATE,
+                                   hop_length=HOP_LENGTH, units="frames"),
+        dtype=np.int64,
+    )
+    if frames.size == 0:
+        return []
+    reference = float(np.percentile(envelope[frames], 90)) or 1.0
+    events = []
+    for frame, time in zip(frames, _frames_to_times(frames), strict=True):
+        strength = float(envelope[frame]) / reference
+        if strength >= minimum:
+            events.append({"time": round(float(time), 3),
+                           "strength": round(min(1.5, strength), 4),
+                           "confidence": round(min(1.0, strength), 4), "method": method})
+    return events
+
+
+# A snare candidate this close to a kick is the kick's click, not a snare.
+KICK_SHADOW = 0.08
+
+
+def _drums(spectra: _Spectra) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Kick and snare candidates from the percussive part of the spectrum."""
+    kicks = _band_hits(spectra, KICK_BAND_HZ, "percussive_onsets_30_to_120_hz", KICK_MINIMUM)
+    kick_times = np.array([k["time"] for k in kicks], dtype=np.float64)
+    snares = []
+    for hit in _band_hits(spectra, SNARE_BAND_HZ, "percussive_onsets_1_to_5_khz",
+                          SNARE_MINIMUM):
+        if kick_times.size and float(np.min(np.abs(kick_times - hit["time"]))) <= KICK_SHADOW:
+            continue
+        snares.append(hit)
+    return kicks, snares
+
+
+# Harmony: bars that lean on notes the rest of the song rarely plays (a borrowed
+# chord, a key change), like a flat-six chord in a major-key carol.
+RARE_NOTE = 0.35
+# A bar stands out when its share of rare notes is at least this many times the
+# song's typical bar (drums and noise spread every bar's chroma, so the share is
+# compared with the song's own, not with a fixed amount).
+DEPARTURE_RATIO = 1.5
+DEPARTURE_SPREAD = 3.0
+
+
+def _harmonic_departures(beat_chroma: FloatArray, beat_times: list[float],
+                         downbeat_indices: IntArray) -> list[dict[str, Any]]:
+    marks = [int(i) for i in downbeat_indices if int(i) < beat_chroma.shape[1]]
+    if len(marks) < 8:
+        return []
+    ends = [*marks[1:], min(beat_chroma.shape[1], marks[-1] + (marks[-1] - marks[-2]))]
+    bars = [(a, np.mean(beat_chroma[:, a:b], axis=1)) for a, b in zip(marks, ends, strict=True)
+            if b > a]
+    if len(bars) < 8:
+        return []
+    home = np.mean([v / (np.sum(v) or 1.0) for _, v in bars], axis=0)
+    rare = home < RARE_NOTE * float(np.max(home))
+    shares = np.array([float(np.sum(v[rare]) / (np.sum(v) or 1.0)) for _, v in bars])
+    middle = float(np.median(shares))
+    spread = float(np.median(np.abs(shares - middle))) or 1e-3
+    limit = max(DEPARTURE_RATIO * middle, middle + DEPARTURE_SPREAD * spread)
+    return [
+        {"time": beat_times[a], "strength": round(float(shares[k]) / (middle or 1e-3), 3),
+         "confidence": round(min(1.0, float(shares[k]) / (2 * limit)), 3),
+         "method": "bar_energy_on_notes_the_song_rarely_plays"}
+        for k, (a, _) in enumerate(bars) if shares[k] >= limit
+    ]
 
 
 CRASH_LOUDNESS_PERCENTILE = 97
@@ -838,12 +937,14 @@ def analyze_audio(
         downbeats: list[float] = []
         bar_confidence = 0.0
         structural: list[dict[str, Any]] = []
+        departures: list[dict[str, Any]] = []
         if bpm is not None and len(beat_times) >= 2 * beats_per_bar:
             progress.step("Finding the bars and the parts of the song", 0.55)
             beat_chroma = _beat_chroma(samples, beat_frames)
             phase, bar_confidence = _downbeat_phase(beat_chroma, len(beat_times), beats_per_bar)
             downbeat_indices = np.arange(phase, len(beat_times), beats_per_bar, dtype=np.int64)
             downbeats = [beat_times[int(i)] for i in downbeat_indices]
+            departures = _harmonic_departures(beat_chroma, beat_times, downbeat_indices)
             for beat_index, score in _structural_sections(
                 spectra, beat_frames, beat_chroma, downbeat_indices
             ):
@@ -857,6 +958,7 @@ def analyze_audio(
                 })
 
         progress.step("Finding the loud and quiet parts", 0.8)
+        kicks, snares = _drums(spectra) if bpm is not None else ([], [])
         energy = _energy_curve(rms)
         minimum_stop_silence = max(0.75, (60.0 / bpm) * 1.5) if bpm else 0.75
         stops = _hard_stops(rms, minimum_stop_silence)
@@ -905,6 +1007,8 @@ def analyze_audio(
                     "Section candidates are structural or energy changes; verse/chorus labels are not inferred, and section placement is partly a matter of taste.",
                     "Hard stops are sustained near-silence candidates and may include intentional pauses.",
                     "Vocals are not separated or detected.",
+                    "Kicks and snares are percussive onsets in a low and a mid band; other drums and instruments can land in either.",
+                    "Harmonic departures are bars whose chroma leans on notes the song rarely plays; they do not name chords or keys.",
                 ],
                 "tempo": {
                     "bpm": bpm,
@@ -928,6 +1032,9 @@ def analyze_audio(
                 "onsets": onsets,
                 "high_hits": high_hits,
                 "crashes": _crashes(spectra, high_hits),
+                "kicks": kicks,
+                "snares": snares,
+                "harmonic_departures": departures,
                 "tempo_curve": _tempo_curve(envelope, bpm),
                 "energy": energy,
                 "phrase_boundaries": phrases,

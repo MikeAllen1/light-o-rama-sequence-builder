@@ -514,5 +514,11 @@ Two outside reviews of generated shows found the styles about 90% the same show,
 
 Measured on the fictional family yard (tests/test_styles.py): shared exact placements between styles went from 91% / 75% / 72% to 17% / 11% / 5%; look-alike pairs in lockstep from 12 to 0 in every style; the last chorus is now 1.7x (Classic) and 1.3x (High energy) as lit as the first, where before it was dimmer.
 
-Still to come: kick/snare separation, lyric cues from the music review, and chord-change moments (signals the analysis does not yet provide).
+Then the signals the reviews said were missing, all offline:
+
+- **Kick and snare.** The analyzer separates the percussive part of the spectrum and records `kicks` (30-120 Hz) and `snares` (1-5 kHz, away from kicks). Styles can move on a `kick` or `snare` grid; Classic and High energy put outline rows (pillars) on the kick and families on the snare. Without clear drums, the beat (or the backbeat) stands in.
+- **Unexpected chords.** `harmonic_departures` are bars whose chroma leans on notes the song rarely plays (relative to the song's own typical bar). In mid and loud parts the yard dims to 30% for the bar and the showpiece carries it.
+- **Lyric cues.** Timed lyrics (from a music review, or `generate --lyrics` with LRC/SRT/VTT/JSON) cue props a word names, by role words (tree, star, snow, arch, icicle) or words of the prop's own name.
+
+On a synthesized test song (kick on 1 and 3, snare on 2 and 4, two bars of A-flat in C major) the analyzer finds 47/47 kicks on 1/3, 45/47 snares on 2/4, and both A-flat bars. A randomized test plans 216 shows with drums, departures and lyrics across every test display and style, all passing every rule. Also fixed: a cut or scaled fade that ended up not changing level is written as a hold (the rules reject a flat fade), and `generate-batch` now makes `.lms` shows for an S4 display.
 

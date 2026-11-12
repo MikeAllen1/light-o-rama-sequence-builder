@@ -58,6 +58,14 @@ The same song and display can be arranged with a different character. A style de
 
 In every style, look-alike props (two reindeer, three pillars, a row of snowmen) never do exactly the same thing at the same time; they take turns, ripple or breathe one after another. The show grows as the song goes, so the last chorus is the fullest; Classic and High energy move a returning chorus or verse a new way, while Elegant repeats it. When a song ends on a few big hits, the left side lights on the first, the right on the next and the whole display on the last, then it fades out from the edges inward. Section changes are moved onto four-bar phrase lines unless you marked them yourself in a music review.
 
+The program also listens for three things in the song:
+
+- **The drums.** It separates kick and snare hits. In Classic and High energy, a row of pillars or outlines follows the kick and decorations answer the snare; a song without clear drums uses the beat instead.
+- **Unexpected chords.** A bar that leans on notes the rest of the song rarely plays (a borrowed chord, a key change) drops most of the yard low for that bar while the showpiece (the mega tree, or the prop with the most channels) carries the moment.
+- **The words.** With timed lyrics, a prop the singer names lights on the word: "tree" lights the trees, "snowman" the snowmen, and any word from a prop's own name ("reindeer", "pillar", "Santa") lights that prop, at most once every four seconds. Lyrics come from a music review saved in the workspace, or on the command line from `--lyrics song.lrc` (LRC, SRT or VTT).
+
+Everything is worked out on your computer; nothing is sent anywhere.
+
 A style never changes which rules the show must pass. On the command line: `generate ... --style energetic`.
 
 Section names (verse, chorus) are guesses from loudness. To name them yourself, use the music review (below).

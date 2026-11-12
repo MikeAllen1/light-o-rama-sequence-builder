@@ -38,6 +38,7 @@ import itertools
 import re
 import zlib
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -532,8 +533,11 @@ def _at(effect: Effect, time: int) -> int:
 
 
 def _piece(effect: Effect, start: int, end: int) -> Effect:
-    return Effect(effect.prop_id, effect.channel_index, start, end, effect.kind,
-                  _at(effect, start), _at(effect, end), effect.color, effect.movement_id)
+    first, last = _at(effect, start), _at(effect, end)
+    # A short piece of a fade can start and end at the same level: then it holds.
+    kind = "on" if effect.kind == "fade" and first == last else effect.kind
+    return Effect(effect.prop_id, effect.channel_index, start, end, kind, first, last,
+                  effect.color, effect.movement_id)
 
 
 def _punch(canvas: _Canvas, prop_id: str, channel: int, start: int, end: int,
@@ -566,10 +570,18 @@ def _swell(canvas: _Canvas, start: int, end: int, low: float = 0.5,
            exclude: set[str] | None = None) -> None:
     """Scale brightness from ``low`` at ``start`` up to full at ``end``: a build-up."""
     span = max(1, end - start)
+    _scale(canvas, start, end,
+           lambda time: low + (1 - low) * min(1.0, max(0.0, (time - start) / span)), exclude)
 
-    def factor(time: int) -> float:
-        return low + (1 - low) * min(1.0, max(0.0, (time - start) / span))
 
+def _dim(canvas: _Canvas, start: int, end: int, level: float, exclude: set[str]) -> None:
+    """Hold everything (but ``exclude``) at ``level`` of its brightness for a moment."""
+    _scale(canvas, start, end, lambda _: level, exclude)
+
+
+def _scale(canvas: _Canvas, start: int, end: int, factor: Callable[[int], float],
+           exclude: set[str] | None = None) -> None:
+    """Multiply brightness between ``start`` and ``end`` by ``factor(time)``."""
     for key, effects in canvas.effects.items():
         if exclude and key[0] in exclude:
             continue
@@ -589,6 +601,8 @@ def _swell(canvas: _Canvas, start: int, end: int, low: float = 0.5,
             kind = middle.kind
             if kind == "on" and first != last:
                 kind = "fade"
+            elif kind == "fade" and first == last:
+                kind = "on"
             if kind in {"twinkle", "shimmer"}:
                 last = first
             pieces.append(Effect(e.prop_id, e.channel_index, a, b, kind, first, last,
@@ -696,6 +710,24 @@ class _Planner:
     fall_turn: int = 0
     # The song's last loud part: props taking turns hold longer, so it is the fullest.
     peak: bool = False
+    # Drum hits from the analysis (centiseconds), for motions on the kick or snare.
+    kicks: list[int] = field(default_factory=list)
+    snares: list[int] = field(default_factory=list)
+
+    def marks(self, window: _Window, grid: str) -> list[int]:
+        """The times a motion moves on; the drums when the style asks and the song has
+        them (at least a hit a bar in this phrase), otherwise the beat they stand for."""
+        if grid in {"kick", "snare"}:
+            hits = [t for t in (self.kicks if grid == "kick" else self.snares)
+                    if window.start <= t < window.end]
+            if len(hits) >= max(2, len(_bars(window))):
+                return hits
+            if grid == "snare":
+                # The backbeat: beats two and four.
+                return [t for i, t in enumerate(window.beats)
+                        if (i + window.offset) % 2 == 1]
+            return list(window.beats)
+        return _marks(window, grid)
 
     def channels(self, pid: str, section_index: int) -> list[int]:
         """Channels to light: all of them, or one color at a time for per-color props."""
@@ -1018,7 +1050,8 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
     hold = style.chase_hold[level]
 
     def every_for(grid: str) -> int:
-        return {"half": 1, "beat": 1, "half_bar": 2}.get(grid, window.beats_per_bar)
+        return {"half": 1, "beat": 1, "half_bar": 2, "kick": 1, "snare": 1}.get(
+            grid, window.beats_per_bar)
 
     loose = list(singles)
     for row in rows:
@@ -1028,13 +1061,17 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
         if len(members) == 1:
             loose.append(members[0])
             continue
-        motion, grid = style.part("arch_row" if row.role == "arch" else "row").at(level,
-                                                                                  variant)
-        spans = _spans(window, _marks(window, grid))
-        # A chase on the half beat steps on every half beat, as if they were beats.
-        stepping = (dataclasses.replace(window, beats=tuple(_marks(window, "half")),
-                                        offset=window.offset * 2)
-                    if grid == "half" else window)
+        kind = {"arch": "arch_row", "outline": "outline_row"}.get(row.role, "row")
+        motion, grid = style.part(kind).at(level, variant)
+        marks = planner.marks(window, grid)
+        spans = _spans(window, marks)
+        # A chase on the half beat or the drums steps on those, as if they were beats.
+        if grid == "half":
+            stepping = dataclasses.replace(window, beats=tuple(marks), offset=window.offset * 2)
+        elif grid in {"kick", "snare"} and tuple(marks) != window.beats:
+            stepping = dataclasses.replace(window, beats=tuple(marks), offset=0)
+        else:
+            stepping = window
         if motion == "chase":
             moved = planner.chase(row, members, stepping, every=every_for(grid),
                                   intensity=gentle, hold=hold)
@@ -1066,16 +1103,17 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
             motion, grid = style.part("mega_tree").at(level, variant)
             intensity = 60 if level == LOW else 100
             if motion == "rotate":
-                planner.turn(pid, window, _marks(window, grid), intensity, reverse=flip)
+                planner.turn(pid, window, planner.marks(window, grid), intensity, reverse=flip)
             elif motion == "spiral":
                 for k, (a, b) in enumerate(_bars(window)):
                     part = _sub(window, a, min(b, window.end))
-                    planner.turn(pid, part, _marks(part, grid), intensity,
+                    planner.turn(pid, part, planner.marks(part, grid), intensity,
                                  reverse=(k % 2 == 1) != flip)
             elif motion == "fill_up":
-                planner.fill_up(pid, window, _spans(window, _marks(window, grid)), intensity)
+                planner.fill_up(pid, window, _spans(window, planner.marks(window, grid)),
+                                intensity)
             elif motion == "breathe":
-                planner.breathe([pid], window, _spans(window, _marks(window, grid)),
+                planner.breathe([pid], window, _spans(window, planner.marks(window, grid)),
                                 intensity)
             else:
                 planner.steady(pid, window, intensity, "twinkle")
@@ -1103,7 +1141,7 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
             members.reverse()
         kind = "outline" if role == "outline" else "family"
         motion, grid = style.part(kind).at(level, variant)
-        spans = _spans(window, _marks(window, grid))
+        spans = _spans(window, planner.marks(window, grid))
         intensity = gentle if role != "unknown" else max(30, gentle - 10)
         if motion == "base":
             for pid in members:
@@ -1315,6 +1353,95 @@ def _accent(planner: _Planner, window: _Window, active: set[str]) -> int:
         planner.light(pid, window.section_index, window.start, end, "fade", 100, 0)
     return end
 
+
+
+# ---------------------------------------------------------------- harmony and lyrics
+
+# During a bar that leaves the home harmony, everything but the showpiece drops to
+# this share of its brightness.
+DEPARTURE_LEVEL = 0.3
+
+
+def _feature(display: Display, usable: set[str]) -> str | None:
+    """The display's showpiece: a mega tree, else the prop with the most channels."""
+    candidates = [display.props[p] for p in usable]
+    trees = [p for p in candidates if p.role == "mega_tree"]
+    if trees:
+        return max(trees, key=lambda p: (p.channel_count, p.name)).prop_id
+    big = [p for p in candidates if p.channel_count >= 3]
+    return max(big, key=lambda p: (p.channel_count, p.name)).prop_id if big else None
+
+
+# Words that name a kind of prop, and words in prop names that say nothing about it.
+_ROLE_WORDS = {
+    "tree": {"mega_tree", "mini_tree"}, "star": {"star"}, "snow": {"snowflake"},
+    "snowflake": {"snowflake"}, "icicle": {"icicles"}, "arch": {"arch"},
+}
+_PLAIN_WORDS = frozenset({
+    "the", "and", "for", "with", "left", "right", "front", "back", "top", "bottom", "big",
+    "small", "mini", "mega", "light", "lights", "line", "lines", "outline", "prop", "set",
+    "yard", "house", "string", "strings", "red", "green", "blue", "white", "multi",
+    "color", "colour", "panel", "board", "pole", "on", "of", "a", "my",
+})
+# A prop is cued at most once in this long (centiseconds).
+CUE_SPACING = 400
+
+
+def _forms(word: str) -> set[str]:
+    """A word and its singular (trees -> tree, snowmen -> snowman, boxes -> box)."""
+    word = re.sub(r"[^a-z]", "", word.lower())
+    forms = {word}
+    if word.endswith("men") and len(word) > 4:
+        forms.add(word[:-3] + "man")
+    if word.endswith("es") and len(word) > 4:
+        forms.add(word[:-2])
+    if word.endswith("s") and len(word) > 3:
+        forms.add(word[:-1])
+    return {f for f in forms if len(f) >= 3}
+
+
+def _lyric_cues(analysis: dict[str, Any], display: Display, usable: set[str],
+                duration: int) -> list[tuple[int, list[str]]]:
+    """When a sung word names props ("tree", "star", or a word of a prop's own name),
+    the time of the word and the props it names."""
+    lyrics = analysis.get("lyrics")
+    lines = lyrics.get("lines") if isinstance(lyrics, dict) else None
+    if not isinstance(lines, list):
+        return []
+    names: dict[str, set[str]] = defaultdict(set)
+    for pid in usable:
+        prop = display.props[pid]
+        for token in re.findall(r"[a-z]+", prop.name.lower()):
+            if token not in _PLAIN_WORDS:
+                for form in _forms(token):
+                    names[form].add(pid)
+        for word, roles in _ROLE_WORDS.items():
+            if prop.role in roles:
+                names[word].add(pid)
+    spoken: list[tuple[int, str]] = []
+    for line in lines:
+        if not isinstance(line, dict) or not isinstance(line.get("start"), int | float):
+            continue
+        words = [w for w in line.get("words") or []
+                 if isinstance(w, dict) and isinstance(w.get("start"), int | float)
+                 and isinstance(w.get("text"), str)]
+        if words:
+            spoken.extend((_cs(float(w["start"])), w["text"]) for w in words)
+        elif isinstance(line.get("text"), str):
+            # Without word timings, a line's words count from its start.
+            spoken.extend((_cs(float(line["start"])), w) for w in line["text"].split())
+    last: dict[str, int] = {}
+    cues: list[tuple[int, list[str]]] = []
+    for time, word in sorted(spoken):
+        if not 0 <= time < duration:
+            continue
+        props = sorted({p for form in _forms(word) for p in names.get(form, set())
+                        if time - last.get(p, -CUE_SPACING) >= CUE_SPACING})
+        if props:
+            for p in props:
+                last[p] = time
+            cues.append((time, props))
+    return cues
 
 
 # ---------------------------------------------------------------- the finale
@@ -1588,7 +1715,8 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
     constraints = _constraints(display, rule_set, vocals_known=vocals is not None)
     canvas = _Canvas(constraints.caps)
     style = style or get_style(None)
-    planner = _Planner(display, constraints, sections, canvas, style=style)
+    planner = _Planner(display, constraints, sections, canvas, style=style,
+                       kicks=_times(analysis, "kicks"), snares=_times(analysis, "snares"))
     notes = list(music.notes)
     notes.append(f"Style: {style.name}.")
     guidance = analysis.get("analysis", {}).get("beat_guidance")
@@ -1835,6 +1963,21 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
             _darken(canvas, before[-1], window.start, keep=held | base)
             moments.append(("drop", before[-1]))
 
+    # A bar that leaves the song's home harmony (a borrowed chord, a key change): in a
+    # mid or loud part, the yard drops low for the bar and the showpiece carries it.
+    feature = _feature(display, usable - singing)
+    bar_length = (sorted(b - a for a, b in itertools.pairwise(music.downbeats))
+                  [len(music.downbeats) // 2 - 1] if len(music.downbeats) > 2 else 200)
+    for time in _times(analysis, "harmonic_departures"):
+        part = next((s for s in sections if s.start_centisecond <= time < s.end_centisecond),
+                    None)
+        if part is None or part.level < MID or (final_hits and time >= final_hits[0]):
+            continue
+        end = min(part.end_centisecond,
+                  next((d for d in music.downbeats if d > time + 10), time + bar_length))
+        _dim(canvas, time, end, DEPARTURE_LEVEL, held | ({feature} if feature else set()))
+        moments.append(("departure", time))
+
     # Signature moments flash everything in use for a moment: cymbal crashes in
     # mid and loud parts, and the first beat back after a hard stop.
     stop_ends = {end for _, end in music.stops}
@@ -1860,6 +2003,22 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
                 flashed += _punch(canvas, pid, channel, time, stop, planner.color(pid, channel))
         if flashed:
             moments.append((kind, time))
+    # Lyric cues: a prop the singer names lights on the word.
+    for time, props in _lyric_cues(analysis, display, usable - held, music.duration):
+        if final_hits and time >= final_hits[0]:
+            continue
+        heard = next((w for w in windows if w.start <= time < w.end), None)
+        if heard is None:
+            continue
+        stop = min(heard.end, time + beat)
+        cued = 0
+        for pid in props:
+            if pid not in active_in(heard):
+                continue
+            for channel in planner.channels(pid, heard.section_index):
+                cued += _punch(canvas, pid, channel, time, stop, planner.color(pid, channel))
+        if cued:
+            moments.append(("lyric_cue", time))
     if final_hits and last_window is not None:
         _finale(planner, final_hits, sorted(active_in(last_window)), held)
         moments.append(("finale_hits", final_hits[0]))
@@ -1872,6 +2031,8 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
                  "drop": "dark beat(s) before a louder part",
                  "variation": "returning part(s) move a new way",
                  "finale_hits": "closing hits staged across the yard",
+                 "departure": "unexpected chord(s) carried by the showpiece",
+                 "lyric_cue": "lyric cue(s) light the prop the words name",
                  "call_and_response": "phrase(s) of call and response",
                  "build": "build-up(s) before a louder part",
                  "crash": "crash(es) flash the display",

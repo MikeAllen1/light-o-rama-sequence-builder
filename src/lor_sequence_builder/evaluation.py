@@ -171,10 +171,14 @@ def load_analysis(path: str | Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise EvaluationError("Analysis JSON must be an object")
     if data.get("schema_version") == REVIEW_SCHEMA_VERSION:
-        # A music review saved by the workspace wraps the corrected analysis.
+        # A music review saved by the workspace wraps the corrected analysis, and may
+        # carry the song's timed lyrics, which the planner uses for lyric cues.
+        lyrics = data.get("lyrics")
         data = data.get("analysis")
         if not isinstance(data, dict):
             raise EvaluationError("Music review JSON has no analysis object")
+        if isinstance(lyrics, dict) and isinstance(lyrics.get("lines"), list):
+            data = {**data, "lyrics": lyrics}
     if data.get("schema_version") != ANALYSIS_SCHEMA_VERSION:
         raise EvaluationError(
             f"Unsupported analysis schema_version {data.get('schema_version')!r}; "
@@ -196,7 +200,8 @@ def load_analysis(path: str | Path) -> dict[str, Any]:
         raise EvaluationError("Analysis JSON is missing its analysis object")
     required_arrays = ("beats", "downbeats", "section_candidates")
     optional_arrays = ("onsets", "energy", "phrase_boundaries", "hard_stops",
-                       "high_hits", "crashes", "tempo_curve")
+                       "high_hits", "crashes", "tempo_curve", "kicks", "snares",
+                       "harmonic_departures")
     for key in required_arrays:
         if not isinstance(payload.get(key), list):
             raise EvaluationError(f"Analysis JSON field {key!r} must be a list")

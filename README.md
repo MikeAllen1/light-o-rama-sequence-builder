@@ -86,6 +86,7 @@ Everything in the browser also works from the command line:
 ```powershell
 uv run lor-sequence-builder generate --preview display.lorprev --audio song.mp3 --output song.loredit
 uv run lor-sequence-builder generate ... --style energetic   # classic (default), energetic or elegant
+uv run lor-sequence-builder generate ... --lyrics song.lrc   # props the singer names light on the word
 uv run lor-sequence-builder generate-batch --preview display.lorprev --songs Playlist --output Shows
 uv run lor-sequence-builder generate ... --rules examples\requirements\gentle-show.yaml
 uv run lor-sequence-builder requirements display.lorprev   # describe your display's requirements once
