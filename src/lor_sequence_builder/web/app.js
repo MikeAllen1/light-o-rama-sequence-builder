@@ -3684,6 +3684,28 @@
     $("newShow").classList.remove("hidden");
   }
 
+  // Leave the workspace for the start page (the demo and the display test open here
+  // too): the window's own close button quits the whole program.
+  function closeWorkspace() {
+    if ((state.dirty || state.reviewDirty) && !window.confirm(
+      "Close " + (state.sequence ? state.sequence.filename : "this sequence") +
+      " and discard the unsaved edits?")) return;
+    const audio = $("audioPlayer");
+    try { audio.pause(); } catch { /* not playing */ }
+    toggleYard(false);
+    closeViewer();
+    state.dirty = false;
+    state.reviewDirty = false;
+    if (state.sequence) resetEditing();
+    state.sequence = null;
+    $("editor").classList.add("hidden");
+    $("newShow").classList.add("hidden");
+    $("welcome").classList.remove("hidden");
+    updateEditControls();
+    refreshRecent();
+    setBanner("Open a sequence, or build a new show.", "");
+  }
+
   function closeNewShow() {
     $("newShow").classList.add("hidden");
     if (state.sequence) $("editor").classList.remove("hidden");
@@ -3779,7 +3801,7 @@
     updateEditControls();
     toggleYard(true);
     setBanner("Display test: press play and watch each kind of prop, then the sweep from left " +
-      "to right, then everything on.", "good");
+      "to right, then everything on. Close (top right) goes back to the start page.", "good");
   }
 
   function currentBatchConfig() {
@@ -4622,6 +4644,7 @@
   }
 
   function setupNewShow() {
+    $("closeWorkspace").addEventListener("click", closeWorkspace);
     $("newShowButton").addEventListener("click", openNewShow);
     $("watchDemo").addEventListener("click", watchDemo);
     $("welcomeNewShow").addEventListener("click", openNewShow);
@@ -5571,7 +5594,8 @@
       const sound = new File([bytesFromBase64(demo.sound)], demo.sound_name, { type: "audio/wav" });
       await loadAudio(sound, demo.analysis || undefined);
       setBanner("The demo: an invented yard and song, with the show the program built for " +
-        "them. Press play to watch. To make your own, choose New show.", "good");
+        "them. Press play to watch. To make your own, choose New show; Close (top right) " +
+        "goes back to the start page.", "good");
       showMessage("demoStatus", "");
       try { await $("audioPlayer").play(); } catch { /* press play instead */ }
     } catch (error) {
