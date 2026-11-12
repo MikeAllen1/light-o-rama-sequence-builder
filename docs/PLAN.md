@@ -494,3 +494,12 @@ The installer offers (checked by default) a right-click **Build a show with LOR 
 ## Watch a demo show
 
 The start page's **Watch a demo show** builds the show for the built-in invented yard and song (once per run, then reused), opens it in the workspace with the yard view showing and the song loaded with its analysis, and starts playing where the browser allows (otherwise it says to press play). Progress shows while it builds the first time.
+
+## S4 and S5 sequences
+
+- **S5** `.loredit` (seen: AppVersion 5.6) is `saveFileVersion="15"`, the same format as S6; it already reads, inspects and round-trips. No change needed.
+- **S4** `.lms` (`saveFileVersion="14"`): `lms.py` reads it safely (size, depth and element limits; no DTDs or entities; unique savedIndex and addresses; group and track references checked). The user's own `.lms` is the display: one single-color prop per assigned LOR channel with its unit/circuit copied verbatim, channel groups kept (nested groups flattened), props placed from the S4 visualizer grid. The classifier, planner and rules run unchanged, and the checked plan is written as a new `.lms` from the same file as template (channels, groups, tracks and visualizer kept; effects, freeform timings and loops replaced; author dropped).
+- Works in `generate`, `inspect`, New show (display, single show and playlist) and the workspace (open, edit, export as `.lms`; exported channels must match the original).
+- Not yet: the display test for S4, RGB/DMX channels in S4, and multi-channel props (a mega tree's channels are separate props, grouped by its S4 channel group).
+- **Owner verification pending:** open a generated `.lms` in the S4 Sequencer and play it. Tests use invented sequences only; the owner's S4 and S5 files are not in the repository.
+

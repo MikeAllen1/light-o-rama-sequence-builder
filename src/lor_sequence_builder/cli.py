@@ -20,6 +20,7 @@ from lor_sequence_builder.classifier import (
 )
 from lor_sequence_builder.evaluation import EvaluationError, evaluate
 from lor_sequence_builder.generate import generate_show
+from lor_sequence_builder.lms import LmsError, read_lms
 from lor_sequence_builder.loredit import LoreditError, read_loredit, write_loredit
 from lor_sequence_builder.lorprev import LorprevError, read_lorprev
 from lor_sequence_builder.lyrics import LyricsError
@@ -78,8 +79,9 @@ def _build_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command")
     commands.add_parser("diagnostics", help="print version, system checks and recent errors, "
                         "to include when reporting a problem")
-    inspect = commands.add_parser("inspect", help="summarize a supported LOREDIT file")
-    inspect.add_argument("sequence", help="input .loredit file")
+    inspect = commands.add_parser(
+        "inspect", help="summarize an S5/S6 .loredit or an S4 .lms sequence")
+    inspect.add_argument("sequence", help="input .loredit or .lms file")
     preview = commands.add_parser("inspect-preview", help="inspect a standalone LORPREV file")
     preview.add_argument("preview", help="input .lorprev file")
     roundtrip = commands.add_parser("roundtrip", help="write a loss-preserving LOREDIT copy")
@@ -181,12 +183,16 @@ def _build_parser() -> argparse.ArgumentParser:
     generate = commands.add_parser(
         "generate", help="build a full show sequence from a song and a display preview"
     )
-    generate.add_argument("--preview", required=True, help="required standalone .lorprev file")
+    generate.add_argument(
+        "--preview", required=True,
+        help="the display: an S5/S6 .lorprev, or one of your S4 sequences (.lms), which "
+             "makes an S4 show with the same channels")
     source = generate.add_mutually_exclusive_group(required=True)
     source.add_argument("--audio", help="song audio file supported by FFmpeg")
     source.add_argument("--analysis", help="existing analysis JSON from analyze-audio, "
                         "or a music review saved by the workspace")
-    generate.add_argument("--output", required=True, help="new output .loredit path")
+    generate.add_argument("--output", required=True,
+                          help="new output .loredit path (.lms for an S4 display)")
     generate.add_argument(
         "--music-filename",
         help="audio file name to store in the sequence, inside the S6 audio folder "
@@ -648,6 +654,15 @@ def _main(arguments: list[str]) -> int:
                     f"F-measure {score.f_measure:.2f}"
                 )
             return 0
+        if options.command == "inspect" and str(options.sequence).lower().endswith(".lms"):
+            s4 = read_lms(options.sequence)
+            print(f"Format: S4 LMS v{s4.save_file_version}")
+            print(f"Duration: {s4.total_centiseconds} centiseconds")
+            print(f"Channels: {len(s4.channels)} "
+                  f"({sum(1 for c in s4.channels if c.is_lor)} LOR with unit and circuit)")
+            print(f"Channel groups: {len(s4.groups)}")
+            print(f"Effects: {sum(c.effect_count for c in s4.channels)}")
+            return 0
         document = read_loredit(options.sequence)
         if options.command == "inspect":
             print(f"Format: S6 LOREDIT v{document.save_file_version}")
@@ -671,6 +686,7 @@ def _main(arguments: list[str]) -> int:
         RuleProfileError,
         SequenceWriteError,
         LoreditError,
+        LmsError,
         LorprevError,
         PulseGenerationError,
         OSError,

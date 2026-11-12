@@ -23,6 +23,7 @@ from lor_sequence_builder.audio_analysis import (
     analyze_audio,
 )
 from lor_sequence_builder.diagnostics import friendly
+from lor_sequence_builder.lms import MAX_LMS_BYTES, LmsDocument, LmsError, parse_lms
 from lor_sequence_builder.loredit import (
     MAX_LOREDIT_BYTES,
     LoreditError,
@@ -57,6 +58,8 @@ def check_edited_sequence(payload: bytes, original_payload: bytes | None = None)
     version and the prop references; then every effect's timing is checked. Nothing
     is kept on disk.
     """
+    if _is_s4(payload):
+        return _check_edited_lms(payload, original_payload)
     with tempfile.TemporaryDirectory(prefix="lor-sequencer-export-") as directory:
         path = Path(directory) / "edited.loredit"
         path.write_bytes(payload)
@@ -76,6 +79,43 @@ def check_edited_sequence(payload: bytes, original_payload: bytes | None = None)
         "channels": len(channels),
         "effects": sum(len(channel.findall("effect")) for channel in channels),
     }
+
+
+def _is_s4(payload: bytes) -> bool:
+    """An S4 sequence: version 14 with a flat channel list instead of SequenceProps."""
+    head = payload[:4096]
+    return b'saveFileVersion="14"' in head and b"<SequenceProps" not in payload
+
+
+def _lms_channel_identity(document: LmsDocument) -> list[tuple[object, ...]]:
+    return [(c.saved_index, c.name, c.device_type, c.network, c.unit, c.circuit)
+            for c in document.channels]
+
+
+def _check_edited_lms(payload: bytes, original_payload: bytes | None) -> dict[str, Any]:
+    """An edited S4 sequence must keep every channel and address; effects must not
+    overlap or run past the end."""
+    document = parse_lms(payload, "The edited sequence")
+    if original_payload is not None:
+        original = parse_lms(original_payload, "The original sequence")
+        if _lms_channel_identity(document) != _lms_channel_identity(original):
+            raise LmsError("The edited sequence changed its channels; only effects can change")
+    duration = document.total_centiseconds
+    problems: list[str] = []
+    for channel in document.root.iterfind("channels/channel"):
+        last_end = 0
+        spans = sorted((int(e.get("startCentisecond", "0")), int(e.get("endCentisecond", "0")))
+                       for e in channel.findall("effect"))
+        for start, end in spans:
+            if end <= start or end > duration:
+                problems.append(f"{channel.get('name')}: an effect is outside the song")
+            elif start < last_end:
+                problems.append(f"{channel.get('name')}: effects overlap")
+            last_end = max(last_end, end)
+    if problems:
+        raise LmsError("The edited sequence has timing problems: " + "; ".join(problems[:10]))
+    return {"ok": True, "channels": len(document.channels),
+            "effects": sum(c.effect_count for c in document.channels)}
 
 
 def _detect_audio_suffix(payload: bytes) -> str | None:
@@ -319,10 +359,11 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
         token = query.get("token", [""])[0]
         try:
             if path == "/api/show/start":
-                payload = self._read_body("application/xml", MAX_LORPREV_BYTES, "Preview")
+                name = query.get("name", ["display.lorprev"])[0][:200]
+                limit = MAX_LMS_BYTES if name.lower().endswith(".lms") else MAX_LORPREV_BYTES
+                payload = self._read_body("application/xml", limit, "Display")
                 if payload is None:
                     return
-                name = query.get("name", ["display.lorprev"])[0][:200]
                 self._send_json(200, SHOWS.start(payload, name))
             elif path == "/api/show/batch":
                 payload = self._read_body("application/octet-stream", _MAX_UPLOAD_BYTES,
