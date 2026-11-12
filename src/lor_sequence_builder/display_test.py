@@ -30,6 +30,7 @@ import numpy as np
 from lor_sequence_builder.choreography import Choreography, Effect, Section
 from lor_sequence_builder.lorprev import read_lorprev
 from lor_sequence_builder.planner import _faces
+from lor_sequence_builder.progress import step as report_step
 from lor_sequence_builder.pulse import preview_element
 from lor_sequence_builder.rules import RuleReport, display_from_preview, load_rule_set
 from lor_sequence_builder.rules.engine import Display
@@ -169,10 +170,13 @@ def build_display_test(preview_path: str | Path, folder: str | Path,
     if target.exists() and any(target.iterdir()):
         raise FileExistsError(f"Choose an empty or new folder for the display test: {target}")
     target.mkdir(parents=True, exist_ok=True)
+    report_step("Reading your display", 0.1)
     preview = preview_element(read_lorprev(preview_path))
     display = display_from_preview(preview)
     choreography, schedule, ticks = _plan(display)
+    report_step("Making the test's sound", 0.4)
     sound = test_sound(target / SOUND_NAME, ticks)
+    report_step("Checking the rules and writing the test", 0.6)
     written = build_from_timeline(preview_path, choreography, load_rule_set(), SOUND_NAME,
                                   target / f"{name}.loredit", target / f"{name}.rules.json")
     skipped = sorted(p.name for p in display.props.values() if not p.sequenceable)

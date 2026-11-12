@@ -23,6 +23,7 @@ from lor_sequence_builder.evaluation import load_analysis
 from lor_sequence_builder.lorprev import read_lorprev
 from lor_sequence_builder.plan_preview import plan_svg
 from lor_sequence_builder.planner import Plan, display_has_mouths, plan_show
+from lor_sequence_builder.progress import step as report_step
 from lor_sequence_builder.pulse import preview_element
 from lor_sequence_builder.rules import RuleReport, RuleSet, display_from_preview
 from lor_sequence_builder.sequence_writer import (
@@ -144,6 +145,8 @@ def generate_show(
             progress("Splitting the vocals out of the song for the singing faces. This can "
                      "take a few minutes; the vocals are saved so later runs can reuse them "
                      "with --vocals.")
+        report_step("Splitting the vocals out of the song for the singing faces", 0.03,
+                    slow=True)
         vocals_audio = separate_vocals(audio_path, paths["vocals_audio"])
 
     if audio_path is not None:
@@ -165,6 +168,7 @@ def generate_show(
     vocals_note: str | None = None
     if vocals_audio is not None:
         source = "separated on this PC" if vocals_path is None else "supplied vocals file"
+        report_step("Following the singing", 0.75)
         vocals = analyze_vocals(vocals_audio, paths["vocals"], source)
         written_vocals = paths["vocals"]
     elif vocals_path is not None:
@@ -174,10 +178,13 @@ def generate_show(
             "Face mouths stay still: pass a vocals-only file with --vocals, or install "
             "the vocals add-on (uv sync --extra vocals) to split vocals out of the song."
         )
+    report_step("Planning the show", 0.8 if vocals_audio is not None else 0.3)
     plan = plan_show(analysis, display, rule_set, vocals, chosen_style)
     paths["sequence"].parent.mkdir(parents=True, exist_ok=True)
     _write_new(paths["timeline"], choreography_json(plan.choreography))
     _write_new(paths["picture"], plan_svg(plan, display, f"{paths['sequence'].stem}: planned show"))
+    report_step("Checking the rules and writing the sequence",
+                0.88 if vocals_audio is not None else 0.6)
     try:
         written = build_from_timeline(
             preview_path, plan.choreography, rule_set, music_filename or default_music,
@@ -188,6 +195,7 @@ def generate_show(
         raise
     _write_new(paths["plan"], _plan_document(plan, written.report, analysis))
     music = music_filename or default_music
+    report_step("Writing the show report", 0.95 if vocals_audio is not None else 0.85)
     _write_new(paths["summary"], render_report(ReportInputs(
         title=paths["sequence"].stem, music_filename=music, display=display,
         classifications=classify_preview(preview), plan=plan, report=written.report,
