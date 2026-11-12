@@ -938,6 +938,70 @@ def test_tempo_octave_normalization_never_returns_out_of_range_values() -> None:
     assert _fit_tempo_bounds(float("nan"), 60, 200) is None
 
 
+def test_background_warmup_is_single_instance_and_analysis_waits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import threading
+
+    from lor_sequence_builder import audio_analysis
+
+    entered = threading.Event()
+    release = threading.Event()
+    waiter_finished = threading.Event()
+    calls = 0
+
+    def fake_warm_up() -> bool:
+        nonlocal calls
+        calls += 1
+        entered.set()
+        assert release.wait(timeout=5)
+        return True
+
+    with audio_analysis._warmup_lock:
+        previous_thread = audio_analysis._warmup_thread
+        was_warmed = audio_analysis._warmed.is_set()
+        audio_analysis._warmup_thread = None
+        audio_analysis._warmed.clear()
+
+    monkeypatch.setattr(audio_analysis, "warm_up", fake_warm_up)
+    try:
+        audio_analysis.warm_up_in_background()
+        first_thread = audio_analysis._warmup_thread
+        assert first_thread is not None
+        assert entered.wait(timeout=5)
+
+        # A second startup request must reuse the running worker.
+        audio_analysis.warm_up_in_background()
+        assert audio_analysis._warmup_thread is first_thread
+        assert calls == 1
+
+        waiter = threading.Thread(
+            target=lambda: (audio_analysis._wait_for_background_warmup(),
+                            waiter_finished.set()),
+            daemon=True,
+        )
+        waiter.start()
+        assert not waiter_finished.wait(timeout=0.05)
+
+        release.set()
+        waiter.join(timeout=5)
+        first_thread.join(timeout=5)
+        assert not waiter.is_alive()
+        assert not first_thread.is_alive()
+        assert waiter_finished.is_set()
+        assert calls == 1
+    finally:
+        release.set()
+        if first_thread is not None:
+            first_thread.join(timeout=5)
+        with audio_analysis._warmup_lock:
+            audio_analysis._warmup_thread = previous_thread
+            if was_warmed:
+                audio_analysis._warmed.set()
+            else:
+                audio_analysis._warmed.clear()
+
+
 def test_section_recurrence_matrix_is_skipped_above_beat_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
