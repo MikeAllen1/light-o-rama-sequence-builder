@@ -474,6 +474,7 @@
       }
       if (best != null) seconds = best;
     }
+    seconds = clampReviewSeconds(seconds);
     seekAudio(seconds);
     inspectMoment(seconds, lane);
   }
@@ -2955,8 +2956,13 @@
     const { hit } = drag;
     let replacement;
     if (hit.edge) {
-      const start = hit.edge === "start" ? drag.preview : Number(hit.event.start);
-      const end = hit.edge === "end" ? drag.preview : Number(hit.event.end);
+      const duration = currentMusicDuration();
+      const originalStart = Number(hit.event.start);
+      const originalEnd = Number(hit.event.end);
+      const start = hit.edge === "start"
+        ? Math.min(drag.preview, originalEnd - 0.05) : originalStart;
+      const end = hit.edge === "end"
+        ? Math.min(drag.preview, duration == null ? drag.preview : duration) : originalEnd;
       if (end - start < 0.05) {
         setBanner("Not changed: a lyric line needs some length.", "warn");
         drawMarkers(Number($("markersCanvas").width), state.pxPerSecond);
@@ -2968,6 +2974,11 @@
         end: round3(Math.min(end, Number(word.end)))
       })).filter((word) => word.end > word.start);
       replacement = Object.assign({}, hit.event, { start: round3(start), end: round3(end), words });
+    } else if (hit.lane.kind === "lyrics") {
+      const duration = currentMusicDuration();
+      const length = Number(hit.event.end) - Number(hit.event.start);
+      const latestStart = duration == null ? 1800 - length : Math.max(0, duration - length);
+      replacement = movedEvent(hit.event, Math.min(drag.preview, latestStart));
     } else {
       replacement = movedEvent(hit.event, drag.preview);
     }
@@ -2986,7 +2997,13 @@
       snap(Math.round(hit.seconds * 100), snapCandidates(), event.altKey) / 100);
     let created;
     if (hit.lane.kind === "lyrics") {
-      created = { start: round3(seconds), end: round3(seconds + 2), text: "(new line)",
+      const duration = currentMusicDuration();
+      const end = Math.min(duration == null ? 1800 : duration, seconds + 2);
+      if (end - seconds < 0.05) {
+        setBanner("Not changed: there is not enough song left for a lyric line.", "warn");
+        return;
+      }
+      created = { start: round3(seconds), end: round3(end), text: "(new line)",
         verified: false, words: [] };
     } else {
       created = newMarker(hit.lane.kind, seconds);
