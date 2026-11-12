@@ -3716,10 +3716,11 @@
         child.disabled = locked;
       });
     }
-    $("requirementList").querySelectorAll("button").forEach((button) => { button.disabled = locked; });
+    $("requirementList").querySelectorAll("button").forEach((button) => { button.disabled = disabled; });
   }
 
   function setRequirementControlsLocked(locked) {
+    const disabled = locked || show.requirementsUncertain;
     for (const id of ["requirementKind", "requirementProps", "requirementSections",
       "requirementMax", "addRequirement", "translateRequirements", "plainRequirements"]) {
       const element = $(id);
@@ -3740,22 +3741,22 @@
     const hasProps = hasSequenceableProps();
     $("watchTest").disabled = !show.test || generatedActionsBlocked();
     $("saveTest").disabled = !show.test;
-    $("makeTest").disabled = !show.token || !hasProps || show.batchRunning || show.generationPending ||
+    $("makeTest").disabled = !show.token || !hasProps || show.requirementsUncertain || show.batchRunning || show.generationPending ||
       show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending ||
       show.requirementsUncertain;
-    $("showSongFile").disabled = !show.token || !hasProps || show.batchRunning || show.generationPending ||
-      show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending;
-    $("meterSelect").disabled = state.audioDecodePending || show.batchRunning || show.generationPending ||
+    $("showSongFile").disabled = !show.token || !hasProps || show.requirementsUncertain || show.batchRunning || show.generationPending ||
+      show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending || show.requirementsUncertain;
+    $("meterSelect").disabled = state.audioDecodePending || show.requirementsUncertain || show.batchRunning || show.generationPending ||
       show.batchZipPending || show.displayPending || show.testPending || show.audioPending ||
       show.requirementsPending;
     $("singFaces").disabled = !show.token || !show.summary || !show.summary.faces ||
-      !show.summary.can_separate_vocals || show.batchRunning || show.generationPending ||
+      !show.summary.can_separate_vocals || show.requirementsUncertain || show.batchRunning || show.generationPending ||
       show.batchZipPending || show.displayPending || show.testPending || show.audioPending ||
       show.requirementsPending;
-    $("showSongLabel").classList.toggle("disabled", !show.token || !hasProps);
-    $("addRequirement").disabled = !show.token || show.testPending || show.batchRunning ||
+    $("showSongLabel").classList.toggle("disabled", !show.token || !hasProps || show.requirementsUncertain);
+    $("addRequirement").disabled = !show.token || show.requirementsUncertain || show.testPending || show.batchRunning ||
       show.generationPending || show.batchZipPending || show.displayPending || show.requirementsPending;
-    $("translateRequirements").disabled = !show.token || !show.summary.can_translate || show.testPending ||
+    $("translateRequirements").disabled = !show.token || !show.summary.can_translate || show.requirementsUncertain || show.testPending ||
       show.batchRunning || show.generationPending || show.batchZipPending || show.displayPending || show.requirementsPending;
     $("generateShow").disabled = !(show.token && hasProps && show.analysis && !show.audioUncertain && !show.requirementsUncertain &&
       !show.audioPending && !show.requirementsPending && !show.generationPending && !show.batchRunning &&
@@ -3764,7 +3765,7 @@
     $("batchFiles").disabled = !show.token || !hasProps || show.batchRunning || show.generationPending ||
       show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending;
     $("batchLabel").classList.toggle("disabled", !show.token || !hasProps || show.batchRunning || show.generationPending ||
-      show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending);
+      show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending || show.requirementsUncertain);
     setRequirementControlsLocked(show.requirementsPending || show.batchRunning || show.generationPending ||
       show.batchZipPending || show.displayPending || show.testPending);
     $("saveBatch").disabled = !show.batchReady || show.batchUncertain || show.batchRunning || show.batchZipPending ||
@@ -3849,7 +3850,7 @@
 
   async function chooseSong(file) {
     if (!file || !show.token || show.audioPending || show.batchRunning || show.batchZipPending ||
-        show.generationPending || show.displayPending || show.testPending || show.requirementsPending) return;
+        show.generationPending || show.displayPending || show.testPending || show.requirementsPending || show.requirementsUncertain) return;
     const requestId = ++show.audioRequestId;
     const token = show.token;
     const meter = $("meterSelect").value;
@@ -4028,7 +4029,9 @@
     } catch (error) {
       if (requestId === show.requirementsRequestId) {
         const status = error && Number.isInteger(error.status) ? error.status : null;
-        if (status == null || status >= 500) {
+        const sessionExpired = status === 422 &&
+          /put away after a long break/i.test(String(error.message || ""));
+        if (status == null || status >= 500 || sessionExpired) {
           show.requirementsUncertain = true;
           showMessage("requirementStatus",
             "The server may have saved these requirements, but confirmation was lost. " +
