@@ -211,6 +211,7 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
     def do_POST(self) -> None:
         """Analyze audio, check an edited sequence, or build a new show; never drop the
         connection on a bug, so the page can say what happened."""
+        self._body_read = False
         try:
             self._post()
         except (BrokenPipeError, ConnectionResetError):
@@ -224,6 +225,31 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
                                       "reference": reference})
             except OSError:
                 pass
+        finally:
+            self._drain_body()
+
+    def _drain_body(self) -> None:
+        """Read whatever the page sent that the answer did not need. Closing with it
+        still unread makes the operating system reset the connection, and the page
+        would see "connection reset" instead of the answer it was just sent."""
+        if getattr(self, "_body_read", True):
+            return
+        self._body_read = True
+        try:
+            remaining = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return
+        if remaining > _MAX_UPLOAD_BYTES:
+            self.close_connection = True
+            return
+        try:
+            while remaining > 0:
+                chunk = self.rfile.read(min(remaining, 1 << 20))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+        except OSError:
+            pass
 
     def _post(self) -> None:
         parsed = urlsplit(self.path)
@@ -408,6 +434,8 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
         return None
 
     def _read_body(self, content_type: str, limit: int, what: str) -> bytes | None:
+        if getattr(self, "_body_read", False):
+            raise RuntimeError("The request body was already read")
         if self.headers.get_content_type() != content_type:
             self.send_error(415, "Expected " + content_type)
             return None
@@ -423,6 +451,7 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
             self.send_error(413, f"That {what.lower()} file is larger than the "
                                  f"{limit // (1024 * 1024)} MB this program accepts.")
             return None
+        self._body_read = True
         payload = self.rfile.read(length)
         if len(payload) != length:
             self.send_error(400, f"The {what.lower()} file did not arrive in full. Choose it again.")
