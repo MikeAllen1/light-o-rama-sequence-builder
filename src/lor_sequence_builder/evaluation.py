@@ -201,7 +201,7 @@ def load_analysis(path: str | Path) -> dict[str, Any]:
     required_arrays = ("beats", "downbeats", "section_candidates")
     optional_arrays = ("onsets", "energy", "phrase_boundaries", "hard_stops",
                        "high_hits", "crashes", "tempo_curve", "kicks", "snares",
-                       "harmonic_departures")
+                       "harmonic_departures", "bar_signatures")
     for key in required_arrays:
         if not isinstance(payload.get(key), list):
             raise EvaluationError(f"Analysis JSON field {key!r} must be a list")
@@ -225,6 +225,14 @@ def load_analysis(path: str | Path) -> dict[str, Any]:
                 if (isinstance(rms, bool) or not isinstance(rms, int | float)
                         or not math.isfinite(float(rms)) or float(rms) < 0):
                     raise EvaluationError("Analysis energy event has an invalid rms value")
+            elif key == "bar_signatures":
+                for name, size in (("chroma", 12), ("timbre", 6)):
+                    values = event.get(name)
+                    if (not isinstance(values, list) or len(values) != size
+                            or not all(isinstance(v, int | float) and not isinstance(v, bool)
+                                       and math.isfinite(float(v)) for v in values)):
+                        raise EvaluationError(
+                            f"Analysis bar signature has an invalid {name} list")
             elif key == "hard_stops":
                 silence = event.get("silence_duration")
                 if (isinstance(silence, bool) or not isinstance(silence, int | float)

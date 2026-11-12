@@ -50,7 +50,7 @@ _MOMENT_WORDS = {
     "lift": "Louder part begins", "drop": "Dark beat before a louder part",
     "variation": "A part returns, moving a new way", "finale_hits": "Closing hits",
     "departure": "Unexpected chord", "lyric_cue": "Lyric cue",
-    "calm_base": "Dark stretch given a calm base",
+    "calm_base": "Dark stretch given a calm base", "bridge": "Bridge (a part heard once)",
 }
 
 _CHECK_WORDS = {
