@@ -115,9 +115,13 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
         page.route("**/api/show/batch?*", lambda route: respond(route, {
             "ok": True, "duration": 3.0, "parts": 2, "props": 1,
         }))
-        page.route("**/api/show/batch-zip*", lambda route: respond(route, {
-            "zip": "", "zip_name": "Intent Test Yard shows.zip", "count": 1,
-        }))
+        page.route("**/api/show/batch-zip*", lambda route: route.fulfill(
+            status=200,
+            content_type="application/zip",
+            headers={"Content-Disposition":
+                     "attachment; filename=shows.zip; filename*=UTF-8''Intent%20Test%20Yard%20shows.zip"},
+            body=b"PK\\x05\\x06" + bytes(18),
+        ))
 
         def display_test(route: object) -> None:
             nonlocal test_calls
