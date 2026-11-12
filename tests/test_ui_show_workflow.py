@@ -187,6 +187,12 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             assert "server may have accepted" in page.locator("#songStatus").inner_text()
             assert page.locator("#generateShow").is_disabled()
             page.locator("#showSongFile").set_input_files({
+                "name": "x" * 201 + ".wav", "mimeType": "audio/wav", "buffer": b"too long",
+            })
+            page.locator("#songStatus").filter(has_text="200 characters or fewer").wait_for()
+            assert "server may have accepted" in page.locator("#songStatus").inner_text()
+            assert page.locator("#generateShow").is_disabled()
+            page.locator("#showSongFile").set_input_files({
                 "name": "song.wav", "mimeType": "audio/wav", "buffer": b"fake audio",
             })
             page.locator("#songStatus.good").filter(has_text="song.wav").wait_for()
