@@ -2764,6 +2764,10 @@
     const revision = state.editRevision;
     const requestId = ++state.exportRequestId;
     const text = serializeSequence();
+    const exportedEffects = new Map();
+    for (const prop of sequence.props) {
+      for (const channel of prop.channels) exportedEffects.set(channel, channel.effects);
+    }
     if (text.length > MAX_XML_BYTES) {
       setBanner("The edited sequence exceeds the 50 MiB limit.", "error");
       return;
@@ -2799,17 +2803,24 @@
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
-    if (state.sequence === sequence && state.editRevision === revision) {
-      for (const prop of sequence.props) {
-        for (const channel of prop.channels) state.baselineEffects.set(channel, channel.effects);
-      }
-      state.dirty = false;
+    // The validated download is now the baseline for the next export. Keep the
+    // original disk file untouched, but compare subsequent edits against the last
+    // successfully exported copy rather than the first file ever opened.
+    sequence.source.originalXml = text;
+    if (state.sequence === sequence) {
+      for (const [channel, effects] of exportedEffects) state.baselineEffects.set(channel, effects);
       state.exported = true;
+      state.dirty = sequence.props.some((prop) => prop.channels.some((channel) =>
+        state.baselineEffects.get(channel) !== channel.effects));
       updateEditControls();
-      setBanner("Checked and saved " + name + " with " + result.effects.toLocaleString() +
-        " effects. Your original file is unchanged.", "good");
+      if (state.editRevision === revision) {
+        setBanner("Checked and saved " + name + " with " + result.effects.toLocaleString() +
+          " effects. Your original file is unchanged.", "good");
+      } else {
+        setBanner("Saved " + name + " as it was when you clicked Save. Edits made while it was being checked remain unsaved.", "warn");
+      }
     } else {
-      setBanner("Saved " + name + " as it was when you clicked Save. The workspace changed while it was being checked; current edits remain unsaved.", "warn");
+      setBanner("Saved " + name + " from the previous workspace; the current workspace was not changed.", "warn");
     }
   }
 
