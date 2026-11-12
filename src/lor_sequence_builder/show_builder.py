@@ -272,6 +272,7 @@ class ShowSessions:
             "styles": [STYLES[key].to_dict() for key in STYLES],
             "default_style": DEFAULT_STYLE,
             "requirements": [describe_requirement(r) for r in session.requirements],
+            "raw_requirements": [_raw(r) for r in session.requirements],
         }
 
     # -- 2. song
