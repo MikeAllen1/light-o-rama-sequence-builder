@@ -1487,14 +1487,14 @@
     }
   }
 
-  async function loadAudio(file, presetAnalysis, reviewAlreadyConfirmed = false) {
-    if (!file) return;
+  async function loadAudio(file, presetAnalysis, reviewAlreadyConfirmed = false, skipAnalysis = false) {
+    if (!file) return false;
     if (file.size <= 0 || file.size > MAX_AUDIO_BYTES) {
       setBanner("The song file is empty, or larger than the 200 MB the program accepts.", "error");
-      return;
+      return false;
     }
     if (!reviewAlreadyConfirmed && state.reviewDirty &&
-        !window.confirm("Replace the unsaved music review?")) return;
+        !window.confirm("Replace the unsaved music review?")) return false;
     const requestId = ++state.audioRequestId;
     const reviewRevisionAtStart = state.reviewRevision;
     state.audioDecodePending = true;
@@ -1506,17 +1506,17 @@
     try {
       decoded = await decodeWaveform(file, requestId);
     } catch (error) {
-      if (requestId !== state.audioRequestId) return;
+      if (requestId !== state.audioRequestId) return false;
       state.audioDecodePending = false;
       setStepEnabled();
       setBanner("That song could not be played here: " + problemText(error) +
         (state.audioFile ? " Your previous audio and music review are still loaded." : ""), "error");
       $("audioFile").value = "";
-      return;
+      return false;
     }
     if (requestId !== state.audioRequestId || !decoded) {
       if (decoded && decoded.url) URL.revokeObjectURL(decoded.url);
-      return;
+      return false;
     }
     if (state.reviewRevision !== reviewRevisionAtStart && state.reviewDirty &&
         !window.confirm("Replace the music-review changes made while the song was loading?")) {
@@ -1524,7 +1524,7 @@
       state.audioDecodePending = false;
       setStepEnabled();
       setBanner("Audio was not replaced. Your current song and music review remain loaded.", "warn");
-      return;
+      return false;
     }
     state.audioDecodePending = false;
     setStepEnabled();
@@ -1563,13 +1563,15 @@
     }
     compareDurations();
 
-    if (presetAnalysis) {
-      // Already analyzed while building the show: use that, do not run it again.
-      return;
+    if (presetAnalysis || skipAnalysis) {
+      // Generated-show audio already has an analysis; short display-test audio
+      // only needs to be playable and does not need another analysis pass.
+      return true;
     }
     setBanner("Waveform decoded from the selected audio (" + formatTime(decoded.duration) +
       "). Starting local musical analysis…", "good");
     await analyzeSelectedAudio(file, requestId);
+    return true;
   }
 
   async function loadAnalysis(file) {
@@ -3581,14 +3583,25 @@
   async function watchDisplayTest() {
     const test = show.test;
     if (!test || generatedActionsBlocked() || !confirmSequenceReplacement()) return;
+    try {
+      parseSequence(parseXmlDocument(test.sequence), test.file_name);
+    } catch (error) {
+      showMessage("testStatus", "The display-test sequence could not be opened: " +
+        problemText(error), "error");
+      return;
+    }
+    const sound = new File([bytesFromBase64(test.sound)], test.sound_name, { type: "audio/wav" });
+    if (!await loadAudio(sound, null, true, true)) {
+      showMessage("testStatus", "The display-test audio could not be loaded. " +
+        "Your current editor sequence was left unchanged.", "error");
+      return;
+    }
     openSequenceText(test.sequence, test.file_name, false);
     state.sequence.generated = true;
     updateEditControls();
     toggleYard(true);
     setBanner("Display test: press play and watch each kind of prop, then the sweep from left " +
       "to right, then everything on.", "good");
-    const sound = new File([bytesFromBase64(test.sound)], test.sound_name, { type: "audio/wav" });
-    await loadAudio(sound, null, true);
   }
 
   function currentBatchConfig() {
@@ -4073,6 +4086,18 @@
       return;
     }
     if (!confirmSequenceReplacement()) return;
+    try {
+      parseSequence(parseXmlDocument(result.sequence), result.file_name);
+    } catch (error) {
+      showMessage("generateStatus", "The generated sequence could not be opened: " +
+        problemText(error), "error");
+      return;
+    }
+    if (show.audioFile && !await loadAudio(show.audioFile, show.analysis, true)) {
+      showMessage("generateStatus", "The generated show's audio could not be loaded. " +
+        "Your current editor sequence was left unchanged.", "error");
+      return;
+    }
     openSequenceText(result.sequence, result.file_name, false);
     state.sequence.generated = true;
     state.dirty = true;
@@ -4080,7 +4105,6 @@
     setBanner("Generated " + result.file_name + ". Review it against the music, then Save " +
       "sequence to keep it; open it in S6 to fine-tune.", "good");
     toggleYard(true);
-    if (show.audioFile) await loadAudio(show.audioFile, show.analysis, true);
   }
 
   // Reports and pictures open inside the app (a sandboxed frame with no scripts), so
