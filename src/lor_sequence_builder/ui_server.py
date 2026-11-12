@@ -173,6 +173,9 @@ def _heavy_turn(path: str) -> Iterator[None]:
 
 
 _RECENT = {"/api/recent", "/api/recent/open", "/api/recent/remove", "/api/recent/clear"}
+# Learning a style from the user's own sequences: measure one file, keep a style from
+# the measurements, list or remove kept styles. Nothing is sent anywhere.
+_STYLES = {"/api/style/measure", "/api/style/keep", "/api/style/list", "/api/style/remove"}
 # A preview the program was started with (right-click "Build a show", or --preview),
 # handed to the page once so New show opens with it.
 _startup_lock = threading.Lock()
@@ -296,7 +299,7 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
         parsed = urlsplit(self.path)
         if parsed.path not in {"/api/analyze", "/api/export", "/api/update", "/api/log",
                                "/api/diagnostics", "/api/progress", "/api/startup",
-                               "/api/demo", *_RECENT, *_SHOW_STEPS}:
+                               "/api/demo", *_RECENT, *_STYLES, *_SHOW_STEPS}:
             self.send_error(404, "This program has no such step.")
             return
         if not self._is_same_origin():
@@ -316,6 +319,9 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
             return
         if parsed.path in _RECENT:
             self._recent(parsed.path)
+            return
+        if parsed.path in _STYLES:
+            self._style(parsed.path, parse_qs(parsed.query))
             return
         if parsed.path == "/api/startup":
             self._send_json(200, _take_startup())
@@ -352,6 +358,50 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json(200, {"removed": recent_shows.clear()})
         except recent_shows.RecentShowError as exc:
             self._send_json(404, {"error": str(exc)})
+        except OSError as exc:
+            self._send_json(500, {"error": friendly(exc)})
+
+    def _style(self, path: str, query: dict[str, list[str]]) -> None:
+        from lor_sequence_builder import style_learning
+        from lor_sequence_builder.show_builder import all_styles
+
+        try:
+            if path == "/api/style/measure":
+                name = Path(query.get("name", ["sequence.loredit"])[0][:200]).name
+                limit = MAX_LMS_BYTES if name.lower().endswith(".lms") else MAX_LOREDIT_BYTES
+                payload = self._read_body("application/octet-stream", limit, "Sequence")
+                if payload is None:
+                    return
+                habits = style_learning.measure_bytes(payload, name)
+                self._send_json(200, {"file": name, "habits": habits.to_dict()})
+                return
+            body = self._read_json()
+            if body is None:
+                return
+            if path == "/api/style/keep":
+                measured = body.get("habits")
+                style_name = body.get("name")
+                if (not isinstance(measured, list) or not measured or len(measured) > 50
+                        or not isinstance(style_name, str)):
+                    self._send_json(422, {"error": "Measure one to 50 sequences first."})
+                    return
+                habits = style_learning.combine(
+                    [style_learning.Habits.from_dict(h) for h in measured])
+                style, changes = style_learning.style_from_habits(habits, style_name)
+                style_learning.save(style, habits)
+                self._send_json(200, {"style": {**style.to_dict(), "learned": True},
+                                      "changes": changes, "styles": all_styles()})
+            elif path == "/api/style/remove":
+                key = body.get("key")
+                if not isinstance(key, str):
+                    self._send_json(422, {"error": "Which style?"})
+                    return
+                style_learning.remove_saved(key)
+                self._send_json(200, {"styles": all_styles()})
+            else:
+                self._send_json(200, {"styles": all_styles()})
+        except style_learning.StyleLearningError as exc:
+            self._send_json(422, {"error": str(exc)})
         except OSError as exc:
             self._send_json(500, {"error": friendly(exc)})
 

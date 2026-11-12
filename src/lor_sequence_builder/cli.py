@@ -44,7 +44,15 @@ from lor_sequence_builder.sequence_writer import (
     SequenceWriteError,
     build_from_timeline,
 )
-from lor_sequence_builder.style import DEFAULT_STYLE, STYLES
+from lor_sequence_builder.style import DEFAULT_STYLE, STYLES, Style
+from lor_sequence_builder.style_learning import (
+    StyleLearningError,
+    learn,
+    load_style_file,
+    nearest,
+    save,
+    to_json,
+)
 from lor_sequence_builder.vocal_separation import SeparationError
 from lor_sequence_builder.vocals import VocalAnalysisError
 
@@ -217,6 +225,9 @@ def _build_parser() -> argparse.ArgumentParser:
                           help=_IGNORE_HELP)
     generate.add_argument("--style", choices=sorted(STYLES), default=DEFAULT_STYLE,
                           help="character of the show: classic (default), energetic, elegant")
+    generate.add_argument("--style-file",
+                          help="a style learned from your own sequences (see learn-style); "
+                               "used instead of --style")
     generate.add_argument("--lyrics",
                           help="timed lyrics (LRC, SRT, VTT, or a lyrics JSON) so props a line "
                                "names light when it is sung")
@@ -257,10 +268,22 @@ def _build_parser() -> argparse.ArgumentParser:
     batch.add_argument("--output", required=True, help="new or empty folder for the shows")
     batch.add_argument("--style", choices=sorted(STYLES), default=DEFAULT_STYLE,
                        help="character of every show: classic (default), energetic, elegant")
+    batch.add_argument("--style-file",
+                       help="a style learned from your own sequences (see learn-style)")
     batch.add_argument("--beats-per-bar", type=int, choices=(3, 4), default=4,
                        help="4 for most songs, 3 for waltz time (default: 4)")
     batch.add_argument("--rules", action="append", default=[], help=_RULES_HELP)
     batch.add_argument("--ignore-saved-requirements", action="store_true", help=_IGNORE_HELP)
+    learn = commands.add_parser(
+        "learn-style",
+        help="learn a style from sequences you made by hand (.loredit or .lms), on this "
+             "computer")
+    learn.add_argument("sequences", nargs="+", help="your own .loredit or .lms sequences "
+                       "(read only; a few songs work best)")
+    learn.add_argument("--name", default="My style", help="what to call the style")
+    learn.add_argument("--output", help="new style file (.json) to use with --style-file")
+    learn.add_argument("--keep", action="store_true",
+                       help="also keep it in the app, where it shows up as a style choice")
     test = commands.add_parser(
         "display-test",
         help="make a 10-second test that lights every prop in turn, to check the display")
@@ -301,6 +324,39 @@ SONG_SUFFIXES = (".mp3", ".m4a", ".wav", ".flac", ".ogg", ".opus", ".aac", ".wma
                  ".mp4")
 
 
+def _chosen_style(options: argparse.Namespace) -> str | Style:
+    if options.style_file:
+        return load_style_file(options.style_file)
+    return str(options.style)
+
+
+def _learn_style(options: argparse.Namespace) -> int:
+    if options.output and Path(options.output).exists():
+        print(f"error: refusing to overwrite {options.output}", file=sys.stderr)
+        return 2
+    style, habits, changes = learn(options.sequences, options.name)
+    print(f"Learned {style.name!r} from {habits.sequences} sequence(s), "
+          f"{habits.effects} effects:")
+    beat_source = "timing grid" if habits.beat_from_grid else "effect spacing"
+    print(f"  Beat: {habits.beat / 100:.2f} s (from the {beat_source})")
+    print(f"  Lights stay on: {habits.hold_beats:.1f} beats (typical)")
+    print(f"  Fades: {habits.fade_share:.0%} of effects; twinkle: {habits.twinkle_share:.0%}")
+    print(f"  Brightness: {habits.brightness}%; yard lit on average: {habits.lit_share:.0%}")
+    for change in changes:
+        print(f"  - {change}")
+    if options.output:
+        Path(options.output).write_text(to_json(style, habits, nearest(habits)),
+                                        encoding="utf-8")
+        print(f"Saved {options.output}; use it with: generate ... --style-file "
+              f"{options.output}")
+    if options.keep:
+        key = save(style, habits)
+        print(f"Kept in the app as {style.name!r} ({key}).")
+    if not options.output and not options.keep:
+        print("Nothing saved; add --output style.json or --keep.")
+    return 0
+
+
 def _generate_batch(options: argparse.Namespace) -> int:
     songs = sorted(path for path in Path(options.songs).iterdir()
                    if path.is_file() and path.suffix.lower() in SONG_SUFFIXES)
@@ -314,6 +370,7 @@ def _generate_batch(options: argparse.Namespace) -> int:
     target.mkdir(parents=True, exist_ok=True)
     rule_set = load_rule_set(
         _profiles(options.preview, options.rules, options.ignore_saved_requirements))
+    style = _chosen_style(options)
     failed: list[str] = []
     for number, song in enumerate(songs, 1):
         print(f"[{number}/{len(songs)}] {song.name}")
@@ -322,7 +379,7 @@ def _generate_batch(options: argparse.Namespace) -> int:
             show = generate_show(options.preview, target / f"{song.stem}{suffix}", rule_set,
                                  audio_path=song, music_filename=song.name,
                                  beats_per_bar=options.beats_per_bar, separate=False,
-                                 style=options.style)
+                                 style=style)
         except RulesFailedError as error:
             failed.append(song.name)
             print(f"  not built: {error}")
@@ -355,7 +412,7 @@ def _generate(options: argparse.Namespace) -> int:
             audio_path=options.audio, analysis_path=options.analysis,
             music_filename=options.music_filename, beats_per_bar=options.beats_per_bar,
             vocals_path=options.vocals, separate=False if options.no_vocals else None,
-            progress=print, vocal_beats=options.vocal_beats, style=options.style,
+            progress=print, vocal_beats=options.vocal_beats, style=_chosen_style(options),
             lyrics_path=options.lyrics,
         )
     except RulesFailedError as failed:
@@ -453,6 +510,8 @@ def _main(arguments: list[str]) -> int:
             from lor_sequence_builder.doctor import print_checks, run_checks
 
             return print_checks(run_checks())
+        if options.command == "learn-style":
+            return _learn_style(options)
         if options.command == "demo":
             from lor_sequence_builder.demo import build_demo
 
@@ -694,6 +753,7 @@ def _main(arguments: list[str]) -> int:
         LmsError,
         LorprevError,
         PulseGenerationError,
+        StyleLearningError,
         OSError,
         MemoryError,
     ) as exc:
