@@ -1780,6 +1780,14 @@
     }
   }
 
+  function checkLyricsAgainstDuration(data, duration = currentMusicDuration()) {
+    checkLyrics(data);
+    if (Number.isFinite(duration) && duration > 0 &&
+        data.lines.some((line) => line.end > duration + 1)) {
+      throw new Error("A lyric line extends beyond the selected song");
+    }
+  }
+
   async function loadLyrics(file) {
     if (!file) return;
     if (state.audioDecodePending) {
@@ -2884,7 +2892,7 @@
     try {
       for (const change of changes) {
         if (state.lyrics && change.owner === state.lyrics && change.key === "lines") {
-          checkLyrics({ schema_version: "lyrics-1.0", source: state.lyrics.source, lines: change.after });
+          checkLyricsAgainstDuration({ schema_version: "lyrics-1.0", source: state.lyrics.source, lines: change.after });
           continue;
         }
         const duration = Number(state.analysis && state.analysis.audio &&
@@ -3243,6 +3251,11 @@
     const end = eventTime(next);
     const method = "fitted between confirmed bars (" + bars + " bars of " + meter + ")";
     const step = (end - start) / (bars * meter);
+    const impliedBpm = 60 / step;
+    if (!Number.isFinite(impliedBpm) || impliedBpm > 300) {
+      setBanner("Not changed: that bar count would create an implausibly fast tempo. Choose fewer bars or farther-apart anchors.", "warn");
+      return;
+    }
     const beats = analysis.beats.filter((event) =>
       eventTime(event) < start - 0.05 || eventTime(event) > end + 0.05);
     for (let index = 0; index <= bars * meter; index++) {
