@@ -550,7 +550,14 @@ class ShowSessions:
                 return {"zip_name": name, "count": len(shows), "zip_path": str(archive_path)}
         except BaseException:
             if archive_path is not None:
-                archive_path.unlink(missing_ok=True)
+                try:
+                    archive_path.unlink(missing_ok=True)
+                except OSError as cleanup_error:
+                    # Preserve the original archive-building error. The stale-file
+                    # sweep can remove this prefixed temporary file later.
+                    from lor_sequence_builder.diagnostics import write_log
+
+                    write_log("batch", f"Could not remove incomplete batch archive: {cleanup_error}")
             raise
 
     def batch_clear(self, token: str) -> dict[str, Any]:
