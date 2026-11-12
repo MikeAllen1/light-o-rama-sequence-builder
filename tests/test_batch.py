@@ -84,7 +84,8 @@ def test_new_show_builds_and_saves_a_playlist(server: str, tmp_path: Path) -> No
             page.locator("#displayStatus.good").wait_for(timeout=20000)
             page.locator("#batchFiles").set_input_files([str(s) for s in songs])
             page.locator("#batchStatus.good").wait_for(timeout=120000)
-            assert "2 of 2 shows built" in page.locator("#batchStatus").inner_text()
+            assert "2 of 2 shows built, 0:40 of music in all." in page.locator(
+                "#batchStatus").inner_text()
             assert page.locator("#batchList li.good").count() == 2
             with page.expect_download() as saved:
                 page.locator("#saveBatch").click()

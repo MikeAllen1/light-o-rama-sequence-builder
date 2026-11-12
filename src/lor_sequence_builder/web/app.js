@@ -3240,9 +3240,12 @@
     show.audioPending = true;
     show.result = null;
     $("openGenerated").disabled = true;
-      $("saveGenerated").disabled = true;
+    $("saveGenerated").disabled = true;
     $("pictureGenerated").disabled = true;
     $("musicFilename").value = file.name;
+    show.songName = file.name;
+    show.songSeconds = null;
+    checkMusicName();
     showMessage("songStatus", "Analyzing " + file.name + " on this computer…");
     setStepEnabled();
     try {
@@ -3255,6 +3258,7 @@
       if (requestId !== show.audioRequestId || payload.stale) return;
       show.audioFile = file;
       show.analysis = payload.report;
+      show.songSeconds = payload.report.audio.duration_seconds;
       const analysis = payload.report.analysis;
       const tempo = analysis.tempo && analysis.tempo.bpm != null ? analysis.tempo.bpm + " BPM"
         : "no steady tempo";
@@ -3439,7 +3443,8 @@
       } else {
         show.result = result;
         const parts = result.sections.map((section) => section.label + " (" + section.level + ")");
-        showMessage("generateStatus", "Every rule passed. " + result.used.length +
+        showMessage("generateStatus", "Every rule passed. " + (show.songSeconds
+          ? "A " + formatTime(show.songSeconds) + " show. " : "") + result.used.length +
           " props used. Click Save show for the .loredit file. Parts: " + parts.join(", ") + "." + (result.skipped.length
           ? " Left out: " + result.skipped.map((item) => item.name + " (" + item.reason + ")")
             .join("; ") + "." : ""), "good");
@@ -3550,6 +3555,7 @@
       return item;
     });
     let built = 0;
+    let totalSeconds = 0;
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       showMessage("batchStatus", "Building " + (i + 1) + " of " + files.length + "…");
@@ -3560,6 +3566,7 @@
           "&style=" + encodeURIComponent(chosenStyle() || ""), file, "application/octet-stream");
         if (result.ok) {
           built += 1;
+          totalSeconds += result.duration || 0;
           rows[i].className = "good";
           rows[i].textContent = file.name + ": " + (result.duration ? formatTime(result.duration) +
             ", " : "") + result.parts + " parts, " + result.props + " props";
@@ -3576,7 +3583,8 @@
     show.batchRunning = false;
     setStepEnabled();
     $("saveBatch").disabled = built === 0;
-    showMessage("batchStatus", built + " of " + files.length + " shows built." +
+    showMessage("batchStatus", built + " of " + files.length + " shows built" +
+      (totalSeconds ? ", " + formatTime(totalSeconds) + " of music in all." : ".") +
       (built ? " Save all shows downloads them with their reports." : ""), built ? "good" : "error");
   }
 
@@ -3587,6 +3595,34 @@
       download(bytesFromBase64(result.zip), result.zip_name, "application/zip");
     } catch (error) {
       showMessage("batchStatus", error.message || String(error), "error");
+    }
+  }
+
+  // S6 finds a sequence's music by file name in its own audio folder, so the most
+  // common "it plays no music" problem is a name that does not match.
+  function checkMusicName() {
+    const name = $("musicFilename").value.trim();
+    const song = show.songName || "";
+    const note = $("musicNote");
+    note.className = "step-note";
+    if (!name) {
+      note.textContent = song ? "Empty: the show will use the song's own name, " + song + "." : "";
+      return;
+    }
+    if (/[\\/]/.test(name)) {
+      note.className = "step-note warn";
+      note.textContent = "Just the file name, not a folder: S6 looks for it in its own audio folder.";
+    } else if (song && name !== song) {
+      const sameStem = name.replace(/\.[^.]*$/, "") === song.replace(/\.[^.]*$/, "");
+      note.className = "step-note warn";
+      note.textContent = sameStem
+        ? "The ending differs from your song file (" + song + "). S6 needs the exact name, " +
+          "ending included, so convert or rename the song to match."
+        : "S6 will look for " + name + ", but your song file is " + song + ". Copy it into " +
+          "S6's audio folder under exactly that name, or change this back.";
+    } else if (song) {
+      note.textContent = "S6 will look for " + name + " in its audio folder. Copy the song " +
+        "there under exactly this name.";
     }
   }
 
@@ -3618,6 +3654,7 @@
     $("saveTest").addEventListener("click", saveDisplayTest);
     $("watchTest").addEventListener("click", watchDisplayTest);
     $("musicFilename").addEventListener("input", () => {
+      checkMusicName();
       show.result = null;
       $("openGenerated").disabled = true;
       $("saveGenerated").disabled = true;
