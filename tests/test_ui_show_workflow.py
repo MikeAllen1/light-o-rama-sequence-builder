@@ -48,6 +48,11 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
         "raw_requirements": [],
     }
     test_calls = 0
+    sequence_xml = (
+        '<sequence totalCentiseconds="1000"><SequenceProps>'
+        '<SeqProp id="tree" name="Tree"><channel row="0" col="0" color="0"/>'
+        '</SeqProp></SequenceProps></sequence>'
+    )
 
     def respond(route: object, body: dict[str, object], status: int = 200) -> None:
         route.fulfill(status=status, content_type="application/json", body=json.dumps(body))  # type: ignore[attr-defined]
@@ -83,7 +88,7 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
                 respond(route, {
                     "rules_ok": True,
                     "file_name": "song (generated).loredit",
-                    "sequence": "<sequence />",
+                    "sequence": sequence_xml,
                     "picture": "<svg xmlns='http://www.w3.org/2000/svg' />",
                     "summary": "<!doctype html><title>Test</title>",
                     "report": "Passed",
@@ -118,7 +123,7 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             if test_calls == 1:
                 respond(route, {
                     "schedule": [{"start": 0.5, "end": 1.0, "what": "Tree"}],
-                    "sequence": "<sequence />", "file_name": "test.loredit",
+                    "sequence": sequence_xml, "file_name": "test.loredit",
                     "sound": "", "sound_name": "test.wav", "zip": "", "zip_name": "test.zip",
                 })
             else:
