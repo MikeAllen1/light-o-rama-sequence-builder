@@ -3593,7 +3593,7 @@
 
   async function makeDisplayTest() {
     if (!show.token || show.testPending || show.batchRunning || show.generationPending ||
-        show.batchZipPending || show.displayPending || show.audioPending || show.requirementsPending) return;
+        show.batchZipPending || show.displayPending || show.audioPending || show.requirementsPending || show.requirementsUncertain) return;
     const token = show.token;
     // Keep the last valid test until its replacement has been built successfully.
     show.testPending = true;
@@ -3730,7 +3730,7 @@
         child.disabled = locked;
       });
     }
-    $("requirementList").querySelectorAll("button").forEach((button) => { button.disabled = locked; });
+    $("requirementList").querySelectorAll("button").forEach((button) => { button.disabled = disabled; });
   }
 
   function hasSequenceableProps() {
@@ -3740,7 +3740,7 @@
   function setStepEnabled() {
     const hasProps = hasSequenceableProps();
     $("watchTest").disabled = !show.test || generatedActionsBlocked();
-    $("saveTest").disabled = !show.test;
+    $("saveTest").disabled = !show.test || generatedActionsBlocked();
     $("makeTest").disabled = !show.token || !hasProps || show.requirementsUncertain || show.batchRunning || show.generationPending ||
       show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending ||
       show.requirementsUncertain;
@@ -3771,7 +3771,10 @@
     $("saveBatch").disabled = !show.batchReady || show.batchUncertain || show.batchRunning || show.batchZipPending ||
       show.generationPending || show.displayPending || show.audioPending || show.requirementsPending ||
       show.testPending;
-    $("closeNewShow").disabled = generatedActionsBlocked() || show.requirementsPending;
+    $("showDisplayFile").disabled = show.displayPending || show.batchRunning || show.batchZipPending ||
+      show.generationPending || show.testPending || show.audioPending || show.requirementsPending;
+    $("closeNewShow").disabled = state.audioDecodePending || show.audioPending || show.requirementsPending ||
+      show.displayPending || show.generationPending || show.batchRunning || show.batchZipPending || show.testPending;
     updateGeneratedControls();
   }
 
