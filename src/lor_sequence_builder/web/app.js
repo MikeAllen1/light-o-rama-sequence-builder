@@ -1713,7 +1713,7 @@
     }
   }
 
-  function parseLyricsText(text, name) {
+  function parseLyricsText(text, name, duration = currentMusicDuration()) {
     const lines = [];
     const lrc = /\[(\d{1,3}):(\d{1,2}(?:\.\d{1,3})?)\]/g;
     const cue = /(?:(\d+):)?(\d{1,2}):(\d{1,2})[.,](\d{1,3})\s*-->\s*(?:(\d+):)?(\d{1,2}):(\d{1,2})[.,](\d{1,3})/;
@@ -1742,7 +1742,8 @@
     lines.forEach((line) => {
       if (line.end == null) {
         const next = lines.find((candidate) => candidate.start > line.start + 0.001);
-        line.end = next ? next.start : Math.min(1801, line.start + 4);
+        const limit = Number.isFinite(duration) && duration > 0 ? duration : 1800;
+        line.end = Math.min(next ? next.start : line.start + 4, limit);
       }
       line.verified = true;
       line.words = [];
@@ -1804,7 +1805,7 @@
       if (/\.json$/i.test(file.name)) {
         data = JSON.parse(text);
       } else {
-        data = parseLyricsText(text, file.name);
+        data = parseLyricsText(text, file.name, currentMusicDuration());
       }
       checkLyrics(data);
       const duration = currentMusicDuration();
