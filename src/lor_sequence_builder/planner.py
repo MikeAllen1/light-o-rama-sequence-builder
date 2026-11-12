@@ -284,6 +284,7 @@ class _Window:
     offset: int = 0
     beats_per_bar: int = 4
     bar_phase: int = 0
+    bar_offset: int = 0
 
 
 def _windows(music: _Music, sections: list[PlannedSection]) -> list[_Window]:
@@ -310,9 +311,11 @@ def _windows(music: _Music, sections: list[PlannedSection]) -> list[_Window]:
                 tuple(t for t in music.beats if a <= t < b),
                 tuple(t for t in music.downbeats if a <= t < b),
                 louder and piece_index == 0,
-                sum(1 for t in music.beats if t < a),
+                sum(1 for t in music.beats
+                    if section.start_centisecond <= t < a),
                 music.beats_per_bar,
                 music.bar_phase,
+                sum(1 for t in music.beats if t < a),
             ))
     return windows
 
@@ -562,7 +565,7 @@ def _bars(window: _Window) -> list[tuple[int, int]]:
     if len(window.downbeats) >= 2:
         marks = list(window.downbeats)
     else:
-        first = (window.bar_phase - window.offset) % window.beats_per_bar
+        first = (window.bar_phase - window.bar_offset) % window.beats_per_bar
         marks = list(window.beats[first::window.beats_per_bar])
     bars = [(a, b) for a, b in itertools.pairwise(marks)]
     if marks and window.end - marks[-1] >= 50:
@@ -1075,7 +1078,7 @@ def _phrases(window: _Window) -> list[_Window]:
                                tuple(t for t in window.beats if a <= t < b),
                                tuple(t for t in window.downbeats if a <= t < b), False,
                                window.offset + before, window.beats_per_bar,
-                               window.bar_phase))
+                               window.bar_phase, window.bar_offset + before))
     return phrases
 
 
@@ -1430,7 +1433,8 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
                        tuple(b for b in window.beats if start <= b < end),
                        tuple(d for d in window.downbeats if d < end), False,
                        window.offset + sum(1 for b in window.beats if b < start),
-                       window.beats_per_bar, window.bar_phase)
+                       window.beats_per_bar, window.bar_phase,
+                       window.bar_offset + sum(1 for b in window.beats if b < start))
         everything = label == "finale"
         for phrase in _phrases(body):
             k = section_phrase[si]
@@ -1464,7 +1468,8 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
                                   tuple(t for t in phrase.beats if a <= t < b),
                                   tuple(t for t in phrase.downbeats if a <= t < b), False,
                                   phrase.offset + sum(1 for t in phrase.beats if t < a),
-                                  phrase.beats_per_bar, phrase.bar_phase)
+                                  phrase.beats_per_bar, phrase.bar_phase,
+                                  phrase.bar_offset + sum(1 for t in phrase.beats if t < a))
                     _look(planner, bar, rows, singles,
                           steady_part | (sides[j % 2] & active), variant=1, flip=flip)
                 moments.append(("call_and_response", phrase.start))
