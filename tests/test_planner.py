@@ -241,6 +241,15 @@ def test_missing_downbeats_respect_the_analyzer_meter() -> None:
     assert "assumed a bar every 3 beats" in music.notes[0]
 
 
+def test_integral_float_meter_from_external_analysis_is_normalized() -> None:
+    analysis = synthetic_analysis(duration=30.0, bpm=120.0, sections=((0, 0.5),))
+    analysis["configuration"]["beats_per_bar"] = 3.0
+    analysis["analysis"]["downbeats"] = []
+    music = _music(analysis)
+    assert music.beats_per_bar == 3
+    assert music.downbeats == music.beats[::3]
+
+
 def test_a_song_without_a_detected_beat_grid_is_rejected() -> None:
     with pytest.raises(PlanningError, match="will not invent a tempo"):
         _plan(classic_yard(), synthetic_analysis(beats=False, sections=((0, 0.5),)))
