@@ -37,10 +37,20 @@ def keep(sequence: Path, summary: Path | None, picture: Path | None, *, file_nam
          display: str, song: str, style: str | None, rules_ok: bool,
          folder: Path | None = None) -> str:
     """Copy a finished show in; returns its id. Older shows past MAX_KEPT are removed."""
+    from lor_sequence_builder import __version__
+
     root = folder or recent_folder()
     show_id = datetime.now().strftime("%Y%m%d-%H%M%S-%f") + "-" + secrets.token_hex(2)
     with _lock:
         root.mkdir(parents=True, exist_ok=True)
+        # The same show built again (Generate pressed twice) is not listed twice: the
+        # one already kept just moves to the top.
+        newest = _kept(root)[:1]
+        if newest and newest[0].get("file_name") == file_name[:200] and \
+                newest[0].get("version") == __version__ and \
+                (root / newest[0]["id"] / _FILES["sequence"]).read_bytes() == \
+                Path(sequence).read_bytes():
+            return str(newest[0]["id"])
         staging = root / (".incoming-" + show_id)
         staging.mkdir()
         try:
@@ -51,6 +61,7 @@ def keep(sequence: Path, summary: Path | None, picture: Path | None, *, file_nam
             (staging / "show.json").write_text(json.dumps({
                 "id": show_id, "file_name": file_name[:200], "display": display[:200],
                 "song": song[:260], "style": style, "rules_ok": rules_ok,
+                "version": __version__,
                 "made": datetime.now().isoformat(timespec="seconds"),
             }, indent=2), encoding="utf-8")
             staging.rename(root / show_id)
@@ -60,6 +71,18 @@ def keep(sequence: Path, summary: Path | None, picture: Path | None, *, file_nam
         for old in _kept(root)[MAX_KEPT:]:
             shutil.rmtree(root / old["id"], ignore_errors=True)
     return show_id
+
+
+def _style_name(key: Any) -> str | None:
+    """'energetic' -> 'High energy'; a learned style by its own name."""
+    if not isinstance(key, str) or not key:
+        return None
+    from lor_sequence_builder.style import get_style
+
+    try:
+        return get_style(key).name
+    except ValueError:
+        return key
 
 
 def _kept(root: Path) -> list[dict[str, Any]]:
@@ -77,6 +100,7 @@ def _kept(root: Path) -> list[dict[str, Any]]:
             meta["id"] = path.name
             meta["has_report"] = (path / _FILES["summary"]).is_file()
             meta["has_picture"] = (path / _FILES["picture"]).is_file()
+            meta["style_name"] = _style_name(meta.get("style"))
             found.append(meta)
     return sorted(found, key=lambda meta: meta["id"], reverse=True)
 

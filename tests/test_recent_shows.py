@@ -36,6 +36,26 @@ def test_kept_shows_are_listed_newest_first_and_capped(tmp_path: Path,
     assert len(listing(store)) == 2
 
 
+def test_the_same_show_twice_is_listed_once_with_its_version(tmp_path: Path) -> None:
+    from lor_sequence_builder import __version__
+
+    store = tmp_path / "store"
+
+    def kept(name: str, content: str, style: str = "energetic") -> str:
+        path = tmp_path / "out.loredit"
+        path.write_text(content, encoding="utf-8")
+        return keep(path, None, None, file_name=name, display="Yard", song="Song.mp3",
+                    style=style, rules_ok=True, folder=store)
+
+    first = kept("Song.loredit", "<sequence a='1'/>")
+    assert kept("Song.loredit", "<sequence a='1'/>") == first  # Generate pressed again
+    assert kept("Song.loredit", "<sequence a='2'/>") != first  # a different show
+    assert kept("Song.loredit", "<sequence a='2'/>", "classic") != first
+    shown = listing(store)
+    assert len(shown) == 2
+    assert shown[0]["version"] == __version__ and shown[1]["style_name"] == "High energy"
+
+
 @pytest.mark.parametrize("bad", ["../../etc", "20260101-000000-000000-zzzz", "", "x" * 50])
 def test_only_real_ids_are_opened(tmp_path: Path, bad: str) -> None:
     with pytest.raises(RecentShowError):
@@ -84,7 +104,7 @@ def test_the_start_page_lists_and_opens_recent_shows(server: str, tmp_path: Path
             page.locator("#recentShows").wait_for(state="visible", timeout=10000)
             row = page.locator("#recentList li")
             assert row.count() == 1 and "Demo Song" in row.inner_text()
-            assert "Demo Yard · classic" in row.inner_text()
+            assert "Demo Yard · Classic · version " in row.inner_text()
             with page.expect_download() as saved:
                 page.get_by_role("button", name="Save: Demo Song").click()
             assert saved.value.suggested_filename == "Demo Song (generated).loredit"
