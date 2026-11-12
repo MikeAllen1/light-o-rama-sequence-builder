@@ -22,6 +22,21 @@ Do not include real credentials, copyrighted media, private display previews, or
 - Keep dependencies current and review Dependabot and code-scanning alerts.
 - Use least-privilege GitHub Actions permissions. Workflows should not receive write permissions unless a specific job requires them.
 
+## How the local engine is protected
+
+The workspace and the desktop app run a small engine on this computer that the page talks to. It is built so that nothing else can use it:
+
+- It listens only on this computer (127.0.0.1), never on the network.
+- It answers only requests addressed to this computer (`127.0.0.1` or `localhost` with its port), which stops DNS rebinding, and refuses any request whose `Origin` or `Sec-Fetch-Site` says it came from another site. Every request that changes anything is a POST with a JSON, audio or XML body that a cross-site form cannot send.
+- Each New show has an unguessable session token; tokens never reach the log.
+- Pages are served with a strict Content-Security-Policy (no scripts but its own, no framing), `nosniff`, no referrer, and same-origin resource and opener policies. Folders are never listed.
+- Uploads are size-capped (previews 20 MB, songs 200 MB, JSON requests small); deeply nested JSON is refused.
+- Preview and sequence XML is parsed with defusedxml (no entities, no external references). Songs are decoded by FFmpeg with the container format chosen from the file's own bytes and only local file access allowed, so a song cannot make FFmpeg fetch anything.
+- Song names become file names only after removing folder parts, characters Windows forbids and reserved device names.
+- Generated reports and plan pictures escape every name, and are shown in a sandboxed frame with scripts off.
+- At most two song analyses or show builds run at once; the rest wait their turn.
+- The only outside requests are the optional update check (GitHub's public release list) and, when the user sets a key, translating typed requirements.
+
 ## Current data handling
 
 The current command-line tools read audio and sequence files from local paths and write analysis or display summaries to local output files. The project does not currently implement cloud upload, remote media processing, or a credential-based integration with Light-O-Rama. Reassess this section if those capabilities are introduced.
