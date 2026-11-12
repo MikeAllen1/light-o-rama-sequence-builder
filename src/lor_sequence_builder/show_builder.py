@@ -280,6 +280,9 @@ class ShowSessions:
     def add_audio(self, token: str, payload: bytes, suffix: str, demuxer: str,
                   file_name: str, beats_per_bar: int,
                   request_id: int | None = None) -> dict[str, Any]:
+        audio_name = Path(file_name).name or f"song{suffix}"
+        if len(audio_name) > 200:
+            raise ShowBuildError("Song file name must be 200 characters or fewer.")
         with self.locked(token) as session:
             revision = session.audio_revision + 1 if request_id is None else request_id
             if revision <= session.audio_revision:
@@ -301,7 +304,7 @@ class ShowSessions:
             old_audio = session.audio_path
             session.audio_path = audio
             session.analysis_path = analysis
-            session.audio_name = Path(file_name).name or audio.name
+            session.audio_name = audio_name
             if old_audio is not None and old_audio.parent != session.path:
                 shutil.rmtree(old_audio.parent, ignore_errors=True)
         return report
@@ -487,7 +490,9 @@ class ShowSessions:
             if len(session.batch) >= MAX_BATCH_SONGS:
                 raise ShowBuildError(f"A batch holds up to {MAX_BATCH_SONGS} songs; save "
                                      "these and start another")
-            name = Path(file_name).name[:200] or f"song{suffix}"
+            name = Path(file_name).name or f"song{suffix}"
+            if len(name) > 200:
+                raise ShowBuildError("Song file name must be 200 characters or fewer.")
             stem = file_stem(name)
             taken = {entry["stem"] for entry in session.batch}
             unique, n = stem, 2
