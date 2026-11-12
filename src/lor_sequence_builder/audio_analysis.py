@@ -27,6 +27,7 @@ import numpy as np
 import numpy.typing as npt
 
 from lor_sequence_builder import progress
+from lor_sequence_builder.processes import NO_WINDOW
 
 ANALYSIS_SCHEMA_VERSION = "2.0"
 SAMPLE_RATE = 22_050
@@ -108,7 +109,8 @@ def _normalize(path: Path, output: Path, input_demuxer: str | None = None) -> st
         )
     try:
         version_result = subprocess.run(
-            [ffmpeg, "-version"], check=False, capture_output=True, text=True, timeout=10
+            [ffmpeg, "-version"], check=False, capture_output=True, text=True, timeout=10,
+            creationflags=NO_WINDOW,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise AudioAnalysisError("Could not determine the installed FFmpeg version") from exc
@@ -131,7 +133,7 @@ def _normalize(path: Path, output: Path, input_demuxer: str | None = None) -> st
     try:
         completed = subprocess.run(
             command, check=False, capture_output=True, text=True,
-            timeout=MAX_DURATION_SECONDS + 120,
+            timeout=MAX_DURATION_SECONDS + 120, creationflags=NO_WINDOW,
         )
     except subprocess.TimeoutExpired as exc:
         raise AudioAnalysisError("Reading this song took too long and was stopped. Try a "
