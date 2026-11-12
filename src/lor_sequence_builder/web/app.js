@@ -3121,7 +3121,7 @@
   const show = { token: null, summary: null, audioFile: null, analysis: null, raw: [],
     result: null, resultConfig: null, audioRequestId: 0, audioPending: false,
     requirementsPending: false, requirementsRequestId: 0, displayRequestId: 0,
-    batchRunning: false, generationPending: false };
+    displayPending: false, batchRunning: false, generationPending: false };
 
   function showMessage(id, text, kind) {
     const element = $(id);
@@ -3260,21 +3260,24 @@
   }
 
   function setStepEnabled() {
-    $("makeTest").disabled = !show.token || show.batchRunning || show.generationPending;
-    $("showSongFile").disabled = !show.token || show.batchRunning || show.generationPending;
+    $("makeTest").disabled = !show.token || show.batchRunning || show.generationPending || show.displayPending;
+    $("showSongFile").disabled = !show.token || show.batchRunning || show.generationPending || show.displayPending;
     $("showSongLabel").classList.toggle("disabled", !show.token);
     $("addRequirement").disabled = !show.token;
     $("translateRequirements").disabled = !show.token || !show.summary.can_translate;
     $("generateShow").disabled = !(show.token && show.analysis && !show.audioPending &&
-      !show.requirementsPending && !show.generationPending && !show.batchRunning);
-    $("batchFiles").disabled = !show.token || show.batchRunning || show.generationPending;
-    $("batchLabel").classList.toggle("disabled", !show.token || show.batchRunning || show.generationPending);
-    setRequirementControlsLocked(show.requirementsPending || show.batchRunning || show.generationPending);
+      !show.requirementsPending && !show.generationPending && !show.batchRunning && !show.displayPending);
+    $("batchFiles").disabled = !show.token || show.batchRunning || show.generationPending || show.displayPending;
+    $("batchLabel").classList.toggle("disabled", !show.token || show.batchRunning || show.generationPending || show.displayPending);
+    setRequirementControlsLocked(show.requirementsPending || show.batchRunning || show.generationPending || show.displayPending);
   }
 
   async function chooseDisplay(file) {
-    if (!file || show.batchRunning || show.generationPending) return;
+    if (!file || show.batchRunning || show.generationPending || show.displayPending) return;
     const requestId = ++show.displayRequestId;
+    show.displayPending = true;
+    setShowConfigurationLocked(true);
+    setStepEnabled();
     showMessage("displayStatus", "Reading " + file.name + "…");
     try {
       if (file.size > 20 * 1024 * 1024) throw new Error("A preview must be 20 MiB or smaller.");
@@ -3323,7 +3326,11 @@
       showMessage("displayStatus", (error.message || String(error)) +
         (show.token ? " The previously loaded display remains active." : ""), "error");
     }
-    if (requestId === show.displayRequestId) setStepEnabled();
+    if (requestId === show.displayRequestId) {
+      show.displayPending = false;
+      setShowConfigurationLocked(false);
+      setStepEnabled();
+    }
   }
 
   async function chooseSong(file) {
