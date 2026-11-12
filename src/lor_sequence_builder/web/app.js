@@ -3404,7 +3404,7 @@
 
   async function watchDisplayTest() {
     const test = show.test;
-    if (!test || !confirmSequenceReplacement()) return;
+    if (!test || generatedActionsBlocked() || !confirmSequenceReplacement()) return;
     openSequenceText(test.sequence, test.file_name, false);
     state.sequence.generated = true;
     updateEditControls();
@@ -3484,6 +3484,8 @@
   }
 
   function setStepEnabled() {
+    $("watchTest").disabled = !show.test || generatedActionsBlocked();
+    $("saveTest").disabled = !show.test;
     $("makeTest").disabled = !show.token || show.batchRunning || show.generationPending ||
       show.displayPending || show.testPending || show.audioPending || show.requirementsPending;
     $("showSongFile").disabled = !show.token || show.batchRunning || show.generationPending ||
