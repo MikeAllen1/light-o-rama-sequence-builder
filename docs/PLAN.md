@@ -293,6 +293,17 @@ Build the sequencing workspace in the browser using the existing Python engine. 
 
 This is the final product-delivery stage, not a prerequisite for sequencing development.
 
+**Status: Built; owner install check pending.** The owner asked on 2026-11-11 to get this into a desktop app.
+
+- **`desktop.py`:** bundled FFmpeg first on the search path, the workspace server on a free loopback port, a native window through pywebview (WebView2 on Windows) with downloads allowed, and the default browser as a fallback. Clean shutdown. A windowed app logs to a file. `--self-test` checks an installed copy without a window.
+- **Reports and plan pictures** open in an in-app viewer (a sandboxed frame with no scripts, and a **Save a copy** button) instead of a new browser tab, so they work the same in the window and in a browser.
+- **`packaging/`:** a PyInstaller folder build (workspace files, rules, librosa data, FFmpeg), an Inno Setup per-user installer (Start menu entry, optional desktop shortcut, uninstaller, no administrator prompt) and a generated icon.
+- **`desktop` extra:** pywebview 6.2.1, PyInstaller 6.22.3 and hooks 2026.9, pinned and locked. The optional-dependency audit covers them.
+- **`.github/workflows/desktop.yml`:** builds on Windows with the pinned, checksum-verified FFmpeg 9.0.2 LGPL build, runs the app's self-test, builds the installer and keeps it as an artifact. A `v*` tag publishes it on a GitHub release.
+
+**Verified:** desktop tests cover the self-test passing and failing with the reason, the bundled FFmpeg path, the browser fallback, windowed logging and the packaging files. The browser test uses the in-app viewer. A local PyInstaller build on Linux, run with no FFmpeg and no Python on the search path, passed its self-test using its own bundled FFmpeg (the demo show took 9.7 s). The Windows build is proven in CI.
+
+
 Build the desktop wrapper, installer, and platform-specific packaging only after the browser-based sequencing workspace, musical analysis workflow, and editing/export capabilities are complete and accepted. Reuse the browser workspace and existing Python engine; do not fork the sequencing logic into a separate desktop implementation.
 
 **Done when:** the accepted browser sequencing workflow runs as a packaged desktop application, source and generated files remain protected by the same validation rules, installers are reproducible, and owner verification confirms the complete workflow on the target desktop environment.

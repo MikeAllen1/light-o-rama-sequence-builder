@@ -3407,18 +3407,53 @@
     if (show.audioFile) await loadAudio(show.audioFile, show.analysis);
   }
 
+  // Reports and pictures open inside the app (a sandboxed frame with no scripts), so
+  // they work the same in a browser tab and in the desktop window.
+  function showViewer(title, content, fileName, type) {
+    state.viewer = { content, fileName, type };
+    $("viewerTitle").textContent = title;
+    const html = type === "image/svg+xml"
+      ? "<!doctype html><meta charset=\"utf-8\"><body style=\"margin:0;background:#0b1015\">" +
+        content + "</body>"
+      : content;
+    $("viewerFrame").srcdoc = html;
+    $("viewer").classList.remove("hidden");
+    $("viewerClose").focus();
+  }
+
+  function saveViewer() {
+    const viewer = state.viewer;
+    if (!viewer) return;
+    const url = URL.createObjectURL(new Blob([viewer.content], { type: viewer.type }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = viewer.fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+
+  function closeViewer() {
+    $("viewer").classList.add("hidden");
+    $("viewerFrame").srcdoc = "";
+    state.viewer = null;
+  }
+
+  function stem(name) {
+    return String(name || "show").replace(/\.loredit$/i, "");
+  }
+
   function openReport() {
     if (!show.result) return;
-    const url = URL.createObjectURL(new Blob([show.result.summary], { type: "text/html" }));
-    window.open(url, "_blank", "noopener");
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    showViewer("Show report", show.result.summary, stem(show.result.file_name) + ".report.html",
+      "text/html");
   }
 
   function openPicture() {
     if (!show.result) return;
-    const url = URL.createObjectURL(new Blob([show.result.picture], { type: "image/svg+xml" }));
-    window.open(url, "_blank", "noopener");
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    showViewer("Plan picture", show.result.picture, stem(show.result.file_name) + ".plan.svg",
+      "image/svg+xml");
   }
 
   function setupNewShow() {
@@ -3452,6 +3487,11 @@
     $("openGenerated").addEventListener("click", openGenerated);
     $("pictureGenerated").addEventListener("click", openPicture);
     $("reportGenerated").addEventListener("click", openReport);
+    $("viewerClose").addEventListener("click", closeViewer);
+    $("viewerSave").addEventListener("click", saveViewer);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !$("viewer").classList.contains("hidden")) closeViewer();
+    });
     for (const [value, text] of Object.entries(REQUIREMENT_KINDS)) {
       $("requirementKind").appendChild(option(value, text));
     }
