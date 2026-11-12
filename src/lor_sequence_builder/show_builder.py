@@ -404,8 +404,12 @@ class ShowSessions:
         with self.locked(token) as session:
             if session.analysis_path is None or session.audio_path is None:
                 raise ShowBuildError("Add the song before generating")
-            if not isinstance(music, str) or not music.strip() or len(music) > 260:
+            if music is None or (isinstance(music, str) and not music.strip()):
                 music = session.audio_name
+            elif not isinstance(music, str):
+                raise ShowBuildError("Music file name must be text.")
+            elif len(music) > 260:
+                raise ShowBuildError("Music file name must be 260 characters or fewer.")
             run = session.path / ("run-" + secrets.token_hex(6))
             run.mkdir()
             try:
