@@ -27,6 +27,73 @@ def workspace_url() -> Iterator[str]:
         server.server_close()
 
 
+def test_uncertain_requirement_update_requires_display_resync(workspace_url: str) -> None:
+    summary = {
+        "token": "display-one",
+        "display": "Requirement Resync Yard",
+        "props": [{"name": "Tree", "role": "tree", "sequenceable": True, "reason": None}],
+        "kinds": [{"role": "tree", "label": "tree", "count": 1, "plural": "trees"}],
+        "groups": [],
+        "faces": False,
+        "can_separate_vocals": False,
+        "can_translate": False,
+        "styles": [{"key": "classic", "name": "Classic", "description": "Balanced"}],
+        "default_style": "classic",
+        "requirements": [],
+        "raw_requirements": [],
+    }
+    saved_requirements: list[dict[str, object]] = []
+    start_calls = 0
+
+    def respond(route: object, body: dict[str, object]) -> None:
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(body))  # type: ignore[attr-defined]
+
+    def start_display(route: object) -> None:
+        nonlocal start_calls
+        start_calls += 1
+        current = dict(summary)
+        current["token"] = f"display-{start_calls}"
+        current["raw_requirements"] = list(saved_requirements)
+        current["requirements"] = ["Never use Tree"] if saved_requirements else []
+        respond(route, current)
+
+    def lose_requirements_response(route: object) -> None:
+        payload = json.loads(route.request.post_data)  # type: ignore[attr-defined]
+        saved_requirements[:] = payload["requirements"]
+        route.abort()  # type: ignore[attr-defined]
+
+    with playwright_api.sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        page.route("**/api/show/start*", start_display)
+        page.route("**/api/show/requirements?*", lose_requirements_response)
+        page.goto(workspace_url)
+        page.locator("#openNewShow").click()
+        display_file = {
+            "name": "yard.lorprev", "mimeType": "application/xml", "buffer": b"<preview/>",
+        }
+        page.locator("#showDisplayFile").set_input_files(display_file)
+        page.locator("#displayStatus").filter(has_text="Requirement Resync Yard").wait_for()
+
+        page.locator("#requirementKind").select_option("never_use")
+        page.locator("#requirementProps").select_option("name:Tree")
+        page.locator("#addRequirement").click()
+        page.locator("#requirementStatus").filter(
+            has_text="Re-select the display to resync"
+        ).wait_for(timeout=10000)
+        assert saved_requirements == [{"type": "never_use", "props": {"names": ["Tree"]}}]
+        assert page.locator("#addRequirement").is_disabled()
+        assert page.locator("#showDisplayFile").is_enabled()
+
+        # A new display session reloads the persisted profile and clears uncertainty.
+        page.locator("#showDisplayFile").set_input_files(display_file)
+        page.locator("#displayStatus").filter(has_text="Requirement Resync Yard").wait_for()
+        assert page.locator("#requirementList li").count() == 1
+        assert page.locator("#requirementList li").inner_text() == "Never use Tree"
+        assert page.locator("#addRequirement").is_enabled()
+        browser.close()
+
+
 def test_new_show_actions_never_offer_stale_results_or_playlists(
     workspace_url: str,
 ) -> None:
