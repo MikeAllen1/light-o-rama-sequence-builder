@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, cast
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 from lor_sequence_builder import __version__, progress, recent_shows
 from lor_sequence_builder.audio_analysis import (
@@ -114,7 +114,7 @@ def _detect_audio_suffix(payload: bytes) -> str | None:
 # the rest wait their turn (and say so) instead of running the computer out of memory.
 HEAVY_AT_ONCE = 2
 _HEAVY_STEPS = {"/api/analyze", "/api/show/audio", "/api/show/generate", "/api/show/batch",
-                "/api/show/test", "/api/demo"}
+                "/api/show/batch-zip", "/api/show/test", "/api/demo"}
 _heavy = threading.BoundedSemaphore(HEAVY_AT_ONCE)
 
 
@@ -340,7 +340,7 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
                 style = query.get("style", [""])[0] or None
                 self._send_json(200, SHOWS.batch_song(
                     token, payload, suffix, INPUT_DEMUXERS[suffix],
-                    query.get("name", ["song"])[0][:200], int(meter), style))
+                    query.get("name", ["song"])[0], int(meter), style))
             elif path == "/api/show/audio":
                 payload = self._read_body("application/octet-stream", _MAX_UPLOAD_BYTES,
                                           "Audio")
@@ -365,7 +365,7 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
                         self.send_error(400, "request_id must be a positive integer")
                         return
                 report = SHOWS.add_audio(token, payload, suffix, INPUT_DEMUXERS[suffix],
-                                         query.get("name", ["song"])[0][:200], int(meter),
+                                         query.get("name", ["song"])[0], int(meter),
                                          request_id=request_id)
                 self._send_json(200, {"stale": True} if report.get("stale") else
                                 {"report": report})
@@ -387,7 +387,10 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
                     result = SHOWS.set_requirements(token, body, request_id=request_id)
                     self._send_json(200, result)
                 elif path == "/api/show/batch-zip":
-                    self._send_json(200, SHOWS.batch_zip(token))
+                    result = SHOWS.batch_zip(token)
+                    self._send_download_file(
+                        Path(result["zip_path"]), result["zip_name"], "application/zip"
+                    )
                 elif path == "/api/show/batch-clear":
                     self._send_json(200, SHOWS.batch_clear(token))
                 elif path == "/api/show/test":
@@ -429,7 +432,10 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
         origin = self.headers.get("Origin")
         if origin:
             origin_url = urlsplit(origin)
-            if origin_url.scheme != "http" or origin_url.netloc not in hosts:
+            # localhost and 127.0.0.1 are both valid workspace entry points,
+            # but they are distinct browser origins. Do not let one alias
+            # authorize a request whose Host names the other.
+            if origin_url.scheme != "http" or origin_url.netloc != self.headers.get("Host"):
                 self.send_error(403, "Cross-origin requests are not accepted")
                 return False
         site = self.headers.get("Sec-Fetch-Site")
@@ -555,6 +561,41 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
         steps = body.get("steps")
         clean = [str(step) for step in steps[:100]] if isinstance(steps, list) else []
         self._send_json(200, {"text": report(str(body.get("browser", "")), clean)})
+
+    def _send_download_file(self, path: Path, name: str, content_type: str) -> None:
+        """Stream a generated file to the client and remove its temporary copy."""
+        response_started = False
+        try:
+            # Open before sending headers so a missing/unreadable file can still
+            # produce the route's normal JSON error response.
+            with path.open("rb") as source:
+                size = os.fstat(source.fileno()).st_size
+                fallback = name.encode("ascii", "ignore").decode("ascii").replace('"', "")
+                response_started = True
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(size))
+                self.send_header(
+                    "Content-Disposition",
+                    f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{quote(name)}',
+                )
+                self.end_headers()
+                while chunk := source.read(1024 * 1024):
+                    self.wfile.write(chunk)
+        except OSError as exc:
+            if not response_started:
+                raise
+            # Never append a JSON error after a ZIP response has started.
+            from lor_sequence_builder.diagnostics import write_log
+
+            write_log("server", f"Batch archive stream ended early: {exc}")
+        finally:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError as exc:
+                from lor_sequence_builder.diagnostics import write_log
+
+                write_log("server", f"Could not remove downloaded batch archive: {exc}")
 
     def _send_json(self, status: int, payload: dict[str, Any]) -> None:
         if status >= 400:

@@ -208,6 +208,13 @@ def test_lyrics_loader_rejects_malformed_word_objects(workspace: str) -> None:
         page = browser.new_page()
         try:
             page.goto(workspace, wait_until="networkidle")
+            # Lyrics are bounded to the selected song; load a valid saved analysis
+            # first so this test reaches the malformed word-event validation path.
+            page.locator("#analysisFile").set_input_files({
+                "name": "analysis.json",
+                "mimeType": "application/json",
+                "buffer": json.dumps(analysis_report()).encode("utf-8"),
+            })
             malformed = {
                 "schema_version": "lyrics-1.0",
                 "source": "transcribed",

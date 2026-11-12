@@ -148,6 +148,15 @@ def test_effects_can_be_edited_and_exported(workspace: str, tmp_path: Path) -> N
             # Move: 5.00-6.00 dragged about +1.05 s snaps to the half-second grid.
             drag(at(5.5, BUSH_ROW), at(6.55, BUSH_ROW))
             assert "Moved 1 effect(s) +1.00 s" in banner()
+
+            # Media-player focus must not turn Ctrl+Z into an editor undo.
+            page.locator("#audioPlayer").evaluate(
+                "(element) => { element.hidden = false; element.setAttribute('tabindex', '0'); element.focus(); }"
+            )
+            page.keyboard.press("Control+z")
+            assert "Moved 1 effect(s) +1.00 s" in banner()
+            page.locator("#tracksCanvas").click(position={"x": 5, "y": 5})
+
             # Overlap is refused: 6.00-7.00 onto 7.00-8.00.
             drag(at(6.5, BUSH_ROW), at(7.5, BUSH_ROW))
             assert "Not changed" in banner() and "overlap" in banner()
@@ -181,7 +190,9 @@ def test_effects_can_be_edited_and_exported(workspace: str, tmp_path: Path) -> N
             page.locator("#editApply").click()
             assert "whole numbers from 0 to 100" in banner()
 
-            # Duplicate right after itself, then nudge the copy 10 cs later.
+            # Duplicate right after itself, then nudge the copy 10 cs later. Shortcuts
+            # are ignored while typing in a field, so leave the field first.
+            page.evaluate("document.activeElement && document.activeElement.blur()")
             page.keyboard.press("Control+d")
             assert "Duplicated 1 effect(s)" in banner()
             page.keyboard.press("Shift+ArrowRight")
