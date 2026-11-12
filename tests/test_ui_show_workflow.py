@@ -409,6 +409,7 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             assert not page.locator("#meterSelect").is_disabled()
 
             # A stale requirements response means another session revision may be active.
+            page.locator("#requirementProps").select_option("role:tree")
             page.locator("#addRequirement").click()
             page.locator("#requirementStatus").filter(
                 has_text="newer requirements revision"
