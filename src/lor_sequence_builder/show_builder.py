@@ -504,28 +504,37 @@ class ShowSessions:
                 shutil.rmtree(work, ignore_errors=True)
 
     def batch_zip(self, token: str) -> dict[str, Any]:
-        """Every show built so far in this batch, with its report, as one zip."""
-        with self.locked(token) as session:
-            done = session.path / "batch"
-            shows = [entry for entry in session.batch if entry.get("ok")]
-            if not shows:
-                raise ShowBuildError("No batch shows have been built yet")
-            bundle = io.BytesIO()
-            with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
-                for entry in shows:
-                    for path in (done / entry["show"],
-                                 done / f"{entry['stem']} (generated).report.html"):
-                        archive.write(path, path.name)
-                lines = ["Shows in this batch", ""]
-                for entry in session.batch:
-                    lines.append(f"{entry['file_name']}: " + (
-                        f"{entry['show']}" if entry.get("ok") else "not built (rules failed)"))
-                lines += ["", "Copy each song into S6's audio folder with the same name, then",
-                          "open its .loredit in the S6 Sequencer."]
-                archive.writestr("Batch - read me.txt", "\r\n".join(lines) + "\r\n")
-            name = _safe_name(session.display_name) + " shows.zip"
-            return {"zip_name": name, "count": len(shows),
-                    "zip": base64.b64encode(bundle.getvalue()).decode("ascii")}
+        """Build the batch archive in a temporary file, not a second in-memory copy."""
+        archive_path: Path | None = None
+        try:
+            with self.locked(token) as session:
+                done = session.path / "batch"
+                shows = [entry for entry in session.batch if entry.get("ok")]
+                if not shows:
+                    raise ShowBuildError("No batch shows have been built yet")
+                handle = tempfile.NamedTemporaryFile(
+                    prefix="lor-batch-", suffix=".zip", delete=False
+                )
+                archive_path = Path(handle.name)
+                handle.close()
+                with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as archive:
+                    for entry in shows:
+                        for path in (done / entry["show"],
+                                     done / f"{entry['stem']} (generated).report.html"):
+                            archive.write(path, path.name)
+                    lines = ["Shows in this batch", ""]
+                    for entry in session.batch:
+                        lines.append(f"{entry['file_name']}: " + (
+                            f"{entry['show']}" if entry.get("ok") else "not built (rules failed)"))
+                    lines += ["", "Copy each song into S6's audio folder with the same name, then",
+                              "open its .loredit in the S6 Sequencer."]
+                    archive.writestr("Batch - read me.txt", "\r\n".join(lines) + "\r\n")
+                name = _safe_name(session.display_name) + " shows.zip"
+                return {"zip_name": name, "count": len(shows), "zip_path": str(archive_path)}
+        except BaseException:
+            if archive_path is not None:
+                archive_path.unlink(missing_ok=True)
+            raise
 
     def batch_clear(self, token: str) -> dict[str, Any]:
         with self.locked(token) as session:
