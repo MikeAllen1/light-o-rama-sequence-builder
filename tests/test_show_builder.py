@@ -137,6 +137,30 @@ def test_requirement_persistence_failure_does_not_publish_session_state(
     sessions.close()
 
 
+def test_batch_clear_failure_keeps_the_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    sessions = show_builder.ShowSessions()
+    started = sessions.start(preview, "yard.lorprev")
+    token = started["token"]
+    session = sessions.get(token)
+    done = session.path / "batch"
+    done.mkdir()
+    (done / "old-show.loredit").write_text("old", encoding="utf-8")
+    session.batch.append({"ok": True, "show": "old-show.loredit"})
+
+    def fail_remove(path: Path, *args: Any, **kwargs: Any) -> None:
+        raise OSError("file is locked")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(show_builder.shutil, "rmtree", fail_remove)
+        with pytest.raises(OSError, match="file is locked"):
+            sessions.batch_clear(token)
+
+    assert session.batch == [{"ok": True, "show": "old-show.loredit"}]
+    assert (done / "old-show.loredit").is_file()
+    sessions.close()
+
+
 def test_show_steps_refuse_bad_requests(server: str) -> None:
     assert _post(server + "/api/show/start", b"<nope/>", "application/xml")[0] == 422
     assert _post(server + "/api/show/start", b"x", "text/plain")[0] == 415
