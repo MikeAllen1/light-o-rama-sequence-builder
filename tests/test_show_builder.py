@@ -109,6 +109,56 @@ def test_a_show_is_built_step_by_step_and_requirements_are_remembered(
     status, again = _post(server + "/api/show/start?name=yard.lorprev", preview,
                           "application/xml")
     assert status == 200 and len(again["requirements"]) == 1
+    assert len(again["raw_requirements"]) == 1
+    assert again["raw_requirements"][0]["type"] == "never_use"
+
+
+def test_requirement_persistence_failure_does_not_publish_session_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    sessions = show_builder.ShowSessions()
+    started = sessions.start(preview, "yard.lorprev")
+    token = started["token"]
+
+    def fail_persist(session: Any, requirements: Any) -> None:
+        raise OSError("disk is unavailable")
+
+    monkeypatch.setattr(sessions, "_remember", fail_persist)
+    with pytest.raises(OSError, match="disk is unavailable"):
+        sessions.set_requirements(token, {"requirements": [
+            {"type": "never_use", "props": {"names": ["Mini Tree 1"]}},
+        ]}, request_id=1)
+
+    session = sessions.get(token)
+    assert session.requirements == ()
+    assert session.requirements_revision == 0
+    sessions.close()
+
+
+def test_batch_clear_failure_keeps_the_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    sessions = show_builder.ShowSessions()
+    started = sessions.start(preview, "yard.lorprev")
+    token = started["token"]
+    session = sessions.get(token)
+    done = session.path / "batch"
+    done.mkdir()
+    (done / "old-show.loredit").write_text("old", encoding="utf-8")
+    session.batch.append({"ok": True, "show": "old-show.loredit"})
+
+    def fail_remove(path: Path, *args: Any, **kwargs: Any) -> None:
+        raise OSError("file is locked")
+
+    with monkeypatch.context() as patch:
+        patch.setattr("lor_sequence_builder.show_builder.shutil.rmtree", fail_remove)
+        with pytest.raises(OSError, match="file is locked"):
+            sessions.batch_clear(token)
+
+    assert session.batch == [{"ok": True, "show": "old-show.loredit"}]
+    assert (done / "old-show.loredit").is_file()
+    sessions.close()
 
 
 def test_show_steps_refuse_bad_requests(server: str) -> None:

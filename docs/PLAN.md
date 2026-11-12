@@ -483,3 +483,7 @@ Anything that takes more than a moment shows a bar, what the program is doing no
 - **Windows:** Tab stays inside an open window (report, picture, shortcuts), Esc closes it, and focus goes back to where it was.
 - **Contrast:** faint text is now readable (at least 4.5:1).
 - **Checked automatically:** an axe scan of the start page, New show and the workspace must find nothing serious, and tests cover the keyboard order, the shortcuts and the window focus.
+
+## Opening previews from File Explorer
+
+The installer offers (checked by default) a right-click **Build a show with LOR Sequencer** on `.lorprev` files and lists the app under **Open with**, without changing the default program: S6 keeps opening previews on a double-click. Both run the app with `--preview PATH` (also on `lor-sequence-ui`), which hands the preview to the page once; New show opens with that display chosen. Only `.lorprev` files of a sensible size are accepted, and a file that cannot be used says why. Uninstalling removes the entries.
