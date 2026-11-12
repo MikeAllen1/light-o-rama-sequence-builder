@@ -1537,6 +1537,7 @@
     state.analysisRequestId += 1;
     state.lyricRequestId += 1;
     state.vocalRequestId += 1;
+    clearMusicHistory();
     const previousUrl = state.audioUrl;
     audio.pause();
     state.audioFile = file;
@@ -1654,6 +1655,10 @@
       if (discardUnsavedReview && !window.confirm("Replace the unsaved music review?")) return;
       state.audioRequestId += 1; // A valid imported analysis supersedes in-flight auto-analysis.
       if (review || discardUnsavedReview) state.lyricRequestId += 1;
+      const previousAnalysis = state.analysis && state.analysis.analysis;
+      const previousLyrics = state.lyrics;
+      if (previousAnalysis) clearMusicHistory(previousAnalysis);
+      if (review || discardUnsavedReview) clearMusicHistory(previousLyrics);
       state.analysis = data;
       state.reviewRevision += 1;
       state.reviewLoaded = Boolean(review);
@@ -1852,6 +1857,7 @@
         throw new Error("These lyrics extend beyond the selected song. Choose the matching lyrics file.");
       }
       if (state.reviewDirty && !window.confirm("Replace the unsaved music review?")) return;
+      if (state.lyrics) clearMusicHistory(state.lyrics);
       state.lyrics = data;
       state.reviewRevision += 1;
       state.reviewSelection = null;
@@ -1899,12 +1905,21 @@
   const DEFAULT_LENGTH_CS = 50;
   const MAX_UNDO = 300;
 
+  function clearMusicHistory(owner) {
+    const keep = (command) => !Array.isArray(command.music) ||
+      (owner && !command.music.some((change) => change.owner === owner));
+    state.undo = state.undo.filter(keep);
+    state.redo = state.redo.filter(keep);
+  }
+
   function resetEditing() {
     state.selection = [];
     state.selectionSet = new Set();
     state.selectedEffect = null;
-    state.undo = [];
-    state.redo = [];
+    // Sequence history belongs to the file being replaced. Music-review history
+    // remains valid because loading a new sequence does not replace the song.
+    state.undo = state.undo.filter((command) => Array.isArray(command.music));
+    state.redo = state.redo.filter((command) => Array.isArray(command.music));
     state.dirty = false;
     state.exported = false;
     state.baselineEffects = new Map();
