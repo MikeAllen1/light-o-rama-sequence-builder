@@ -2705,7 +2705,10 @@
     markers.addEventListener("pointerdown", handleMarkerPointerDown);
     markers.addEventListener("pointermove", handleMarkerPointerMove);
     markers.addEventListener("pointerup", handleMarkerPointerUp);
-    markers.addEventListener("pointercancel", () => { state.reviewDrag = null; });
+    markers.addEventListener("pointercancel", () => {
+      state.reviewDrag = null;
+      if (state.sequence) drawMarkers(Number(markers.width), state.pxPerSecond);
+    });
     markers.addEventListener("dblclick", handleMarkerDoubleClick);
     window.addEventListener("beforeunload", (event) => {
       if (state.dirty || state.reviewDirty) event.preventDefault();
@@ -4883,15 +4886,22 @@
       if (state.audioFile && state.audioBuffer) analyzeSelectedAudio(state.audioFile);
     });
     $("playButton").addEventListener("click", async () => {
-      if (!state.audioFile) return;
+      const requestedFile = state.audioFile;
+      if (!requestedFile) return;
       if (audio.paused) {
         try {
           await audio.play();
+          // The user may have stopped playback or replaced the song while the
+          // browser was resolving play(). Never let that stale continuation
+          // restore the playing icon or animation.
+          if (audio.paused || state.audioFile !== requestedFile) return;
           $("playButton").textContent = "Ⅱ";
           cancelAnimationFrame(state.animationFrame);
           state.animationFrame = requestAnimationFrame(tickPlayback);
         } catch (error) {
-          setBanner("Audio playback could not start: " + (error.message || String(error)), "warn");
+          if (state.audioFile === requestedFile) {
+            setBanner("Audio playback could not start: " + (error.message || String(error)), "warn");
+          }
         }
       } else {
         audio.pause();
