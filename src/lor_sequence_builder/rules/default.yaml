@@ -26,6 +26,13 @@ rules:
     # Face parts are recognized by these words in the prop name.
     outline_names: [outline]
     mouth_names: [mouth, lips, mustache, moustache]
+  face_parts_together:
+    severity: error
+    outline_names: [outline]
+    mouth_names: [mouth, lips, mustache, moustache]
+    rest_names: [closed, close, shut, rest, down]
+  shared_outlets_match:
+    severity: error
   mouths_only_during_vocals:
     severity: error
     mouth_names: [mouth, lips, mustache, moustache]

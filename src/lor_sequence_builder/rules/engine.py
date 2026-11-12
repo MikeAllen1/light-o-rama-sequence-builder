@@ -24,7 +24,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
-from lor_sequence_builder.channel_mapping import channel_layout_problem
+from lor_sequence_builder.channel_mapping import channel_layout_problem, parse_channel_grid
 from lor_sequence_builder.choreography import (
     EFFECT_KINDS,
     MOVEMENT_DIRECTIONS,
@@ -181,6 +181,8 @@ class DisplayProp:
     row_size: int | None
     figure: tuple[str, ...] = field(default_factory=tuple)
     row_id: str | None = None
+    # Each channel's controller address ("network/unit/circuit"); "" when unknown.
+    addresses: tuple[str, ...] = ()
 
     @property
     def sequenceable(self) -> bool:
@@ -191,6 +193,21 @@ class DisplayProp:
 class Display:
     props: dict[str, DisplayProp]
     groups: dict[str, tuple[str, ...]]
+
+    def shared_outlets(self) -> list[list[tuple[str, int]]]:
+        """Channels of different sequenceable props wired to the same controller
+        circuit (one outlet drawn as two props, such as a roofline that is also the
+        last channel of a mega tree). Each list is one outlet; they can only ever
+        show the same light."""
+        by_address: dict[str, list[tuple[str, int]]] = defaultdict(list)
+        for prop in self.props.values():
+            if not prop.sequenceable:
+                continue
+            for index, address in enumerate(prop.addresses):
+                if address:
+                    by_address[address].append((prop.prop_id, index))
+        return [sorted(found) for _, found in sorted(by_address.items())
+                if len({pid for pid, _ in found}) > 1]
 
     @property
     def sequenceable_channels(self) -> int:
@@ -226,6 +243,7 @@ def display_from_preview(preview: ET.Element) -> Display:
                 pid for name in c.figure for pid in name_to_ids.get(name, [])
                 if len(name_to_ids[name]) == 1
             ),
+            addresses=_addresses(element),
         )
     group_members: dict[str, list[str]] = defaultdict(list)
     for group in preview.findall("PropGroup"):
@@ -236,6 +254,15 @@ def display_from_preview(preview: ET.Element) -> Display:
             group_members[name].extend(m.get("id", "") for m in group.findall("member"))
     groups = {name: tuple(dict.fromkeys(ids)) for name, ids in group_members.items()}
     return Display(props, groups)
+
+
+def _addresses(element: ET.Element) -> tuple[str, ...]:
+    try:
+        grid = parse_channel_grid(element.get("ChannelGrid"))
+    except ValueError:
+        return ()
+    return tuple(f"{a.network.lower()}/{a.unit_id.lstrip('0') or '0'}/"
+                 f"{a.circuit.lstrip('0') or '0'}" for a in grid)
 
 
 def _channel_colors(c: PropClassification) -> tuple[str, ...]:
@@ -727,6 +754,92 @@ def _face_outline_with_mouth(ctx: _Context) -> str | None:
     return None
 
 
+def _channel_light(ctx: _Context) -> dict[tuple[str, int], list[Effect]]:
+    by: dict[tuple[str, int], list[Effect]] = defaultdict(list)
+    for e in ctx.valid_effects():
+        by[(e.prop_id, e.channel_index)].append(e)
+    return by
+
+
+def _level_at(effects: list[Effect], time: int) -> int:
+    for e in effects:
+        if e.start_centisecond <= time < e.end_centisecond:
+            if e.kind != "fade":
+                return e.start_intensity
+            span = e.end_centisecond - e.start_centisecond
+            return round(e.start_intensity + (e.end_intensity - e.start_intensity)
+                         * (time - e.start_centisecond) / span)
+    return 0
+
+
+def _first_difference(first: list[Effect], second: list[Effect]) -> int | None:
+    """The first moment two channels show different light (to within 2%)."""
+    marks = sorted({t for e in (*first, *second)
+                    for t in (e.start_centisecond, e.end_centisecond - 1)})
+    for t in marks:
+        if abs(_level_at(first, t) - _level_at(second, t)) > 2:
+            return t
+    return None
+
+
+def _shared_outlets_match(ctx: _Context) -> str | None:
+    outlets = ctx.display.shared_outlets()
+    if not outlets:
+        return "no two props share a controller circuit"
+    light = _channel_light(ctx)
+    for outlet in outlets:
+        first, *rest = outlet
+        for other in rest:
+            t = _first_difference(light.get(first, []), light.get(other, []))
+            if t is not None:
+                ctx.add(f"Shares its circuit with {ctx.display.props[first[0]].name} "
+                        f"(channel {first[1] + 1}) but shows different light",
+                        prop_id=other[0], channel_index=other[1], centisecond=t)
+    return None
+
+
+def _face_parts_together(ctx: _Context) -> str | None:
+    faces = _faces(ctx)
+    if not faces:
+        return "the preview has no singing faces"
+    outline_words = ctx.settings.params["outline_names"]
+    mouth_words = ctx.settings.params["mouth_names"]
+    rest_words = ctx.settings.params.get("rest_names", [])
+    applied = False
+    for face in faces:
+        mouths = {p for p in face if _named(ctx.display.props[p].name, mouth_words)}
+        outlines = {p for p in face - mouths if _named(ctx.display.props[p].name, outline_words)}
+        rests = {p for p in mouths if _named(ctx.display.props[p].name, rest_words)}
+        if not mouths or not outlines:
+            continue
+        applied = True
+        mouth_spans = {p: _merge((e.start_centisecond, e.end_centisecond)
+                                 for e in _effects_on(ctx, {p})) for p in mouths}
+        # Never two mouth positions at once.
+        names = sorted(mouths)
+        for i, a in enumerate(names):
+            for b in names[i + 1:]:
+                for x0, x1 in mouth_spans[a]:
+                    hit = next(((max(x0, y0)) for y0, y1 in mouth_spans[b]
+                                if y0 < x1 and x0 < y1), None)
+                    if hit is not None:
+                        ctx.add(f"Two mouth positions are on at once ("
+                                f"{ctx.display.props[a].name} and "
+                                f"{ctx.display.props[b].name})", prop_id=a, centisecond=hit)
+                        break
+        # With a resting mouth, the face is never shown without a mouth.
+        if rests:
+            any_mouth = _merge(span for spans in mouth_spans.values() for span in spans)
+            for e in _effects_on(ctx, outlines):
+                gap = _first_gap(any_mouth, e.start_centisecond, e.end_centisecond)
+                if gap is not None:
+                    ctx.add("Face outline is on with no mouth (light the resting mouth "
+                            "with it)", e, centisecond=gap)
+    if not applied:
+        return "no face in the preview has both a separate outline and mouth prop"
+    return None
+
+
 def _mouths_only_during_vocals(ctx: _Context) -> str | None:
     mouth_words = ctx.settings.params["mouth_names"]
     rest_words = ctx.settings.params.get("rest_names", [])
@@ -836,6 +949,8 @@ _BUILT_IN: dict[str, _Check] = {
     "chases_follow_layout": _chases_follow_layout,
     "falls_go_down": _falls_go_down,
     "face_outline_with_mouth": _face_outline_with_mouth,
+    "face_parts_together": _face_parts_together,
+    "shared_outlets_match": _shared_outlets_match,
     "mouths_only_during_vocals": _mouths_only_during_vocals,
     "single_color_only_where_possible": _single_color_only_where_possible,
     "motion_stops_at_hard_stops": _motion_stops_at_hard_stops,
@@ -957,6 +1072,21 @@ def _quiet_during(ctx: _Context, req: Requirement, props: list[str]) -> str | No
     return None
 
 
+def _light_whole(ctx: _Context, req: Requirement, props: list[str]) -> str | None:
+    light = _channel_light(ctx)
+    multi = [p for p in props if ctx.display.props[p].channel_count > 1]
+    if not multi:
+        return "none of these props has more than one channel"
+    for pid in multi:
+        for channel in range(1, ctx.display.props[pid].channel_count):
+            t = _first_difference(light.get((pid, 0), []), light.get((pid, channel), []))
+            if t is not None:
+                ctx.add(f"Channel {channel + 1} differs from channel 1; this prop lights "
+                        "whole", prop_id=pid, channel_index=channel, centisecond=t)
+                break
+    return None
+
+
 def _move_direction(ctx: _Context, req: Requirement, props: list[str]) -> str | None:
     kind = req.params.get("movement", "chase")
     chosen = set(props)
@@ -981,6 +1111,7 @@ _REQUIREMENTS: dict[str, Callable[[_Context, Requirement, list[str]], str | None
     "max_intensity": _max_intensity,
     "quiet_during": _quiet_during,
     "move_direction": _move_direction,
+    "light_whole": _light_whole,
 }
 
 
@@ -994,6 +1125,7 @@ def describe_requirement(req: Requirement) -> str:
         "quiet_during": "stay dark during " + ", ".join(req.params.get("sections", [])),
         "move_direction": f"{req.params.get('movement', 'chase')} "
                           f"{str(req.params.get('direction', '')).replace('_', ' ')}",
+        "light_whole": "light whole (every channel the same, never one side alone)",
     }[req.type]
     chosen = req.props.describe()
     title = f"{chosen[:1].upper()}{chosen[1:]} {words}"

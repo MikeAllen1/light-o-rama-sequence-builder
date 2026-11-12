@@ -3717,7 +3717,8 @@
     keep_on: "Keep on all song",
     never_use: "Never use",
     quiet_during: "Keep dark during",
-    max_intensity: "Limit brightness to"
+    max_intensity: "Limit brightness to",
+    light_whole: "Light whole (every channel together, never one side alone)"
   };
 
   const show = { token: null, summary: null, audioFile: null, analysis: null, raw: [],
