@@ -24,7 +24,7 @@
       <button id="yardButton" class="tool-button" type="button" aria-pressed="false" title="Watch the show on a drawing of your yard">Yard view</button>
       <label class="tool-button">
         <span>Open sequence</span>
-        <input id="sequenceFile" type="file" accept=".loredit,.xml,application/xml,text/xml">
+        <input id="sequenceFile" type="file" accept=".loredit,.lms,.xml,application/xml,text/xml">
       </label>
       <label class="tool-button">
         <span>Open audio</span>
@@ -78,7 +78,7 @@
               <button id="welcomeNewShow" class="tool-button primary large" type="button">Build a show</button>
               <button id="watchDemo" class="tool-button large" type="button">Watch a demo show</button>
               <span class="hero-or">or open a
-                <label class="link-button">sequence<input id="welcomeSequenceFile" type="file" accept=".loredit,.xml,application/xml,text/xml"></label>
+                <label class="link-button">sequence<input id="welcomeSequenceFile" type="file" accept=".loredit,.lms,.xml,application/xml,text/xml"></label>
                 and its
                 <label class="link-button">audio<input id="welcomeAudioFile" type="file" accept="audio/*,.mp3,.mp4,.wav,.flac,.m4a,.ogg,.opus"></label>
               </span>
@@ -143,9 +143,9 @@
       <ol class="show-steps">
         <li class="show-step">
           <h2><span class="step-number">1</span>Your display</h2>
-          <p>The S6 preview (.lorprev) for your yard. The program reads what each prop is from it.</p>
+          <p>The S5/S6 preview (.lorprev) for your yard, or with S4, one of your sequences (.lms). The program reads what each prop is from it.</p>
           <label class="tool-button primary"><span>Choose preview</span>
-            <input id="showDisplayFile" type="file" accept=".lorprev,.xml,application/xml,text/xml"></label>
+            <input id="showDisplayFile" type="file" accept=".lorprev,.lms,.xml,application/xml,text/xml"></label>
           <div id="displayStatus" class="step-status" role="status" aria-live="polite"></div>
           <div class="test-actions">
             <button id="makeTest" class="tool-button" type="button" disabled title="A short sequence that lights every prop in turn, to check wiring before a full show">10-second display test</button>

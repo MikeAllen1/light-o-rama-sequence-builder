@@ -41,6 +41,7 @@ from typing import Any
 from lor_sequence_builder import recent_shows
 from lor_sequence_builder.audio_analysis import analyze_audio
 from lor_sequence_builder.generate import generate_show
+from lor_sequence_builder.lms import LmsError, display_from_lms, parse_lms, preview_bytes
 from lor_sequence_builder.lorprev import read_lorprev
 from lor_sequence_builder.planner import LEVEL_NAMES, display_has_mouths
 from lor_sequence_builder.pulse import preview_element
@@ -74,6 +75,11 @@ MAX_BATCH_SONGS = 40
 
 class ShowBuildError(ValueError):
     """Raised when a step of building a show cannot be done; the message is for the user."""
+
+
+def _sequence_suffix(display_path: Path) -> str:
+    """S4 displays (.lms) make S4 sequences; S5/S6 previews make .loredit sequences."""
+    return ".lms" if display_path.suffix.lower() == ".lms" else ".loredit"
 
 
 @dataclass
@@ -219,14 +225,29 @@ class ShowSessions:
     def start(self, payload: bytes, file_name: str) -> dict[str, Any]:
         folder = tempfile.TemporaryDirectory(prefix="lor-new-show-")
         try:
+            s4 = Path(file_name).suffix.lower() == ".lms"
             preview_path = Path(folder.name) / "display.lorprev"
-            preview_path.write_bytes(payload)
+            if s4:
+                # An S4 sequence is the display: its channels become the props, and
+                # the show is written back as an S4 sequence with the same channels.
+                try:
+                    lms_display = display_from_lms(parse_lms(payload, Path(file_name).name),
+                                                   Path(file_name).stem or "S4 display")
+                except LmsError as exc:
+                    raise ShowBuildError(f"{exc}. Choose one of your S4 sequences (.lms) or "
+                                         "an S5/S6 preview (.lorprev).") from exc
+                preview_path.write_bytes(preview_bytes(lms_display))
+            else:
+                preview_path.write_bytes(payload)
             try:
                 preview = preview_element(read_lorprev(preview_path))
                 display = display_from_preview(preview)
             except (ValueError, OSError) as exc:
                 raise ShowBuildError(f"This preview could not be read ({exc}). Choose the "
                                      ".lorprev file exported from S6's Preview Editor.") from exc
+            if s4:
+                preview_path = Path(folder.name) / "display.lms"
+                preview_path.write_bytes(payload)
             name = preview.get("Name") or Path(file_name).stem or "Display"
             session = _Session(secrets.token_urlsafe(18), folder, preview_path, display,
                                _display_key(preview, payload), name)
@@ -372,6 +393,9 @@ class ShowSessions:
         from lor_sequence_builder.display_test import build_display_test
 
         with self.locked(token) as session:
+            if session.preview_path.suffix.lower() == ".lms":
+                raise ShowBuildError("The display test is made for S5/S6 displays. With an S4 "
+                                     "sequence, build a show and play it in the S4 Sequencer.")
             folder = session.path / ("test-" + secrets.token_hex(6))
             name = f"{session.display_name} - display test"
             try:
@@ -426,7 +450,7 @@ class ShowSessions:
                         note = ("Singing faces need the vocals add-on (uv sync --extra vocals); "
                                 "the mouths stay still in this show.")
                 stem = file_stem(session.audio_name, "show")
-                output = run / f"{stem} (generated).loredit"
+                output = run / f"{stem} (generated){_sequence_suffix(session.preview_path)}"
                 try:
                     show = generate_show(session.preview_path, output, rule_set,
                                          analysis_path=session.analysis_path,
@@ -511,7 +535,7 @@ class ShowSessions:
                                                                  "Requirements"),
                                        encoding="utf-8", newline="\n")
                     profiles = (profile,)
-                output = work / f"{unique} (generated).loredit"
+                output = work / f"{unique} (generated){_sequence_suffix(session.preview_path)}"
                 entry: dict[str, Any] = {"stem": unique, "file_name": name,
                                          "duration": (report.get("audio") or {}).get("duration_seconds")}
                 try:
@@ -551,8 +575,12 @@ class ShowSessions:
                 for entry in session.batch:
                     lines.append(f"{entry['file_name']}: " + (
                         f"{entry['show']}" if entry.get("ok") else "not built (rules failed)"))
-                lines += ["", "Copy each song into S6's audio folder with the same name, then",
-                          "open its .loredit in the S6 Sequencer."]
+                if _sequence_suffix(session.preview_path) == ".lms":
+                    lines += ["", "Copy each song into your S4 audio folder with the same name,",
+                              "then open its .lms in the S4 Sequencer."]
+                else:
+                    lines += ["", "Copy each song into S6's audio folder with the same name, then",
+                              "open its .loredit in the S6 Sequencer."]
                 archive.writestr("Batch - read me.txt", "\r\n".join(lines) + "\r\n")
             name = _safe_name(session.display_name) + " shows.zip"
             return {"zip_name": name, "count": len(shows),

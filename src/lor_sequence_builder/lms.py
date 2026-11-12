@@ -326,8 +326,13 @@ def display_from_lms(document: LmsDocument, display_name: str) -> LmsDisplay:
     Channels that are not LOR channels with a unit and circuit (dummy, DMX, or
     unassigned channels) are listed as excluded; they stay in the output unchanged.
     """
+    # Every S4 sequence of the same display has the same channels, so they share an
+    # id: requirements remembered for one song apply to the next.
+    identity = "\n".join(
+        f"{c.network or 'Regular'},{c.unit},{c.circuit},{c.name}"
+        for c in sorted(document.channels, key=lambda c: c.saved_index) if c.is_lor)
     preview = ET.Element("PreviewClass", {
-        "id": str(uuid.uuid5(_NAMESPACE, "preview/" + display_name)),
+        "id": str(uuid.uuid5(_NAMESPACE, "preview/" + identity)),
         "Name": display_name, "Revision": "0", "EmbedBackgrounds": "False",
         "Brightness": "5",
     })

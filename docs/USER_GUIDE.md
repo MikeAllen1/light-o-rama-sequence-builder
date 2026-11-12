@@ -5,8 +5,9 @@ This guide is for someone with a Light-O-Rama S6 display who wants a show for a 
 ## What you need
 
 - Your display's **S6 preview file** (`.lorprev`). This is the only description of your yard the program uses: every prop, its shape, its channels and where it stands.
+- **With S4** (which has no previews): one of your own S4 sequences (`.lms`) instead. Any song you have sequenced for the display will do; only its channels are used. Each channel becomes a prop, channel groups are kept, and the show is saved as a new `.lms` with exactly the same channels. Name channels plainly ("Arch 3", "Mini Tree 2", "Roof") so the program can tell what they are. The 10-second display test is S5/S6 only.
 - The **song** (MP3, M4A, WAV, FLAC, OGG and other common formats).
-- **S6** to play the result, and to fine-tune it if you like.
+- **S4, S5 or S6** to play the result, and to fine-tune it if you like. S5 previews and sequences work exactly like S6's.
 
 Nothing is uploaded anywhere. The program runs on your computer and reads your files only when you choose them.
 
