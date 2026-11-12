@@ -39,7 +39,7 @@ def test_verses_choruses_and_the_bridge_are_found(song: dict[str, Any]) -> None:
     truth = [(name, round(start)) for name, start in part_starts()]
     assert found == truth, found
     # Parts that return share a number; the bridge has its own.
-    parts = {s.label: set() for s in plan.sections}
+    parts: dict[str, set[int | None]] = {s.label: set() for s in plan.sections}
     for s in plan.sections:
         parts[s.label].add(s.part)
     assert len(parts["chorus"]) == 1 and len(parts["verse"]) == 1

@@ -165,9 +165,116 @@ def analyze_vocals(vocal_path: str | Path, json_output: str | Path, source: str)
 
 MAX_VOCALS_JSON_BYTES = 5 * 1024 * 1024
 MAX_VOCAL_EVENTS = 100_000
+# Words closer than this belong to one sung line (the face stays on between them).
+LINE_GAP_SECONDS = 0.6
+# Each sung syllable leaves this long, at its end, for the mouth to close.
+CLOSE_SECONDS = 0.04
 
 
-def load_vocals(path: str | Path) -> dict[str, Any]:
+def _syllable_count(word: str) -> int:
+    """Rough syllables in an English word: groups of vowels, a silent final e."""
+    letters = "".join(ch for ch in word.lower() if ch.isalpha())
+    if not letters:
+        return 1
+    groups = 0
+    previous = False
+    for ch in letters:
+        vowel = ch in "aeiouy"
+        if vowel and not previous:
+            groups += 1
+        previous = vowel
+    if letters.endswith("e") and not letters.endswith(("le", "ee")) and groups > 1:
+        groups -= 1
+    return max(1, min(groups, 6))
+
+
+def _words_of(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Timed words from a WhisperX result (segments with words, or word_segments)."""
+    words: list[dict[str, Any]] = []
+    for segment in data.get("segments") or []:
+        if not isinstance(segment, dict):
+            continue
+        for word in segment.get("words") or []:
+            if isinstance(word, dict):
+                words.append({**word, "speaker": word.get("speaker", segment.get("speaker"))})
+    if not words:
+        words = [w for w in data.get("word_segments") or [] if isinstance(w, dict)]
+    timed = []
+    for word in words:
+        start, end = word.get("start"), word.get("end")
+        if (isinstance(start, int | float) and isinstance(end, int | float)
+                and not isinstance(start, bool) and not isinstance(end, bool)
+                and math.isfinite(float(start)) and math.isfinite(float(end))
+                and 0 <= start < end):
+            timed.append({"word": str(word.get("word", "")), "start": float(start),
+                          "end": float(end), "speaker": word.get("speaker")})
+        if len(timed) > MAX_VOCAL_EVENTS:
+            raise VocalAnalysisError("The word file has too many words")
+    return sorted(timed, key=lambda w: w["start"])
+
+
+def is_word_file(data: Any) -> bool:
+    return isinstance(data, dict) and ("segments" in data or "word_segments" in data) \
+        and data.get("schema_version") != VOCALS_SCHEMA_VERSION
+
+
+def singers(data: dict[str, Any]) -> list[tuple[str, int]]:
+    """The speakers a word file names, with how many words each sings, most first."""
+    counts: dict[str, int] = {}
+    for word in _words_of(data):
+        if word["speaker"]:
+            counts[str(word["speaker"])] = counts.get(str(word["speaker"]), 0) + 1
+    return sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+
+
+def vocals_from_words(data: dict[str, Any], singer: str | None = None,
+                      source: str = "word file") -> dict[str, Any]:
+    """A vocal analysis from a WhisperX word file: the face sings exactly the words of
+    the chosen singer (by default the one with the most words; every word when the
+    file names no speakers), one mouth opening per syllable."""
+    words = _words_of(data)
+    if not words:
+        raise VocalAnalysisError("The word file has no timed words (expected WhisperX "
+                                 "output with word timings)")
+    named = singers(data)
+    if singer is None and named:
+        singer = named[0][0]
+    if singer is not None:
+        if singer not in {name for name, _ in named}:
+            raise VocalAnalysisError(f"The word file has no singer {singer!r}; it has: "
+                                     + ", ".join(name for name, _ in named))
+        # Words with no speaker label usually belong to the main voice.
+        words = [w for w in words if w["speaker"] in (singer, None)]
+    regions: list[list[float]] = []
+    syllables: list[dict[str, Any]] = []
+    for word in words:
+        if regions and word["start"] - regions[-1][1] <= LINE_GAP_SECONDS:
+            regions[-1][1] = max(regions[-1][1], word["end"])
+        else:
+            regions.append([word["start"], word["end"]])
+        count = _syllable_count(word["word"])
+        length = (word["end"] - word["start"]) / count
+        for k in range(count):
+            a = word["start"] + k * length
+            b = a + length - min(CLOSE_SECONDS, length / 3)
+            if b - a >= MIN_SYLLABLE_SECONDS / 2:
+                syllables.append({"start": round(a, 3), "end": round(b, 3), "strength": 0.8})
+    duration = max(float(data.get("duration_seconds") or 0), words[-1]["end"] + 1)
+    return {
+        "schema_version": VOCALS_SCHEMA_VERSION,
+        "source": source,
+        "file_name": "",
+        "duration_seconds": round(min(duration, 1800.0), 3),
+        "method": "word timings from a word file" + (f", singer {singer}" if singer else ""),
+        "limitations": ["Syllables within a word are spread evenly over the word."],
+        "regions": [{"start": round(a, 3), "end": round(b, 3)} for a, b in regions],
+        "syllables": syllables,
+    }
+
+
+def load_vocals(path: str | Path, singer: str | None = None) -> dict[str, Any]:
+    """A vocal analysis JSON, or a WhisperX word file (sung by ``singer``, by default
+    the one with the most words)."""
     source = Path(path)
     try:
         if source.stat().st_size > MAX_VOCALS_JSON_BYTES:
@@ -175,8 +282,11 @@ def load_vocals(path: str | Path) -> dict[str, Any]:
         data = json.loads(source.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, ValueError) as exc:
         raise VocalAnalysisError(f"Cannot read vocal analysis: {path}") from exc
+    if is_word_file(data):
+        data = vocals_from_words(data, singer, Path(path).name)
     if not isinstance(data, dict) or data.get("schema_version") != VOCALS_SCHEMA_VERSION:
-        raise VocalAnalysisError(f"Unsupported vocal analysis; expected {VOCALS_SCHEMA_VERSION}")
+        raise VocalAnalysisError(f"Unsupported vocal analysis; expected {VOCALS_SCHEMA_VERSION} "
+                                 "or a WhisperX word file")
     duration = data.get("duration_seconds")
     if (isinstance(duration, bool) or not isinstance(duration, int | float)
             or not math.isfinite(float(duration)) or not 0 < float(duration) <= 1800):

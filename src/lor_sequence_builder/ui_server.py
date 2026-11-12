@@ -40,10 +40,11 @@ _MAX_EXPORT_BYTES = 4 * MAX_LOREDIT_BYTES + 1024 * 1024
 _MAX_JSON_BYTES = 256 * 1024
 # Shows being built from the browser (preview, song, requirements, generate).
 SHOWS = ShowSessions()
+MAX_WORDS_BYTES = 5 * 1024 * 1024
 ADDS = AddSessions()
 _SHOW_STEPS = {"/api/show/start", "/api/show/audio", "/api/show/requirements",
                "/api/show/generate", "/api/show/test", "/api/show/batch",
-               "/api/show/batch-zip", "/api/show/batch-clear"}
+               "/api/show/batch-zip", "/api/show/batch-clear", "/api/show/words"}
 
 
 def _looks_like_mp3(data: bytes) -> bool:
@@ -464,6 +465,11 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
                 if payload is None:
                     return
                 self._send_json(200, SHOWS.start(payload, name))
+            elif path == "/api/show/words":
+                payload = self._read_body("application/json", MAX_WORDS_BYTES, "Word file")
+                if payload is None:
+                    return
+                self._send_json(200, SHOWS.add_words(token, payload))
             elif path == "/api/show/batch":
                 payload = self._read_body("application/octet-stream", _MAX_UPLOAD_BYTES,
                                           "Audio")

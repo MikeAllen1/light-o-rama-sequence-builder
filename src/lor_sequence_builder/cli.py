@@ -209,7 +209,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     generate.add_argument(
         "--vocals",
-        help="vocals-only audio for singing faces (or a .vocals.json from an earlier run)",
+        help="vocals-only audio for singing faces, a .vocals.json from an earlier run, or "
+             "a WhisperX word file (.json) for lip-sync on the words",
+    )
+    generate.add_argument(
+        "--singer",
+        help="with a WhisperX word file: the speaker the faces sing (for example "
+             "SPEAKER_00); default: the one with the most words",
     )
     generate.add_argument(
         "--no-vocals", action="store_true",
@@ -457,7 +463,7 @@ def _generate(options: argparse.Namespace) -> int:
             music_filename=options.music_filename, beats_per_bar=options.beats_per_bar,
             vocals_path=options.vocals, separate=False if options.no_vocals else None,
             progress=print, vocal_beats=options.vocal_beats, style=_chosen_style(options),
-            lyrics_path=options.lyrics,
+            lyrics_path=options.lyrics, singer=options.singer,
         )
     except RulesFailedError as failed:
         print(failed.report.format_text())
