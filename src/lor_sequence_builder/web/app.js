@@ -3938,8 +3938,8 @@
   }
 
   async function sendRequirements(raw, text) {
-    if (!show.token || show.requirementsPending || show.batchRunning || show.generationPending ||
-        show.displayPending || show.testPending) return;
+    if (!show.token || show.requirementsPending || show.batchRunning || show.batchZipPending ||
+        show.generationPending || show.displayPending || show.testPending) return;
     const requestId = ++show.requirementsRequestId;
     show.requirementsPending = true;
     setRequirementControlsLocked(true);
@@ -3950,15 +3950,19 @@
         JSON.stringify(text ? { requirements: raw, text } : { requirements: raw }),
         "application/json");
       if (requestId !== show.requirementsRequestId || result.stale) return;
+      const requirementsChanged = JSON.stringify(show.raw) !== JSON.stringify(result.raw);
       show.raw = result.raw;
-      if (text && $("plainRequirements").value.trim() === text.trim()) {
+      if (text && !result.problems.length &&
+          $("plainRequirements").value.trim() === text.trim()) {
         $("plainRequirements").value = "";
       }
-      invalidateGeneratedResult();
-      if (show.batchReady) {
-        show.batchReady = false;
-        $("saveBatch").disabled = true;
-        showMessage("batchStatus", "Requirements changed. Rebuild the playlist before saving it.", "warn");
+      if (requirementsChanged) {
+        invalidateGeneratedResult();
+        if (show.batchReady) {
+          show.batchReady = false;
+          $("saveBatch").disabled = true;
+          showMessage("batchStatus", "Requirements changed. Rebuild the playlist before saving it.", "warn");
+        }
       }
       renderRequirements(result.requirements, result.problems);
     } catch (error) {
@@ -3999,8 +4003,8 @@
   }
 
   async function addRequirement() {
-    if (show.requirementsPending || show.batchRunning || show.generationPending ||
-        show.displayPending || show.testPending) return;
+    if (show.requirementsPending || show.batchRunning || show.batchZipPending ||
+        show.generationPending || show.displayPending || show.testPending) return;
     const kind = $("requirementKind").value;
     const chosen = Array.from($("requirementProps").selectedOptions).map((item) => item.value);
     if (!chosen.length) {
@@ -4359,7 +4363,11 @@
     $("addRequirement").addEventListener("click", addRequirement);
     $("translateRequirements").addEventListener("click", () => {
       const text = $("plainRequirements").value.trim();
-      if (text) sendRequirements(show.raw, text);
+      if (!text) {
+        showMessage("requirementStatus", "Enter a requirement in plain English before translating it.", "warn");
+        return;
+      }
+      sendRequirements(show.raw, text);
     });
     $("generateShow").addEventListener("click", generateShow);
     $("makeTest").addEventListener("click", makeDisplayTest);
