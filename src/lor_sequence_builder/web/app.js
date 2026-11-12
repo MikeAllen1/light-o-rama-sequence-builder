@@ -4198,6 +4198,19 @@
   async function runBatch(files) {
     if (!show.token || !files.length || show.batchRunning || show.batchZipPending || show.generationPending ||
         show.testPending || show.displayPending || show.audioPending || show.requirementsPending) return;
+    const seenNames = new Set();
+    const duplicateNames = new Set();
+    for (const file of files) {
+      const key = file.name.toLowerCase();
+      if (seenNames.has(key)) duplicateNames.add(file.name);
+      seenNames.add(key);
+    }
+    if (duplicateNames.size) {
+      showMessage("batchStatus", "The playlist contains duplicate audio filenames: " +
+        Array.from(duplicateNames).join(", ") +
+        ". Rename the files before building so S6 can distinguish the songs.", "error");
+      return;
+    }
     const batchToken = show.token;
     const batchMeter = $("meterSelect").value;
     const batchStyle = chosenStyle() || "";
