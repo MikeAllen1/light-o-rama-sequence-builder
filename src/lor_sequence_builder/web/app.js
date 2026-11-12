@@ -4221,6 +4221,7 @@
     show.batchZipPending = true;
     setShowConfigurationLocked(true);
     setStepEnabled();
+    showMessage("batchStatus", "Packaging the completed shows and reports…");
     try {
       const result = await postShow("/api/show/batch-zip?token=" + encodeURIComponent(token),
         "{}", "application/json");
