@@ -2446,6 +2446,8 @@
       applyChanges(preview.label, preview.changes, Array.from(preview.selected));
     } else {
       if (preview && preview.error) setBanner("Not changed: " + preview.error + ".", "warn");
+      else if (!preview) setBanner("Not changed: the drag did not produce a valid effect.", "warn");
+      else setBanner("No change was made.", "");
       drawTracks(Number($("tracksCanvas").width), state.pxPerSecond);
     }
   }
@@ -2470,10 +2472,12 @@
   }
 
   function handleEditKey(event) {
-    if (!state.sequence || $("editor").classList.contains("hidden")) return;
+    if (!state.sequence || $("editor").classList.contains("hidden") ||
+        !$("viewer").classList.contains("hidden")) return;
     const target = event.target;
     if (target && ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
     const mod = event.ctrlKey || event.metaKey;
+    if (target && ["BUTTON", "A"].includes(target.tagName) && !mod) return;
     const key = event.key.toLowerCase();
     let handled = true;
     if (mod && key === "z" && !event.shiftKey) undoEdit();
@@ -2744,7 +2748,9 @@
     canvas.addEventListener("pointermove", handleTrackPointerMove);
     canvas.addEventListener("pointerup", handleTrackPointerUp);
     canvas.addEventListener("pointercancel", () => {
+      const cancelled = Boolean(state.drag);
       state.drag = null;
+      if (cancelled) setBanner("Drag cancelled; no sequence changes were made.", "warn");
       if (state.sequence) drawTracks(Number(canvas.width), state.pxPerSecond);
     });
     canvas.addEventListener("dblclick", handleTrackDoubleClick);
@@ -2760,7 +2766,9 @@
     markers.addEventListener("pointermove", handleMarkerPointerMove);
     markers.addEventListener("pointerup", handleMarkerPointerUp);
     markers.addEventListener("pointercancel", () => {
+      const cancelled = Boolean(state.reviewDrag);
       state.reviewDrag = null;
+      if (cancelled) setBanner("Marker drag cancelled; no music-review changes were made.", "warn");
       if (state.sequence) drawMarkers(Number(markers.width), state.pxPerSecond);
     });
     markers.addEventListener("dblclick", handleMarkerDoubleClick);
@@ -3050,7 +3058,10 @@
       replacement = movedEvent(hit.event, drag.preview);
     }
     const after = replaceEvent(hit.target, hit.event, replacement);
-    if (!after) return;
+    if (!after) {
+      setBanner("Not changed: the selected marker is no longer available.", "warn");
+      return;
+    }
     applyMusic((hit.edge ? "Trimmed a lyric line" : "Moved a " + hit.target.name.toLowerCase()) +
       " to " + formatCentiseconds(drag.preview * 100), [musicChange(hit.target, after)],
     { kind: hit.lane.kind, event: replacement });
