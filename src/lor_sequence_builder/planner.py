@@ -149,9 +149,18 @@ def _music(analysis: dict[str, Any]) -> _Music:
         notes.append(f"No usable beat grid; planned on a steady {FALLBACK_BPM} BPM grid instead.")
     beat_set = set(beats)
     downbeats = [d for d in _times(analysis, "downbeats") if d in beat_set]
+    # The analyzer records its configured meter in the report. Preserve that
+    # setting when its downbeat phase is unavailable instead of silently
+    # treating every song as 4/4.
+    configuration = analysis.get("configuration", {})
+    configured_meter = configuration.get("beats_per_bar", 4) if isinstance(
+        configuration, dict) else 4
+    beats_per_bar = configured_meter if configured_meter in (3, 4) else 4
     if len(downbeats) < 2:
-        downbeats = beats[::4]
-        notes.append("No usable bar starts; assumed a bar every four beats.")
+        downbeats = beats[::beats_per_bar]
+        notes.append(
+            f"No usable bar starts; assumed a bar every {beats_per_bar} beats."
+        )
     energy: list[tuple[int, float]] = []
     for frame in analysis.get("analysis", {}).get("energy", []):
         if isinstance(frame, dict) and isinstance(frame.get("rms"), int | float):
