@@ -157,7 +157,11 @@ def _music(analysis: dict[str, Any]) -> _Music:
     configuration = analysis.get("configuration", {})
     configured_meter = configuration.get("beats_per_bar", 4) if isinstance(
         configuration, dict) else 4
-    beats_per_bar = configured_meter if configured_meter in (3, 4) else 4
+    beats_per_bar = int(configured_meter) if (
+        isinstance(configured_meter, int | float)
+        and not isinstance(configured_meter, bool)
+        and configured_meter in (3, 4)
+    ) else 4
     if len(downbeats) < 2:
         phase = beats.index(downbeats[0]) % beats_per_bar if downbeats else 0
         downbeats = [beat for index, beat in enumerate(beats)
