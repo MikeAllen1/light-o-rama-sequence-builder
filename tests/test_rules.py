@@ -516,8 +516,12 @@ def test_everything_on_at_once_is_a_warning_outside_the_finale() -> None:
     report = _check(display, timeline)
     status, findings = _result(report, "not_everything_at_once")
     assert status == "failed" and report.ok  # a warning does not block the sequence
-    assert findings == [("at 0:00.00: 90% or more of the display is on for 15.0 s "
+    assert findings == [("at 0:00.00: 90% or more of the display is bright for 15.0 s "
                         "(limit 8.0 s); let some props rest")]
+    # A low glow under the whole yard is not everything at once.
+    glow = dataclasses.replace(timeline, effects=tuple(
+        dataclasses.replace(e, start_intensity=40, end_intensity=40) for e in blast))
+    assert _result(_check(display, glow), "not_everything_at_once")[0] == "passed"
     finale = dataclasses.replace(timeline, sections=(Section("Finale", 0, 1500),))
     assert _result(_check(display, finale), "not_everything_at_once")[0] == "passed"
     # A profile can make it an error.

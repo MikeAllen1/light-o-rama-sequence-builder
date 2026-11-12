@@ -69,6 +69,9 @@ def _plan(display: Display) -> tuple[Choreography, list[tuple[int, int, str]], l
     usable = {pid for pid, p in display.props.items() if p.sequenceable}
     faces = _faces(display, rules, usable)
     mouths = {pid for face in faces for pid in face.mouths.values()}
+    # Outside its own test a face shows its resting mouth whenever it is lit.
+    follows = {outline: face.mouths["closed"] for face in faces if "closed" in face.mouths
+               for outline in face.outline}
     effects: list[Effect] = []
     schedule: list[tuple[int, int, str]] = []
     ticks: list[int] = []
@@ -105,7 +108,9 @@ def _plan(display: Display) -> tuple[Choreography, list[tuple[int, int, str]], l
                     vocal_regions.append((start, end))
                     width = (end - start) // len(shapes)
                     for k, pid in enumerate(shapes):
-                        light(pid, start + k * width, start + (k + 1) * width)
+                        # The last shape runs to the end: the face always shows a mouth.
+                        light(pid, start + k * width,
+                              end if k == len(shapes) - 1 else start + (k + 1) * width)
             names = [p.name for p in members]
         else:
             for prop in members:
@@ -123,14 +128,18 @@ def _plan(display: Display) -> tuple[Choreography, list[tuple[int, int, str]], l
         for k, prop in enumerate(placed):
             start = _SWEEP[0] + min(k * step, _SWEEP[1] - _SWEEP[0] - 10)
             light(prop.prop_id, start, min(_SWEEP[1], start + max(20, 2 * step)))
+            if prop.prop_id in follows:
+                light(follows[prop.prop_id], start, min(_SWEEP[1], start + max(20, 2 * step)))
         schedule.append((_SWEEP[0], _SWEEP[1], "sweep from left to right: "
                          + ", ".join(p.name for p in placed)))
         ticks.append(_ALL[0])
         for prop in placed:
-            light(prop.prop_id, _ALL[0], _ALL[1])
-            for channel in range(prop.channel_count):
-                effects.append(Effect(prop.prop_id, channel, _ALL[1], TEST_CENTISECONDS - 5,
-                                      "fade", 100, 0, None, None))
+            for pid in (prop.prop_id, *([follows[prop.prop_id]] if prop.prop_id in follows
+                                        else [])):
+                light(pid, _ALL[0], _ALL[1])
+                for channel in range(display.props[pid].channel_count):
+                    effects.append(Effect(pid, channel, _ALL[1], TEST_CENTISECONDS - 5,
+                                          "fade", 100, 0, None, None))
         schedule.append((_ALL[0], TEST_CENTISECONDS, "everything on, then fade out"))
     sections = (Section("test", 0, TEST_CENTISECONDS),)
     return (Choreography(TEST_CENTISECONDS, tuple(effects), (), sections, (),

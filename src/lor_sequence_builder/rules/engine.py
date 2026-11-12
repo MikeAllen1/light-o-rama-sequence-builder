@@ -902,6 +902,17 @@ def _motion_stops_at_hard_stops(ctx: _Context) -> str | None:
     return None
 
 
+def _bright_part(e: Effect, bright: int) -> tuple[int, int] | None:
+    a, b = e.start_intensity, e.end_intensity
+    if a >= bright and b >= bright:
+        return (e.start_centisecond, e.end_centisecond)
+    if a < bright and b < bright:
+        return None
+    span = e.end_centisecond - e.start_centisecond
+    cross = e.start_centisecond + round(span * (bright - a) / (b - a))
+    return (e.start_centisecond, cross) if a >= bright else (cross, e.end_centisecond)
+
+
 def _not_everything_at_once(ctx: _Context) -> str | None:
     total = ctx.display.sequenceable_channels
     effects = [e for e in ctx.valid_effects() if _lit(e)]
@@ -910,9 +921,14 @@ def _not_everything_at_once(ctx: _Context) -> str | None:
     params = ctx.settings.params
     needed = max(1, math.ceil(params["max_share"] * total))
     limit = round(params["max_seconds"] * 100)
+    bright = params.get("bright", 80)
     by_channel: dict[tuple[str, int], list[tuple[int, int]]] = defaultdict(list)
     for e in effects:
-        by_channel[(e.prop_id, e.channel_index)].append((e.start_centisecond, e.end_centisecond))
+        # Only the part of an effect at or above ``bright`` counts: a yard glowing low
+        # with a few props flaring is not everything at once.
+        span = _bright_part(e, bright)
+        if span is not None:
+            by_channel[(e.prop_id, e.channel_index)].append(span)
     changes: dict[int, int] = defaultdict(int)
     for spans in by_channel.values():
         for start, end in _merge(spans):
@@ -934,7 +950,7 @@ def _not_everything_at_once(ctx: _Context) -> str | None:
     for start, end in _subtract(_merge(busy), _merge(allowed)):
         if end - start > limit:
             ctx.add(
-                f"{params['max_share']:.0%} or more of the display is on for "
+                f"{params['max_share']:.0%} or more of the display is bright for "
                 f"{(end - start) / 100:.1f} s (limit {limit / 100:.1f} s); let some props rest",
                 centisecond=start,
             )

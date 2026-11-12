@@ -33,6 +33,7 @@ deterministic: the same inputs give the same plan.
 
 from __future__ import annotations
 
+import bisect
 import dataclasses
 import itertools
 import math
@@ -1195,17 +1196,23 @@ class _Planner:
 
     def fill_up(self, pid: str, window: _Window, spans: list[tuple[int, int]],
                 intensity: int) -> None:
-        """A multi-segment prop fills segment by segment across each span, then clears.
-        Spans too short to fill (a big tree on the half beat) fill once a bar instead."""
+        """A multi-segment prop fills up across each span, a step on each sixteenth note
+        (several segments a step on a short span), then clears."""
         channels = list(self.constraints.channels[pid])
-        if any((b - a) // max(1, len(channels)) < 3 for a, b in spans):
-            spans = [(a, min(b, window.end)) for a, b in _bars(window)]
+        # Each segment steps on at least a sixteenth note, so the fill moves with the
+        # music instead of flickering up in a few hundredths of a second.
+        gaps = [y - x for x, y in itertools.pairwise(window.beats)]
+        sixteenth = max(3, (sorted(gaps)[len(gaps) // 2] if gaps else 50) // 4)
+        count = max(1, len(channels))
         for a, b in spans:
-            step = (b - a) // max(1, len(channels))
-            if step < 3:
+            # As many steps as the span has sixteenth notes (at most one per segment):
+            # a tall tree fills a few segments at a time on a short span.
+            steps = min(count, (b - a) // sixteenth)
+            if steps < 2:
                 continue
+            step = (b - a) // steps
             for i, ch in enumerate(channels):
-                self.canvas.put(pid, ch, a + i * step, b, "on", intensity,
+                self.canvas.put(pid, ch, a + (i * steps // count) * step, b, "on", intensity,
                                 color=self.color(pid, ch))
 
 
@@ -1351,10 +1358,18 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
         elif motion == "trade" and len(members) > 1:
             planner.trade(members, window, spans, intensity)
         else:
-            # Pulse: each hit ripples through the family in order across the yard.
+            # Pulse: each hit ripples through the family in order across the yard, a
+            # sixteenth note apart; in a big family the next four answer every other
+            # hit, so no two of them ever share a timeline.
+            gaps = [y - x for x, y in itertools.pairwise(window.beats)]
+            sixteenth = max(5, (sorted(gaps)[len(gaps) // 2] if gaps else 50) // 4)
             for i, pid in enumerate(members):
-                shifted = [(min(b - 5, a + i * RIPPLE_STEP), b) for a, b in spans]
-                planner.hits(pid, window, shifted, intensity)
+                shifted = [(min(b - 5, a + (i % 4) * sixteenth), b) for a, b in spans]
+                if i < 4:
+                    planner.hits(pid, window, shifted, intensity)
+                else:
+                    planner.hits(pid, window, shifted, intensity, every=2,
+                                 phase=(i // 4 + i) % 2)
     columns = [c for c in columns if c]
     if columns or bursts:
         step = style.fall_every[level]
@@ -1364,10 +1379,6 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
             times = list(window.beats[(-window.offset) % step::step])
         planner.falls(window, columns, times, gentle, reverse=flip, motion=snow.movement,
                       bursts=bursts)
-
-
-# A pulse ripples through a family this many centiseconds per prop.
-RIPPLE_STEP = 4
 
 
 def _multi_segment(planner: _Planner, pid: str) -> bool:
@@ -1948,6 +1959,107 @@ def _music_marks(analysis: dict[str, Any], music: _Music,
     return sorted(marks)
 
 
+# ---------------------------------------------------------------- glow
+
+# Props that hit together on the beat and decay to a glow, and props that sparkle.
+PULSE_ROLES = frozenset({"outline", "decor", "unknown", "mini_tree", "icicles",
+                         "singing_face"})
+BED_ROLES = frozenset({"arch", "snowflake", "mega_tree", "star"})
+# Where the song is this quiet (share of its loudest), the glow goes dark: a quiet
+# break reads as a blackout, not a dim yard.
+GLOW_QUIET = 0.2
+GLOW_QUIET_SPAN = 200
+
+
+def _low_spans(music: _Music, share: float, minimum: int) -> list[tuple[int, int]]:
+    loudest = max((v for _, v in music.energy), default=0.0)
+    spans: list[tuple[int, int]] = []
+    start: int | None = None
+    for time, value in music.energy:
+        if loudest and value <= share * loudest:
+            start = time if start is None else start
+        elif start is not None:
+            if time - start >= minimum:
+                spans.append((start, time))
+            start = None
+    if start is not None and music.duration - start >= minimum:
+        spans.append((start, music.duration))
+    return spans
+
+
+def _minus(gaps: list[tuple[int, int]], cut: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    for a, b in cut:
+        pieces = []
+        for x, y in gaps:
+            if b <= x or a >= y:
+                pieces.append((x, y))
+                continue
+            if x < a:
+                pieces.append((x, a))
+            if b < y:
+                pieces.append((b, y))
+        gaps = pieces
+    return gaps
+
+
+def _glow(planner: _Planner, canvas: _Canvas, window: _Window, props: list[str],
+          spec: tuple[int, int], dark: list[tuple[int, int]],
+          ramp: tuple[int, int] | None = None) -> None:
+    """Fill the time a prop is not leading with the style's glow. ``ramp`` fades the
+    glow in (0 to hold) or out (hold to 0) across the window instead."""
+    hit, hold = spec
+    beats = list(window.beats)
+    level = planner.sections[window.section_index].level
+    for pid in props:
+        role = planner.display.props[pid].role
+        for channel in planner.channels(pid, window.section_index):
+            key = (pid, channel)
+            color = planner.color(pid, channel)
+            for a, b in _minus(_free_gaps(canvas, key, window.start, window.end), dark):
+                if b - a < 20:
+                    continue
+                if ramp is not None:
+                    span = window.end - window.start
+                    first, last = ramp
+                    level_a = round(first + (last - first) * (a - window.start) / span)
+                    level_b = round(first + (last - first) * (b - window.start) / span)
+                    if max(level_a, level_b) > 0:
+                        canvas.put(pid, channel, a, b, "fade", max(1, level_a), level_b, color)
+                    continue
+                if role in BED_ROLES:
+                    canvas.put(pid, channel, a, b, "shimmer" if level == HIGH else "twinkle",
+                               hold, color=color)
+                    continue
+                if hit <= hold or role not in PULSE_ROLES:
+                    # A glow with no hit breathes gently, swelling once a bar.
+                    bars = [t for t in window.downbeats if a <= t < b - 20]
+                    cursor = a
+                    for k, t in enumerate(bars):
+                        if t > cursor:
+                            canvas.put(pid, channel, cursor, t, "on", hold, color=color)
+                        end = bars[k + 1] if k + 1 < len(bars) else b
+                        middle = t + (end - t) // 2
+                        top = min(100, hold + 20)
+                        canvas.put(pid, channel, t, middle, "fade", hold, top, color)
+                        canvas.put(pid, channel, middle, end, "fade", top, hold, color)
+                        cursor = end
+                    if cursor < b:
+                        canvas.put(pid, channel, cursor, b, "on", hold, color=color)
+                    continue
+                # Hit on each beat, decay to the glow by the next.
+                marks = [t for t in beats if a <= t < b - 10]
+                cursor = a
+                for k, t in enumerate(marks):
+                    if t > cursor:
+                        canvas.put(pid, channel, cursor, t, "on", hold, color=color)
+                    end = marks[k + 1] if k + 1 < len(marks) else b
+                    canvas.put(pid, channel, t, end, "fade", hit, hold, color)
+                    cursor = end
+                if cursor < b:
+                    canvas.put(pid, channel, cursor, b, "on", hold, color=color)
+
+
+
 def _free_gaps(canvas: _Canvas, key: tuple[str, int], start: int,
                end: int) -> list[tuple[int, int]]:
     gaps = []
@@ -1969,7 +2081,7 @@ def _fill_dead_air(planner: _Planner, canvas: _Canvas, music: _Music,
     """Light a calm base wherever the song plays but the yard is dark. Returns the
     stretches it filled. Each fill starts and ends on a beat."""
     effects = [e for items in canvas.effects.values() for e in items]
-    share = lit_share(effects, props, music.duration, step=10)
+    share = lit_share(effects, props, music.duration, step=10, weighted=False)
     dark = [s <= DEAD_SHARE and not any(a <= i * 10 < b for a, b in quiet)
             for i, s in enumerate(share)]
     filled: list[tuple[int, int]] = []
@@ -1997,6 +2109,98 @@ def _fill_dead_air(planner: _Planner, canvas: _Canvas, music: _Music,
             if lit:
                 filled.append((a, b))
     return filled
+
+
+# ---------------------------------------------------------------- one grid
+
+
+def _sixteenths(music: _Music, sections: list[PlannedSection]) -> list[int]:
+    """The song's sixteenth notes (each beat in four), plus its section and stop
+    edges: the one grid every effect starts and ends on."""
+    marks = {0, music.duration}
+    for a, b in itertools.pairwise(music.beats):
+        marks.update(a + (b - a) * k // 4 for k in range(4))
+    if music.beats:
+        marks.add(music.beats[-1])
+    for start, end in music.stops:
+        marks.update((start, end))
+    marks.update(s.start_centisecond for s in sections)
+    return sorted(t for t in marks if 0 <= t <= music.duration)
+
+
+def _to_grid(grid: list[int], time: int) -> int:
+    i = bisect.bisect_left(grid, time)
+    near = [grid[j] for j in (i - 1, i) if 0 <= j < len(grid)]
+    return min(near, key=lambda t: (abs(t - time), t)) if near else time
+
+
+def _on_one_grid(canvas: _Canvas, grid: list[int], skip: set[str]) -> None:
+    """Move every effect onto the song's sixteenth notes, so props that move
+    together start on exactly the same moment (as hand-made shows do) instead of a
+    few hundredths apart. Lip-sync keeps the singer's own timing, and a movement keeps
+    its own timing if snapping would change the order it reaches its props."""
+    def snapped(e: Effect) -> Effect | None:
+        a, b = _to_grid(grid, e.start_centisecond), _to_grid(grid, e.end_centisecond)
+        return dataclasses.replace(e, start_centisecond=a, end_centisecond=b) if b > a else None
+
+    keep_as_is: set[str] = set()
+    tagged: dict[str, list[tuple[str, Effect]]] = defaultdict(list)
+    for (pid, _), items in canvas.effects.items():
+        for e in items:
+            if e.movement_id is not None:
+                tagged[e.movement_id].append((pid, e))
+    for m in canvas.movements:
+        firsts: dict[str, int] = {}
+        before: dict[str, set[int]] = defaultdict(set)
+        after: dict[str, set[int]] = defaultdict(set)
+        vanishes = False
+        for pid, e in tagged.get(m.movement_id, []):
+            new = _to_grid(grid, e.start_centisecond)
+            firsts[pid] = min(firsts.get(pid, new), new)
+            before[pid].add(e.start_centisecond)
+            after[pid].add(new)
+            vanishes |= snapped(e) is None
+        order = [firsts[p] for p in m.prop_ids if p in firsts]
+        # A wipe across a prop's segments, or a chase across props, that the grid
+        # would squash keeps its own timing.
+        if vanishes or any(b <= a for a, b in itertools.pairwise(order)) or any(
+                len(after[p]) < len(before[p]) for p in before):
+            keep_as_is.add(m.movement_id)
+    for key, items in canvas.effects.items():
+        if key[0] in skip:
+            continue
+        moved: list[Effect] = []
+        for e in items:
+            if e.movement_id in keep_as_is:
+                moved.append(e)
+                continue
+            placed = snapped(e)
+            if placed is not None:
+                moved.append(placed)
+        moved.sort(key=lambda e: (e.start_centisecond, e.movement_id not in keep_as_is))
+        # Snapping never crosses neighbours, but an effect can now run into the next
+        # (or into a movement that kept its own timing): the movement wins, otherwise
+        # the earlier effect ends where the next begins.
+        kept: list[Effect] = []
+        for e in moved:
+            if kept and kept[-1].end_centisecond > e.start_centisecond:
+                last = kept[-1]
+                if last.movement_id in keep_as_is and e.movement_id not in keep_as_is:
+                    if e.end_centisecond <= last.end_centisecond:
+                        continue
+                    e = dataclasses.replace(e, start_centisecond=last.end_centisecond)
+                else:
+                    kept.pop()
+                    if e.start_centisecond > last.start_centisecond:
+                        kept.append(dataclasses.replace(
+                            last, end_centisecond=e.start_centisecond))
+            kept.append(e)
+        canvas.effects[key] = kept
+    canvas.movements = [
+        m if m.movement_id in keep_as_is else dataclasses.replace(
+            m, start_centisecond=min(_to_grid(grid, m.start_centisecond), m.start_centisecond),
+            end_centisecond=max(_to_grid(grid, m.end_centisecond), m.end_centisecond))
+        for m in canvas.movements]
 
 
 def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
@@ -2251,6 +2455,27 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
                 planner.light(pid, si, closing, max(closing + 10, fade_end), "fade", 100, 0)
 
     held = set(keep_spans) | singing
+    # The glow: props that are not leading stay lit and move by brightness, hitting
+    # together on the beat. Dark where the song goes quiet; it fades up through a
+    # quiet intro and, when the song does not end on hits, fades out over the last
+    # part. Nothing glows after the closing hits begin.
+    dark = _low_spans(music, GLOW_QUIET, GLOW_QUIET_SPAN)
+    if final_hits:
+        dark.append((final_hits[0], music.duration))
+    for window in windows:
+        section = sections[window.section_index]
+        spec = style.glow[section.level]
+        if spec is None:
+            continue
+        ramp = None
+        if window.section_index == 0 and section.label == "intro":
+            ramp = (0, spec[1])
+        elif window is last_window and not final_hits and section.level < HIGH:
+            ramp = (spec[1], 0)
+        props = sorted(p for p in active_in(window) - held
+                       if display.props[p].role in PULSE_ROLES)
+        _glow(planner, canvas, window, props, spec, dark, ramp)
+
     # Build-ups: the last phrase before a louder part rises from half brightness.
     for index, section in enumerate(sections[:-1]):
         if sections[index + 1].level <= section.level:
@@ -2350,6 +2575,7 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
     filled = _fill_dead_air(planner, canvas, music, windows, calm, usable, quiet)
     if filled:
         moments.extend(("calm_base", a) for a, _ in filled)
+    _on_one_grid(canvas, _sixteenths(music, sections), singing)
 
     if moments:
         counts: dict[str, int] = defaultdict(int)
