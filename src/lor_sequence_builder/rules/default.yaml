@@ -26,6 +26,13 @@ rules:
     # Face parts are recognized by these words in the prop name.
     outline_names: [outline]
     mouth_names: [mouth, lips, mustache, moustache]
+  face_parts_together:
+    severity: error
+    outline_names: [outline]
+    mouth_names: [mouth, lips, mustache, moustache]
+    rest_names: [closed, close, shut, rest, down]
+  shared_outlets_match:
+    severity: error
   mouths_only_during_vocals:
     severity: error
     mouth_names: [mouth, lips, mustache, moustache]
@@ -38,8 +45,10 @@ rules:
     severity: error
   not_everything_at_once:
     severity: warning
-    # Warn when at least this share of channels is on for longer than max_seconds.
+    # Warn when at least this share of channels is at or above ``bright`` percent for
+    # longer than max_seconds (a low glow under the show does not count).
     max_share: 0.9
+    bright: 80
     max_seconds: 8
     # Sections where everything on at once is the point.
     allow_sections: [finale]

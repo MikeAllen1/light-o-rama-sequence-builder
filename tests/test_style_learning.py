@@ -109,7 +109,7 @@ def test_a_quick_punchy_sequencer_gets_a_quick_punchy_style(tmp_path: Path) -> N
 
 def test_a_slow_soft_sequencer_gets_a_slow_soft_style(tmp_path: Path) -> None:
     habits = measure(write_loredit(tmp_path / "Ballad.loredit", flowing()))
-    assert habits.hold_beats >= 7 and habits.fade_share == 1 and habits.brightness == 60
+    assert habits.hold_beats == 4 and habits.fade_share == 1 and habits.brightness == 60
     style, changes = style_from_habits(habits)
     assert nearest(habits) == "elegant"
     assert style.soft == (True, True, True)

@@ -17,6 +17,7 @@ from lor_sequence_builder.rules import (
 )
 from lor_sequence_builder.rules.engine import Display, DisplayProp
 from tests.display_builders import DisplayBuilder
+from tests.style_helpers import leads_only
 from tests.test_planner import synthetic_analysis
 
 
@@ -81,7 +82,7 @@ def test_a_row_of_snowflakes_ripples_across_and_passes_the_rules() -> None:
     display = _flakes("Porch", [(x / 10, 0.2) for x in range(-6, 7, 2)])
     rules = load_rule_set()
     shown = display_from_preview(display.element())
-    plan = plan_show(_hits_song(), shown, rules)
+    plan = plan_show(_hits_song(), shown, rules, style=leads_only())
     report = check_choreography(display.element(), plan.choreography, rules)
     assert report.ok, report.format_text()
     moves = [m for m in plan.choreography.movements if m.prop_ids and len(m.prop_ids) == 7]
@@ -93,7 +94,7 @@ def test_a_multi_segment_snowflake_opens_out_segment_by_segment() -> None:
     display = _flakes("Big Flake", [(0.0, 0.2)], channels=3)
     rules = load_rule_set()
     shown = display_from_preview(display.element())
-    plan = plan_show(_hits_song(), shown, rules)
+    plan = plan_show(_hits_song(), shown, rules, style=leads_only())
     assert check_choreography(display.element(), plan.choreography, rules).ok
     starts: dict[int, list[int]] = {}
     for effect in plan.choreography.effects:
@@ -148,7 +149,8 @@ def test_random_invented_yards_plan_without_breaking_a_rule() -> None:
         if not display.element().findall("PropClass"):
             continue
         analysis = _hits_song()
-        plan = plan_show(analysis, display_from_preview(display.element()), rules)
+        plan = plan_show(analysis, display_from_preview(display.element()), rules,
+                         style=leads_only())
         report = check_choreography(display.element(), plan.choreography, rules)
         assert report.ok, f"seed {seed}: {report.format_text()}"
         assert plan.choreography.effects

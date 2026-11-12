@@ -26,9 +26,9 @@ from dataclasses import dataclass, field
 LOW, MID, HIGH = 0, 1, 2
 
 # The musical grids a motion can move on: a whole phrase, a bar, every other beat,
-# the beat, the half beat, or the drums (the kick or the snare; where a song has no
+# the beat, the half beat, the sixteenth note, or the drums (the kick or the snare; where a song has no
 # clear drum, the beat).
-GRIDS = ("phrase", "bar", "half_bar", "beat", "half", "kick", "snare")
+GRIDS = ("phrase", "bar", "half_bar", "beat", "half", "sixteenth", "kick", "snare")
 
 # What each kind of prop can do.
 #   rows of arches and other look-alike rows: chase, bounce, fill, wave, alternate
@@ -68,7 +68,7 @@ class Profile:
     """What a finished show in a style should measure, so the quality check can say
     whether the show lived up to the style. Ranges are (lowest, highest)."""
 
-    # How long a light typically stays on, in beats.
+    # How long an effect typically lasts, in beats.
     hold_beats: tuple[float, float]
     # Share of effects that fade instead of cutting.
     fade_share: tuple[float, float]
@@ -129,6 +129,13 @@ class Style:
     # What a show in this style should measure (None for learned styles: they are
     # judged by the general checks only).
     profile: Profile | None = None
+    # The glow under the show at each level: (hit, hold) brightness. Props that are not
+    # leading stay lit at ``hold``; the steady props (outlines, house, yard figures)
+    # hit ``hit`` together on each beat and decay back to ``hold``, and the sparkly ones
+    # (arches, snowflakes, the mega tree, stars) twinkle, or shimmer in loud parts.
+    # A hit of 0 only holds; None leaves the yard dark around the leads.
+    glow: tuple[tuple[int, int] | None, tuple[int, int] | None,
+                tuple[int, int] | None] = (None, None, None)
 
     def part(self, kind: str) -> Part:
         return self.parts[kind]
@@ -159,11 +166,11 @@ STYLES: dict[str, Style] = {
         build_from=0.5, call_and_response=True, fall_every=(0, 2, 1),
         parts=_parts(
             arch_row=Part(("chase", "chase", ("bounce", "chase")),
-                          ("half_bar", "beat", "beat")),
+                          ("half_bar", "beat", ("half", "beat"))),
             row=Part(("alternate", ("alternate", "chase"), ("alternate", "chase")),
                      ("beat", "beat", ("beat", "half"))),
             mega_tree=Part(("rotate", ("rotate", "spiral"), ("spiral", "fill_up")),
-                           ("beat", "half", ("half", "beat"))),
+                           ("beat", "beat", ("beat", "half_bar"))),
             family=Part(("trade", "trade", ("trade", "pulse")),
                         ("bar", "snare", ("snare", "half"))),
             outline=Part(("base", "base", ("trade", "pulse")),
@@ -174,9 +181,10 @@ STYLES: dict[str, Style] = {
         ),
         phrase_bars=4, entry="flash", arc=1, vary_repeats=True,
         spin_width=2, fall=(12, 20, 25),
+        glow=((0, 30), (85, 40), (100, 50)),
         # Traditional and festive: balanced fades and cuts, moderate speed, clear
         # difference between verse and chorus, a flash to open the big parts.
-        profile=Profile(hold_beats=(0.7, 1.6), fade_share=(0.3, 0.7), calm_lit=0.45,
+        profile=Profile(hold_beats=(0.4, 2.5), fade_share=(0.3, 0.85), calm_lit=0.45,
                         peak_lit=0.75, loud_to_quiet=1.5, full_outside_peaks=3.0,
                         accents_per_minute=(1.0, 6.0)),
     ),
@@ -191,11 +199,11 @@ STYLES: dict[str, Style] = {
         build_from=0.4, call_and_response=True, fall_every=(2, 1, 1),
         parts=_parts(
             arch_row=Part(("chase", ("bounce", "alternate"), ("bounce", "chase")),
-                          ("beat", "half", "half")),
+                          ("beat", "half", ("sixteenth", "half"))),
             row=Part(("chase", ("alternate", "bounce"), "alternate"),
                      ("beat", "half", "half")),
             mega_tree=Part(("spiral", ("fill_up", "spiral"), ("rotate", "fill_up")),
-                           ("half", "beat", "half")),
+                           ("half", "beat", ("sixteenth", "half"))),
             family=Part(("pulse", "trade", ("pulse", "trade")),
                         ("snare", "half", ("half", "snare"))),
             outline=Part(("pulse", ("trade", "pulse"), "pulse"),
@@ -206,9 +214,10 @@ STYLES: dict[str, Style] = {
         ),
         phrase_bars=4, entry="drop", arc=2, vary_repeats=True,
         spin_width=1, fall=(7, 10, 14),
+        glow=((70, 20), (100, 30), (100, 35)),
         # Dynamic and aggressive: quick hits, strong contrast between quiet and loud,
         # frequent accents, but never so much light that the contrast is lost.
-        profile=Profile(hold_beats=(0.2, 0.9), fade_share=(0.0, 0.45), calm_lit=0.5,
+        profile=Profile(hold_beats=(0.2, 0.9), fade_share=(0.0, 0.5), calm_lit=0.5,
                         peak_lit=0.75, loud_to_quiet=1.7, full_outside_peaks=3.0,
                         accents_per_minute=(1.5, 8.0)),
     ),
@@ -235,9 +244,10 @@ STYLES: dict[str, Style] = {
         ),
         phrase_bars=8, entry="swell", arc=1, vary_repeats=False,
         spin_width=3, fall=(22, 40, 60),
+        glow=(None, (0, 20), (0, 35)),
         # Cinematic and refined: long lights and fades, few props at once, the whole
         # yard saved for the peaks, and almost no flashing.
-        profile=Profile(hold_beats=(1.8, 8.0), fade_share=(0.35, 1.0), calm_lit=0.45,
+        profile=Profile(hold_beats=(1.2, 8.0), fade_share=(0.35, 1.0), calm_lit=0.45,
                         peak_lit=0.75, loud_to_quiet=1.3, full_outside_peaks=3.0,
                         accents_per_minute=(0.0, 2.5)),
     ),

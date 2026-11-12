@@ -71,6 +71,19 @@ RULE_SPECS: dict[str, RuleSpec] = {
             {"outline_names": _NAMES, "mouth_names": _NAMES},
         ),
         RuleSpec(
+            "face_parts_together",
+            "A face shows exactly one mouth with its outline (never two mouths, never "
+            "an outline with no mouth when it has a resting mouth)",
+            False,
+            {"outline_names": _NAMES, "mouth_names": _NAMES, "rest_names": _NAMES},
+        ),
+        RuleSpec(
+            "shared_outlets_match",
+            "Props wired to the same controller circuit show the same light",
+            False,
+            {},
+        ),
+        RuleSpec(
             "mouths_only_during_vocals",
             "Mouths move only while someone is singing",
             False,
@@ -85,10 +98,11 @@ RULE_SPECS: dict[str, RuleSpec] = {
         RuleSpec("motion_stops_at_hard_stops", "Motion stops when the music stops", False, {}),
         RuleSpec(
             "not_everything_at_once",
-            "Not every channel is on at once for long",
+            "Not every channel is bright at once for long",
             False,
             {
                 "max_share": _Param(float, 0.0, 1.0),
+                "bright": _Param(int, 1, 100),
                 "max_seconds": _Param(float, 0.0, 600.0),
                 "allow_sections": _NAMES,
             },
@@ -107,6 +121,7 @@ REQUIREMENT_TYPES: dict[str, tuple[dict[str, _Param], dict[str, _Param]]] = {
         {"direction": _Param(str)},
         {"movement": _Param(str)},
     ),
+    "light_whole": ({}, {}),
 }
 _SHARED_REQUIREMENT_FIELDS = {"id", "type", "props", "severity", "note"}
 SELECTOR_KEYS = ("all", "role", "names", "group")

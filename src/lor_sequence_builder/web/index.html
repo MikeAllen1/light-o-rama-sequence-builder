@@ -225,6 +225,11 @@
             <input id="musicFilename" type="text" maxlength="260"></label>
           <div id="musicNote" class="step-note"></div>
           <label class="sing-option hidden"><input id="singFaces" type="checkbox" checked> Sing the faces</label>
+          <div id="wordsRow" class="words-row hidden">
+            <label id="wordsLabel" class="tool-button subtle" title="A WhisperX result (.json) with the time of every word: the face opens its mouth on each sung syllable, and stays closed between lines. Choose the song first."><span>Word timings for lip-sync (WhisperX .json)</span>
+              <input id="wordsFile" type="file" accept=".json,application/json"></label>
+            <label id="singerLabel" class="edit-field hidden"><span>Who the faces sing</span><select id="singerSelect"></select></label>
+          </div>
           <div id="singNote" class="step-note"></div>
           <div class="generate-actions">
             <button id="generateShow" class="tool-button primary" type="button" disabled>Generate show</button>
