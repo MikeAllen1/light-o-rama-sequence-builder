@@ -3772,25 +3772,31 @@
     const batchMeter = $("meterSelect").value;
     const batchStyle = chosenStyle() || "";
     const batchConfig = currentBatchConfig();
-    show.batchToken = batchToken;
-    show.batchConfig = batchConfig;
-    show.batchReady = false;
+    const previousBatchStillValid = show.batchReady && show.batchToken === show.token &&
+      show.batchConfig === currentBatchConfig();
     show.batchRunning = true;
     setShowConfigurationLocked(true);
     setStepEnabled();
     $("saveBatch").disabled = true;
-    $("batchList").replaceChildren();
     try {
       await postShow("/api/show/batch-clear?token=" + encodeURIComponent(batchToken), "{}",
         "application/json");
     } catch (error) {
       show.batchRunning = false;
+      show.batchReady = previousBatchStillValid;
+      $("saveBatch").disabled = !previousBatchStillValid;
       setShowConfigurationLocked(false);
       setStepEnabled();
-      showMessage("batchStatus", "The previous batch could not be cleared, so no new songs were built: " +
-        (error.message || String(error)), "error");
+      showMessage("batchStatus", "The previous batch could not be cleared, so no new songs were built." +
+        (previousBatchStillValid ? " The previous completed playlist is still available." : "") +
+        " " + (error.message || String(error)),
+        previousBatchStillValid ? "warn" : "error");
       return;
     }
+    show.batchToken = batchToken;
+    show.batchConfig = batchConfig;
+    show.batchReady = false;
+    $("batchList").replaceChildren();
     const rows = files.map((file) => {
       const item = document.createElement("li");
       item.textContent = file.name + ": waiting";
