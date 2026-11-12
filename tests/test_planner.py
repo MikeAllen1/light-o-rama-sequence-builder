@@ -14,7 +14,7 @@ from lor_sequence_builder.choreography import Choreography, choreography_json
 from lor_sequence_builder.cli import main
 from lor_sequence_builder.generate import generate_show
 from lor_sequence_builder.loredit import read_loredit
-from lor_sequence_builder.planner import HIGH, LOW, MID, Plan, _music, plan_show
+from lor_sequence_builder.planner import HIGH, LOW, MID, Plan, PlanningError, _music, plan_show
 from lor_sequence_builder.rules import (
     RuleReport,
     RuleSet,
@@ -241,11 +241,28 @@ def test_missing_downbeats_respect_the_analyzer_meter() -> None:
     assert "assumed a bar every 3 beats" in music.notes[0]
 
 
-def test_a_song_without_beats_still_gets_a_plan() -> None:
-    plan, report = _plan(classic_yard(), synthetic_analysis(beats=False, sections=((0, 0.5),)))
-    assert report.ok
-    assert any("steady 120 BPM grid" in note for note in plan.notes)
-    assert any("split every 8 bars" in note for note in plan.notes)
+def test_a_song_without_a_detected_beat_grid_is_rejected() -> None:
+    with pytest.raises(PlanningError, match="will not invent a tempo"):
+        _plan(classic_yard(), synthetic_analysis(beats=False, sections=((0, 0.5),)))
+
+
+def test_a_single_downbeat_preserves_its_phase_when_reconstructing_bars() -> None:
+    analysis = synthetic_analysis(duration=12.0, bpm=120.0)
+    analysis["configuration"]["beats_per_bar"] = 3
+    analysis["analysis"]["downbeats"] = [analysis["analysis"]["beats"][1]]
+    music = _music(analysis)
+    assert music.downbeats == [beat for i, beat in enumerate(music.beats) if i % 3 == 1]
+    assert music.bar_phase == 1
+
+
+def test_three_four_bar_fallback_stays_aligned_after_a_window_split() -> None:
+    from lor_sequence_builder.planner import _Window, _bars
+
+    window = _Window(
+        0, 50, 500, tuple(range(50, 500, 50)), (), False,
+        offset=1, beats_per_bar=3, bar_phase=0,
+    )
+    assert _bars(window) == [(150, 300), (300, 450), (450, 500)]
 
 
 def _preview(tmp_path: Path, display: DisplayBuilder) -> Path:
