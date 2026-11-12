@@ -1617,8 +1617,11 @@
     }
     if (!lines.length) throw new Error(name + ": no LRC time tags or SRT/VTT cues found.");
     lines.sort((a, b) => a.start - b.start);
-    lines.forEach((line, index) => {
-      if (line.end == null) line.end = index + 1 < lines.length ? lines[index + 1].start : line.start + 4;
+    lines.forEach((line) => {
+      if (line.end == null) {
+        const next = lines.find((candidate) => candidate.start > line.start + 0.001);
+        line.end = next ? next.start : Math.min(1801, line.start + 4);
+      }
       line.verified = true;
       line.words = [];
     });
@@ -2713,6 +2716,27 @@
   }
 
   function applyMusic(label, changes, select) {
+    try {
+      for (const change of changes) {
+        if (state.lyrics && change.owner === state.lyrics && change.key === "lines") {
+          checkLyrics({ schema_version: "lyrics-1.0", source: state.lyrics.source, lines: change.after });
+          continue;
+        }
+        const duration = Number(state.analysis && state.analysis.audio &&
+          state.analysis.audio.duration_seconds);
+        if (change.owner === (state.analysis && state.analysis.analysis) &&
+            REVIEW_LANES && Object.values(REVIEW_LANES).some((spec) => spec.key === change.key)) {
+          if (!Number.isFinite(duration) || change.after.some((event) =>
+            !Number.isFinite(eventTime(event)) || eventTime(event) < 0 ||
+            eventTime(event) > duration + 1)) {
+            throw new Error("a marker must be within the analyzed song");
+          }
+        }
+      }
+    } catch (error) {
+      setBanner("Not changed: " + error.message + ".", "warn");
+      return false;
+    }
     const command = { label, music: changes };
     performMusic(command, "after");
     state.undo.push(command);
@@ -2897,7 +2921,12 @@
         drawMarkers(Number($("markersCanvas").width), state.pxPerSecond);
         return;
       }
-      replacement = Object.assign({}, hit.event, { start: round3(start), end: round3(end) });
+      const words = (hit.event.words || []).filter((word) =>
+        Number(word.end) > start && Number(word.start) < end).map((word) => Object.assign({}, word, {
+        start: round3(Math.max(start, Number(word.start))),
+        end: round3(Math.min(end, Number(word.end)))
+      })).filter((word) => word.end > word.start);
+      replacement = Object.assign({}, hit.event, { start: round3(start), end: round3(end), words });
     } else {
       replacement = movedEvent(hit.event, drag.preview);
     }
@@ -2978,6 +3007,11 @@
           ? words.map((word, index) => Object.assign({}, word, { text: typed[index], verified: true }))
           : [];
       }
+      words = words.filter((word) => Number(word.end) > values.start &&
+        Number(word.start) < values.end).map((word) => Object.assign({}, word, {
+        start: round3(Math.max(values.start, Number(word.start))),
+        end: round3(Math.min(values.end, Number(word.end)))
+      })).filter((word) => word.end > word.start);
       replacement = Object.assign({}, event, { text, start: round3(values.start),
         end: round3(values.end), words, verified: true });
     } else {
