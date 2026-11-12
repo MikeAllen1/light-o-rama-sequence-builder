@@ -374,7 +374,10 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
         origin = self.headers.get("Origin")
         if origin:
             origin_url = urlsplit(origin)
-            if origin_url.scheme != "http" or origin_url.netloc not in hosts:
+            # localhost and 127.0.0.1 are both valid workspace entry points,
+            # but they are distinct browser origins. Do not let one alias
+            # authorize a request whose Host names the other.
+            if origin_url.scheme != "http" or origin_url.netloc != self.headers.get("Host"):
                 self.send_error(403, "Cross-origin requests are not accepted")
                 return False
         site = self.headers.get("Sec-Fetch-Site")
