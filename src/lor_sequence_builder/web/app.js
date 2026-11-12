@@ -4405,6 +4405,22 @@
     }
   }
 
+  // Started from a preview (right-click "Build a show with LOR Sequencer"): open New
+  // show with that display already chosen.
+  async function openStartupPreview() {
+    if (new URLSearchParams(window.location.search).get("start") !== "preview") return;
+    try { window.history.replaceState(null, "", window.location.pathname); } catch { /* fine */ }
+    try {
+      const startup = await callEngine("/api/startup", "{}", "application/json");
+      if (!startup.preview) return;
+      openNewShow();
+      await chooseDisplay(new File([startup.preview.text], startup.preview.name,
+        { type: "application/xml" }));
+    } catch (error) {
+      setBanner("That preview could not be opened: " + problemText(error), "error");
+    }
+  }
+
   function setup() {
     const bindFile = (id, handler) => $(id).addEventListener("change", (event) => {
       const file = event.target.files && event.target.files[0];
@@ -4485,6 +4501,7 @@
     setupHero();
     setupUpdates();
     setupDiagnostics();
+    openStartupPreview();
   }
 
   setup();

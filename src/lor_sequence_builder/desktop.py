@@ -184,6 +184,9 @@ def _main(argv: Sequence[str] | None = None) -> int:
                         help="check this copy without opening a window; write the result here")
     parser.add_argument("--browser", action="store_true",
                         help="open the workspace in the default browser instead of a window")
+    parser.add_argument("--preview", metavar="LORPREV",
+                        help="open New show with this S6 preview already chosen (the right-click "
+                             "'Build a show' on a preview uses this)")
     _ensure_streams()
     options = parser.parse_args(argv)
     # The audio libraries probe the CPU with shell tools a packaged app may lack.
@@ -192,6 +195,13 @@ def _main(argv: Sequence[str] | None = None) -> int:
         return self_test(Path(options.self_test))
     use_bundled_ffmpeg()
     server, url = start_server()
+    if options.preview:
+        from lor_sequence_builder.ui_server import offer_preview
+
+        try:
+            url += offer_preview(options.preview)
+        except (OSError, ValueError) as exc:
+            _tell(f"{APP_NAME} could not open that preview: {exc}")
     try:
         if options.browser or not _open_window(url):
             webbrowser.open(url)

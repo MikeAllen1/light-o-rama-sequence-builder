@@ -6,7 +6,8 @@
 ; same AppId and folder, the running app is closed first, and old program files are
 ; cleared so nothing stale is left behind. Settings and show files are not touched.
 ; Installs for the current user only (no administrator prompt), adds a Start menu
-; entry and an optional desktop shortcut, and uninstalls cleanly from Settings > Apps.
+; entry, an optional desktop shortcut and an optional right-click "Build a show" on S6
+; previews (S6 stays their default program), and uninstalls cleanly from Settings > Apps.
 
 #ifndef AppVersion
   #define AppVersion "0.1.0"
@@ -44,6 +45,17 @@ RestartApplications=no
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"
+Name: "previewmenu"; Description: "Add ""Build a show with LOR Sequencer"" when right-clicking an S6 preview (.lorprev). S6 stays the program that opens previews."; GroupDescription: "S6 previews:"
+
+[Registry]
+; Right-click verb on .lorprev files, whatever program opens them (S6 stays the default).
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.lorprev\shell\LORSequencerBuildShow"; ValueType: string; ValueName: ""; ValueData: "Build a show with {#AppName}"; Flags: uninsdeletekey; Tasks: previewmenu
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.lorprev\shell\LORSequencerBuildShow"; ValueType: string; ValueName: "Icon"; ValueData: """{app}\{#AppExe}"",0"; Tasks: previewmenu
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.lorprev\shell\LORSequencerBuildShow\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" --preview ""%1"""; Tasks: previewmenu
+; Listed under "Open with" for previews, without becoming the default.
+Root: HKCU; Subkey: "Software\Classes\LORSequencer.Preview"; ValueType: string; ValueName: ""; ValueData: "S6 preview for {#AppName}"; Flags: uninsdeletekey; Tasks: previewmenu
+Root: HKCU; Subkey: "Software\Classes\LORSequencer.Preview\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" --preview ""%1"""; Tasks: previewmenu
+Root: HKCU; Subkey: "Software\Classes\.lorprev\OpenWithProgids"; ValueType: string; ValueName: "LORSequencer.Preview"; ValueData: ""; Flags: uninsdeletevalue; Tasks: previewmenu
 
 [InstallDelete]
 ; The previous version's program files (PyInstaller's _internal folder); user data lives elsewhere.
