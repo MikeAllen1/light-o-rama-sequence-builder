@@ -567,10 +567,22 @@ class ShowSessions:
         with self.locked(token) as session:
             done = session.path / "batch"
             if done.exists():
-                # Do not report a successful reset while old batch artifacts remain.
-                # Keep the in-memory manifest intact if the filesystem refuses removal.
-                shutil.rmtree(done)
-            session.batch.clear()
+                # Move the active batch out of the way atomically before deleting it.
+                # A partial rmtree failure must never leave the live manifest pointing
+                # at a half-deleted batch that the user can no longer download.
+                retired = session.path / ("batch-reset-" + secrets.token_hex(6))
+                os.replace(done, retired)
+                session.batch.clear()
+                try:
+                    shutil.rmtree(retired)
+                except OSError as cleanup_error:
+                    # The reset succeeded; only orphan cleanup failed. The session's
+                    # temporary folder will remove this retired directory on expiry.
+                    from lor_sequence_builder.diagnostics import write_log
+
+                    write_log("show", f"Could not remove retired batch directory: {cleanup_error}")
+            else:
+                session.batch.clear()
         return {"cleared": True}
 
 
