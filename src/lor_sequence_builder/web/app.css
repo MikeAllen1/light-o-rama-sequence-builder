@@ -246,3 +246,13 @@ canvas { display: block; }
 .generate-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .show-notes { margin: 8px 0 0; padding-left: 18px; font-size: 11px; color: var(--muted); }
 @media (max-width: 760px) { .new-show { padding: 16px; } .section-picks { grid-template-columns: repeat(2, auto); } }
+.style-label { font-size: 11px; color: var(--muted); margin: 6px 0 4px; }
+.style-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; margin-bottom: 10px; }
+.style-choice {
+  display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: start; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: #0f161d;
+}
+.style-choice input { grid-row: span 2; margin-top: 3px; accent-color: var(--accent); }
+.style-choice strong { font-size: 12px; }
+.style-choice span { font-size: 11px; color: var(--muted); line-height: 1.4; }
+.style-choice:has(input:checked) { border-color: var(--accent); }

@@ -88,7 +88,8 @@ def test_a_show_is_built_step_by_step_and_requirements_are_remembered(
     assert status == 422 and "translator" in refused["error"]
 
     status, show = _json(f"{server}/api/show/generate?token={token}",
-                         {"music_filename": "Songs\\beat.wav", "sing": True})
+                         {"music_filename": "Songs\\beat.wav", "sing": True,
+                          "style": "energetic"})
     assert status == 200, show
     assert show["rules_ok"] and show["file_name"] == "beat (generated).loredit"
     assert show["picture"].startswith("<svg") and show["sections"]
@@ -157,6 +158,9 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
             page.locator("#requirementList li").first.wait_for()
             assert "Mini Tree 1" in page.locator("#requirementList").inner_text()
 
+            assert page.locator('input[name="showStyle"]:checked').get_attribute("value") \
+                == "classic"
+            page.locator('input[name="showStyle"][value="elegant"]').check()
             page.locator("#generateShow").click()
             page.locator("#generateStatus.good").wait_for(timeout=60000)
             assert "Every rule passed" in page.locator("#generateStatus").inner_text()
@@ -342,3 +346,13 @@ def test_session_eviction_waits_for_an_active_operation(tmp_path: Path) -> None:
         if worker is not None and worker.is_alive():
             worker.join(timeout=2)
         sessions.close()
+
+
+def test_an_unknown_style_is_refused_by_the_server(server: str, tmp_path: Path) -> None:
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    status, started = _post(server + "/api/show/start", preview, "application/xml")
+    assert status == 200 and [s["key"] for s in started["styles"]] == [
+        "classic", "energetic", "elegant"]
+    status, refused = _json(f"{server}/api/show/generate?token={started['token']}",
+                            {"style": "disco"})
+    assert status == 422 and "Unknown style" in refused["error"]
