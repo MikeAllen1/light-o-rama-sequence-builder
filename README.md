@@ -10,7 +10,7 @@ Sequencing one song by hand can eat a whole weekend, and it helps to have an ear
 
 ### [Download for Windows](https://github.com/MikeAllen1/light-o-rama-sequence-builder/releases/latest)
 
-Free. No administrator rights needed, and everything it needs is included. Running a newer installer later replaces the old one, and the app tells you when there is one.
+Free. No administrator rights needed, and everything it needs is included. Running a newer installer later replaces the old one, and the app tells you when there is one. Can't run installers on your PC? Take the **Portable** zip from the same page: unzip it and run `LOR Sequencer.exe`.
 
 ## How it works
 
