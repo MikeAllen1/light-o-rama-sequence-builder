@@ -10,6 +10,7 @@ from collections.abc import Iterator
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from types import SimpleNamespace
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -135,6 +136,50 @@ def test_requirement_persistence_failure_does_not_publish_session_state(
     session = sessions.get(token)
     assert session.requirements == ()
     assert session.requirements_revision == 0
+    sessions.close()
+
+
+def test_batch_publish_failure_removes_partial_artifact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    sessions = show_builder.ShowSessions()
+    token = sessions.start(preview, "yard.lorprev")["token"]
+
+    def fake_analyze(audio: Path, report: Path, picture: Path, **kwargs: Any) -> dict[str, Any]:
+        report.write_text("{}", encoding="utf-8")
+        return {"audio": {"duration_seconds": 10.0}}
+
+    def fake_generate(preview_path: Path, output: Path, rule_set: Any, **kwargs: Any) -> Any:
+        output.write_text("<sequence />", encoding="utf-8")
+        summary = output.with_suffix(".report.html")
+        summary.write_text("<html>report</html>", encoding="utf-8")
+        return SimpleNamespace(
+            sequence_path=output,
+            summary_path=summary,
+            plan=SimpleNamespace(sections=(1, 2), used_props=("Tree",)),
+        )
+
+    monkeypatch.setattr(show_builder, "analyze_audio", fake_analyze)
+    monkeypatch.setattr(show_builder, "load_rule_set", lambda profiles: object())
+    monkeypatch.setattr(show_builder, "generate_show", fake_generate)
+    real_link = show_builder.os.link
+    link_calls = 0
+
+    def fail_second_link(source: Path, target: Path) -> None:
+        nonlocal link_calls
+        link_calls += 1
+        if link_calls == 2:
+            raise OSError("simulated report publish failure")
+        real_link(source, target)
+
+    monkeypatch.setattr(show_builder.os, "link", fail_second_link)
+    with pytest.raises(OSError, match="simulated report publish failure"):
+        sessions.batch_song(token, b"audio", ".wav", "ffmpeg", "song.wav", 4, None)
+
+    session = sessions.get(token)
+    assert session.batch == []
+    assert list((session.path / "batch").iterdir()) == []
     sessions.close()
 
 
