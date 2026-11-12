@@ -3534,7 +3534,8 @@
   }
 
   function download(bytes, name, type) {
-    const url = URL.createObjectURL(new Blob([bytes], { type }));
+    const payload = bytes instanceof Blob ? bytes : new Blob([bytes], { type });
+    const url = URL.createObjectURL(payload);
     const link = document.createElement("a");
     link.href = url;
     link.download = name;
