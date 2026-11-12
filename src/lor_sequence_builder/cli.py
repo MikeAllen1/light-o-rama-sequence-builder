@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -72,7 +73,11 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="lor-sequence-builder",
         description="Inspect and process verified Light-O-Rama S6 files.",
     )
+    parser.epilog = ("Add --debug to any command to see the full details of an unexpected "
+                     "problem.")
     commands = parser.add_subparsers(dest="command")
+    commands.add_parser("diagnostics", help="print version, system checks and recent errors, "
+                        "to include when reporting a problem")
     inspect = commands.add_parser("inspect", help="summarize a supported LOREDIT file")
     inspect.add_argument("sequence", help="input .loredit file")
     preview = commands.add_parser("inspect-preview", help="inspect a standalone LORPREV file")
@@ -395,7 +400,30 @@ def _list_rules(rules: list[str], preview: str | None) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Run a command; problems end in a plain message, never a Python traceback (add
+    --debug, or set LOR_DEBUG=1, to see the full details)."""
     arguments = list(argv) if argv is not None else sys.argv[1:]
+    debug = "--debug" in arguments or bool(os.environ.get("LOR_DEBUG"))
+    arguments = [argument for argument in arguments if argument != "--debug"]
+    try:
+        return _main(arguments)
+    except KeyboardInterrupt:
+        print("Stopped.", file=sys.stderr)
+        return 130
+    except Exception as error:
+        if debug:
+            raise
+        from lor_sequence_builder.diagnostics import log_folder, log_unexpected
+
+        reference = log_unexpected(error, "command " + (arguments[0] if arguments else ""))
+        print(f"error: something went wrong inside the program (reference {reference}). The "
+              f"details are in {log_folder() / 'workspace.log'}. Run "
+              "'lor-sequence-builder diagnostics' and include its output when you report it, "
+              "or add --debug to see them here.", file=sys.stderr)
+        return 1
+
+
+def _main(arguments: list[str]) -> int:
     parser = _build_parser()
     if not arguments:
         parser.print_help()
@@ -405,6 +433,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.print_help()
         return 0
     try:
+        if options.command == "diagnostics":
+            from lor_sequence_builder.diagnostics import report as diagnostics_report
+
+            print(diagnostics_report(), end="")
+            return 0
         if options.command == "doctor":
             from lor_sequence_builder.doctor import print_checks, run_checks
 
@@ -641,8 +674,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         LorprevError,
         PulseGenerationError,
         OSError,
+        MemoryError,
     ) as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        from lor_sequence_builder.diagnostics import friendly
+
+        print(f"error: {friendly(exc)}", file=sys.stderr)
         return 2
 
 
