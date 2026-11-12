@@ -94,7 +94,6 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             else:
                 respond(route, {"error": "simulated test failure"}, 422)
 
-        page.unroute("**/api/show/test*")
         page.route("**/api/show/test*", display_test)
         try:
             page.goto(workspace_url, wait_until="networkidle")
