@@ -1441,6 +1441,7 @@
     state.lyrics = null;
     state.reviewDirty = false;
     state.reviewLoaded = false;
+    state.reviewSaved = false;
     state.reviewSelection = null;
     captureReviewBaseline();
     if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
@@ -1495,7 +1496,8 @@
         if (!data || typeof data !== "object") throw new Error("The music review has no analysis.");
         if (review.lyrics != null) checkLyrics(review.lyrics);
       }
-      if (state.reviewDirty && !window.confirm("Replace the unsaved music review?")) return;
+      const discardUnsavedReview = state.reviewDirty;
+      if (discardUnsavedReview && !window.confirm("Replace the unsaved music review?")) return;
       const analysis = data.analysis;
       const requiredArrays = ["beats", "downbeats", "onsets", "energy",
         "phrase_boundaries", "section_candidates", "hard_stops"];
@@ -1526,7 +1528,10 @@
       if (review) {
         state.lyrics = review.lyrics != null ? review.lyrics : null;
         if (review.meter === 3 || review.meter === 4) $("meterSelect").value = String(review.meter);
+      } else if (discardUnsavedReview) {
+        state.lyrics = null;
       }
+      state.reviewSaved = Boolean(review);
       renderSequenceStats();
       refreshTimeline();
       updateEditControls();
