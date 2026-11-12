@@ -269,6 +269,45 @@ def test_batch_zip_is_streamed_as_a_file_download(
             SHOWS._drop(token)
 
 
+def test_batch_download_open_failure_returns_error_before_zip_headers(
+    server: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    started = SHOWS.start(preview, "yard.lorprev")
+    token = started["token"]
+    session = SHOWS.get(token)
+    done = session.path / "batch"
+    done.mkdir()
+    (done / "Song (generated).loredit").write_text("<sequence/>", encoding="utf-8")
+    (done / "Song (generated).report.html").write_text("<html/>", encoding="utf-8")
+    session.batch.append({
+        "stem": "Song", "file_name": "Song.wav", "ok": True,
+        "show": "Song (generated).loredit",
+    })
+
+    original_open = Path.open
+
+    def refuse_batch_open(path: Path, *args: Any, **kwargs: Any) -> Any:
+        if path.name.startswith("lor-batch-"):
+            raise PermissionError("synthetic archive-open failure")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", refuse_batch_open)
+    request = Request(
+        server + "/api/show/batch-zip?token=" + token,
+        data=b"{}", method="POST", headers={"Content-Type": "application/json"},
+    )
+    try:
+        with pytest.raises(HTTPError) as error:
+            urlopen(request, timeout=10)
+        assert error.value.code == 500
+        payload = json.loads(error.value.read())
+        assert payload["error"]
+    finally:
+        with SHOWS._lock:
+            SHOWS._drop(token)
+
+
 def test_session_expiration_is_enforced_when_a_token_is_used(tmp_path: Path) -> None:
     sessions = show_builder.ShowSessions()
     preview = _preview(tmp_path, classic_yard()).read_bytes()
