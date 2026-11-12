@@ -123,6 +123,11 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             assert "song.wav" in page.locator("#songStatus").inner_text()
             assert page.locator("#musicFilename").input_value() == "song.wav"
             assert not page.locator("#generateShow").is_disabled()
+
+            # Changing meter must reanalyze the retained song before generation.
+            page.locator("#meterSelect").select_option("3")
+            page.locator("#songStatus.good").filter(has_text="song.wav").wait_for()
+            assert not page.locator("#generateShow").is_disabled()
             page.locator("#generateShow").click()
             page.locator("#generateStatus").filter(has_text="Every rule passed").wait_for()
             assert not page.locator("#saveGenerated").is_disabled()
