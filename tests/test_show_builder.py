@@ -152,7 +152,7 @@ def test_batch_clear_failure_keeps_the_manifest(tmp_path: Path, monkeypatch: pyt
         raise OSError("file is locked")
 
     with monkeypatch.context() as patch:
-        patch.setattr(show_builder.shutil, "rmtree", fail_remove)
+        patch.setattr("lor_sequence_builder.show_builder.shutil.rmtree", fail_remove)
         with pytest.raises(OSError, match="file is locked"):
             sessions.batch_clear(token)
 
