@@ -169,6 +169,10 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             page.locator("#batchStatus").filter(has_text="Building 1 of 1").wait_for()
             page.locator("#batchStatus").filter(has_text="1 of 1 shows built").wait_for()
             assert not page.locator("#saveBatch").is_disabled()
+            with page.expect_download() as download_info:
+                page.locator("#saveBatch").click()
+            assert download_info.value.suggested_filename == "Intent Test Yard shows.zip"
+            assert not page.locator("#meterSelect").is_disabled()
             summary["token"] = "display-two"
             page.locator("#showDisplayFile").set_input_files(str(preview))
             page.get_by_text("Intent Test Yard", exact=False).wait_for()
