@@ -68,6 +68,8 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             audio_calls += 1
             if audio_calls == 2:
                 respond(route, {"error": "simulated audio failure"}, 422)
+            elif audio_calls == 3:
+                respond(route, {"error": "simulated uncertain upload"}, 500)
             else:
                 respond(route, {
                     "report": {
@@ -154,6 +156,20 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             page.locator("#songStatus").filter(has_text="simulated audio failure").wait_for()
             assert "song.wav" in page.locator("#songStatus").inner_text()
             assert page.locator("#musicFilename").input_value() == "song.wav"
+            assert not page.locator("#generateShow").is_disabled()
+
+            # A lost/failed server response may arrive after the server committed
+            # the upload, so the old analysis must not be used to generate blindly.
+            page.locator("#showSongFile").set_input_files({
+                "name": "uncertain.wav", "mimeType": "audio/wav", "buffer": b"uncertain audio",
+            })
+            page.locator("#songStatus").filter(has_text="simulated uncertain upload").wait_for()
+            assert "server may have accepted" in page.locator("#songStatus").inner_text()
+            assert page.locator("#generateShow").is_disabled()
+            page.locator("#showSongFile").set_input_files({
+                "name": "song.wav", "mimeType": "audio/wav", "buffer": b"fake audio",
+            })
+            page.locator("#songStatus.good").filter(has_text="song.wav").wait_for()
             assert not page.locator("#generateShow").is_disabled()
 
             # Changing meter must reanalyze the retained song before generation.
