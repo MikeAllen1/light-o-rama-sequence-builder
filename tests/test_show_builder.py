@@ -353,9 +353,11 @@ def test_batch_download_open_failure_returns_error_before_zip_headers(
     })
 
     original_open = Path.open
+    archive_paths: list[Path] = []
 
     def refuse_batch_open(path: Path, *args: Any, **kwargs: Any) -> Any:
         if path.name.startswith("lor-batch-"):
+            archive_paths.append(path)
             raise PermissionError("synthetic archive-open failure")
         return original_open(path, *args, **kwargs)
 
@@ -369,6 +371,8 @@ def test_batch_download_open_failure_returns_error_before_zip_headers(
             urlopen(request, timeout=10)
         assert error.value.code == 500
         assert json.loads(error.value.read())["error"]
+        assert len(archive_paths) == 1
+        assert not archive_paths[0].exists()
     finally:
         with SHOWS._lock:
             SHOWS._drop(token)
