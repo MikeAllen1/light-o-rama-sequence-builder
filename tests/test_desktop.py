@@ -76,6 +76,8 @@ def test_the_packaging_files_fit_together() -> None:
     assert (ROOT / "packaging" / "launch.py").is_file()
     installer = (ROOT / "packaging" / "windows" / "installer.iss").read_text(encoding="utf-8")
     assert "PrivilegesRequired=lowest" in installer and "LOR Sequencer.exe" in installer
+    # A new installer replaces an existing install: the app is closed and old files cleared.
+    assert "CloseApplications=force" in installer and '{app}\\_internal' in installer
     icon = (ROOT / "packaging" / "windows" / "lor-sequencer.ico").read_bytes()
     reserved, kind, count = struct.unpack("<HHH", icon[:6])
     assert (reserved, kind) == (0, 1) and count == 4
