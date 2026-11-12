@@ -418,7 +418,7 @@ def style_from_habits(habits: Habits, name: str = "My style") -> tuple[Style, li
         leads=(leads[0], leads[1], leads[2]),
         soft=(soft[0], soft[1], soft[2]),
         brightness=(brightness[0], brightness[1], brightness[2]),
-        flashes=flashes, parts=_parts(**parts))
+        flashes=flashes, parts=_parts(**parts), profile=None)
     return style, changes
 
 

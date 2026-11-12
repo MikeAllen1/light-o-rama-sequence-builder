@@ -622,7 +622,9 @@ def test_a_part_that_comes_back_keeps_its_handoffs_moves_anew_and_the_last_choru
     elegant = plan_show(synthetic_analysis(duration=96.0, sections=SONG_FORM),
                         display_from_preview(display.element()), load_rule_set(),
                         style=get_style("elegant"))
-    first, second = _shape(elegant, 1600, 3200), _shape(elegant, 4800, 6400)
+    # (After the first bar: the first verse fades in from the quiet intro, the second
+    # follows a chorus.)
+    first, second = _shape(elegant, 1750, 3200), _shape(elegant, 4950, 6400)
     assert len(first & second) >= 0.9 * len(first)
 
     # The last chorus brings in one more lead group than the first (on a display with

@@ -57,6 +57,7 @@ _CHECK_WORDS = {
     "too_much_at_once": "Too much at once", "dead_air": "Dead air",
     "lockstep": "Look-alikes in lockstep", "flat_energy": "Loud vs quiet",
     "repetition": "Same look over and over", "on_the_music": "On the music",
+    "style": "True to the style",
 }
 _STATUS_WORDS = {"good": "Good", "fixed": "Fixed", "note": "Look at this"}
 

@@ -970,16 +970,28 @@ class _Planner:
         """Each prop swells up and back down once per span; the props of a family start
         one after another, so the light rolls through them."""
         n = len(members)
+        beats = list(window.beats)
+        grid = sorted({*beats, *((x + y) // 2 for x, y in itertools.pairwise(beats))})
         for a, b in spans:
             length = b - a
             if length < 20:
                 continue
+            # Each prop joins the roll on the nearest beat or half beat, so the roll
+            # moves with the music rather than between its notes.
+            inside = [t for t in grid if a <= t < b - 10]
             for i, pid in enumerate(members):
                 start = a + (length * i) // (2 * n) if n > 1 else a
-                peak = start + max(5, (b - start) // 2)
+                if inside:
+                    wanted = start
+                    start = min(inside, key=lambda t: (abs(t - wanted), t))
+                # A family breathing as one swells over the whole span; in a roll
+                # each prop swells for half of it, so part of the row is always
+                # resting and the light visibly travels.
+                end = b if n == 1 else min(b, start + max(20, length // 2))
+                peak = start + max(5, (end - start) // 2)
                 self.light(pid, window.section_index, start, peak, "fade",
                            max(1, intensity // 5), intensity)
-                self.light(pid, window.section_index, peak, b, "fade", intensity, 0)
+                self.light(pid, window.section_index, peak, end, "fade", intensity, 0)
 
     def wave(self, row: _Row, members: list[str], window: _Window,
              spans: list[tuple[int, int]], intensity: int) -> bool:
@@ -1712,6 +1724,9 @@ def _joined(effects: list[Effect]) -> list[Effect]:
 
 # ---------------------------------------------------------------- quality
 
+# Moments that light the whole yard at once.
+ACCENT_MOMENTS = frozenset({"crash", "return", "lift"})
+
 # The song counts as quiet where it is this share of its loudest or less.
 QUIET_ENERGY = 0.08
 # Dead air is filled at this brightness: a calm base, not a new look.
@@ -2181,7 +2196,8 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
         {p: display.props[p].role for p in usable},
         [(s.start_centisecond, s.end_centisecond, s.level) for s in sections],
         _music_marks(analysis, music, sections), phrase_spans, quiet, excused, filled,
-        canvas.movements)
+        canvas.movements, style.profile, style.name, beat,
+        sum(1 for kind, _ in moments if kind in ACCENT_MOMENTS))
     notes.append(quality.summary())
     return Plan(
         choreography=choreography,

@@ -64,6 +64,27 @@ class Part:
 
 
 @dataclass(frozen=True, slots=True)
+class Profile:
+    """What a finished show in a style should measure, so the quality check can say
+    whether the show lived up to the style. Ranges are (lowest, highest)."""
+
+    # How long a light typically stays on, in beats.
+    hold_beats: tuple[float, float]
+    # Share of effects that fade instead of cutting.
+    fade_share: tuple[float, float]
+    # Most of the yard lit, on average, in the quiet and middle parts.
+    calm_lit: float
+    # Most of the yard lit, on average, in the loud parts (room left for contrast).
+    peak_lit: float
+    # Loud parts light at least this many times as much of the yard as quiet ones.
+    loud_to_quiet: float
+    # Seconds the whole yard may be lit outside the loud parts, finale and flashes.
+    full_outside_peaks: float
+    # Whole-yard accents (crash flashes, returns, louder parts opening) per minute.
+    accents_per_minute: tuple[float, float]
+
+
+@dataclass(frozen=True, slots=True)
 class Style:
     key: str
     name: str
@@ -105,6 +126,9 @@ class Style:
     # A falling snowflake starts this long after the one above it, holds, then fades
     # (centiseconds): quick and sparkly, or a slow drift.
     fall: tuple[int, int, int] = (12, 20, 25)
+    # What a show in this style should measure (None for learned styles: they are
+    # judged by the general checks only).
+    profile: Profile | None = None
 
     def part(self, kind: str) -> Part:
         return self.parts[kind]
@@ -150,13 +174,18 @@ STYLES: dict[str, Style] = {
         ),
         phrase_bars=4, entry="flash", arc=1, vary_repeats=True,
         spin_width=2, fall=(12, 20, 25),
+        # Traditional and festive: balanced fades and cuts, moderate speed, clear
+        # difference between verse and chorus, a flash to open the big parts.
+        profile=Profile(hold_beats=(0.7, 1.6), fade_share=(0.3, 0.7), calm_lit=0.45,
+                        peak_lit=0.75, loud_to_quiet=1.5, full_outside_peaks=3.0,
+                        accents_per_minute=(1.0, 6.0)),
     ),
     "energetic": Style(
         "energetic", "High energy",
         "Busy and punchy: more of the yard leads at once, motion on the half beat, chases "
         "that bounce, outlines that pulse with the beat, sharp hits instead of fades, and a "
         "dark beat before every big part so it hits harder. For fast, loud songs.",
-        leads=(2, 3, 4), chase_hold=(1, 1, 2),
+        leads=(1, 2, 4), chase_hold=(1, 1, 1),
         soft=(False, False, False), brightness=(75, 100, 100),
         flashes=True, crash_spacing=200, flash_length=50, sparkle_density=0.35,
         build_from=0.4, call_and_response=True, fall_every=(2, 1, 1),
@@ -177,6 +206,11 @@ STYLES: dict[str, Style] = {
         ),
         phrase_bars=4, entry="drop", arc=2, vary_repeats=True,
         spin_width=1, fall=(7, 10, 14),
+        # Dynamic and aggressive: quick hits, strong contrast between quiet and loud,
+        # frequent accents, but never so much light that the contrast is lost.
+        profile=Profile(hold_beats=(0.2, 0.9), fade_share=(0.0, 0.45), calm_lit=0.5,
+                        peak_lit=0.75, loud_to_quiet=1.7, full_outside_peaks=3.0,
+                        accents_per_minute=(1.5, 8.0)),
     ),
     "elegant": Style(
         "elegant", "Elegant",
@@ -184,22 +218,28 @@ STYLES: dict[str, Style] = {
         "and wave, decorations that breathe one after another, a mega tree that breathes "
         "and turns slowly, louder parts that swell in, softer brightness and no flashes. "
         "For ballads and quiet songs.",
-        leads=(1, 2, 3), chase_hold=(1, 2, 2),
+        leads=(1, 1, 3), chase_hold=(1, 2, 2),
         soft=(True, True, True), brightness=(50, 75, 90),
         flashes=False, crash_spacing=800, flash_length=80, sparkle_density=0.8,
         build_from=0.6, call_and_response=False, fall_every=(0, 0, 2),
         parts=_parts(
-            arch_row=Part(("wave", "fill", ("fill", "wave")), ("phrase", "bar", "bar")),
-            row=Part(("wave", "wave", "fill"), ("phrase", "bar", "bar")),
+            arch_row=Part(("wave", "wave", ("fill", "wave")), ("phrase", "phrase", "bar")),
+            row=Part(("wave", "wave", "fill"), ("phrase", "phrase", "bar")),
             mega_tree=Part(("breathe", "rotate", ("rotate", "fill_up")),
                            ("phrase", "half_bar", ("beat", "bar"))),
-            family=Part(("breathe", "breathe", "trade"), ("phrase", "bar", "half_bar")),
+            family=Part(("breathe", "trade", ("breathe", "trade")),
+                        ("phrase", "bar", ("bar", "half_bar"))),
             outline=Part(("twinkle", "breathe", "breathe"), ("phrase", "phrase", "bar")),
             outline_row=Part(("wave", "wave", "fill"), ("phrase", "bar", "bar")),
             star=Part(("twinkle", "twinkle", "twinkle"), ("phrase", "phrase", "phrase")),
         ),
         phrase_bars=8, entry="swell", arc=1, vary_repeats=False,
         spin_width=3, fall=(22, 40, 60),
+        # Cinematic and refined: long lights and fades, few props at once, the whole
+        # yard saved for the peaks, and almost no flashing.
+        profile=Profile(hold_beats=(1.8, 8.0), fade_share=(0.35, 1.0), calm_lit=0.45,
+                        peak_lit=0.75, loud_to_quiet=1.3, full_outside_peaks=3.0,
+                        accents_per_minute=(0.0, 2.5)),
     ),
 }
 DEFAULT_STYLE = "classic"

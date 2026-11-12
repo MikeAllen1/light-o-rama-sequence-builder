@@ -540,3 +540,11 @@ The style is learned from the sequence (`style_learning`). Without the song, `so
 
 CLI `add-props`; app: start page "New prop this year?" (`/api/add/sequence|preview|audio|build`, bounded expiring sessions in a private temp folder, cleaned on exit).
 
+## Style profiles
+
+The three styles were written up as design briefs (Elegant: cinematic, phrase-led, negative space, full display only at peaks; Classic: festive, balanced, alternating, clear verse/chorus; High energy: rhythm-driven, contrast, builds and releases, no saturation). Each built-in `Style` now carries a `Profile` of measurable targets (hold length in beats, fade share, lit share in calm and loud parts, loud-to-quiet ratio, whole-yard seconds outside the loud parts and accents, whole-yard accents a minute). The quality check measures every show against its style's profile and names what it misses; tests require every style to meet its profile on the test yards and songs, and the three to differ (hold: High energy < Classic < Elegant).
+
+Changes made to meet them: rolls and waves (`breathe`) start each prop on the nearest beat or half beat and, in a family, each prop swells for half the span so part of the row is always resting; Elegant leads with one group in quiet and middle parts (three in loud ones), waves its rows over whole phrases and lets families take turns in middle parts; High energy leads with one group in quiet parts and holds each chase step one step. A quick ripple through look-alikes counts as on the music with the prop that started it.
+
+Not yet: mirrored (left/right symmetric) Classic patterns, which the lockstep check would currently flag; recognizing bridges (parts are named from loudness); a separate steady layer under High energy's motion.
+

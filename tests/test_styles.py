@@ -120,3 +120,44 @@ def test_an_unknown_style_is_refused() -> None:
     with pytest.raises(ValueError, match="classic, energetic, elegant"):
         get_style("disco")
     assert get_style(None).key == "classic"
+
+
+@pytest.mark.parametrize("yard", [family_yard, classic_yard])
+@pytest.mark.parametrize("song", ["form", "plain"])
+def test_every_style_lives_up_to_its_profile(yard: Any, song: str) -> None:
+    # Each style's profile (hold length, fades, how much is lit in quiet and loud
+    # parts, contrast, the whole yard only at the peaks, accents a minute) is checked
+    # on every show; on these yards and songs every style meets all of it.
+    display = display_from_preview(yard().element())
+    analysis = _song() if song == "form" else synthetic_analysis()
+    measured = {}
+    for key in STYLES:
+        plan = plan_show(analysis, display, load_rule_set(), style=get_style(key))
+        assert plan.quality is not None
+        style_check = next(f for f in plan.quality.findings if f.check == "style")
+        assert style_check.status == "good", style_check.message
+        measured[key] = plan.quality.measures
+    # And the profiles really are different shows.
+    assert (measured["energetic"]["hold_beats"] < measured["classic"]["hold_beats"]
+            < measured["elegant"]["hold_beats"])
+    assert measured["elegant"]["accents_per_minute"] <= measured["classic"][
+        "accents_per_minute"]
+    assert measured["energetic"]["fade_share"] < measured["elegant"]["fade_share"]
+
+
+def test_a_show_that_misses_its_style_says_how() -> None:
+    from lor_sequence_builder.choreography import Effect
+    from lor_sequence_builder.quality import check
+
+    # A "show" of one-beat blinks on every prop at once, judged as Elegant.
+    props = {f"p{i}" for i in range(4)}
+    effects = [Effect(p, 0, t, t + 50) for t in range(0, 6000, 100) for p in sorted(props)]
+    report = check(effects, 6000, props, {p: f"r{p}" for p in props},
+                   [(0, 3000, 0), (3000, 6000, 2)], range(0, 6000, 50), [],
+                   profile=STYLES["elegant"].profile, style_name="Elegant", beat=50,
+                   accents=30)
+    finding = next(f for f in report.findings if f.check == "style")
+    assert finding.status == "note" and finding.message.startswith("Not quite Elegant")
+    for words in ("lights stay on 1.0 beats", "0% of effects fade", "accents a minute"):
+        assert words in finding.message
+    assert report.score <= 85

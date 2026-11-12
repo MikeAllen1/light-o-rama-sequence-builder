@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from lor_sequence_builder.choreography import Effect, Movement
+from lor_sequence_builder.style import Profile
 
 # Sampling step for "how much is lit" (centiseconds).
 STEP = 10
@@ -39,6 +40,8 @@ CONTRAST = 1.15
 # An effect start within this of a musical event counts as on the music.
 ON_MUSIC = 4
 ON_MUSIC_GOOD = 0.75
+# A ripple through look-alike props: each start this soon after one on the music.
+ROLL = 25
 # Phrases this alike (by which props start when) count as the same look.
 SAME_LOOK = 0.9
 SAME_LOOK_RUN = 3
@@ -114,20 +117,105 @@ def _near(times: list[int], value: int, tolerance: int) -> bool:
 
 
 def _visible_starts(effects: Sequence[Effect], props: set[str],
-                    movements: Sequence[Movement]) -> list[int]:
-    """When something visibly begins: a movement counts once, at its start (its steps
-    divide the beat on purpose), and otherwise a prop counts when it lights up from
-    dark. A segment stepping on while the rest of its prop is lit (a spinning tree)
-    is part of a motion already under way."""
-    starts = [m.start_centisecond for m in movements if props.intersection(m.prop_ids)]
+                    movements: Sequence[Movement],
+                    roles: dict[str, str] | None = None) -> list[tuple[int, str]]:
+    """When something visibly begins, with the kind of prop: a movement counts once, at
+    its start (its steps divide the beat on purpose), and otherwise a prop counts when
+    it lights up from dark. A segment stepping on while the rest of its prop is lit (a
+    spinning tree) is part of a motion already under way."""
+    roles = roles or {}
+    starts = [(m.start_centisecond, "movement:" + m.movement_id) for m in movements
+              if props.intersection(m.prop_ids)]
     lit_until: dict[str, int] = defaultdict(lambda: -1)
     for e in sorted(effects, key=lambda e: (e.start_centisecond, e.end_centisecond)):
         if e.prop_id not in props:
             continue
         if e.movement_id is None and e.start_centisecond > lit_until[e.prop_id]:
-            starts.append(e.start_centisecond)
+            starts.append((e.start_centisecond, roles.get(e.prop_id, e.prop_id)))
         lit_until[e.prop_id] = max(lit_until[e.prop_id], e.end_centisecond)
-    return starts
+    return sorted(starts)
+
+
+def _on_music_share(starts: list[tuple[int, str]], marks: list[int]) -> float:
+    """Share of starts on the music. A quick ripple through look-alike props (each a
+    few hundredths after the last) counts with the prop that started it."""
+    on = 0
+    last_on: dict[str, int] = {}
+    for t, kind in starts:
+        if _near(marks, t, ON_MUSIC) or t - last_on.get(kind, -10_000) <= ROLL:
+            on += 1
+            if _near(marks, t, ON_MUSIC):
+                last_on[kind] = t
+    return on / max(1, len(starts))
+
+
+def _style_check(effects: Sequence[Effect], props: set[str], duration: int,
+                 share: list[float], sections: Sequence[tuple[int, int, int]],
+                 excused: Sequence[tuple[int, int]], profile: Profile, beat: int,
+                 accents: int, measures: dict[str, float]) -> list[str]:
+    """How the show measures against its style's profile; what it misses, in words."""
+    import statistics
+
+    used = [e for e in effects if e.prop_id in props]
+    by_channel: dict[tuple[str, int], list[Effect]] = defaultdict(list)
+    for e in used:
+        by_channel[(e.prop_id, e.channel_index)].append(e)
+    lengths: list[int] = []
+    for items in by_channel.values():
+        items.sort(key=lambda e: e.start_centisecond)
+        start, end = items[0].start_centisecond, items[0].end_centisecond
+        for e in items[1:]:
+            if e.start_centisecond <= end:
+                end = max(end, e.end_centisecond)
+            else:
+                lengths.append(end - start)
+                start, end = e.start_centisecond, e.end_centisecond
+        lengths.append(end - start)
+    hold = statistics.median(lengths) / beat if lengths else 0.0
+    fades = sum(1 for e in used if e.kind == "fade") / max(1, len(used))
+    top = max((level for _, _, level in sections), default=0)
+    calm_values: list[float] = []
+    loud_values: list[float] = []
+    loud_at = [False] * len(share)
+    for start, end, level in sections:
+        values = share[start // STEP:end // STEP]
+        (loud_values if level == top and top > 0 else calm_values).extend(values)
+        if level == top:
+            for i in range(start // STEP, min(len(share), end // STEP)):
+                loud_at[i] = True
+    calm = sum(calm_values) / max(1, len(calm_values))
+    loud = sum(loud_values) / max(1, len(loud_values))
+    full = sum(1 for i, s in enumerate(share) if s >= OVERLOAD_SHARE and not loud_at[i]
+               and not any(a <= i * STEP < b for a, b in excused)) * STEP / 100
+    per_minute = accents / max(1.0, duration / 6000)
+    measures.update({"hold_beats": hold, "fade_share": fades, "calm_lit": calm,
+                     "peak_lit": loud, "full_outside_peaks_seconds": full,
+                     "accents_per_minute": per_minute})
+    missed: list[str] = []
+    low, high = profile.hold_beats
+    if hold < low:
+        missed.append(f"lights stay on {hold:.1f} beats, shorter than its {low:g}")
+    elif hold > high:
+        missed.append(f"lights stay on {hold:.1f} beats, longer than its {high:g}")
+    low, high = profile.fade_share
+    if not low <= fades <= high:
+        missed.append(f"{fades:.0%} of effects fade (it aims for {low:.0%}-{high:.0%})")
+    if calm > profile.calm_lit:
+        missed.append(f"{calm:.0%} of the yard lit in the quieter parts (at most "
+                      f"{profile.calm_lit:.0%})")
+    if loud > profile.peak_lit:
+        missed.append(f"{loud:.0%} lit in the loud parts leaves little contrast (at most "
+                      f"{profile.peak_lit:.0%})")
+    if calm and loud < profile.loud_to_quiet * calm:
+        missed.append(f"loud parts light only {loud / calm:.1f}x the quieter ones (at least "
+                      f"{profile.loud_to_quiet:g}x)")
+    if full > profile.full_outside_peaks:
+        missed.append(f"the whole yard is lit {full:.0f} s outside the peaks")
+    low, high = profile.accents_per_minute
+    if not low <= per_minute <= high:
+        missed.append(f"{per_minute:.1f} whole-yard accents a minute (it aims for "
+                      f"{low:g}-{high:g})")
+    return missed
 
 
 def check(
@@ -142,6 +230,10 @@ def check(
     excused: Sequence[tuple[int, int]] = (),
     fixed_dead_air: Sequence[tuple[int, int]] = (),
     movements: Sequence[Movement] = (),
+    profile: Profile | None = None,
+    style_name: str = "",
+    beat: int = 0,
+    accents: int = 0,
 ) -> QualityReport:
     """Check a show. ``sections`` are (start, end, level 0-2); ``music`` the times
     of beats, drum hits and onsets; ``quiet`` where the song itself is silent or
@@ -242,14 +334,23 @@ def check(
 
     # On the music.
     marks = sorted(set(music))
-    starts = _visible_starts(effects, props, movements)
-    on = sum(1 for t in starts if _near(marks, t, ON_MUSIC)) / max(1, len(starts))
+    on = _on_music_share(_visible_starts(effects, props, movements, roles), marks)
     measures["on_music"] = on
     findings.append(Finding(
         "on_the_music", "good" if on >= ON_MUSIC_GOOD else "note",
         f"{on:.0%} of effects start on a beat, a drum hit or a note of the song."))
 
-    penalty = (min(25.0, measures["overload_seconds"] * 1.5)
+    missed: list[str] = []
+    if profile is not None and beat > 0:
+        missed = _style_check(effects, props, duration, share, sections, excused, profile,
+                              beat, accents, measures)
+        findings.append(Finding(
+            "style", "note" if missed else "good",
+            f"Not quite {style_name or 'the style'}: " + "; ".join(missed) + "." if missed
+            else f"Measures up to {style_name or 'the style'} on every count."))
+
+    penalty = (min(20.0, 5.0 * len(missed))
+               + min(25.0, measures["overload_seconds"] * 1.5)
                + min(25.0, measures["dead_air_seconds"] * 3)
                + min(20.0, 5.0 * len(pairs))
                + (15.0 if any(f.check == "flat_energy" and f.status == "note"
