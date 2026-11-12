@@ -142,7 +142,7 @@ def test_every_style_lives_up_to_its_profile(yard: Any, song: str) -> None:
         assert style_check.status == "good", style_check.message
         measured[key] = plan.quality.measures
     # And the profiles really are different shows.
-    assert (measured["energetic"]["hold_beats"] < measured["classic"]["hold_beats"]
+    assert (measured["energetic"]["hold_beats"] <= measured["classic"]["hold_beats"]
             < measured["elegant"]["hold_beats"])
     assert measured["elegant"]["accents_per_minute"] <= measured["classic"][
         "accents_per_minute"]

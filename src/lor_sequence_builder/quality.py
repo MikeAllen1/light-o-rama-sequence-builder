@@ -229,6 +229,7 @@ def check(
     style_name: str = "",
     beat: int = 0,
     accents: int = 0,
+    mirrors: set[str] | None = None,
 ) -> QualityReport:
     """Check a show. ``sections`` are (start, end, level 0-2); ``music`` the times
     of beats, drum hits and onsets; ``quiet`` where the song itself is silent or
@@ -281,8 +282,12 @@ def check(
     by_role: dict[str, list[str]] = defaultdict(list)
     for pid in sorted(props):
         by_role[roles.get(pid, "unknown")].append(pid)
+    # Props that show another prop's light on purpose (a resting mouth with its
+    # face, a prop on the same circuit) are not lockstep.
+    mirrored = mirrors or set()
     pairs = [(a, b) for pids in by_role.values() for a, b in itertools.combinations(pids, 2)
-             if len(timelines[a]) >= 10 and timelines[a] == timelines[b]]
+             if len(timelines[a]) >= 10 and timelines[a] == timelines[b]
+             and a not in mirrored and b not in mirrored]
     measures["lockstep_pairs"] = len(pairs)
     findings.append(Finding(
         "lockstep", "note" if pairs else "good",
