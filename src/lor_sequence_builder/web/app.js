@@ -1444,6 +1444,7 @@
         return;
       }
       state.analysis = payload.report;
+      captureReviewBaseline();
       renderSequenceStats();
       refreshTimeline();
       const analysis = state.analysis.analysis;
