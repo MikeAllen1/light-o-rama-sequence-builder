@@ -2582,7 +2582,12 @@
       result = await callEngine("/api/export", JSON.stringify({ original: sequence.source.originalXml,
         edited: text }), "application/json");
     } catch (error) {
-      setBanner("Not saved: " + problemText(error), "error");
+      if (requestId === state.exportRequestId && state.sequence === sequence) {
+        setBanner("Not saved: " + problemText(error), "error");
+      } else {
+        logProblem("An export of a previous workspace could not be completed: " + problemText(error),
+          "export");
+      }
       return;
     } finally {
       if (requestId === state.exportRequestId) {
