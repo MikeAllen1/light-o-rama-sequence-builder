@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import threading
 import time
@@ -194,16 +195,47 @@ def test_batch_clear_failure_keeps_the_manifest(tmp_path: Path, monkeypatch: pyt
     (done / "old-show.loredit").write_text("old", encoding="utf-8")
     session.batch.append({"ok": True, "show": "old-show.loredit"})
 
-    def fail_remove(path: Path, *args: Any, **kwargs: Any) -> None:
-        raise OSError("file is locked")
+    def fail_rename(source: Path, destination: Path) -> None:
+        raise OSError("directory is locked")
 
     with monkeypatch.context() as patch:
-        patch.setattr(shutil, "rmtree", fail_remove)
-        with pytest.raises(OSError, match="file is locked"):
+        patch.setattr(os, "replace", fail_rename)
+        with pytest.raises(OSError, match="directory is locked"):
             sessions.batch_clear(token)
 
     assert session.batch == [{"ok": True, "show": "old-show.loredit"}]
     assert (done / "old-show.loredit").is_file()
+    sessions.close()
+
+
+def test_partial_retired_batch_cleanup_cannot_damage_the_active_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    sessions = show_builder.ShowSessions()
+    started = sessions.start(preview, "yard.lorprev")
+    token = started["token"]
+    session = sessions.get(token)
+    done = session.path / "batch"
+    done.mkdir()
+    old_show = done / "old-show.loredit"
+    old_show.write_text("old", encoding="utf-8")
+    session.batch.append({"ok": True, "show": old_show.name})
+
+    def partially_remove(path: Path, *args: Any, **kwargs: Any) -> None:
+        # Simulate Windows deleting some artifacts before a locked file stops rmtree.
+        next(path.iterdir()).unlink()
+        raise OSError("one retired file is locked")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(shutil, "rmtree", partially_remove)
+        assert sessions.batch_clear(token) == {"cleared": True}
+
+    assert session.batch == []
+    assert not done.exists()
+    retired = list(session.path.glob("batch-reset-*"))
+    assert len(retired) == 1
+    assert retired[0].is_dir()
     sessions.close()
 
 
