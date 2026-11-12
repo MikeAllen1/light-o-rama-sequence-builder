@@ -35,6 +35,9 @@
     undo: [],
     redo: [],
     dirty: false,
+    baselineEffects: new Map(),
+    editRevision: 0,
+    exportPending: false,
     drag: null,
     clipboard: null,
     cursorCs: 0,
@@ -1264,6 +1267,7 @@
       if (state.dirty && !window.confirm("Discard the unexported edits to " +
         state.sequence.filename + "?")) return;
       const head = new Uint8Array(await file.slice(0, 3).arrayBuffer());
+      if (requestId !== state.sequenceRequestId) return;
       openSequenceText(xmlText, file.name, head[0] === 0xEF && head[1] === 0xBB && head[2] === 0xBF);
       setBanner("Loaded " + state.sequence.props.length + " native props, " +
         state.sequence.channelCount + " channels, and " + state.sequence.effectCount.toLocaleString() +
@@ -1279,6 +1283,8 @@
 
   // Show a sequence from its text: a file the user opened, or a show just generated.
   function openSequenceText(xmlText, name, bom) {
+      // A direct/generated open supersedes any file read still in progress.
+      state.sequenceRequestId += 1;
       const doc = parseXmlDocument(xmlText);
       state.sequence = parseSequence(doc, name);
       const declaration = xmlText.replace(/^\uFEFF/, "").match(/^<\?xml[^?]*\?>/);
@@ -1707,12 +1713,18 @@
     state.redo = [];
     state.dirty = false;
     state.exported = false;
+    state.baselineEffects = new Map();
+    state.editRevision = 0;
+    state.exportPending = false;
     state.drag = null;
     state.clipboard = null;
     state.cursorCs = 0;
     state.channelInfo = new Map();
     for (const prop of state.sequence.props) {
-      prop.channels.forEach((channel, index) => state.channelInfo.set(channel, { prop, index }));
+      prop.channels.forEach((channel, index) => {
+        state.channelInfo.set(channel, { prop, index });
+        state.baselineEffects.set(channel, channel.effects);
+      });
     }
     updateEditControls();
   }
@@ -1884,7 +1896,10 @@
     sequence.effectTypes = types;
     state.editedChannels = edited;
     state.syncCheck = null;
-    state.dirty = true;
+    state.editRevision += 1;
+    state.dirty = Boolean(sequence.generated && !state.exported) ||
+      sequence.props.some((prop) => prop.channels.some((channel) =>
+        state.baselineEffects.get(channel) !== channel.effects));
     renderSequenceStats();
     refreshTimeline();
     updateEditControls();
@@ -1898,7 +1913,7 @@
     set("redoButton", state.redo.length > 0);
     set("deleteButton", has);
     set("duplicateButton", has);
-    set("exportButton", Boolean(state.sequence));
+    set("exportButton", Boolean(state.sequence) && !state.exportPending);
     set("saveReviewButton", Boolean(state.analysis));
     const exportButton = $("exportButton");
     if (exportButton) {
@@ -2550,12 +2565,15 @@
 
   async function exportEdited() {
     const sequence = state.sequence;
-    if (!sequence) return;
+    if (!sequence || state.exportPending) return;
+    const revision = state.editRevision;
     const text = serializeSequence();
     if (text.length > MAX_XML_BYTES) {
       setBanner("The edited sequence exceeds the 50 MiB limit.", "error");
       return;
     }
+    state.exportPending = true;
+    updateEditControls();
     let result;
     try {
       result = await callEngine("/api/export", JSON.stringify({ original: sequence.source.originalXml,
@@ -2563,6 +2581,9 @@
     } catch (error) {
       setBanner("Not saved: " + problemText(error), "error");
       return;
+    } finally {
+      state.exportPending = false;
+      updateEditControls();
     }
     // A show generated here is saved under its own name; an opened file gets "(edited)".
     const name = sequence.generated ? sequence.filename
@@ -2575,11 +2596,18 @@
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
-    state.dirty = false;
-    state.exported = true;
-    updateEditControls();
-    setBanner("Checked and saved " + name + " with " + result.effects.toLocaleString() +
-      " effects. Your original file is unchanged.", "good");
+    if (state.sequence === sequence && state.editRevision === revision) {
+      for (const prop of sequence.props) {
+        for (const channel of prop.channels) state.baselineEffects.set(channel, channel.effects);
+      }
+      state.dirty = false;
+      state.exported = true;
+      updateEditControls();
+      setBanner("Checked and saved " + name + " with " + result.effects.toLocaleString() +
+        " effects. Your original file is unchanged.", "good");
+    } else {
+      setBanner("Saved " + name + " as it was when you clicked Save. The workspace changed while it was being checked; current edits remain unsaved.", "warn");
+    }
   }
 
   function setupEditing() {
