@@ -258,6 +258,14 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                                  "Cymbal crash candidates", "Possible out-of-sync hits"):
                         assert lane in labels
 
+                    # Auto-analysis is the clean baseline: confirming and undoing
+                    # a candidate marker must not leave a phantom unsaved review.
+                    page.locator("#markersCanvas").click(position={"x": 44, "y": 11})
+                    page.locator("#reviewConfirm").click()
+                    assert "unsaved music review" in page.locator("#editStatus").inner_text().lower()
+                    page.locator("#undoButton").click()
+                    assert "unsaved music review" not in page.locator("#editStatus").inner_text().lower()
+
                     page.locator("#lyricsFile").set_input_files(
                         {
                             "name": "song.lrc",
