@@ -10,11 +10,14 @@ and the end of both logs. Paths under the user's home folder are shortened to
 
 from __future__ import annotations
 
+import errno
 import getpass
 import os
 import platform
+import secrets
 import sys
 import threading
+import traceback
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -66,6 +69,49 @@ def write_log(source: str, message: str, folder: Path | None = None) -> None:
                 stream.write(f"{stamp} [{source[:20]}] {line}\n")
         except OSError:
             pass
+
+
+def log_unexpected(error: BaseException, where: str, folder: Path | None = None) -> str:
+    """Log a bug with its traceback; return a short reference to quote."""
+    reference = secrets.token_hex(3).upper()
+    trace = "".join(traceback.format_exception(error)).rstrip().splitlines()[-60:]
+    write_log("bug", f"{reference} in {where}: {type(error).__name__}: {error}", folder)
+    target = (folder or log_folder()) / "workspace.log"
+    with _lock:
+        try:
+            with target.open("a", encoding="utf-8") as stream:
+                for line in trace:
+                    stream.write("    " + scrub(line)[:MAX_LINE] + "\n")
+        except OSError:
+            pass
+    return reference
+
+
+def unexpected_message(reference: str) -> str:
+    return ("Something went wrong inside the program, not with your files. Try again; if it "
+            "happens again, click Copy diagnostics at the bottom of the start page and send it "
+            f"along (reference {reference}).")
+
+
+def friendly(error: BaseException) -> str:
+    """Plain words for problems the computer reports, with what to do about them."""
+    if isinstance(error, MemoryError):
+        return ("The computer ran out of memory. Close other programs and try again, or try a "
+                "shorter song.")
+    if isinstance(error, OSError):
+        name = Path(error.filename).name if isinstance(error.filename, str) else ""
+        where = f" ({name})" if name else ""
+        if error.errno == errno.ENOSPC:
+            return ("The disk is full, so the program could not save its work. Free up some "
+                    "space and try again.")
+        if isinstance(error, PermissionError) or error.errno in {errno.EACCES, errno.EPERM}:
+            return (f"Windows did not allow the program to use a file{where}. Close any other "
+                    "program that has it open (S6 or a music player), then try again.")
+        if isinstance(error, FileNotFoundError):
+            return f"A file the program needs is missing{where}. Choose it again."
+        return scrub(f"The computer could not read or write a file{where}: "
+                     f"{error.strerror or error}.")
+    return scrub(str(error))
 
 
 def _tail(path: Path, lines: int) -> list[str]:

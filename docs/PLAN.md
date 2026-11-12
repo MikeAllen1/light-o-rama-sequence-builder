@@ -452,3 +452,12 @@ Refused requests and errors from the page go to `logs/workspace.log` in the user
 ## Playlists
 
 New show's Generate step builds a show for each of several songs with the session's display, requirements and style: each song is uploaded, analyzed and built on its own request (so a long playlist shows progress and one bad file does not stop the rest), kept in the session, and **Save all shows** downloads them in one zip with their reports and a read-me. The session's own song is untouched. Up to 40 songs a batch; repeated names get "(2)"; faces stay still (no vocal splitting). `generate-batch` does the same for a folder from the command line.
+
+## Error handling
+
+Every problem ends in plain words that say what to do, and bugs leave a trail instead of a traceback:
+
+- **Engine:** every refusal answers in JSON the page can show (the standard error page stays for missing files), in plain words ("That file does not look like a song this program can read..."). A bug never drops the connection: it is logged with its traceback under a six-letter reference, and the answer says it was the program, not the user's files, and to send Copy diagnostics. Disk full, a file locked by another program, a missing file and running out of memory are named as such.
+- **Page:** one shared call to the engine. When the engine has stopped it says so ("Close LOR Sequencer and open it again"); files that cannot be opened say which kind of file was expected; every error shown is added to the diagnostics trail.
+- **Command line:** known problems print one `error:` line; anything unexpected prints a reference and where the details are, never a traceback (`--debug` or `LOR_DEBUG=1` shows it); Ctrl+C prints "Stopped."; `diagnostics` prints the report.
+- **Desktop app:** a failure while starting shows a message box with the reason and the log's location, instead of the app vanishing.

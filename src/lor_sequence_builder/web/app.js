@@ -63,6 +63,47 @@
     const banner = $("analysisBanner");
     $("analysisMessage").textContent = message;
     banner.className = "analysis-banner" + (kind ? " " + kind : "");
+    if (kind === "error" && typeof remember === "function") remember("showed: " + message);
+  }
+
+  const ENGINE_GONE = "The program's engine is not answering. Close LOR Sequencer and open it " +
+    "again; your files are not affected.";
+
+  // Plain words for why a file or step failed, to follow "... could not be opened: ".
+  function problemText(error) {
+    if (!error) return "an unknown problem.";
+    if (error.name === "SyntaxError") {
+      return "it is not in the expected format. It may be damaged, or a different kind of file.";
+    }
+    if (error.name === "NotReadableError" || error.name === "NotFoundError") {
+      return "the file could not be read. It may have been moved, or be open in another program.";
+    }
+    if (error.name === "EncodingError") {
+      return "the audio could not be decoded. Try an MP3 or WAV copy of the song.";
+    }
+    const text = String(error.message || error).trim();
+    return text ? text.replace(/([^.!?])$/, "$1.") : "an unknown problem.";
+  }
+
+  // Every request to the local engine goes through here: a stopped engine, a refusal
+  // and an unreadable answer each get a message that says what to do.
+  async function callEngine(path, body, type) {
+    let response;
+    try {
+      response = await fetch(path, { method: "POST", headers: { "Content-Type": type }, body });
+    } catch {
+      throw new Error(ENGINE_GONE);
+    }
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const error = new Error(payload && payload.error ? payload.error
+        : "The program could not do that step (code " + response.status + "). Try again.");
+      error.status = response.status;
+      error.reference = payload && payload.reference;
+      throw error;
+    }
+    if (payload === null) throw new Error("The program sent back an answer it could not read. Try again.");
+    return payload;
   }
 
   function formatTime(seconds) {
@@ -1231,7 +1272,8 @@
       if (state.audioBuffer) compareDurations();
     } catch (error) {
       if (requestId !== state.sequenceRequestId) return;
-      setBanner(error.message || String(error), "error");
+      setBanner("That sequence could not be opened: " + problemText(error) +
+        " Choose a .loredit file saved by S6.", "error");
     }
   }
 
@@ -1341,16 +1383,9 @@
     const meter = $("meterSelect").value;
     setBanner("Analyzing the selected audio locally: tempo, beats, downbeats, transients, sections, and pauses…");
     try {
-      const response = await fetch("/api/analyze?beats_per_bar=" + meter, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/octet-stream"
-        },
-        body: file
-      });
-      const payload = await response.json();
+      const payload = await callEngine("/api/analyze?beats_per_bar=" + meter, file,
+        "application/octet-stream");
       if (requestId !== state.audioRequestId) return;
-      if (!response.ok) throw new Error(payload.error || "Local analysis failed.");
       if (state.reviewDirty || state.reviewLoaded) {
         // Never replace reviewed markers with fresh estimates.
         setBanner("Audio loaded. Your music review is kept; the fresh automatic analysis was not " +
@@ -1375,7 +1410,7 @@
       if (requestId !== state.audioRequestId) return;
       const mismatch = durationMismatchMessage();
       setBanner("Waveform loaded. Automatic analysis unavailable: " +
-        (error.message || String(error)) + " Start the workspace with lor-sequence-ui to enable local analysis, or load a saved analysis JSON." +
+        problemText(error) + " You can still edit, or load a saved analysis file." +
         (mismatch ? " " + mismatch : ""), "warn");
     }
   }
@@ -1428,7 +1463,7 @@
       state.audioFile = null;
       state.audioBuffer = null;
       state.waveformPeaks = null;
-      setBanner("Could not decode the selected audio: " + (error.message || String(error)), "error");
+      setBanner("That song could not be played here: " + problemText(error), "error");
     }
   }
 
@@ -1496,7 +1531,8 @@
       }
     } catch (error) {
       if (requestId !== state.audioRequestId) return;
-      setBanner(error.message || String(error), "error");
+      setBanner("That analysis file could not be loaded: " + problemText(error) +
+        " Choose a .analysis.json or .review.json file made by this program.", "error");
     }
   }
 
@@ -1534,7 +1570,7 @@
       setBanner("Loaded vocal regions and syllable candidates. This analysis is heuristic and does not identify words or lyrics.", "good");
     } catch (error) {
       if (requestId !== state.vocalRequestId) return;
-      setBanner(error.message || String(error), "error");
+      setBanner("That vocal file could not be loaded: " + problemText(error), "error");
     }
   }
 
@@ -1625,7 +1661,8 @@
         : "Loaded " + data.lines.length + " lyric lines from " + file.name + ".", "good");
     } catch (error) {
       if (requestId !== state.lyricRequestId) return;
-      setBanner(error.message || String(error), "error");
+      setBanner("Those lyrics could not be loaded: " + problemText(error) +
+        " Lyrics can be LRC, SRT or VTT files.", "error");
     }
   }
 
@@ -2517,22 +2554,12 @@
       setBanner("The edited sequence exceeds the 50 MiB limit.", "error");
       return;
     }
-    let response;
-    let result = {};
+    let result;
     try {
-      response = await fetch("/api/export", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ original: sequence.source.originalXml, edited: text })
-      });
-      result = await response.json().catch(() => ({}));
+      result = await callEngine("/api/export", JSON.stringify({ original: sequence.source.originalXml,
+        edited: text }), "application/json");
     } catch (error) {
-      setBanner("The local workspace engine is not reachable, so the edited sequence was not " +
-        "checked or saved. Start it with lor-sequence-ui.", "error");
-      return;
-    }
-    if (!response.ok) {
-      setBanner("Not exported: " + (result.error || "the check failed (" + response.status + ")"),
-        "error");
+      setBanner("Not saved: " + problemText(error), "error");
       return;
     }
     // A show generated here is saved under its own name; an opened file gets "(edited)".
@@ -3096,18 +3123,13 @@
     const element = $(id);
     element.textContent = text;
     element.className = "step-status" + (kind ? " " + kind : "");
+    if (kind === "error") remember("showed in " + id + ": " + text);
   }
 
   async function postShow(path, body, type) {
-    const response = await fetch(path, { method: "POST", headers: { "Content-Type": type },
-      body });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(payload.error || "The local engine refused this step (" +
-        response.status + "). Start the workspace with lor-sequence-ui.");
-    }
-    return payload;
+    return callEngine(path, body, type);
   }
+
 
   function openNewShow() {
     $("welcome").classList.add("hidden");

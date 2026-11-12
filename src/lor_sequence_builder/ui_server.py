@@ -19,6 +19,7 @@ from lor_sequence_builder.audio_analysis import (
     AudioAnalysisError,
     analyze_audio,
 )
+from lor_sequence_builder.diagnostics import friendly
 from lor_sequence_builder.loredit import (
     MAX_LOREDIT_BYTES,
     LoreditError,
@@ -106,6 +107,18 @@ def _detect_audio_suffix(payload: bytes) -> str | None:
     return None
 
 
+_NOT_AUDIO = ("That file does not look like a song this program can read. Use an MP3, M4A, "
+              "WAV, FLAC or OGG file.")
+_PLAIN_ERRORS = {
+    400: "The program sent itself a request it could not understand. Reload the page and try "
+         "again.",
+    403: "Only this program's own window can use its engine.",
+    404: "This program has no such step.",
+    413: "That file is too large for the program.",
+    415: "That kind of file cannot be used here.",
+}
+
+
 class SequencerRequestHandler(SimpleHTTPRequestHandler):
     """Serve only packaged UI assets and accept bounded audio uploads for local analysis."""
 
@@ -126,12 +139,38 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
         )
         super().end_headers()
 
+    def send_error(self, code: int, message: str | None = None,
+                   explain: str | None = None) -> None:
+        """API refusals answer in JSON with plain words the page can show; files keep the
+        standard error page."""
+        if not urlsplit(self.path).path.startswith("/api/"):
+            super().send_error(code, message, explain)
+            return
+        self._send_json(code, {"error": message or _PLAIN_ERRORS.get(
+            code, "The program could not do that step.")})
+
     def do_POST(self) -> None:
-        """Analyze audio, check an edited sequence, or build a new show."""
+        """Analyze audio, check an edited sequence, or build a new show; never drop the
+        connection on a bug, so the page can say what happened."""
+        try:
+            self._post()
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # the page went away; nothing to answer
+        except Exception as error:  # noqa: BLE001 - every bug gets a logged, plain answer
+            from lor_sequence_builder.diagnostics import log_unexpected, unexpected_message
+
+            reference = log_unexpected(error, urlsplit(self.path).path)
+            try:
+                self._send_json(500, {"error": unexpected_message(reference),
+                                      "reference": reference})
+            except OSError:
+                pass
+
+    def _post(self) -> None:
         parsed = urlsplit(self.path)
         if parsed.path not in {"/api/analyze", "/api/export", "/api/update", "/api/log",
                                "/api/diagnostics", *_SHOW_STEPS}:
-            self.send_error(404)
+            self.send_error(404, "This program has no such step.")
             return
         if not self._is_same_origin():
             return
@@ -167,7 +206,7 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
                     return
                 suffix = _detect_audio_suffix(payload)
                 if suffix is None or suffix not in INPUT_DEMUXERS:
-                    self.send_error(415, "Unsupported or unrecognized audio container")
+                    self.send_error(415, _NOT_AUDIO)
                     return
                 meter = query.get("beats_per_bar", ["4"])[0]
                 if meter not in {"3", "4"}:
@@ -184,7 +223,7 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
                     return
                 suffix = _detect_audio_suffix(payload)
                 if suffix is None or suffix not in INPUT_DEMUXERS:
-                    self.send_error(415, "Unsupported or unrecognized audio container")
+                    self.send_error(415, _NOT_AUDIO)
                     return
                 meter = query.get("beats_per_bar", ["4"])[0]
                 if meter not in {"3", "4"}:
@@ -232,8 +271,8 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
                     self._send_json(200, SHOWS.generate(token, body))
         except (ShowBuildError, AudioAnalysisError, ValueError, RuntimeError) as exc:
             self._send_json(422, {"error": str(exc)})
-        except OSError:
-            self._send_json(500, {"error": "The show could not be built on this computer"})
+        except (OSError, MemoryError) as exc:
+            self._send_json(500, {"error": friendly(exc)})
 
     def _read_json(self) -> dict[str, Any] | None:
         payload = self._read_body("application/json", _MAX_JSON_BYTES, "Request")
@@ -273,14 +312,15 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
         except ValueError:
             length = -1
         if length <= 0:
-            self.send_error(400, "A non-empty Content-Length is required")
+            self.send_error(400, f"The {what.lower()} file is empty. Choose it again.")
             return None
         if length > limit:
-            self.send_error(413, f"{what} exceeds the {limit // (1024 * 1024)} MiB upload limit")
+            self.send_error(413, f"That {what.lower()} file is larger than the "
+                                 f"{limit // (1024 * 1024)} MB this program accepts.")
             return None
         payload = self.rfile.read(length)
         if len(payload) != length:
-            self.send_error(400, f"{what} upload was incomplete")
+            self.send_error(400, f"The {what.lower()} file did not arrive in full. Choose it again.")
             return None
         return payload
 
@@ -303,8 +343,9 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
             ))
         except (LoreditError, UnicodeError, ValueError, TypeError) as exc:
             self._send_json(422, {"error": str(exc) or "Invalid sequence export request"})
-        except OSError:
-            self._send_json(500, {"error": "The edited sequence could not be checked"})
+        except (OSError, MemoryError) as exc:
+            self._send_json(500, {"error": "The edited sequence could not be checked. "
+                                  + friendly(exc)})
 
     def _analyze(self, query_text: str) -> None:
         payload = self._read_body("application/octet-stream", _MAX_UPLOAD_BYTES, "Audio")
@@ -313,7 +354,7 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
 
         suffix = _detect_audio_suffix(payload)
         if suffix is None or suffix not in INPUT_DEMUXERS:
-            self.send_error(415, "Unsupported or unrecognized audio container")
+            self.send_error(415, _NOT_AUDIO)
             return
         warning = None
 
@@ -341,8 +382,8 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
             self._send_json(200, {"report": report, "warning": warning})
         except AudioAnalysisError as exc:
             self._send_json(422, {"error": str(exc), "warning": warning})
-        except OSError:
-            self._send_json(500, {"error": "Local audio analysis could not complete"})
+        except (OSError, MemoryError) as exc:
+            self._send_json(500, {"error": "The song could not be analyzed. " + friendly(exc)})
 
     def _diagnostics(self, path: str) -> None:
         from lor_sequence_builder.diagnostics import report, write_log
