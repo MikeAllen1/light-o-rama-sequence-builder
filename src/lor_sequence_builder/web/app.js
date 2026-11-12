@@ -1579,6 +1579,14 @@
       if (currentDuration != null && Math.abs(incomingDuration - currentDuration) > 1) {
         throw new Error("This analysis is for a different-length recording. Choose the analysis that matches the selected song.");
       }
+      const analyzedName = data.audio && typeof data.audio.file_name === "string"
+        ? data.audio.file_name.split(/[\\/]/).pop() : "";
+      if (state.audioFile && analyzedName &&
+          analyzedName.toLowerCase() !== state.audioFile.name.toLowerCase() &&
+          !window.confirm("This analysis was made from " + analyzedName + ", but the selected audio is " +
+            state.audioFile.name + ". They may be different recordings. Load this analysis anyway?")) {
+        return;
+      }
       const requiredArrays = ["beats", "downbeats", "onsets", "energy",
         "phrase_boundaries", "section_candidates", "hard_stops"];
       if (data.schema_version !== "2.0" || !analysis ||
