@@ -1,16 +1,54 @@
-# Light-O-Rama Sequence Builder
+# LOR Sequencer
 
-Turn a song and your Light-O-Rama S6 display into a finished, native S6 sequence. Choose your display's preview and a song, add anything the show must do, and it plans a show for your own props: beats, bars and sections drive the motion, groups take turns leading, snowflakes fall, faces sing. Every show is checked against sequencing rules before it is written, and comes with a one-page report of what it did and what to check in the yard. Everything runs on your own computer.
+**Light-O-Rama sequences, without the hundred hours.**
 
-**Project status:** the generator, the browser workspace and building a show from the browser are working. Desktop packaging (a normal installer) is the last stage. See [docs/PLAN.md](docs/PLAN.md) for the detailed status.
+Sequencing one song by hand can eat a whole weekend, and it helps to have an ear for music. LOR Sequencer does it for you: give it your Light-O-Rama S6 preview and a song, and you get back a native S6 sequence that knows your arches from your snowflakes.
 
-## Install the Windows app
+![The invented demo yard playing the show LOR Sequencer made for it](docs/images/demo-yard.gif)
 
-Download **LOR-Sequencer-Setup** from the project's [Releases](https://github.com/MikeAllen1/light-o-rama-sequence-builder/releases) page and run it. It installs for your user only (no administrator prompt), adds **LOR Sequencer** to the Start menu, and includes everything it needs, FFmpeg too. Start it, click **New show**, and follow the steps. Uninstall it from Settings > Apps like any other program.
+*The invented demo yard, playing the show the program made for it.*
 
-The installer is built automatically for every change; see [packaging/README.md](packaging/README.md) for how.
+### [Download for Windows](https://github.com/MikeAllen1/light-o-rama-sequence-builder/releases/latest)
 
-## Run from the source folder (Windows, no programming)
+Free. No administrator rights needed, and everything it needs is included. Running a newer installer later replaces the old one, and the app tells you when there is one. Can't run installers on your PC? Take the **Portable** zip from the same page: unzip it and run `LOR Sequencer.exe`.
+
+## How it works
+
+1. **Your preview.** Choose the `.lorprev` you already have. It is the map: every prop, its channels, and where it stands in the yard.
+2. **Your song.** Any MP3, WAV or M4A. The program finds the beats, the bars, the loud parts, the sleigh bells and the cymbal crashes.
+3. **Your show.** Pick a style and click **Generate show**. Watch it play on a drawing of your yard, then save the `.loredit` and open it in the S6 Sequencer. Play it as it is, or fine-tune it there.
+
+## What your show does
+
+Every kind of prop gets one job for the whole song, so the yard looks planned rather than random:
+
+- **Arches** chase on the beat.
+- **Mini trees** trade beats back and forth.
+- **Snowflakes** fall, on the sleigh bells when the song has them.
+- **The mega tree** spins.
+- **Singing faces** sing along (with the optional vocals add-on).
+- **Outlines and stars** are the steady glow underneath.
+
+Quiet parts of the song use a few props; loud parts use more. A chorus that comes back looks like it did the first time, the phrase before a big part builds up, and the crashes flash the whole yard.
+
+You can also:
+
+- **Pick a style:** Classic, High energy (busy and punchy) or Elegant (calm, for ballads).
+- **Set requirements** like "keep the star on all song" or "keep the mega tree dark in the verses". They are remembered for your display.
+- **Run a 10-second display test** that lights every prop in a fixed order, to check your wiring before the real show.
+- **Read the show report:** what was used, what stayed dark and why, and what to check in the yard.
+
+## Good to know
+
+- **It runs on your computer.** Your preview and your music never leave it. The only thing it asks the internet is whether a newer version is out, and you can turn that off.
+- **You need Light-O-Rama S6** to play the shows. Standard LOR props (channel per color, multi-segment) are sequenced; pixel (RGB) and DMX props are listed in the report but not sequenced yet.
+- **Better previews make better shows.** Giving props a real S6 shape (Arch, Tree, Snowflake) and grouping rows helps. The [user guide](docs/USER_GUIDE.md) has tips and fixes for common problems.
+- **Free to use, not to sell.** See [License](#license).
+- Not affiliated with or endorsed by Light-O-Rama, Inc. "Light-O-Rama" and "S6" are theirs.
+
+## Other ways to run it
+
+### Run it from the source folder instead
 
 1. **Install uv** (it installs everything else). Open PowerShell and paste:
    ```powershell
@@ -23,7 +61,7 @@ The installer is built automatically for every change; see [packaging/README.md]
    The launcher offers to do this for you if it is missing.
 3. **Get the program:** on GitHub, choose **Code → Download ZIP**, and unzip it anywhere (for example `Documents\LOR Sequencer`).
 4. **Start it:** double-click **Start LOR Sequencer** in that folder. The first start takes a few minutes to set up; after that it opens in your browser in seconds. Keep the black window open while you use it.
-5. **Build a show:** click **New show**, choose your display's S6 preview file (`.lorprev`), choose the song, pick a style (Classic, High energy or Elegant), and click **Generate show**. Watch it in the **Yard view** with the song, open the **Show report**, then **Save sequence** and open the `.loredit` in the S6 Sequencer.
+5. **Build a show:** click **New show**, choose your display's S6 preview file (`.lorprev`), choose the song, pick a style (Classic, High energy or Elegant), and click **Generate show**. Watch it in the **Yard view** with the song, open the **Show report**, then **Save show** and open the `.loredit` in the S6 Sequencer.
 
 On macOS or Linux, install uv and FFmpeg the same way for your system and run `start-lor-sequencer.sh`.
 
