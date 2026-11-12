@@ -204,8 +204,18 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
             # The playlist loop must compare like-for-like configuration snapshots.
             # An unchanged setup should build each selected song, not stop before song 1.
             batch_calls = 0
-            page.route("**/api/show/batch-clear?*", lambda route: route.fulfill(
-                status=200, content_type="application/json", body='{"cleared":true}'))
+            clear_calls = 0
+
+            def clear_batch(route: Any) -> None:
+                nonlocal clear_calls
+                clear_calls += 1
+                if clear_calls == 1:
+                    route.fulfill(
+                        status=200, content_type="application/json", body='{"cleared":true}')
+                else:
+                    route.fulfill(
+                        status=500, content_type="application/json",
+                        body='{"error":"synthetic locked batch"}')
 
             def build_batch_song(route: Any) -> None:
                 nonlocal batch_calls
@@ -215,12 +225,24 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
                     body='{"ok":true,"duration":20,"parts":3,"props":8}',
                 )
 
+            page.route("**/api/show/batch-clear?*", clear_batch)
             page.route("**/api/show/batch?*", build_batch_song)
             page.locator("#batchFiles").set_input_files(str(audio))
             page.locator("#batchStatus.good").wait_for(timeout=60000)
             assert "1 of 1 shows built" in page.locator("#batchStatus").inner_text()
             assert batch_calls == 1
             assert not page.locator("#saveBatch").is_disabled()
+            previous_list = page.locator("#batchList").inner_text()
+
+            # If clearing the next batch fails, the previous completed batch must
+            # remain downloadable rather than disappearing from the UI.
+            page.locator("#batchFiles").set_input_files(str(audio))
+            page.locator("#batchStatus.warn").wait_for(timeout=10000)
+            assert "previous completed playlist is still available" in page.locator(
+                "#batchStatus").inner_text()
+            assert page.locator("#batchList").inner_text() == previous_list
+            assert not page.locator("#saveBatch").is_disabled()
+            assert batch_calls == 1
             page.unroute("**/api/show/batch?*")
             page.unroute("**/api/show/batch-clear?*")
 
