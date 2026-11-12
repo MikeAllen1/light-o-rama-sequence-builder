@@ -964,6 +964,7 @@ def test_background_warmup_is_single_instance_and_analysis_waits(
         audio_analysis._warmed.clear()
 
     monkeypatch.setattr(audio_analysis, "warm_up", fake_warm_up)
+    first_thread: threading.Thread | None = None
     try:
         audio_analysis.warm_up_in_background()
         first_thread = audio_analysis._warmup_thread
