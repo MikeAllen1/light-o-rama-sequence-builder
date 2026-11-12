@@ -3495,8 +3495,8 @@
   };
 
   const show = { token: null, summary: null, audioFile: null, analysis: null, raw: [],
-    result: null, resultConfig: null, audioRequestId: 0, audioPending: false, analysisMeter: null,
-    requirementsPending: false, requirementsRequestId: 0, displayRequestId: 0,
+    result: null, resultConfig: null, audioRequestId: 0, audioPending: false, audioUncertain: false,
+    analysisMeter: null, requirementsPending: false, requirementsRequestId: 0, displayRequestId: 0,
     displayPending: false, testPending: false, batchRunning: false, batchToken: null,
     batchConfig: null, batchReady: false, batchZipPending: false, generationPending: false };
 
@@ -3702,8 +3702,8 @@
       show.generationPending || show.batchZipPending || show.displayPending || show.requirementsPending;
     $("translateRequirements").disabled = !show.token || !show.summary.can_translate || show.testPending ||
       show.batchRunning || show.generationPending || show.batchZipPending || show.displayPending || show.requirementsPending;
-    $("generateShow").disabled = !(show.token && hasProps && show.analysis && !show.audioPending &&
-      !show.requirementsPending && !show.generationPending && !show.batchRunning &&
+    $("generateShow").disabled = !(show.token && hasProps && show.analysis && !show.audioUncertain &&
+      !show.audioPending && !show.requirementsPending && !show.generationPending && !show.batchRunning &&
       !show.batchZipPending && !show.displayPending && !show.testPending &&
       show.analysisMeter === $("meterSelect").value);
     $("batchFiles").disabled = !show.token || !hasProps || show.batchRunning || show.generationPending ||
@@ -3747,6 +3747,7 @@
       show.analysis = null;
       show.analysisMeter = null;
       show.audioFile = null;
+      show.audioUncertain = false;
       show.raw = summary.raw_requirements || [];
       show.audioRequestId += 1;
       show.audioPending = false;
@@ -3795,6 +3796,7 @@
     const requestId = ++show.audioRequestId;
     const token = show.token;
     const meter = $("meterSelect").value;
+    let requestSent = false;
     show.audioPending = true;
     showMessage("songStatus", "Analyzing " + file.name + " on this computer…");
     setStepEnabled();
@@ -3805,33 +3807,49 @@
       if (file.name.length > 200) {
         throw new Error("Song file names must be 200 characters or fewer. Rename the file and try again.");
       }
-      const payload = await withProgress("songStatus", "Sending the song", (key) =>
-        postShow("/api/show/audio?token=" + encodeURIComponent(token) +
+      const payload = await withProgress("songStatus", "Sending the song", (key) => {
+        requestSent = true;
+        return postShow("/api/show/audio?token=" + encodeURIComponent(token) +
           "&beats_per_bar=" + meter + "&request_id=" + requestId +
           "&name=" + encodeURIComponent(file.name) + "&progress=" + key, file,
-          "application/octet-stream"));
+          "application/octet-stream");
+      });
       if (requestId !== show.audioRequestId || token !== show.token || payload.stale) return;
+      const report = payload && payload.report;
+      const duration = report && report.audio && report.audio.duration_seconds;
+      if (!report || !Number.isFinite(duration) || !report.analysis ||
+          !Array.isArray(report.analysis.section_candidates)) {
+        throw new Error("The program returned an incomplete song analysis.");
+      }
       // Publish the replacement only after analysis and server-side commit succeed.
-      // A failed upload leaves the last usable song, analysis and generated result intact.
+      // A transport/server failure after commit is treated as uncertain, not as a
+      // safe rollback, because the client may not have received the committed report.
+      show.audioUncertain = false;
       show.audioFile = file;
-      show.analysis = payload.report;
+      show.analysis = report;
       show.analysisMeter = meter;
-      show.songSeconds = payload.report.audio.duration_seconds;
+      show.songSeconds = duration;
       show.songName = file.name;
       $("musicFilename").value = file.name;
       checkMusicName();
       invalidateGeneratedResult();
-      const analysis = payload.report.analysis;
+      const analysis = report.analysis;
       const tempo = analysis.tempo && analysis.tempo.bpm != null ? analysis.tempo.bpm + " BPM"
         : "no steady tempo";
-      showMessage("songStatus", file.name + ": " + formatTime(payload.report.audio.duration_seconds) +
+      showMessage("songStatus", file.name + ": " + formatTime(duration) +
         ", about " + tempo + ", " + analysis.section_candidates.length + " section changes.",
         "good");
     } catch (error) {
       if (requestId === show.audioRequestId && token === show.token) {
+        const uncertain = requestSent && (!Number.isInteger(error.status) || error.status >= 500);
+        if (uncertain) show.audioUncertain = true;
         const previous = show.audioFile
-          ? " The previous song (" + show.audioFile.name + ") remains selected and usable."
-          : " Choose another song and try again.";
+          ? (uncertain
+            ? " The server may have accepted the upload; re-select a song to resync before generating."
+            : " The previous song (" + show.audioFile.name + ") remains selected and usable.")
+          : (uncertain
+            ? " The server may have accepted the upload; re-select a song to confirm its state before generating."
+            : " Choose another song and try again.");
         showMessage("songStatus", (error.message || String(error)) + previous, "error");
         $("showSongFile").value = "";
       }
@@ -3842,7 +3860,6 @@
       }
     }
   }
-
   function fillStyles(styles, chosen) {
     const box = $("styleChoices");
     box.replaceChildren();
@@ -4010,8 +4027,8 @@
   }
 
   async function generateShow() {
-    if (show.generationPending || show.batchRunning || show.batchZipPending || show.requirementsPending ||
-        show.audioPending || show.displayPending || show.testPending) return;
+    if (show.audioUncertain || show.generationPending || show.batchRunning || show.batchZipPending ||
+        show.requirementsPending || show.audioPending || show.displayPending || show.testPending) return;
     const button = $("generateShow");
     const config = currentShowConfig();
     const previousResultIsCurrent = resultIsCurrent() && show.resultConfig === config;
