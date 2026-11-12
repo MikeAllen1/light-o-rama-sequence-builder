@@ -1554,6 +1554,12 @@
       if (data.schema_version === REVIEW_SCHEMA) {
         // A saved music review: the corrected analysis, reviewed lyrics and meter.
         review = data;
+        if ((review.meter === 3 || review.meter === 4) && show.token &&
+            $("meterSelect").value !== String(review.meter) &&
+            (show.audioPending || show.requirementsPending || show.displayPending ||
+             show.generationPending || show.batchRunning || show.batchZipPending || show.testPending)) {
+          throw new Error("Wait for the current New Show operation to finish before loading a review with a different meter.");
+        }
         data = review.analysis;
         if (!data || typeof data !== "object") throw new Error("The music review has no analysis.");
         if (review.lyrics != null) {
