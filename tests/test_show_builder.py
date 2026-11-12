@@ -6,8 +6,8 @@ import json
 import threading
 import time
 import zipfile
-from io import BytesIO
 from collections.abc import Iterator
+from io import BytesIO
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -219,7 +219,8 @@ def test_batch_zip_is_streamed_as_a_file_download(
 ) -> None:
     # Windows can refuse to delete a file briefly after it has been streamed.
     # That cleanup failure must not turn the successful download into an HTTP 500.
-    original_unlink = Path.unlink
+    path_type = type(tmp_path)
+    original_unlink = path_type.unlink
     failed_cleanup: list[Path] = []
 
     def refuse_batch_cleanup(path: Path, *args: Any, **kwargs: Any) -> None:
@@ -228,7 +229,7 @@ def test_batch_zip_is_streamed_as_a_file_download(
             raise PermissionError("synthetic file-in-use failure")
         original_unlink(path, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "unlink", refuse_batch_cleanup)
+    monkeypatch.setattr(path_type, "unlink", refuse_batch_cleanup)
     preview = _preview(tmp_path, classic_yard()).read_bytes()
     started = SHOWS.start(preview, "yard.lorprev")
     token = started["token"]
