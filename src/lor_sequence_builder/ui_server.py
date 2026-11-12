@@ -114,7 +114,7 @@ def _detect_audio_suffix(payload: bytes) -> str | None:
 # the rest wait their turn (and say so) instead of running the computer out of memory.
 HEAVY_AT_ONCE = 2
 _HEAVY_STEPS = {"/api/analyze", "/api/show/audio", "/api/show/generate", "/api/show/batch",
-                "/api/show/test"}
+                "/api/show/test", "/api/demo"}
 _heavy = threading.BoundedSemaphore(HEAVY_AT_ONCE)
 
 
@@ -212,6 +212,7 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
     def do_POST(self) -> None:
         """Analyze audio, check an edited sequence, or build a new show; never drop the
         connection on a bug, so the page can say what happened."""
+        self._body_read = False
         try:
             self._post()
         except (BrokenPipeError, ConnectionResetError):
@@ -225,12 +226,37 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
                                       "reference": reference})
             except OSError:
                 pass
+        finally:
+            self._drain_body()
+
+    def _drain_body(self) -> None:
+        """Read whatever the page sent that the answer did not need. Closing with it
+        still unread makes the operating system reset the connection, and the page
+        would see "connection reset" instead of the answer it was just sent."""
+        if getattr(self, "_body_read", True):
+            return
+        self._body_read = True
+        try:
+            remaining = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return
+        if remaining > _MAX_UPLOAD_BYTES:
+            self.close_connection = True
+            return
+        try:
+            while remaining > 0:
+                chunk = self.rfile.read(min(remaining, 1 << 20))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+        except OSError:
+            pass
 
     def _post(self) -> None:
         parsed = urlsplit(self.path)
         if parsed.path not in {"/api/analyze", "/api/export", "/api/update", "/api/log",
                                "/api/diagnostics", "/api/progress", "/api/startup",
-                               *_RECENT, *_SHOW_STEPS}:
+                               "/api/demo", *_RECENT, *_SHOW_STEPS}:
             self.send_error(404, "This program has no such step.")
             return
         if not self._is_same_origin():
@@ -259,6 +285,12 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
             return
         tracked = parse_qs(parsed.query).get("progress", [""])[0] or None
         with progress.tracking(tracked), _heavy_turn(parsed.path):
+            if parsed.path == "/api/demo":
+                from lor_sequence_builder.demo import demo_payload
+
+                progress.step("Building a show for the demo yard", 0.1)
+                self._send_json(200, demo_payload())
+                return
             if parsed.path in _SHOW_STEPS:
                 self._show_step(parsed.path, parse_qs(parsed.query))
                 return
@@ -424,6 +456,8 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
         return None
 
     def _read_body(self, content_type: str, limit: int, what: str) -> bytes | None:
+        if getattr(self, "_body_read", False):
+            raise RuntimeError("The request body was already read")
         if self.headers.get_content_type() != content_type:
             self.send_error(415, "Expected " + content_type)
             return None
@@ -439,6 +473,7 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
             self.send_error(413, f"That {what.lower()} file is larger than the "
                                  f"{limit // (1024 * 1024)} MB this program accepts.")
             return None
+        self._body_read = True
         payload = self.rfile.read(length)
         if len(payload) != length:
             self.send_error(400, f"The {what.lower()} file did not arrive in full. Choose it again.")

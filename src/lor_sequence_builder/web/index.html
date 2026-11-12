@@ -76,12 +76,14 @@
             <p class="hero-lede">Sequencing one song by hand can eat a whole weekend, and it helps to have an ear for music. This does the sequencing for you. Give it your S6 preview and a song, and you get back a show that knows your arches from your snowflakes.</p>
             <div class="welcome-actions">
               <button id="welcomeNewShow" class="tool-button primary large" type="button">Build a show</button>
+              <button id="watchDemo" class="tool-button large" type="button">Watch a demo show</button>
               <span class="hero-or">or open a
                 <label class="link-button">sequence<input id="welcomeSequenceFile" type="file" accept=".loredit,.xml,application/xml,text/xml"></label>
                 and its
                 <label class="link-button">audio<input id="welcomeAudioFile" type="file" accept="audio/*,.mp3,.mp4,.wav,.flac,.m4a,.ogg,.opus"></label>
               </span>
             </div>
+            <div id="demoStatus" class="step-status" aria-live="polite"></div>
             <p class="welcome-note">Runs on this computer. Your preview and your music never leave it.</p>
           </div>
           <figure class="hero-yard">

@@ -153,7 +153,7 @@ def report(browser: str = "", steps: list[str] | None = None,
 
 
 # Every temporary folder the program makes starts with one of these.
-TEMP_PREFIXES = ("lor-new-show-", "lor-audio-", "lor-decode-", "lor-vocals-", "lor-doctor-",
+TEMP_PREFIXES = ("lor-new-show-", "lor-demo-", "lor-audio-", "lor-decode-", "lor-vocals-", "lor-doctor-",
                  "lor-self-test-", "lor-sequencer-export-", "lor-sequencer-ui-")
 
 
