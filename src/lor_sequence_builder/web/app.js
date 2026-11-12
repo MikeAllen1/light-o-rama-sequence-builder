@@ -8,6 +8,7 @@
   const MARKER_HEIGHT = 22;
   const MAX_XML_BYTES = 50 * 1024 * 1024;
   const MAX_AUDIO_BYTES = 200 * 1024 * 1024;
+  const MAX_BATCH_SONGS = 40;
   const MAX_XML_ELEMENTS = 100000;
   const MAX_JSON_BYTES = 5 * 1024 * 1024;
   const MAX_CANVAS_PIXELS = 36000000;
@@ -4227,6 +4228,11 @@
   async function runBatch(files) {
     if (!show.token || !files.length || show.batchRunning || show.batchZipPending || show.generationPending ||
         show.testPending || show.displayPending || show.audioPending || show.requirementsPending) return;
+    if (files.length > MAX_BATCH_SONGS) {
+      showMessage("batchStatus", "A playlist can contain at most " + MAX_BATCH_SONGS +
+        " songs. Select 40 or fewer; the previous playlist has been kept.", "error");
+      return;
+    }
     const seenNames = new Set();
     const duplicateNames = new Set();
     for (const file of files) {
