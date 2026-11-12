@@ -462,7 +462,7 @@
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const lane = state.lanes[Math.floor((event.clientY - rect.top) / MARKER_HEIGHT)];
-    let seconds = Math.max(0, x / state.pxPerSecond);
+    let seconds = clampReviewSeconds(Math.max(0, x / state.pxPerSecond));
     if (lane && lane.kind !== "lyrics" && lane.kind !== "energy" && lane.kind !== "tempo") {
       // Snap to the nearest marker within 6 pixels, so a click lands on the event.
       const times = sortedTimes(lane.events.map((item) =>
@@ -1373,6 +1373,18 @@
     }
   }
 
+  function currentMusicDuration() {
+    const analyzed = state.analysis && Number(state.analysis.audio && state.analysis.audio.duration_seconds);
+    if (Number.isFinite(analyzed) && analyzed > 0) return analyzed;
+    return state.audioBuffer && Number.isFinite(state.audioBuffer.duration)
+      ? state.audioBuffer.duration : null;
+  }
+
+  function clampReviewSeconds(seconds) {
+    const duration = currentMusicDuration();
+    return Math.max(0, Math.min(duration == null ? 1800 : duration, seconds));
+  }
+
   function durationMismatchMessage() {
     if (!state.sequence || !state.audioBuffer) return "";
     const delta = state.audioBuffer.duration - state.sequence.durationSeconds;
@@ -1501,6 +1513,11 @@
         if (review.lyrics != null) checkLyrics(review.lyrics);
       }
       const analysis = data.analysis;
+      const currentDuration = currentMusicDuration();
+      const incomingDuration = Number(data.audio && data.audio.duration_seconds);
+      if (currentDuration != null && Math.abs(incomingDuration - currentDuration) > 1) {
+        throw new Error("This analysis is for a different-length recording. Choose the analysis that matches the selected song.");
+      }
       const requiredArrays = ["beats", "downbeats", "onsets", "energy",
         "phrase_boundaries", "section_candidates", "hard_stops"];
       if (data.schema_version !== "2.0" || !analysis ||
@@ -1575,6 +1592,10 @@
       const data = JSON.parse(vocalsText);
       if (!data || typeof data !== "object") throw new Error("Vocal JSON must contain an object.");
       const duration = Number(data.duration_seconds);
+      const currentDuration = currentMusicDuration();
+      if (currentDuration != null && Math.abs(duration - currentDuration) > 1) {
+        throw new Error("This vocal report is for a different-length recording. Choose the report that matches the selected song.");
+      }
       if (data.schema_version !== "vocals-1.0" || !Number.isFinite(duration) ||
           duration <= 0 || duration > 1800 || !Array.isArray(data.limitations) ||
           typeof data.method !== "string" ||
@@ -1684,6 +1705,10 @@
         data = parseLyricsText(text, file.name);
       }
       checkLyrics(data);
+      const duration = currentMusicDuration();
+      if (duration != null && data.lines.some((line) => line.end > duration + 1)) {
+        throw new Error("These lyrics extend beyond the selected song. Choose the matching lyrics file.");
+      }
       if (state.reviewDirty && !window.confirm("Replace the unsaved music review?")) return;
       state.lyrics = data;
       state.reviewSelection = null;
@@ -2843,7 +2868,7 @@
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const lane = state.lanes[Math.floor((event.clientY - rect.top) / MARKER_HEIGHT)];
-    const seconds = Math.max(0, x / state.pxPerSecond);
+    const seconds = clampReviewSeconds(Math.max(0, x / state.pxPerSecond));
     const hit = { lane, x, seconds, target: reviewLane(lane), event: null, edge: null };
     if (!hit.target) return hit;
     const pps = state.pxPerSecond;
@@ -2903,16 +2928,18 @@
     if (!drag.moved && Math.abs(event.clientX - drag.startX) < DRAG_THRESHOLD) return;
     drag.moved = true;
     const rect = canvas.getBoundingClientRect();
-    const raw = Math.max(0, (event.clientX - rect.left) / state.pxPerSecond);
+    const raw = clampReviewSeconds(Math.max(0, (event.clientX - rect.left) / state.pxPerSecond));
     const { hit } = drag;
     let cs = snap(Math.round(raw * 100), drag.candidates, event.altKey);
+    cs = Math.round(clampReviewSeconds(cs / 100) * 100);
     if (hit.edge) {
       cs = snap(Math.round(raw * 100), drag.candidates, event.altKey);
     } else if (hit.lane.kind === "lyrics") {
       const offset = drag.hit.seconds - Number(hit.event.start);
       cs = snap(Math.round((raw - offset) * 100), drag.candidates, event.altKey);
+      cs = Math.round(clampReviewSeconds(cs / 100) * 100);
     }
-    drag.preview = cs / 100;
+    drag.preview = clampReviewSeconds(cs / 100);
     setBanner((hit.edge ? "Line " + hit.edge + " " : hit.target.name + " ") + "→ " +
       formatCentiseconds(cs) + (event.altKey ? " (snapping off)" : ""), "");
     drawMarkers(Number(canvas.width), state.pxPerSecond);
@@ -2955,7 +2982,8 @@
     if (!state.sequence) return;
     const hit = markerHit(event);
     if (!hit.target || hit.event) return;
-    const seconds = snap(Math.round(hit.seconds * 100), snapCandidates(), event.altKey) / 100;
+    const seconds = clampReviewSeconds(
+      snap(Math.round(hit.seconds * 100), snapCandidates(), event.altKey) / 100);
     let created;
     if (hit.lane.kind === "lyrics") {
       created = { start: round3(seconds), end: round3(seconds + 2), text: "(new line)",
@@ -3005,8 +3033,10 @@
         setBanner("Not changed: a lyric line needs words.", "warn");
         return;
       }
-      if (!(values.end - values.start >= 0.05) || values.start < 0) {
-        setBanner("Not changed: the line must end after it starts.", "warn");
+      const duration = currentMusicDuration();
+      if (!(values.end - values.start >= 0.05) || values.start < 0 ||
+          (duration != null && values.end > duration)) {
+        setBanner("Not changed: the line must have a positive length and stay within the selected song.", "warn");
         return;
       }
       const delta = values.start - Number(event.start);
@@ -3029,6 +3059,11 @@
       replacement = Object.assign({}, event, { text, start: round3(values.start),
         end: round3(values.end), words, verified: true });
     } else {
+      const duration = currentMusicDuration();
+      if (values.time < 0 || (duration != null && values.time > duration)) {
+        setBanner("Not changed: the marker must stay within the selected song.", "warn");
+        return;
+      }
       replacement = Object.assign({}, event, { time: round3(values.time), status: "confirmed" });
       if (selection.kind === "sections") replacement.label = values.label || null;
     }
