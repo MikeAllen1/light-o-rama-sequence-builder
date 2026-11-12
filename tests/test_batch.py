@@ -17,6 +17,7 @@ from tests.display_builders import classic_yard
 from tests.test_audio_analysis import _rhythmic_track
 from tests.test_planner import _preview
 from tests.test_show_builder import _json, _post, server  # noqa: F401
+from lor_sequence_builder.ui_server import SHOWS
 
 
 def _songs(folder: Path, *names: str) -> list[Path]:
@@ -29,7 +30,18 @@ def _songs(folder: Path, *names: str) -> list[Path]:
     return paths
 
 
-def test_the_workspace_builds_a_playlist(server: str, tmp_path: Path) -> None:  # noqa: F811
+def test_the_workspace_builds_a_playlist(
+    server: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:  # noqa: F811
+    created_archives: list[Path] = []
+    original_batch_zip = SHOWS.batch_zip
+
+    def capture_archive(token: str) -> dict[str, object]:
+        result = original_batch_zip(token)
+        created_archives.append(Path(result["zip_path"]))
+        return result
+
+    monkeypatch.setattr(SHOWS, "batch_zip", capture_archive)
     status, started = _post(server + "/api/show/start?name=yard.lorprev",
                             _preview(tmp_path, classic_yard()).read_bytes(), "application/xml")
     token = started["token"]
@@ -56,6 +68,8 @@ def test_the_workspace_builds_a_playlist(server: str, tmp_path: Path) -> None:  
             "Fictional%20Classic%20Yard%20shows.zip"
         )
     archive = zipfile.ZipFile(io.BytesIO(payload))
+    assert len(created_archives) == 1
+    assert not created_archives[0].exists()
     names = set(archive.namelist())
     assert "Silent (generated).report.html" in names and "Batch - read me.txt" in names
     sequence = tmp_path / "out.loredit"
