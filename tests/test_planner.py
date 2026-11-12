@@ -265,11 +265,14 @@ def test_three_four_bar_fallback_stays_aligned_after_a_window_split() -> None:
     assert _bars(window) == [(150, 300), (300, 450), (450, 500)]
 
 
-def test_three_four_phrases_reconstruct_missing_downbeats_after_a_stop() -> None:
+@pytest.mark.parametrize("downbeats", [(), (0,)])
+def test_three_four_phrases_reconstruct_missing_downbeats_after_a_stop(
+    downbeats: tuple[int, ...],
+) -> None:
     from lor_sequence_builder.planner import _Window, _phrases
 
     window = _Window(
-        0, 0, 1800, tuple(range(0, 1800, 50)), (0,), False,
+        0, 0, 1800, tuple(range(0, 1800, 50)), downbeats, False,
         offset=0, beats_per_bar=3, bar_phase=0, bar_offset=0,
     )
     phrases = _phrases(window)
