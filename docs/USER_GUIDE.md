@@ -111,7 +111,7 @@ When a new version is out, the app says so in the bottom corner. Download the in
 | "uv" is not recognized | Install uv (README quick start, step 1), then open a new window. |
 | The first start is slow | It is installing what it needs once; later starts take seconds. |
 | The browser does not open | Open `http://127.0.0.1:8765/` yourself. If that port is busy, run `uv run lor-sequence-ui --port 8780`. |
-| S6 plays no music | The sequence names the audio file; it must match the song's name in S6's audio folder. Set it in step 6 of New show (or `--music-filename`). |
+| S6 plays no music | The sequence names the audio file; it must match the song's name in S6's audio folder exactly, ending included (`.mp3`, `.wav`). New show warns under the file name box when they differ. Set it in step 6 of New show (or `--music-filename`). |
 | A prop stays dark | The show report's **Your props** table says why: not sequenceable (pixel, DMX, follows another prop), left out by a requirement, or not chosen by the plan. |
 | A prop does the wrong thing | It was probably identified as something else. Check it with `analyze-preview`, give it a specific shape in the S6 Preview Editor, and generate again. |
 | A chase runs backwards | Check the row's group order and the props' start locations in the preview. |

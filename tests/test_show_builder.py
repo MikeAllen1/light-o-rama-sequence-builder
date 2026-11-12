@@ -159,6 +159,12 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
             page.locator("#songStatus.good").wait_for(timeout=60000)
             assert "BPM" in page.locator("#songStatus").inner_text()
             assert page.locator("#musicFilename").input_value() == "beat.wav"
+            assert "S6 will look for beat.wav" in page.locator("#musicNote").inner_text()
+            page.locator("#musicFilename").fill("Beat.mp3")
+            assert "your song file is beat.wav" in page.locator("#musicNote.warn").inner_text()
+            page.locator("#musicFilename").fill("beat.mp3")
+            assert "ending differs" in page.locator("#musicNote.warn").inner_text()
+            page.locator("#musicFilename").fill("beat.wav")
 
             page.locator("#requirementKind").select_option("never_use")
             page.locator("#requirementProps").select_option("name:Mini Tree 1")
@@ -174,6 +180,7 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
             page.locator("#generateShow").click()
             page.locator("#generateStatus.good").wait_for(timeout=60000)
             assert "Every rule passed" in page.locator("#generateStatus").inner_text()
+            assert "A 0:20 show." in page.locator("#generateStatus").inner_text()
             with page.expect_download() as show_file:
                 page.locator("#saveGenerated").click()
             assert show_file.value.suggested_filename == "beat (generated).loredit"
