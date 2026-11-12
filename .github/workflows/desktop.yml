@@ -160,19 +160,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         # A release drafted in the GitHub page gets the installer added; a bare tag gets a
-        # new release.
+        # new release. Each file is also attached under a name without the version, so
+        # .../releases/latest/download/LOR-Sequencer-Setup.exe always downloads the
+        # newest installer directly (the README and the release notes link there).
         run: |
+          version="${TAG#v}"
+          version="${version#.}"
+          notes="docs/releases/v$version.md"
+          cp installer/LOR-Sequencer-Setup-*.exe installer/LOR-Sequencer-Setup.exe
+          cp installer/LOR-Sequencer-Portable-*.zip installer/LOR-Sequencer-Portable.zip
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release upload "$TAG" installer/*.exe installer/*.zip --repo "$GITHUB_REPOSITORY" --clobber
             body=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body)
-            if [ -z "$body" ] && [ -f "docs/releases/$TAG.md" ]; then
-              gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "docs/releases/$TAG.md"
+            if [ -z "$body" ] && [ -f "$notes" ]; then
+              gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$notes"
             fi
           else
-            notes="docs/releases/$TAG.md"
             if [ -f "$notes" ]; then
-              gh release create "$TAG" installer/*.exe installer/*.zip --repo "$GITHUB_REPOSITORY" --title "LOR Sequencer $TAG" --notes-file "$notes"
+              gh release create "$TAG" installer/*.exe installer/*.zip --repo "$GITHUB_REPOSITORY" --title "LOR Sequencer $version" --notes-file "$notes"
             else
-              gh release create "$TAG" installer/*.exe installer/*.zip --repo "$GITHUB_REPOSITORY" --title "LOR Sequencer $TAG" --notes "Windows installer for LOR Sequencer $TAG. Download LOR-Sequencer-Setup-*.exe and run it; no administrator rights are needed. Cannot run installers? LOR-Sequencer-Portable-*.zip: unzip and run LOR Sequencer.exe."
+              gh release create "$TAG" installer/*.exe installer/*.zip --repo "$GITHUB_REPOSITORY" --title "LOR Sequencer $version" --notes "Download LOR-Sequencer-Setup.exe below and double-click it. Ignore the Source code files: they are for programmers."
             fi
           fi

@@ -33,8 +33,9 @@ Fetch = Callable[[], dict[str, Any] | None]
 
 
 def parse_version(text: str) -> tuple[int, ...] | None:
-    """'v0.2.0' or '0.2' -> (0, 2, 0); None for anything else (pre-releases included)."""
-    match = re.fullmatch(r"v?(\d+)\.(\d+)(?:\.(\d+))?", text.strip())
+    """'v0.2.0', 'v.0.2.0' or '0.2' -> (0, 2, 0); None for anything else (pre-releases
+    included)."""
+    match = re.fullmatch(r"v?\.?(\d+)\.(\d+)(?:\.(\d+))?", text.strip())
     if not match:
         return None
     return tuple(int(part or 0) for part in match.groups())
@@ -90,7 +91,7 @@ def check_for_update(current: str = __version__, fetch: Fetch | None = None,
             latest = parse_version(tag)
             mine = parse_version(current)
             if latest is not None:
-                result["latest"] = tag.lstrip("v")
+                result["latest"] = tag.lstrip("v.")
                 result["newer"] = mine is not None and latest > mine
                 page = release.get("html_url")
                 if isinstance(page, str) and page.startswith(RELEASES_PAGE + "/"):
