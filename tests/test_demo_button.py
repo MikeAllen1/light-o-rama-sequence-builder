@@ -35,5 +35,12 @@ def test_watch_a_demo_opens_the_yard_view(server: str) -> None:  # noqa: F811
             duration = page.locator("#audioPlayer").evaluate("audio => audio.duration")
             assert duration > 40  # the demo song is loaded and ready to play
             assert page.locator("#watchDemo").is_enabled()
+            # Close leaves the demo for the start page; the program keeps running.
+            page.locator("#closeWorkspace").click()
+            page.locator("#welcome").wait_for(state="visible")
+            assert page.locator("#editor").is_hidden()
+            assert page.locator("#audioPlayer").evaluate("audio => audio.paused")
+            page.locator("#watchDemo").click()  # and the demo opens again
+            page.locator("#editor").wait_for(state="visible", timeout=60000)
         finally:
             browser.close()

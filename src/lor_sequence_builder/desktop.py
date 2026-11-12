@@ -139,9 +139,11 @@ def _open_window(url: str) -> bool:
         return False
     webview.settings["ALLOW_DOWNLOADS"] = True
     try:
+        # Closing the window quits the whole program, so ask first.
         webview.create_window(APP_NAME, url, width=1480, height=940, min_size=(1000, 680),
-                              text_select=True)
-        webview.start(private_mode=False)
+                              text_select=True, confirm_close=True)
+        webview.start(private_mode=False,
+                      localization={"global.quitConfirmation": f"Quit {APP_NAME}?"})
     except Exception:  # noqa: BLE001 - fall back to the browser on any window failure
         return False
     return True
