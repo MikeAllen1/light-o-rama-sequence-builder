@@ -178,7 +178,9 @@ def sweep_leftovers(max_age_seconds: float = 24 * 60 * 60, folder: Path | None =
         try:
             if (path.is_dir() and not path.is_symlink() and path.name.startswith(TEMP_PREFIXES)
                     and path.stat().st_mtime < cutoff):
-                shutil.rmtree(path, ignore_errors=True)
+                # Count only successful removals; ignore_errors=True used to
+                # report success even when permissions or open handles prevented cleanup.
+                shutil.rmtree(path)
                 removed += 1
         except OSError:
             continue
