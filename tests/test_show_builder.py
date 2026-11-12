@@ -581,6 +581,11 @@ def test_batch_zip_is_streamed_as_a_file_download(
                 "Song (generated).report.html",
                 "Batch - read me.txt",
             }
+        # The server removes the archive after the last byte is sent, so the client can
+        # finish reading first; give the handler thread a moment to reach its cleanup.
+        deadline = time.monotonic() + 10
+        while not failed_cleanup and time.monotonic() < deadline:
+            time.sleep(0.05)
         assert len(failed_cleanup) == 1
         assert failed_cleanup[0].is_file()
         original_unlink(failed_cleanup[0], missing_ok=True)
