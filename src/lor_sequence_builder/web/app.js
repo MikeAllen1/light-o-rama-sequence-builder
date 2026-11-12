@@ -2609,7 +2609,7 @@
     if (target && (["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName) ||
         target.isContentEditable)) return;
     const mod = event.ctrlKey || event.metaKey;
-    if (target && ["BUTTON", "A", "AUDIO", "VIDEO"].includes(target.tagName) && !mod) return;
+    if (target && ["BUTTON", "A", "AUDIO", "VIDEO"].includes(target.tagName)) return;
     const key = event.key.toLowerCase();
     let handled = true;
     if (mod && key === "z" && !event.shiftKey) undoEdit();
