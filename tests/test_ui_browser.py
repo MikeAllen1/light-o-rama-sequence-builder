@@ -268,6 +268,16 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                     assert "Lyric text from an imported file" in inspector
                     assert "prop(s) lit" in inspector
 
+                    # Importing lyrics is unsaved work. After saving the review,
+                    # editing and undoing must return to the saved baseline.
+                    with page.expect_download():
+                        page.locator("#saveReview").click()
+                    page.locator("#reviewText").fill("Hello lights revised")
+                    page.locator("#reviewApply").click()
+                    assert "unsaved music review" in page.locator("#editStatus").inner_text().lower()
+                    page.locator("#undoButton").click()
+                    assert "unsaved music review" not in page.locator("#editStatus").inner_text().lower()
+
                     # Imported analysis, vocals and lyrics must belong to this song.
                     # A failed import must leave the existing, correct lanes untouched.
                     page.locator("#analysisFile").set_input_files(
