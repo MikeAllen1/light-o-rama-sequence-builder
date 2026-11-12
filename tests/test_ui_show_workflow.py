@@ -102,23 +102,33 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
 
         page.route("**/api/show/generate*", generate_show)
         fail_next_batch_clear = False
+        fail_next_batch_clear_abort = False
         batch_clear_calls = 0
         batch_song_calls = 0
+        fail_next_batch_song_abort = False
 
         def clear_batch(route: object) -> None:
-            nonlocal fail_next_batch_clear, batch_clear_calls
+            nonlocal fail_next_batch_clear, fail_next_batch_clear_abort, batch_clear_calls
             batch_clear_calls += 1
-            if fail_next_batch_clear:
+            if fail_next_batch_clear_abort:
+                fail_next_batch_clear_abort = False
+                getattr(route, "abort")("failed")
+            elif fail_next_batch_clear:
                 fail_next_batch_clear = False
                 respond(route, {"error": "simulated reset failure"}, 500)
             else:
                 respond(route, {"cleared": True})
 
         page.route("**/api/show/batch-clear*", clear_batch)
+
         def build_batch_song(route: object) -> None:
-            nonlocal batch_song_calls
+            nonlocal batch_song_calls, fail_next_batch_song_abort
             batch_song_calls += 1
-            respond(route, {"ok": True, "duration": 3.0, "parts": 2, "props": 1})
+            if fail_next_batch_song_abort:
+                fail_next_batch_song_abort = False
+                getattr(route, "abort")("failed")
+            else:
+                respond(route, {"ok": True, "duration": 3.0, "parts": 2, "props": 1})
 
         page.route("**/api/show/batch?*", build_batch_song)
         page.route("**/api/show/batch-zip*", lambda route: route.fulfill(
@@ -284,6 +294,26 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             with page.expect_download() as download_info:
                 page.locator("#saveBatch").click()
             assert download_info.value.suggested_filename == "Intent Test Yard shows.zip"
+
+            # A lost reset response must not leave the UI claiming the old playlist is usable.
+            fail_next_batch_clear_abort = True
+            page.locator("#batchFiles").set_input_files([
+                {"name": "reset-uncertain.wav", "mimeType": "audio/wav", "buffer": b"uncertain"},
+            ])
+            page.locator("#batchStatus").filter(has_text="playlist state is uncertain").wait_for()
+            assert page.locator("#saveBatch").is_disabled()
+
+            # A lost song response may mean the server committed the show. Stop
+            # instead of presenting a partial or misleading playlist as downloadable.
+            fail_next_batch_song_abort = True
+            page.locator("#batchFiles").set_input_files([
+                {"name": "uncertain.wav", "mimeType": "audio/wav", "buffer": b"uncertain"},
+                {"name": "not-attempted.wav", "mimeType": "audio/wav", "buffer": b"later"},
+            ])
+            page.locator("#batchStatus").filter(has_text="upload outcome is uncertain").wait_for()
+            assert page.locator("#batchList").filter(has_text="not attempted").count() == 1
+            assert page.locator("#saveBatch").is_disabled()
+
             assert not page.locator("#meterSelect").is_disabled()
             summary["token"] = "display-two"
             summary["props"] = [{"name": "Linked Prop", "role": "tree",
