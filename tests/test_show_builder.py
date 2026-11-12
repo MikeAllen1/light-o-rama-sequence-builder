@@ -19,7 +19,7 @@ import pytest
 
 from lor_sequence_builder import show_builder
 from lor_sequence_builder.loredit import effect_timing_problems, read_loredit
-from lor_sequence_builder.ui_server import SequencerRequestHandler
+from lor_sequence_builder.ui_server import SHOWS, SequencerRequestHandler
 from tests.display_builders import classic_yard
 from tests.test_audio_analysis import _rhythmic_track
 from tests.test_planner import _preview
@@ -228,6 +228,43 @@ def test_batch_zip_rejects_oversized_archive_before_allocating_it(
         sessions.batch_zip(token)
 
     sessions.close()
+
+
+def test_batch_download_open_failure_returns_error_before_zip_headers(
+    server: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    token = SHOWS.start(preview, "yard.lorprev")["token"]
+    session = SHOWS.get(token)
+    done = session.path / "batch"
+    done.mkdir()
+    (done / "Song (generated).loredit").write_text("<sequence/>", encoding="utf-8")
+    (done / "Song (generated).report.html").write_text("<html/>", encoding="utf-8")
+    session.batch.append({
+        "ok": True, "stem": "Song", "file_name": "Song.wav",
+        "show": "Song (generated).loredit",
+    })
+
+    original_open = Path.open
+
+    def refuse_batch_open(path: Path, *args: Any, **kwargs: Any) -> Any:
+        if path.name.startswith("lor-batch-"):
+            raise PermissionError("synthetic archive-open failure")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", refuse_batch_open)
+    request = Request(
+        server + "/api/show/batch-zip?token=" + token,
+        data=b"{}", method="POST", headers={"Content-Type": "application/json"},
+    )
+    try:
+        with pytest.raises(HTTPError) as error:
+            urlopen(request, timeout=10)
+        assert error.value.code == 500
+        assert json.loads(error.value.read())["error"]
+    finally:
+        with SHOWS._lock:
+            SHOWS._drop(token)
 
 
 def test_batch_clear_failure_keeps_the_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
