@@ -164,11 +164,16 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
             page.locator("#generateShow").click()
             page.locator("#generateStatus.good").wait_for(timeout=60000)
             assert "Every rule passed" in page.locator("#generateStatus").inner_text()
-            with page.context.expect_page() as report_page:
-                page.locator("#reportGenerated").click()
-            report_page.value.wait_for_load_state()
-            assert "Check in the yard" in report_page.value.content()
-            report_page.value.close()
+            page.locator("#reportGenerated").click()
+            page.frame_locator("#viewerFrame").get_by_text("Check in the yard").wait_for()
+            with page.expect_download() as report_file:
+                page.locator("#viewerSave").click()
+            assert report_file.value.suggested_filename == "beat (generated).report.html"
+            page.keyboard.press("Escape")
+            assert page.locator("#viewer").is_hidden()
+            page.locator("#pictureGenerated").click()
+            assert page.frame_locator("#viewerFrame").locator("svg").count() == 1
+            page.locator("#viewerClose").click()
             page.locator("#openGenerated").click()
             page.locator("#editor").wait_for(state="visible")
             assert page.locator("#exportButton").inner_text() == "Save sequence"

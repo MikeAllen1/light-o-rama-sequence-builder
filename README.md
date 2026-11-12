@@ -4,7 +4,13 @@ Turn a song and your Light-O-Rama S6 display into a finished, native S6 sequence
 
 **Project status:** the generator, the browser workspace and building a show from the browser are working. Desktop packaging (a normal installer) is the last stage. See [docs/PLAN.md](docs/PLAN.md) for the detailed status.
 
-## Quick start (Windows, no programming)
+## Install the Windows app
+
+Download **LOR-Sequencer-Setup** from the project's [Releases](https://github.com/MikeAllen1/light-o-rama-sequence-builder/releases) page and run it. It installs for your user only (no administrator prompt), adds **LOR Sequencer** to the Start menu, and includes everything it needs, FFmpeg too. Start it, click **New show**, and follow the steps. Uninstall it from Settings > Apps like any other program.
+
+The installer is built automatically for every change; see [packaging/README.md](packaging/README.md) for how.
+
+## Run from the source folder (Windows, no programming)
 
 1. **Install uv** (it installs everything else). Open PowerShell and paste:
    ```powershell
