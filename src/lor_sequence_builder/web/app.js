@@ -3155,6 +3155,8 @@
       showMessage("testStatus", error.message || String(error), "error");
     }
     $("makeTest").disabled = !show.token;
+    $("batchFiles").disabled = !show.token || show.batchRunning;
+    $("batchLabel").classList.toggle("disabled", !show.token || show.batchRunning);
   }
 
   function saveDisplayTest() {
@@ -3529,6 +3531,65 @@
       "image/svg+xml");
   }
 
+  // A playlist: each song is analyzed and built on the server one at a time, then
+  // all the shows are saved together as one zip.
+  async function runBatch(files) {
+    if (!show.token || !files.length) return;
+    show.batchRunning = true;
+    setStepEnabled();
+    $("saveBatch").disabled = true;
+    $("batchList").replaceChildren();
+    try {
+      await postShow("/api/show/batch-clear?token=" + encodeURIComponent(show.token), "{}",
+        "application/json");
+    } catch { /* a fresh session has nothing to clear */ }
+    const rows = files.map((file) => {
+      const item = document.createElement("li");
+      item.textContent = file.name + ": waiting";
+      $("batchList").appendChild(item);
+      return item;
+    });
+    let built = 0;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      showMessage("batchStatus", "Building " + (i + 1) + " of " + files.length + "…");
+      rows[i].textContent = file.name + ": analyzing and building…";
+      try {
+        const result = await postShow("/api/show/batch?token=" + encodeURIComponent(show.token) +
+          "&name=" + encodeURIComponent(file.name) + "&beats_per_bar=" + $("meterSelect").value +
+          "&style=" + encodeURIComponent(chosenStyle() || ""), file, "application/octet-stream");
+        if (result.ok) {
+          built += 1;
+          rows[i].className = "good";
+          rows[i].textContent = file.name + ": " + (result.duration ? formatTime(result.duration) +
+            ", " : "") + result.parts + " parts, " + result.props + " props";
+        } else {
+          rows[i].className = "error";
+          rows[i].textContent = file.name + ": not built, the plan did not pass the rules";
+          rows[i].title = result.problem || "";
+        }
+      } catch (error) {
+        rows[i].className = "error";
+        rows[i].textContent = file.name + ": " + (error.message || String(error));
+      }
+    }
+    show.batchRunning = false;
+    setStepEnabled();
+    $("saveBatch").disabled = built === 0;
+    showMessage("batchStatus", built + " of " + files.length + " shows built." +
+      (built ? " Save all shows downloads them with their reports." : ""), built ? "good" : "error");
+  }
+
+  async function saveBatch() {
+    try {
+      const result = await postShow("/api/show/batch-zip?token=" + encodeURIComponent(show.token),
+        "{}", "application/json");
+      download(bytesFromBase64(result.zip), result.zip_name, "application/zip");
+    } catch (error) {
+      showMessage("batchStatus", error.message || String(error), "error");
+    }
+  }
+
   function setupNewShow() {
     $("newShowButton").addEventListener("click", openNewShow);
     $("welcomeNewShow").addEventListener("click", openNewShow);
@@ -3548,6 +3609,12 @@
     });
     $("generateShow").addEventListener("click", generateShow);
     $("makeTest").addEventListener("click", makeDisplayTest);
+    $("batchFiles").addEventListener("change", (event) => {
+      const files = Array.from(event.target.files || []);
+      event.target.value = "";
+      runBatch(files);
+    });
+    $("saveBatch").addEventListener("click", saveBatch);
     $("saveTest").addEventListener("click", saveDisplayTest);
     $("watchTest").addEventListener("click", watchDisplayTest);
     $("musicFilename").addEventListener("input", () => {
