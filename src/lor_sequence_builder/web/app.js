@@ -3365,7 +3365,7 @@
 
   async function makeDisplayTest() {
     if (!show.token || show.testPending || show.batchRunning || show.generationPending ||
-        show.displayPending || show.audioPending || show.requirementsPending) return;
+        show.batchZipPending || show.displayPending || show.audioPending || show.requirementsPending) return;
     const token = show.token;
     show.test = null;
     $("watchTest").disabled = true;
@@ -3502,7 +3502,8 @@
       show.batchRunning || show.generationPending || show.batchZipPending || show.displayPending || show.requirementsPending;
     $("generateShow").disabled = !(show.token && show.analysis && !show.audioPending &&
       !show.requirementsPending && !show.generationPending && !show.batchRunning &&
-      !show.displayPending && !show.testPending && show.analysisMeter === $("meterSelect").value);
+      !show.batchZipPending && !show.displayPending && !show.testPending &&
+      show.analysisMeter === $("meterSelect").value);
     $("batchFiles").disabled = !show.token || show.batchRunning || show.generationPending ||
       show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending;
     $("batchLabel").classList.toggle("disabled", !show.token || show.batchRunning || show.generationPending ||
@@ -3515,7 +3516,8 @@
   }
 
   async function chooseDisplay(file) {
-    if (!file || show.batchRunning || show.generationPending || show.displayPending || show.testPending) return;
+    if (!file || show.batchRunning || show.batchZipPending || show.generationPending ||
+        show.displayPending || show.testPending) return;
     const requestId = ++show.displayRequestId;
     show.displayPending = true;
     setShowConfigurationLocked(true);
@@ -3583,8 +3585,8 @@
   }
 
   async function chooseSong(file) {
-    if (!file || !show.token || show.audioPending || show.batchRunning || show.generationPending ||
-        show.displayPending || show.testPending || show.requirementsPending) return;
+    if (!file || !show.token || show.audioPending || show.batchRunning || show.batchZipPending ||
+        show.generationPending || show.displayPending || show.testPending || show.requirementsPending) return;
     const requestId = ++show.audioRequestId;
     const token = show.token;
     const meter = $("meterSelect").value;
@@ -3794,7 +3796,7 @@
   }
 
   async function generateShow() {
-    if (show.generationPending || show.batchRunning || show.requirementsPending ||
+    if (show.generationPending || show.batchRunning || show.batchZipPending || show.requirementsPending ||
         show.audioPending || show.displayPending || show.testPending) return;
     const button = $("generateShow");
     const config = currentShowConfig();
@@ -3941,7 +3943,7 @@
   // A playlist: each song is analyzed and built on the server one at a time, then
   // all the shows are saved together as one zip.
   async function runBatch(files) {
-    if (!show.token || !files.length || show.batchRunning || show.generationPending ||
+    if (!show.token || !files.length || show.batchRunning || show.batchZipPending || show.generationPending ||
         show.testPending || show.displayPending || show.audioPending || show.requirementsPending) return;
     const batchToken = show.token;
     const batchMeter = $("meterSelect").value;
@@ -4467,7 +4469,10 @@
   // with nothing to play yet, it says what to do instead of doing nothing.
   function yardButtonClicked() {
     if (!$("newShow").classList.contains("hidden")) {
-      if (show.result && show.result.sequence) {
+      if (generatedActionsBlocked()) {
+        showMessage("generateStatus", "Wait for the current show operation to finish before opening Yard view.", "warn");
+        $("generateStatus").scrollIntoView({ block: "center" });
+      } else if (resultIsCurrent()) {
         openGenerated();
       } else {
         showMessage("generateStatus", "Generate a show first; Yard view then plays it on a " +
