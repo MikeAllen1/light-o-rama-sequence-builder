@@ -528,7 +528,7 @@ class ShowSessions:
                             f"{entry['show']}" if entry.get("ok") else "not built (rules failed)"))
                     lines += ["", "Copy each song into S6's audio folder with the same name, then",
                               "open its .loredit in the S6 Sequencer."]
-                    archive.writestr("Batch - read me.txt", "\\r\\n".join(lines) + "\\r\\n")
+                    archive.writestr("Batch - read me.txt", "\r\n".join(lines) + "\r\n")
                 name = _safe_name(session.display_name) + " shows.zip"
                 return {"zip_name": name, "count": len(shows), "zip_path": str(archive_path)}
         except BaseException:
