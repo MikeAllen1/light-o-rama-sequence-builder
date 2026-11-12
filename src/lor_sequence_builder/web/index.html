@@ -73,7 +73,7 @@
         <div class="hero">
           <div class="hero-copy">
             <h1>A show for every song, without the hundred hours.</h1>
-            <p class="hero-lede">Sequencing one song by hand can eat a whole weekend, and it helps to have an ear for music. This does the sequencing for you. Give it your S6 preview and a song, and you get back a show that knows your arches from your snowflakes.</p>
+            <p class="hero-lede">Sequencing one song by hand can eat a whole weekend, and it helps to have an ear for music. This does the sequencing for you. Give it your display and a song: an S5 or S6 preview, or with S4, one of your sequences. You get back a show that knows your arches from your snowflakes.</p>
             <div class="welcome-actions">
               <button id="welcomeNewShow" class="tool-button primary large" type="button">Build a show</button>
               <button id="watchDemo" class="tool-button large" type="button">Watch a demo show</button>
@@ -102,12 +102,12 @@
         </section>
 
         <ol class="steps">
-          <li><span class="step-number">1</span><h2>Your preview</h2>
-            <p>The <code>.lorprev</code> you already have. It is the map: every prop, its channels, and where it stands in the yard.</p></li>
+          <li><span class="step-number">1</span><h2>Your display</h2>
+            <p>The S5/S6 <code>.lorprev</code> you already have, or with S4, any of your <code>.lms</code> sequences. It is the map: every prop, its channels, and where it stands in the yard.</p></li>
           <li><span class="step-number">2</span><h2>Your song</h2>
             <p>Any MP3, WAV or M4A. It finds the beats, the bars, the loud parts, the sleigh bells and the cymbal crashes.</p></li>
           <li><span class="step-number">3</span><h2>Your show</h2>
-            <p>A native S6 <code>.loredit</code>. Play it as it is, or open it in S6 and make it yours.</p></li>
+            <p>A native sequence: <code>.loredit</code> for S5 and S6, <code>.lms</code> for S4. Play it as it is, or open it in the Sequencer and make it yours.</p></li>
         </ol>
 
         <div class="jobs">
@@ -136,7 +136,7 @@
       <div class="new-show-head">
         <div>
           <h1 id="newShowTitle">Build a show for your display</h1>
-          <p>Everything runs on this computer. The result opens in the workspace to review; save it and fine-tune it in S6.</p>
+          <p>Everything runs on this computer. The result opens in the workspace to review; save it and fine-tune it in the Light-O-Rama Sequencer.</p>
         </div>
         <button id="closeNewShow" class="tool-button subtle" type="button">Close</button>
       </div>
@@ -185,7 +185,7 @@
           <h2><span class="step-number">4</span>Generate</h2>
           <div class="style-label">Style</div>
           <div id="styleChoices" class="style-choices" role="radiogroup" aria-label="Show style"></div>
-          <label class="edit-field wide"><span>Audio file name S6 should play (as it appears in S6's audio folder)</span>
+          <label class="edit-field wide"><span>Audio file name the Sequencer should play (as it appears in its audio folder)</span>
             <input id="musicFilename" type="text" maxlength="260"></label>
           <div id="musicNote" class="step-note"></div>
           <label class="sing-option hidden"><input id="singFaces" type="checkbox" checked> Sing the faces</label>
@@ -220,7 +220,7 @@
       <div class="sequence-bar">
         <div class="sequence-identity">
           <div class="sequence-title" id="sequenceTitle">No sequence loaded</div>
-          <div class="sequence-subtitle" id="sequenceSubtitle">Open a native S6 .loredit file to populate the timeline</div>
+          <div class="sequence-subtitle" id="sequenceSubtitle">Open an S5/S6 .loredit or an S4 .lms to populate the timeline</div>
         </div>
         <div class="sequence-stats">
           <div><strong id="durationStat">—</strong><span>long</span></div>
