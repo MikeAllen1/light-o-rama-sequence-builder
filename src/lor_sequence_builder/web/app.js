@@ -45,6 +45,7 @@
     reviewSelection: null,
     reviewDrag: null,
     reviewDirty: false,
+    reviewBaseline: null,
     animationFrame: 0,
     audioRequestId: 0,
     sequenceRequestId: 0,
@@ -1441,6 +1442,7 @@
     state.reviewDirty = false;
     state.reviewLoaded = false;
     state.reviewSelection = null;
+    captureReviewBaseline();
     if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
     state.audioUrl = null;
     audio.pause();
@@ -1522,7 +1524,7 @@
       state.reviewDirty = false;
       state.reviewSelection = null;
       if (review) {
-        if (review.lyrics != null) state.lyrics = review.lyrics;
+        state.lyrics = review.lyrics != null ? review.lyrics : null;
         if (review.meter === 3 || review.meter === 4) $("meterSelect").value = String(review.meter);
       }
       renderSequenceStats();
@@ -1530,6 +1532,7 @@
       updateEditControls();
       $("analysisBanner").title = data.analysis.method + "\n" + data.analysis.provenance +
         "\nLimitations: " + data.analysis.limitations.join(" ");
+      captureReviewBaseline();
       if (review) {
         const counts = reviewCounts();
         setBanner("Loaded music review: " + counts.confirmed + " confirmed and " + counts.fitted +
@@ -1664,7 +1667,9 @@
       if (state.reviewDirty && !window.confirm("Replace the unsaved music review?")) return;
       state.lyrics = data;
       state.reviewSelection = null;
+      state.reviewDirty = reviewHasChanges();
       refreshTimeline();
+      updateEditControls();
       setBanner(data.source === "transcribed"
         ? "Loaded " + data.lines.length + " transcribed lyric lines. They are unverified: speech recognition mishears sung words. Dashed outlines mark unverified lines."
         : "Loaded " + data.lines.length + " lyric lines from " + file.name + ".", "good");
@@ -2716,8 +2721,30 @@
     for (const change of command.music) change.owner[change.key] = change[side];
   }
 
+  function captureReviewBaseline() {
+    const analysis = state.analysis && state.analysis.analysis;
+    const lanes = {};
+    for (const spec of Object.values(REVIEW_LANES)) {
+      lanes[spec.key] = analysis ? analysis[spec.key] : null;
+    }
+    state.reviewBaseline = { analysis, lanes, lyrics: state.lyrics,
+      lyricLines: state.lyrics ? state.lyrics.lines : null };
+  }
+
+  function reviewHasChanges() {
+    const baseline = state.reviewBaseline;
+    if (!baseline) return Boolean(state.analysis || state.lyrics);
+    const analysis = state.analysis && state.analysis.analysis;
+    if (analysis !== baseline.analysis) return true;
+    for (const spec of Object.values(REVIEW_LANES)) {
+      if (analysis && analysis[spec.key] !== baseline.lanes[spec.key]) return true;
+    }
+    return state.lyrics !== baseline.lyrics ||
+      Boolean(state.lyrics && state.lyrics.lines !== baseline.lyricLines);
+  }
+
   function afterMusicEdit(select) {
-    state.reviewDirty = true;
+    state.reviewDirty = reviewHasChanges();
     state.syncCheck = null;
     refreshTimeline();
     updateEditControls();
@@ -3135,6 +3162,7 @@
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
+    captureReviewBaseline();
     state.reviewDirty = false;
     state.reviewSaved = true;
     updateEditControls();
