@@ -3479,7 +3479,7 @@
     $("showSongFile").disabled = !show.token || show.batchRunning || show.generationPending ||
       show.displayPending || show.testPending || show.audioPending || show.requirementsPending;
     $("meterSelect").disabled = show.batchRunning || show.generationPending || show.displayPending ||
-      show.testPending || show.audioPending;
+      show.testPending || show.audioPending || show.requirementsPending;
     $("showSongLabel").classList.toggle("disabled", !show.token);
     $("addRequirement").disabled = !show.token || show.testPending || show.batchRunning ||
       show.generationPending || show.displayPending || show.requirementsPending;
@@ -4840,6 +4840,7 @@
       canvasViewport.scrollLeft = 0;
     });
     $("meterSelect").addEventListener("change", () => {
+      if (show.token) invalidateGeneratedResult();
       if (show.batchReady && show.batchConfig !== currentBatchConfig()) {
         show.batchReady = false;
         $("saveBatch").disabled = true;
