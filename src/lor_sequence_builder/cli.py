@@ -42,6 +42,7 @@ from lor_sequence_builder.sequence_writer import (
     SequenceWriteError,
     build_from_timeline,
 )
+from lor_sequence_builder.style import DEFAULT_STYLE, STYLES
 from lor_sequence_builder.vocal_separation import SeparationError
 from lor_sequence_builder.vocals import VocalAnalysisError
 
@@ -203,6 +204,8 @@ def _build_parser() -> argparse.ArgumentParser:
     generate.add_argument("--rules", action="append", default=[], help=_RULES_HELP)
     generate.add_argument("--ignore-saved-requirements", action="store_true",
                           help=_IGNORE_HELP)
+    generate.add_argument("--style", choices=sorted(STYLES), default=DEFAULT_STYLE,
+                          help="character of the show: classic (default), energetic, elegant")
     asking = generate.add_mutually_exclusive_group()
     asking.add_argument("--ask-requirements", action="store_true",
                         help="always ask about specific requirements first")
@@ -281,7 +284,7 @@ def _generate(options: argparse.Namespace) -> int:
             audio_path=options.audio, analysis_path=options.analysis,
             music_filename=options.music_filename, beats_per_bar=options.beats_per_bar,
             vocals_path=options.vocals, separate=False if options.no_vocals else None,
-            progress=print, vocal_beats=options.vocal_beats,
+            progress=print, vocal_beats=options.vocal_beats, style=options.style,
         )
     except RulesFailedError as failed:
         print(failed.report.format_text())
