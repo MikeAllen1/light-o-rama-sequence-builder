@@ -116,6 +116,17 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                 )
                 try:
                     page.goto(url, wait_until="networkidle")
+                    page.evaluate("""() => {
+                      const original = AudioContext.prototype.decodeAudioData;
+                      window.__slowNextDecode = false;
+                      AudioContext.prototype.decodeAudioData = function (...args) {
+                        if (!window.__slowNextDecode) return original.apply(this, args);
+                        window.__slowNextDecode = false;
+                        return new Promise((resolve, reject) => setTimeout(
+                          () => original.apply(this, args).then(resolve, reject), 1200
+                        ));
+                      };
+                    }""")
                     page.locator("#sequenceFile").set_input_files(
                         {
                             "name": "browser-acceptance.loredit",
@@ -277,6 +288,30 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                     assert "unsaved music review" in page.locator("#editStatus").inner_text().lower()
                     page.locator("#undoButton").click()
                     assert "unsaved music review" not in page.locator("#editStatus").inner_text().lower()
+
+                    # A review edit made while a replacement song is decoding must
+                    # receive its own confirmation before the old review is discarded.
+                    page.locator("#markersCanvas").click(
+                        position={"x": 0.9 * pixels_per_second, "y": 11}
+                    )
+                    previous_audio_url = page.locator("#audioPlayer").evaluate("(a) => a.src")
+                    page.evaluate("() => { window.__slowNextDecode = true; }")
+                    page.on("dialog", lambda dialog: dialog.dismiss())
+                    page.locator("#audioFile").set_input_files(
+                        {
+                            "name": "replacement.wav",
+                            "mimeType": "audio/wav",
+                            "buffer": audio_path.read_bytes(),
+                        }
+                    )
+                    page.wait_for_timeout(150)
+                    page.locator("#reviewText").fill("Changed while replacement decoded")
+                    page.locator("#reviewApply").click()
+                    page.locator("#analysisMessage").filter(
+                        has_text="Audio was not replaced"
+                    ).wait_for(timeout=10000)
+                    assert page.locator("#audioPlayer").evaluate("(a) => a.src") == previous_audio_url
+                    assert "unsaved music review" in page.locator("#editStatus").inner_text().lower()
 
                     # Imported analysis, vocals and lyrics must belong to this song.
                     # A failed import must leave the existing, correct lanes untouched.
