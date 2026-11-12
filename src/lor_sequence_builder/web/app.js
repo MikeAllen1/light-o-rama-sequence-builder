@@ -1904,28 +1904,40 @@
   }
 
   function checkChannel(channel, effects) {
-    const before = new Set(channel.effects);
+    // Compare timing against the loaded/exported baseline, not object identity.
+    // Property edits replace effect objects without changing their original timing;
+    // they must not turn a pre-existing S6 overlap into a newly introduced overlap.
+    const originalSpans = new Map();
+    const baseline = state.baselineEffects.get(channel) || channel.effects;
+    for (const effect of baseline) {
+      const key = effect.start + ":" + effect.end;
+      originalSpans.set(key, (originalSpans.get(key) || 0) + 1);
+    }
     const limit = state.sequence.durationCs;
     const active = [];
     for (const effect of effects) {
-      if (!before.has(effect)) {
+      const key = effect.start + ":" + effect.end;
+      const count = originalSpans.get(key) || 0;
+      const isOriginalTiming = count > 0;
+      if (isOriginalTiming) originalSpans.set(key, count - 1);
+      if (!isOriginalTiming) {
         if (effect.start < 0) return "an effect would start before the song";
         if (effect.end <= effect.start) return "an effect would have no length";
         if (effect.end > limit) return "an effect would run past the end of the sequence";
       }
       // Compare with every active interval so nested source overlaps cannot hide
-      // a newly introduced overlap.
+      // a newly introduced overlap. Baseline timing spans are a multiset because
+      // S6 files can contain exact duplicate effects.
       for (let index = active.length - 1; index >= 0; index--) {
         if (active[index].end <= effect.start) active.splice(index, 1);
       }
-      if (active.some((previous) => !(before.has(previous) && before.has(effect)))) {
+      if (active.some((previous) => !(previous.isOriginalTiming && isOriginalTiming))) {
         return "effects would overlap on " + channelName(channel);
       }
-      active.push(effect);
+      active.push({ end: effect.end, isOriginalTiming });
     }
     return null;
   }
-
   function checkChanges(changes) {
     for (const [channel, effects] of changes) {
       const sorted = sortEffects(effects);
