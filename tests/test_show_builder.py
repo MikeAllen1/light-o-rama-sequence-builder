@@ -109,6 +109,8 @@ def test_a_show_is_built_step_by_step_and_requirements_are_remembered(
     status, again = _post(server + "/api/show/start?name=yard.lorprev", preview,
                           "application/xml")
     assert status == 200 and len(again["requirements"]) == 1
+    assert len(again["raw_requirements"]) == 1
+    assert again["raw_requirements"][0]["type"] == "never_use"
 
 
 def test_requirement_persistence_failure_does_not_publish_session_state(
