@@ -3543,7 +3543,8 @@
     setRequirementControlsLocked(show.requirementsPending || show.batchRunning || show.generationPending ||
       show.batchZipPending || show.displayPending || show.testPending);
     $("saveBatch").disabled = !show.batchReady || show.batchRunning || show.batchZipPending ||
-      show.requirementsPending || show.displayPending;
+      show.generationPending || show.displayPending || show.audioPending || show.requirementsPending ||
+      show.testPending;
     updateGeneratedControls();
   }
 
