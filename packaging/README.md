@@ -33,9 +33,13 @@ master:
 2. Download the pinned FFmpeg build and check its SHA-256.
 3. Build with PyInstaller.
 4. Run the app's self-test.
-5. Build the installer with Inno Setup and keep it as an artifact for 30 days.
+5. Build the installer with Inno Setup.
+6. Zip the same app folder (with a short README.txt and the license) as the
+   portable version, for PCs that block installers.
+7. Keep both as artifacts for 30 days.
 
-Pushing a tag such as `v0.1.0` also publishes the installer on a GitHub release.
+Publishing a release (or pushing a tag such as `v0.1.0`) attaches the installer and
+the portable zip to it.
 
 To build on a Windows PC:
 
