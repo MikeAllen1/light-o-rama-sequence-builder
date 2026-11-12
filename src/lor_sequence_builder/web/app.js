@@ -1379,10 +1379,10 @@
   }
 
   function currentMusicDuration() {
+    if (state.audioBuffer && Number.isFinite(state.audioBuffer.duration) &&
+        state.audioBuffer.duration > 0) return state.audioBuffer.duration;
     const analyzed = state.analysis && Number(state.analysis.audio && state.analysis.audio.duration_seconds);
-    if (Number.isFinite(analyzed) && analyzed > 0) return analyzed;
-    return state.audioBuffer && Number.isFinite(state.audioBuffer.duration)
-      ? state.audioBuffer.duration : null;
+    return Number.isFinite(analyzed) && analyzed > 0 ? analyzed : null;
   }
 
   function clampReviewSeconds(seconds) {
@@ -1529,7 +1529,15 @@
         review = data;
         data = review.analysis;
         if (!data || typeof data !== "object") throw new Error("The music review has no analysis.");
-        if (review.lyrics != null) checkLyrics(review.lyrics);
+        if (review.lyrics != null) {
+          checkLyrics(review.lyrics);
+          const duration = state.audioBuffer && Number.isFinite(state.audioBuffer.duration)
+            ? state.audioBuffer.duration : Number(data.audio && data.audio.duration_seconds);
+          if (Number.isFinite(duration) && duration > 0 &&
+              review.lyrics.lines.some((line) => line.end > duration + 1)) {
+            throw new Error("The saved review's lyrics extend beyond the selected song.");
+          }
+        }
       }
       const analysis = data.analysis;
       const currentDuration = state.audioBuffer && Number.isFinite(state.audioBuffer.duration)
