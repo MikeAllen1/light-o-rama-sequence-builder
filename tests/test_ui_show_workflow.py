@@ -402,8 +402,12 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
                 {"name": "uncertain.wav", "mimeType": "audio/wav", "buffer": b"uncertain"},
                 {"name": "not-attempted.wav", "mimeType": "audio/wav", "buffer": b"later"},
             ])
-            page.locator("#batchList li").filter(has_text="upload outcome is uncertain").wait_for()
-            assert page.locator("#batchList li").filter(has_text="not attempted").count() == 1
+            page.locator("#batchList li").filter(
+                has_text="uncertain.wav: upload outcome is uncertain"
+            ).wait_for()
+            assert page.locator("#batchList li").filter(
+                has_text="not-attempted.wav: not attempted"
+            ).count() == 1
             assert page.locator("#saveBatch").is_disabled()
 
             assert not page.locator("#meterSelect").is_disabled()
