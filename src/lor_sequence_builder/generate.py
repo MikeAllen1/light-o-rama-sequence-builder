@@ -31,6 +31,7 @@ from lor_sequence_builder.sequence_writer import (
     build_from_timeline,
 )
 from lor_sequence_builder.show_report import ReportInputs, render_report
+from lor_sequence_builder.style import get_style
 from lor_sequence_builder.vocal_separation import separate_vocals, separation_available
 from lor_sequence_builder.vocals import analyze_vocals, load_vocals
 
@@ -96,6 +97,7 @@ def generate_show(
     separate: bool | None = None,
     progress: Callable[[str], None] | None = None,
     vocal_beats: bool = False,
+    style: str | None = None,
 ) -> GeneratedShow:
     """Build a show. Vocals for singing faces come from ``vocals_path`` (a vocals-only
     audio file, or a vocals JSON from an earlier run); otherwise, when the display
@@ -103,6 +105,10 @@ def generate_show(
     ``separate`` forces separation on (True) or off (False)."""
     if (audio_path is None) == (analysis_path is None):
         raise SequenceWriteError("Give either the audio file or an existing analysis, not both")
+    try:
+        chosen_style = get_style(style)
+    except ValueError as exc:
+        raise SequenceWriteError(str(exc)) from exc
     paths = output_paths(output_path)
     if paths["sequence"].suffix.lower() != ".loredit":
         raise SequenceWriteError("Sequence output must use the .loredit extension")
@@ -168,7 +174,7 @@ def generate_show(
             "Face mouths stay still: pass a vocals-only file with --vocals, or install "
             "the vocals add-on (uv sync --extra vocals) to split vocals out of the song."
         )
-    plan = plan_show(analysis, display, rule_set, vocals)
+    plan = plan_show(analysis, display, rule_set, vocals, chosen_style)
     paths["sequence"].parent.mkdir(parents=True, exist_ok=True)
     _write_new(paths["timeline"], choreography_json(plan.choreography))
     _write_new(paths["picture"], plan_svg(plan, display, f"{paths['sequence'].stem}: planned show"))

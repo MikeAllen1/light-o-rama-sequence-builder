@@ -3149,6 +3149,7 @@
         "." + (skipped.length ? " Not sequenced: " + skipped.map((prop) => prop.name +
           (prop.reason ? " (" + prop.reason + ")" : "")).join("; ") + "." : ""), "good");
       fillRequirementForm();
+      fillStyles(summary.styles || [], summary.default_style);
       renderRequirements(summary.requirements, []);
       $("singFaces").closest("label").classList.toggle("hidden", !summary.faces);
       $("singNote").textContent = summary.faces ? (summary.can_separate_vocals
@@ -3203,6 +3204,31 @@
         setStepEnabled();
       }
     }
+  }
+
+  function fillStyles(styles, chosen) {
+    const box = $("styleChoices");
+    box.replaceChildren();
+    for (const style of styles) {
+      const label = document.createElement("label");
+      label.className = "style-choice";
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "showStyle";
+      radio.value = style.key;
+      radio.checked = style.key === chosen;
+      const name = document.createElement("strong");
+      name.textContent = style.name;
+      const about = document.createElement("span");
+      about.textContent = style.description;
+      label.append(radio, name, about);
+      box.appendChild(label);
+    }
+  }
+
+  function chosenStyle() {
+    const picked = document.querySelector('input[name="showStyle"]:checked');
+    return picked ? picked.value : null;
   }
 
   function option(value, text) {
@@ -3330,7 +3356,8 @@
       : "Planning the show and checking every rule…");
     try {
       const result = await postShow("/api/show/generate?token=" + encodeURIComponent(show.token),
-        JSON.stringify({ music_filename: $("musicFilename").value, sing: singing }),
+        JSON.stringify({ music_filename: $("musicFilename").value, sing: singing,
+          style: chosenStyle() }),
         "application/json");
       if (!result.rules_ok) {
         show.result = null;

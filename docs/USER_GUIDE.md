@@ -17,7 +17,7 @@ Nothing is uploaded anywhere. The program runs on your computer and reads your f
 3. **Your display:** choose the `.lorprev`. The panel says what it found, for example "7 arches, 14 snowflakes, 1 mega tree", and lists any prop it cannot sequence, with the reason (pixel and DMX props, or props that follow another prop).
 4. **The song:** choose the audio file. It is analyzed for beats, bars, sections, high-pitched hits (tambourine, sleigh bells) and cymbal crashes. A three-minute song takes a few seconds to half a minute.
 5. **Requirements (optional):** see below. Skip this the first time.
-6. **Generate:** check the audio file name (it must match the song's name in S6's audio folder) and click **Generate show**.
+6. **Generate:** pick a **style** (below), check the audio file name (it must match the song's name in S6's audio folder) and click **Generate show**.
 7. Click **Show report** and read **Check in the yard**. Click **Plan picture** for the whole show at a glance.
 8. Click **Open in the workspace** to watch the show against the music (press play; the lanes above the tracks show the beats, bars and sections it followed), then **Save sequence**.
 9. Open the saved `.loredit` in the S6 Sequencer and play it.
@@ -30,6 +30,16 @@ To try everything without your own files, run `uv run lor-sequence-builder demo 
 - Each kind of prop has one job for the whole song, so you can tell what it is following: arches chase on the beat, mini trees trade beats, snowflakes fall (on the high-pitched hits when there are enough of them), a mega tree spins, decorations pulse, outlines and stars are the steady base.
 - Groups take turns leading, handing off across the yard. A part that comes back (a second chorus) repeats its look; mid-energy parts trade bars left and right; the phrase before a louder part builds up; crashes flash the display.
 - Motion follows how your props are laid out in the preview: rows chase from one end to the other, stacked snowflakes fall top to bottom, little clusters ripple.
+
+### Styles
+
+The same song and display can be arranged with a different character:
+
+- **Classic** (default): balanced. A few groups lead and hand off, chases on the beat, build-ups, a flash on the crashes.
+- **High energy:** more of the yard leads at once, every chase on every beat, sharp hits instead of fades, more flashes. For fast, loud songs.
+- **Elegant:** fewer props at a time, slower chases that fade in and out, softer brightness, no flashes, twinkling stars and outlines. For ballads.
+
+A style changes how much happens and how it feels, never what each kind of prop follows or which rules the show must pass. On the command line: `generate ... --style energetic`.
 
 Section names (verse, chorus) are guesses from loudness. To name them yourself, use the music review (below).
 

@@ -55,6 +55,7 @@ from lor_sequence_builder.rules import (
 from lor_sequence_builder.rules.engine import Display
 from lor_sequence_builder.rules.profile import requirement_mapping
 from lor_sequence_builder.sequence_writer import RulesFailedError
+from lor_sequence_builder.style import DEFAULT_STYLE, STYLES
 from lor_sequence_builder.vocal_separation import (
     model_folder,
     separate_vocals,
@@ -237,6 +238,8 @@ class ShowSessions:
             "faces": display_has_mouths(display, rules),
             "can_separate_vocals": separation_available(),
             "can_translate": translator_from_environment() is not None,
+            "styles": [STYLES[key].to_dict() for key in STYLES],
+            "default_style": DEFAULT_STYLE,
             "requirements": [describe_requirement(r) for r in session.requirements],
         }
 
@@ -331,6 +334,9 @@ class ShowSessions:
         if not isinstance(sing_value, bool):
             raise ShowBuildError("'sing' must be a JSON boolean")
         sing = sing_value
+        style = body.get("style") or None
+        if style is not None and (not isinstance(style, str) or style not in STYLES):
+            raise ShowBuildError("Unknown style; choose one of: " + ", ".join(STYLES))
         with self.locked(token) as session:
             if session.analysis_path is None or session.audio_path is None:
                 raise ShowBuildError("Add the song before generating")
@@ -360,7 +366,7 @@ class ShowSessions:
                     show = generate_show(session.preview_path, output, rule_set,
                                          analysis_path=session.analysis_path,
                                          music_filename=music.strip(), vocals_path=vocals,
-                                         separate=False)
+                                         separate=False, style=style)
                 except RulesFailedError as failed:
                     if session.generated_dir is not None:
                         shutil.rmtree(session.generated_dir, ignore_errors=True)

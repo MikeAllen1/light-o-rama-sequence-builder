@@ -205,6 +205,25 @@ Build motifs, call-and-response, signature moments, and richer dynamics.
 
 **Verified by tests:** a second verse repeats the first; the last chorus uses more lead props than the first; bars trade between left and right in a mid part; brightness rises before a louder part; crashes too close together or in a quiet part are skipped and a return from a stop flashes; two songs on one display share under 30% of their effect starts; every fictional display and 25 random song shapes still pass every rule. On the owner's display and songs (checked locally, not committed), every song plans and passes the rules, with two to six phrases of call and response, one to three build-ups and one to eight crash flashes per freshly analyzed song, and about the same share of lit channels as before (roughly a quarter).
 
+### Phase 9c — Show styles
+
+**Status: Built; owner review pending.** Requested by the owner on 2026-11-11 after comparing similar products ("pick a style").
+
+`style.py` defines three styles: Classic (the previous behaviour, unchanged), High energy and Elegant. Each sets:
+- lead groups per energy level
+- chase step and hold
+- fades or sharp hits
+- pattern brightness
+- whether crashes and returns from a stop flash, and how often
+- how many high hits make snowflakes fall, and how often they fall
+- where a build-up starts
+- call and response
+- twinkling stars and outlines
+
+A style never changes what each kind of prop follows or which rules apply. It is available as `generate --style`, as a picker in New show, and in the planner's notes (and so in the show report).
+
+**Verified:** every style passes every rule on every fictional display. On one song, High energy lights more and flashes more than Classic, and Classic more than Elegant. Elegant has no flashes, no call and response and no sharp chase steps. A style always gives the same show. On the owner's six songs (checked locally), every style passes every rule with no warnings.
+
 ### Phase 10 — Polish
 Build reports, docs, Python package distribution, example profiles, and installation workflow. Desktop wrapping and desktop packaging are not part of this phase; they are final delivery work after the browser sequencing and editing workflows are complete.
 
