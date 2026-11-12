@@ -3543,7 +3543,7 @@
 
   const show = { token: null, summary: null, audioFile: null, analysis: null, raw: [],
     result: null, resultConfig: null, audioRequestId: 0, audioPending: false, audioUncertain: false,
-    analysisMeter: null, requirementsPending: false, requirementsRequestId: 0, displayRequestId: 0,
+    analysisMeter: null, requirementsPending: false, requirementsUncertain: false, requirementsRequestId: 0, displayRequestId: 0,
     displayPending: false, testPending: false, batchRunning: false, batchToken: null,
     batchConfig: null, batchReady: false, batchUncertain: false, batchZipPending: false,
     generationPending: false };
@@ -3741,7 +3741,8 @@
     $("watchTest").disabled = !show.test || generatedActionsBlocked();
     $("saveTest").disabled = !show.test;
     $("makeTest").disabled = !show.token || !hasProps || show.batchRunning || show.generationPending ||
-      show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending;
+      show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending ||
+      show.requirementsUncertain;
     $("showSongFile").disabled = !show.token || !hasProps || show.batchRunning || show.generationPending ||
       show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending;
     $("meterSelect").disabled = state.audioDecodePending || show.batchRunning || show.generationPending ||
@@ -3756,7 +3757,7 @@
       show.generationPending || show.batchZipPending || show.displayPending || show.requirementsPending;
     $("translateRequirements").disabled = !show.token || !show.summary.can_translate || show.testPending ||
       show.batchRunning || show.generationPending || show.batchZipPending || show.displayPending || show.requirementsPending;
-    $("generateShow").disabled = !(show.token && hasProps && show.analysis && !show.audioUncertain &&
+    $("generateShow").disabled = !(show.token && hasProps && show.analysis && !show.audioUncertain && !show.requirementsUncertain &&
       !show.audioPending && !show.requirementsPending && !show.generationPending && !show.batchRunning &&
       !show.batchZipPending && !show.displayPending && !show.testPending &&
       show.analysisMeter === $("meterSelect").value);
@@ -3803,6 +3804,7 @@
       show.analysisMeter = null;
       show.audioFile = null;
       show.audioUncertain = false;
+      show.requirementsUncertain = false;
       show.raw = summary.raw_requirements || [];
       show.audioRequestId += 1;
       show.audioPending = false;
@@ -3992,7 +3994,7 @@
   }
 
   async function sendRequirements(raw, text) {
-    if (!show.token || show.requirementsPending || show.batchRunning || show.batchZipPending ||
+    if (!show.token || show.requirementsPending || show.requirementsUncertain || show.batchRunning || show.batchZipPending ||
         show.generationPending || show.displayPending || show.testPending) return;
     const requestId = ++show.requirementsRequestId;
     show.requirementsPending = true;
@@ -4004,6 +4006,7 @@
         JSON.stringify(text ? { requirements: raw, text } : { requirements: raw }),
         "application/json");
       if (requestId !== show.requirementsRequestId || result.stale) return;
+      show.requirementsUncertain = false;
       const requirementsChanged = JSON.stringify(show.raw) !== JSON.stringify(result.raw);
       show.raw = result.raw;
       if (text && !result.problems.length &&
@@ -4021,7 +4024,16 @@
       renderRequirements(result.requirements, result.problems);
     } catch (error) {
       if (requestId === show.requirementsRequestId) {
-        showMessage("requirementStatus", error.message || String(error), "error");
+        const status = error && Number.isInteger(error.status) ? error.status : null;
+        if (status == null || status >= 500) {
+          show.requirementsUncertain = true;
+          showMessage("requirementStatus",
+            "The server may have saved these requirements, but confirmation was lost. " +
+            "Re-select the display to resync its saved profile before generating or building a playlist.",
+            "error");
+        } else {
+          showMessage("requirementStatus", error.message || String(error), "error");
+        }
       }
     } finally {
       if (requestId === show.requirementsRequestId) {
@@ -4092,7 +4104,7 @@
   }
 
   async function generateShow() {
-    if (show.audioUncertain || show.generationPending || show.batchRunning || show.batchZipPending ||
+    if (show.audioUncertain || show.requirementsUncertain || show.generationPending || show.batchRunning || show.batchZipPending ||
         show.requirementsPending || show.audioPending || show.displayPending || show.testPending) return;
     const button = $("generateShow");
     const config = currentShowConfig();
@@ -4257,6 +4269,7 @@
   // all the shows are saved together as one zip.
   async function runBatch(files) {
     if (!show.token || !files.length || show.batchRunning || show.batchZipPending || show.generationPending ||
+        show.requirementsUncertain ||
         show.testPending || show.displayPending || show.audioPending || show.requirementsPending) return;
     if (files.length > MAX_BATCH_SONGS) {
       showMessage("batchStatus", "A playlist can contain at most " + MAX_BATCH_SONGS +
@@ -4383,7 +4396,7 @@
 
   async function saveBatch() {
     const token = show.batchToken;
-    if (show.batchZipPending || show.batchRunning || show.batchUncertain || show.generationPending ||
+    if (show.batchZipPending || show.batchRunning || show.batchUncertain || show.requirementsUncertain || show.generationPending ||
         show.displayPending || show.audioPending || show.requirementsPending || show.testPending) return;
     if (!show.batchReady || !token || token !== show.token ||
         !show.batchConfig || show.batchConfig !== currentBatchConfig()) {
