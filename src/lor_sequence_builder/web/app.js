@@ -3152,7 +3152,8 @@
   }
 
   function download(bytes, name, type) {
-    const url = URL.createObjectURL(new Blob([bytes], { type }));
+    const blob = bytes instanceof Blob ? bytes : new Blob([bytes], { type });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
     link.download = name;
@@ -3632,7 +3633,7 @@
       const disposition = response.headers.get("Content-Disposition") || "";
       const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/i);
       const fileName = encodedName ? decodeURIComponent(encodedName[1]) : "shows.zip";
-      download(await response.arrayBuffer(), fileName, "application/zip");
+      download(await response.blob(), fileName, "application/zip");
     } catch (error) {
       showMessage("batchStatus", error.message || String(error), "error");
     }
