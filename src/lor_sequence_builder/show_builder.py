@@ -272,6 +272,7 @@ class ShowSessions:
             "styles": [STYLES[key].to_dict() for key in STYLES],
             "default_style": DEFAULT_STYLE,
             "requirements": [describe_requirement(r) for r in session.requirements],
+            "raw_requirements": [_raw(r) for r in session.requirements],
         }
 
     # -- 2. song
@@ -314,7 +315,6 @@ class ShowSessions:
             revision = session.requirements_revision + 1 if request_id is None else request_id
             if revision <= session.requirements_revision:
                 return {"stale": True}
-            session.requirements_revision = revision
             raw = body.get("requirements", [])
             text = body.get("text")
             if not isinstance(raw, list) or len(raw) > MAX_REQUIREMENTS or not all(
@@ -334,21 +334,28 @@ class ShowSessions:
                 problems.extend(f"Not supported: {item}" for item in translation.not_supported)
             draft = validate_draft(raw, session.display)
             problems.extend(draft.problems)
+            # Persist the proposed profile before publishing it to the live session.
+            # If disk I/O fails, neither the in-memory requirements nor their revision
+            # changes, so a failed request cannot affect the next generated show.
+            self._remember(session, draft.requirements)
             session.requirements = draft.requirements
-            self._remember(session)
+            session.requirements_revision = revision
             return {"requirements": [describe_requirement(r) for r in draft.requirements],
                     "raw": [_raw(r) for r in draft.requirements],
                     "problems": problems}
 
-    def _remember(self, session: _Session) -> None:
+    def _remember(
+        self, session: _Session, requirements: tuple[Requirement, ...] | None = None
+    ) -> None:
+        """Persist a proposed profile atomically without mutating the live session."""
+        proposed = session.requirements if requirements is None else requirements
         folder = requirements_folder()
         path = folder / f"{session.display_key}.requirements.yaml"
-        if not session.requirements:
+        if not proposed:
             path.unlink(missing_ok=True)
             return
         folder.mkdir(parents=True, exist_ok=True)
-        text = requirements_profile_text(session.requirements,
-                                         f"Requirements for {session.display_name}")
+        text = requirements_profile_text(proposed, f"Requirements for {session.display_name}")
         temporary = path.with_name(path.name + f".{secrets.token_hex(4)}.tmp")
         try:
             temporary.write_text(text, encoding="utf-8", newline="\n")
@@ -546,7 +553,11 @@ class ShowSessions:
 
     def batch_clear(self, token: str) -> dict[str, Any]:
         with self.locked(token) as session:
-            shutil.rmtree(session.path / "batch", ignore_errors=True)
+            done = session.path / "batch"
+            if done.exists():
+                # Do not report a successful reset while old batch artifacts remain.
+                # Keep the in-memory manifest intact if the filesystem refuses removal.
+                shutil.rmtree(done)
             session.batch.clear()
         return {"cleared": True}
 
