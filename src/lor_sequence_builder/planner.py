@@ -867,6 +867,12 @@ def _marks(window: _Window, grid: str) -> list[int]:
         for b, beat in enumerate(window.beats):
             out.extend((beat, beat + _beat_length(window, b) // 2))
         return out
+    if grid == "sixteenth":
+        fours: list[int] = []
+        for b, beat in enumerate(window.beats):
+            length = _beat_length(window, b)
+            fours.extend(beat + length * k // 4 for k in range(4))
+        return [t for t in fours if t < window.end]
     return list(window.beats)
 
 
@@ -1254,7 +1260,8 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
     hold = style.chase_hold[level]
 
     def every_for(grid: str) -> int:
-        return {"half": 1, "beat": 1, "half_bar": 2, "kick": 1, "snare": 1}.get(
+        return {"half": 1, "sixteenth": 1, "beat": 1, "half_bar": 2, "kick": 1,
+                "snare": 1}.get(
             grid, window.beats_per_bar)
 
     loose = list(singles)
@@ -1269,9 +1276,11 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
         motion, grid = style.part(kind).at(level, variant)
         marks = planner.marks(window, grid)
         spans = _spans(window, marks)
-        # A chase on the half beat or the drums steps on those, as if they were beats.
-        if grid == "half":
-            stepping = dataclasses.replace(window, beats=tuple(marks), offset=window.offset * 2)
+        # A chase on the half beat, the sixteenth or the drums steps on those, as if they
+        # were beats.
+        if grid in {"half", "sixteenth"}:
+            stepping = dataclasses.replace(window, beats=tuple(marks),
+                                           offset=window.offset * (2 if grid == "half" else 4))
         elif grid in {"kick", "snare"} and tuple(marks) != window.beats:
             stepping = dataclasses.replace(window, beats=tuple(marks), offset=0)
         else:
@@ -1331,7 +1340,8 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
             # A snowflake outside the formation: a multi-segment one opens out with the
             # others (below); a simple one twinkles.
             if pid not in bursts:
-                planner.steady(pid, window, {LOW: 40, MID: 60, HIGH: 100}[level], "twinkle")
+                # Loose snowflakes take turns like any family of look-alikes.
+                families["snowflake"].append(pid)
         else:
             families[prop.role].append(pid)
 
@@ -1493,10 +1503,13 @@ def _sparkle(planner: _Planner, window: _Window, props: list[str], hits: list[in
         level = planner.sections[window.section_index].level
         planner.falls(window, columns, spaced, {LOW: 60, MID: 85, HIGH: 100}[level],
                       motion=snow.movement, bursts=bursts)
-        # Other snowflakes glitter underneath.
-        for pid in props:
-            if not any(pid in c for c in columns) and pid not in bursts:
-                planner.steady(pid, window, 60, "twinkle")
+        # Other snowflakes glitter underneath, taking turns bar by bar.
+        others = [pid for pid in props
+                  if not any(pid in c for c in columns) and pid not in bursts]
+        if len(others) > 1:
+            planner.trade(others, window, _spans(window, [a for a, _ in _bars(window)]), 60)
+        for pid in others[:1] if len(others) == 1 else []:
+            planner.steady(pid, window, 60, "twinkle")
         return
     share = max(1, len(props) // 3)
     for index, hit in enumerate(hits):
@@ -2046,14 +2059,22 @@ def _glow(planner: _Planner, canvas: _Canvas, window: _Window, props: list[str],
                     if cursor < b:
                         canvas.put(pid, channel, cursor, b, "on", hold, color=color)
                     continue
-                # Hit on each beat, decay to the glow by the next.
-                marks = [t for t in beats if a <= t < b - 10]
+                # Hit on each beat (each half beat in loud parts), decay to the glow by
+                # the next.
+                pulses = beats if level < HIGH else sorted(
+                    {*beats, *((x + y) // 2 for x, y in itertools.pairwise(beats))})
+                marks = [t for t in pulses if a <= t < b - 10]
                 cursor = a
                 for k, t in enumerate(marks):
                     if t > cursor:
                         canvas.put(pid, channel, cursor, t, "on", hold, color=color)
                     end = marks[k + 1] if k + 1 < len(marks) else b
-                    canvas.put(pid, channel, t, end, "fade", hit, hold, color)
+                    # A sixteenth at full, then the decay back to the glow.
+                    flash = t + max(5, (end - t) // 4) if end - t >= 20 else end
+                    canvas.put(pid, channel, t, flash, "on", hit, color=color)
+                    if end > flash:
+                        canvas.put(pid, channel, flash, end, "fade", max(hold + 1, hit * 4 // 5),
+                                   hold, color)
                     cursor = end
                 if cursor < b:
                     canvas.put(pid, channel, cursor, b, "on", hold, color=color)
@@ -2638,7 +2659,8 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
         [(s.start_centisecond, s.end_centisecond, s.level) for s in sections],
         _music_marks(analysis, music, sections), phrase_spans, quiet, excused, filled,
         canvas.movements, style.profile, style.name, beat,
-        sum(1 for kind, _ in moments if kind in ACCENT_MOMENTS))
+        sum(1 for kind, _ in moments if kind in ACCENT_MOMENTS),
+        {pid for targets in constraints.copies.values() for pid, _ in targets})
     notes.append(quality.summary())
     return Plan(
         choreography=choreography,
