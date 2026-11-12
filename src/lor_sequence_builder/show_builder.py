@@ -100,6 +100,23 @@ class _Session:
         return Path(self.folder.name)
 
 
+_WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{n}" for n in range(1, 10)),
+                     *(f"LPT{n}" for n in range(1, 10))}
+
+
+def file_stem(name: str, fallback: str = "song") -> str:
+    """A song's name made safe to save on Windows: no folder parts, none of
+    <>:"/\\|?* or control characters, no trailing dots or spaces, not a reserved
+    device name, at most 120 characters."""
+    stem = Path(name.replace("\\", "/")).name
+    stem = Path(stem).stem if Path(stem).suffix else stem
+    cleaned = "".join("_" if ch in '<>:"/\\|?*' or ord(ch) < 32 else ch for ch in stem)
+    cleaned = cleaned.strip(" .")[:120].strip(" .")
+    if not cleaned or cleaned.split(".")[0].upper() in _WINDOWS_RESERVED:
+        cleaned = (cleaned + " " if cleaned else "") + fallback
+    return cleaned
+
+
 def _safe_name(name: str) -> str:
     """A file name made from a display name: letters, digits, spaces and a few marks."""
     cleaned = "".join(ch if ch.isalnum() or ch in " -_()." else "_" for ch in name).strip(" .")
@@ -400,7 +417,7 @@ class ShowSessions:
                     elif sing:
                         note = ("Singing faces need the vocals add-on (uv sync --extra vocals); "
                                 "the mouths stay still in this show.")
-                stem = Path(session.audio_name).stem or "show"
+                stem = file_stem(session.audio_name, "show")
                 output = run / f"{stem} (generated).loredit"
                 try:
                     show = generate_show(session.preview_path, output, rule_set,
@@ -460,7 +477,7 @@ class ShowSessions:
                 raise ShowBuildError(f"A batch holds up to {MAX_BATCH_SONGS} songs; save "
                                      "these and start another")
             name = Path(file_name).name[:200] or f"song{suffix}"
-            stem = Path(name).stem or "song"
+            stem = file_stem(name)
             taken = {entry["stem"] for entry in session.batch}
             unique, n = stem, 2
             while unique in taken:

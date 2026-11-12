@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import tempfile
 import threading
 import webbrowser
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, cast
@@ -108,6 +110,28 @@ def _detect_audio_suffix(payload: bytes) -> str | None:
     return None
 
 
+# Song analysis and show building use a lot of memory; at most two run at once and
+# the rest wait their turn (and say so) instead of running the computer out of memory.
+HEAVY_AT_ONCE = 2
+_HEAVY_STEPS = {"/api/analyze", "/api/show/audio", "/api/show/generate", "/api/show/batch",
+                "/api/show/test"}
+_heavy = threading.BoundedSemaphore(HEAVY_AT_ONCE)
+
+
+@contextmanager
+def _heavy_turn(path: str) -> Iterator[None]:
+    if path not in _HEAVY_STEPS:
+        yield
+        return
+    if not _heavy.acquire(blocking=False):
+        progress.step("Waiting for another song to finish first")
+        _heavy.acquire()
+    try:
+        yield
+    finally:
+        _heavy.release()
+
+
 _NOT_AUDIO = ("That file does not look like a song this program can read. Use an MP3, M4A, "
               "WAV, FLAC or OGG file.")
 _PLAIN_ERRORS = {
@@ -131,6 +155,8 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
     def end_headers(self) -> None:
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
         self.send_header("Cache-Control", "no-store")
         self.send_header(
             "Content-Security-Policy",
@@ -192,7 +218,7 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
             self._check_export()
             return
         tracked = parse_qs(parsed.query).get("progress", [""])[0] or None
-        with progress.tracking(tracked):
+        with progress.tracking(tracked), _heavy_turn(parsed.path):
             if parsed.path in _SHOW_STEPS:
                 self._show_step(parsed.path, parse_qs(parsed.query))
                 return
@@ -288,7 +314,7 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
             return None
         try:
             body = json.loads(payload.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
+        except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
             self.send_error(400, "Expected a JSON object")
             return None
         if not isinstance(body, dict):
@@ -296,19 +322,47 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
             return None
         return body
 
+    def _hosts(self) -> set[str]:
+        """The two names this computer's own window can use for the workspace."""
+        port = str(cast(ThreadingHTTPServer, self.server).server_port)
+        return {"127.0.0.1:" + port, "localhost:" + port}
+
     def _is_same_origin(self) -> bool:
-        expected_host = "127.0.0.1:" + str(cast(ThreadingHTTPServer, self.server).server_port)
-        request_host = self.headers.get("Host")
-        if request_host != expected_host:
+        """Only the workspace's own page may use the engine: the Host must be this
+        computer (no DNS rebinding), and the Origin and Fetch-Site, when the browser
+        sends them, must say the request came from the workspace itself."""
+        hosts = self._hosts()
+        if self.headers.get("Host") not in hosts:
             self.send_error(403, "Requests must use the loopback workspace host")
             return False
         origin = self.headers.get("Origin")
         if origin:
             origin_url = urlsplit(origin)
-            if origin_url.scheme != "http" or origin_url.netloc != expected_host:
+            if origin_url.scheme != "http" or origin_url.netloc not in hosts:
                 self.send_error(403, "Cross-origin requests are not accepted")
                 return False
+        site = self.headers.get("Sec-Fetch-Site")
+        if site is not None and site not in {"same-origin", "none"}:
+            self.send_error(403, "Cross-origin requests are not accepted")
+            return False
         return True
+
+    def do_GET(self) -> None:
+        if self.headers.get("Host") not in self._hosts():
+            self.send_error(403, "This workspace only answers its own window")
+            return
+        super().do_GET()
+
+    def do_HEAD(self) -> None:
+        if self.headers.get("Host") not in self._hosts():
+            self.send_error(403, "This workspace only answers its own window")
+            return
+        super().do_HEAD()
+
+    def list_directory(self, path: str | os.PathLike[str]) -> Any:
+        """The workspace never lists its folders."""
+        self.send_error(404, "Not found")
+        return None
 
     def _read_body(self, content_type: str, limit: int, what: str) -> bytes | None:
         if self.headers.get_content_type() != content_type:
@@ -349,7 +403,7 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
             self._send_json(200, check_edited_sequence(
                 edited.encode("utf-8"), original.encode("utf-8")
             ))
-        except (LoreditError, UnicodeError, ValueError, TypeError) as exc:
+        except (LoreditError, UnicodeError, ValueError, TypeError, RecursionError) as exc:
             self._send_json(422, {"error": str(exc) or "Invalid sequence export request"})
         except (OSError, MemoryError) as exc:
             self._send_json(500, {"error": "The edited sequence could not be checked. "
