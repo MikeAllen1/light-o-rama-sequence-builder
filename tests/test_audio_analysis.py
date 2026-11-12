@@ -13,6 +13,7 @@ from lor_sequence_builder.audio_analysis import (
     AudioAnalysisError,
     _drop_unsupported_beats,
     analyze_audio,
+    warm_up_in_background,
 )
 from lor_sequence_builder.cli import main
 
@@ -189,6 +190,49 @@ def test_competing_offbeat_accents_reduce_beat_grid_confidence(tmp_path: Path) -
     clean_confidence = clean["analysis"]["beats"][0]["confidence"]
     assert clean_confidence >= 0.9
     assert analysis["beats"][0]["confidence"] <= 0.5 * clean_confidence
+
+
+def test_background_warmup_is_singleton_and_first_analysis_waits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import threading
+    import time
+
+    from lor_sequence_builder import audio_analysis
+
+    started = threading.Event()
+    release = threading.Event()
+    finished_waiting = threading.Event()
+    calls = 0
+
+    def slow_warmup() -> bool:
+        nonlocal calls
+        calls += 1
+        started.set()
+        assert release.wait(timeout=5)
+        return True
+
+    monkeypatch.setattr(audio_analysis, "_warmed", threading.Event())
+    monkeypatch.setattr(audio_analysis, "_warmup_thread", None)
+    monkeypatch.setattr(audio_analysis, "warm_up", slow_warmup)
+
+    warm_up_in_background()
+    assert started.wait(timeout=2)
+    first_thread = audio_analysis._warmup_thread
+    warm_up_in_background()
+    assert audio_analysis._warmup_thread is first_thread
+    assert calls == 1
+
+    waiter = threading.Thread(
+        target=lambda: (audio_analysis._wait_for_background_warmup(), finished_waiting.set())
+    )
+    waiter.start()
+    time.sleep(0.05)
+    assert not finished_waiting.is_set()
+    release.set()
+    waiter.join(timeout=2)
+    assert finished_waiting.is_set()
+    assert calls == 1
 
 
 def test_analysis_refuses_to_overwrite_outputs(tmp_path: Path) -> None:
