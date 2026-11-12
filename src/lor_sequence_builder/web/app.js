@@ -3711,12 +3711,12 @@
       "closeNewShow"]) {
       const element = $(id);
       if (!element) continue;
-      if ("disabled" in element) element.disabled = disabled;
+      if ("disabled" in element) element.disabled = locked;
       element.querySelectorAll("input, select, textarea, button").forEach((child) => {
-        child.disabled = disabled;
+        child.disabled = locked;
       });
     }
-    $("requirementList").querySelectorAll("button").forEach((button) => { button.disabled = disabled; });
+    $("requirementList").querySelectorAll("button").forEach((button) => { button.disabled = locked; });
   }
 
   function setRequirementControlsLocked(locked) {
