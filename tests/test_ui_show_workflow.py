@@ -70,6 +70,10 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
                 respond(route, {"error": "simulated audio failure"}, 422)
             elif audio_calls == 3:
                 respond(route, {"error": "simulated uncertain upload"}, 500)
+            elif audio_calls == 5:
+                respond(route, {
+                    "error": "This New Show was put away after a long break. Load the display again."
+                }, 422)
             else:
                 respond(route, {
                     "report": {
@@ -190,6 +194,19 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
                 "name": "x" * 201 + ".wav", "mimeType": "audio/wav", "buffer": b"too long",
             })
             page.locator("#songStatus").filter(has_text="200 characters or fewer").wait_for()
+            assert "server may have accepted" in page.locator("#songStatus").inner_text()
+            assert page.locator("#generateShow").is_disabled()
+            page.locator("#showSongFile").set_input_files({
+                "name": "song.wav", "mimeType": "audio/wav", "buffer": b"fake audio",
+            })
+            page.locator("#songStatus.good").filter(has_text="song.wav").wait_for()
+            assert not page.locator("#generateShow").is_disabled()
+
+            # An expired server session is also uncertain even though it returns 422.
+            page.locator("#showSongFile").set_input_files({
+                "name": "song.wav", "mimeType": "audio/wav", "buffer": b"fake audio",
+            })
+            page.locator("#songStatus").filter(has_text="put away after a long break").wait_for()
             assert "server may have accepted" in page.locator("#songStatus").inner_text()
             assert page.locator("#generateShow").is_disabled()
             page.locator("#showSongFile").set_input_files({
