@@ -214,7 +214,21 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
     assert effect_timing_problems(document) == []
 
 
-def test_batch_zip_is_streamed_as_a_file_download(server: str, tmp_path: Path) -> None:
+def test_batch_zip_is_streamed_as_a_file_download(
+    server: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Windows can refuse to delete a file briefly after it has been streamed.
+    # That cleanup failure must not turn the successful download into an HTTP 500.
+    original_unlink = Path.unlink
+    failed_cleanup: list[Path] = []
+
+    def refuse_batch_cleanup(path: Path, *args: Any, **kwargs: Any) -> None:
+        if path.name.startswith("lor-batch-"):
+            failed_cleanup.append(path)
+            raise PermissionError("synthetic file-in-use failure")
+        original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", refuse_batch_cleanup)
     preview = _preview(tmp_path, classic_yard()).read_bytes()
     started = SHOWS.start(preview, "yard.lorprev")
     token = started["token"]
@@ -246,6 +260,9 @@ def test_batch_zip_is_streamed_as_a_file_download(server: str, tmp_path: Path) -
                 "Song (generated).report.html",
                 "Batch - read me.txt",
             }
+        assert len(failed_cleanup) == 1
+        assert failed_cleanup[0].is_file()
+        original_unlink(failed_cleanup[0], missing_ok=True)
     finally:
         with SHOWS._lock:
             SHOWS._drop(token)
