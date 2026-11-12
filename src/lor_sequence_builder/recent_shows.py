@@ -87,12 +87,18 @@ def listing(folder: Path | None = None) -> list[dict[str, Any]]:
 
 
 def _path(show_id: str, folder: Path | None) -> Path:
-    if not isinstance(show_id, str) or not _ID.fullmatch(show_id):
-        raise RecentShowError("That recent show is not there any more")
-    path = (folder or recent_folder()) / show_id
-    if not (path / _FILES["sequence"]).is_file():
-        raise RecentShowError("That recent show is not there any more")
-    return path
+    """The kept show with exactly this id. The path comes from the folder's own listing,
+    never from the id, so no id can point anywhere else."""
+    if isinstance(show_id, str) and _ID.fullmatch(show_id):
+        root = folder or recent_folder()
+        try:
+            for path in root.iterdir():
+                if path.name == show_id and path.is_dir() and not path.is_symlink():
+                    if (path / _FILES["sequence"]).is_file():
+                        return path
+        except OSError:
+            pass
+    raise RecentShowError("That recent show is not there any more")
 
 
 def load(show_id: str, folder: Path | None = None) -> dict[str, Any]:
