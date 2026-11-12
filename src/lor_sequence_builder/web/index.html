@@ -121,6 +121,25 @@
             <p>A native sequence: <code>.loredit</code> for S5 and S6, <code>.lms</code> for S4. Play it as it is, or open it in the Sequencer and make it yours.</p></li>
         </ol>
 
+        <section id="addProps" class="add-props" aria-labelledby="addPropsHeading">
+          <h2 id="addPropsHeading">New prop this year?</h2>
+          <p>Add it to the shows you already have instead of starting over. Everything already in the sequence stays exactly as it is. Only the new props get effects, in the sequence's own style, on its beat, and dark wherever it goes dark.</p>
+          <p class="hint">S5/S6: choose the finished <code>.loredit</code> and your updated preview with the new props. S4: add the new channels to the <code>.lms</code> in the S4 Sequencer, leave them empty, and choose that file. The song is optional; with it, the new props follow the music more closely.</p>
+          <div class="generate-actions">
+            <label class="tool-button"><span>Finished sequence</span>
+              <input id="addSequenceFile" type="file" accept=".loredit,.lms"></label>
+            <label id="addPreviewLabel" class="tool-button"><span>Updated preview</span>
+              <input id="addPreviewFile" type="file" accept=".lorprev,.xml,application/xml,text/xml"></label>
+            <label class="tool-button subtle"><span>Song (optional)</span>
+              <input id="addSongFile" type="file" accept="audio/*,.mp3,.mp4,.wav,.flac,.m4a,.ogg,.opus"></label>
+            <button id="addBuild" class="tool-button primary" type="button" disabled>Add the new props</button>
+            <button id="addSave" class="tool-button" type="button" disabled>Save sequence</button>
+            <button id="addOpen" class="tool-button" type="button" disabled>Open in the workspace</button>
+          </div>
+          <div id="addStatus" class="step-status" role="status" aria-live="polite"></div>
+          <ul id="addNotes" class="show-notes"></ul>
+        </section>
+
         <div class="jobs">
           <h2>Every prop gets a job</h2>
           <p>So the yard looks planned, not random. Each kind of prop follows one part of the music for the whole song.</p>
@@ -132,7 +151,7 @@
             <div><dt>Faces</dt><dd>sing along (with the vocals add-on)</dd></div>
             <div><dt>Outlines and stars</dt><dd>the steady glow underneath</dd></div>
           </dl>
-          <p class="jobs-extra">Pick a style (classic, high energy or elegant), add rules like "keep the star on", and run a 10-second display test to check your wiring before the real thing.</p>
+          <p class="jobs-extra">Pick a style (classic, high energy or elegant) or teach it your own from sequences you made, add rules like "keep the star on", and run a 10-second display test to check your wiring before the real thing. Every show gets a quality check.</p>
         </div>
 
         <blockquote class="maker-note">

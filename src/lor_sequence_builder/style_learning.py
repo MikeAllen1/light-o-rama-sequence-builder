@@ -83,7 +83,7 @@ class Habits:
 
 
 @dataclass(frozen=True, slots=True)
-class _Lit:
+class Lit:
     channel: str
     start: int
     end: int
@@ -101,7 +101,7 @@ def _int(value: str | None) -> int | None:
         return None
 
 
-def _effect(channel: str, element: ET.Element, settings: str) -> _Lit | None:
+def _effect(channel: str, element: ET.Element, settings: str) -> Lit | None:
     start = _int(element.get("startCentisecond"))
     end = _int(element.get("endCentisecond"))
     if start is None or end is None or end <= start or start < 0:
@@ -119,7 +119,7 @@ def _effect(channel: str, element: ET.Element, settings: str) -> _Lit | None:
         kind = "fade"
     else:
         kind = "on"
-    return _Lit(channel, start, end, kind, min(100, peak))
+    return Lit(channel, start, end, kind, min(100, peak))
 
 
 def _beats_from_grid(grids: Iterable[ET.Element], timing: str) -> list[int]:
@@ -132,51 +132,59 @@ def _beats_from_grid(grids: Iterable[ET.Element], timing: str) -> list[int]:
     return best
 
 
-def _read(path: Path) -> tuple[list[_Lit], int, list[int]]:
-    """Effects, how many channels have any, and the densest timing grid's marks."""
-    lits: list[_Lit] = []
-    suffix = path.suffix.lower()
-    if suffix == ".lms":
-        from lor_sequence_builder.lms import LmsError, read_lms
-
-        try:
-            document = read_lms(path)
-        except LmsError as exc:
-            raise StyleLearningError(f"{path.name}: {exc}") from exc
-        root = document.root
+def sequence_effects(root: ET.Element, s4: bool) -> tuple[list[Lit], list[int]]:
+    """Every lit effect of a sequence, keyed by channel, and the densest free timing
+    grid's marks. S4 channels are keyed ``s<savedIndex>``; S5/S6 ``<SeqProp id>/<n>``."""
+    lits: list[Lit] = []
+    if s4:
         for index, channel in enumerate(root.iterfind("channels/channel")):
-            key = f"c{index}"
+            key = "s" + channel.get("savedIndex", f"#{index}")
             for effect in channel.findall("effect"):
                 found = _effect(key, effect, effect.get("type", ""))
                 if found is not None:
                     lits.append(found)
         marks = _beats_from_grid(root.iterfind("timingGrids/timingGrid"), "centisecond")
-    elif suffix == ".loredit":
-        from lor_sequence_builder.loredit import LoreditError, read_loredit
-
-        try:
-            document_s6 = read_loredit(path)
-        except LoreditError as exc:
-            raise StyleLearningError(f"{path.name}: {exc}") from exc
-        root = document_s6.root
+    else:
         for p, prop in enumerate(root.iterfind("SequenceProps/SeqProp")):
+            prop_id = prop.get("id") or f"#{p}"
             for c, channel in enumerate(prop.findall("channel")):
-                key = f"p{p}c{c}"
+                key = f"{prop_id}/{c}"
                 for effect in channel.findall("effect"):
                     found = _effect(key, effect, effect.get("settings", ""))
                     if found is not None:
                         lits.append(found)
         marks = _beats_from_grid(root.iterfind("TimingGrids/TimingGridFree"), "centisecond")
+    return lits, marks
+
+
+def _read(path: Path) -> tuple[list[Lit], int, list[int]]:
+    """Effects, how many channels have any, and the densest timing grid's marks."""
+    suffix = path.suffix.lower()
+    if suffix == ".lms":
+        from lor_sequence_builder.lms import LmsError, read_lms
+
+        try:
+            root = read_lms(path).root
+        except LmsError as exc:
+            raise StyleLearningError(f"{path.name}: {exc}") from exc
+    elif suffix == ".loredit":
+        from lor_sequence_builder.loredit import LoreditError, read_loredit
+
+        try:
+            root = read_loredit(path).root
+        except LoreditError as exc:
+            raise StyleLearningError(f"{path.name}: {exc}") from exc
     else:
         raise StyleLearningError(f"{path.name}: learn from .loredit (S5/S6) or .lms (S4) "
                                  "sequences.")
+    lits, marks = sequence_effects(root, suffix == ".lms")
     return lits, len({lit.channel for lit in lits}), marks
 
 
 # ---------------------------------------------------------------- measuring
 
 
-def _beat(marks: list[int], starts: list[int]) -> tuple[int, bool]:
+def song_beat(marks: list[int], starts: list[int]) -> tuple[int, bool]:
     """The song's beat, from the sequence's own timing grid when it has one that looks
     like a beat, else from the spacing of effect starts."""
     gaps = [b - a for a, b in itertools.pairwise(marks) if b > a]
@@ -200,9 +208,9 @@ def _beat(marks: list[int], starts: list[int]) -> tuple[int, bool]:
     return beat, from_grid
 
 
-def _merged_lengths(lits: list[_Lit]) -> list[int]:
+def _merged_lengths(lits: list[Lit]) -> list[int]:
     """How long each light stays lit: back-to-back effects on one channel are one."""
-    by_channel: dict[str, list[_Lit]] = defaultdict(list)
+    by_channel: dict[str, list[Lit]] = defaultdict(list)
     for lit in lits:
         by_channel[lit.channel].append(lit)
     lengths: list[int] = []
@@ -219,11 +227,11 @@ def _merged_lengths(lits: list[_Lit]) -> list[int]:
     return lengths
 
 
-def _measure_one(lits: list[_Lit], channels: int, marks: list[int]) -> Habits:
+def measure_effects(lits: list[Lit], channels: int, marks: list[int]) -> Habits:
     if len(lits) < 20 or channels < 2:
         raise StyleLearningError("has too few effects to learn from (at least 20 on two or "
                                  "more channels).")
-    beat, from_grid = _beat(marks, [lit.start for lit in lits])
+    beat, from_grid = song_beat(marks, [lit.start for lit in lits])
     lengths = _merged_lengths(lits)
     end = max(lit.end for lit in lits)
     first = min(lit.start for lit in lits)
@@ -274,7 +282,7 @@ def measure(path: str | Path) -> Habits:
     source = Path(path)
     lits, channels, marks = _read(source)
     try:
-        return _measure_one(lits, channels, marks)
+        return measure_effects(lits, channels, marks)
     except StyleLearningError as exc:
         raise StyleLearningError(f"{source.name} {exc}") from exc
 
