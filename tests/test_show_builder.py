@@ -236,7 +236,7 @@ def test_batch_zip_is_streamed_as_a_file_download(server: str, tmp_path: Path) -
             payload = response.read()
             assert response.status == 200
             assert response.headers.get_content_type() == "application/zip"
-            assert "Song shows.zip" in response.headers["Content-Disposition"]
+            assert "Fictional%20Classic%20Yard%20shows.zip" in response.headers["Content-Disposition"]
         archive = BytesIO(payload)
         assert zipfile.is_zipfile(archive)
         archive.seek(0)
