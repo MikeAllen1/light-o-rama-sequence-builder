@@ -381,6 +381,7 @@ class ShowSessions:
                     "file_name": output.name,
                     "sequence": show.sequence_path.read_text(encoding="utf-8"),
                     "picture": show.picture_path.read_text(encoding="utf-8"),
+                "summary": show.summary_path.read_text(encoding="utf-8"),
                     "report": show.report.format_text(),
                     "rules_ok": show.report.ok,
                     "sections": [{"label": s.label, "level": LEVEL_NAMES[s.level],

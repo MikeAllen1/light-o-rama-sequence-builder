@@ -1,0 +1,8 @@
+# Keep every star lit for the whole song, whatever else is happening.
+# Use it with:  lor-sequence-builder generate ... --rules examples/requirements/keep-the-star-on.yaml
+schema_version: rules-1.0
+name: Keep the star on
+requirements:
+  - id: star-always-on
+    type: keep_on
+    props: {role: star}
