@@ -14,7 +14,7 @@ from lor_sequence_builder.choreography import Choreography, choreography_json
 from lor_sequence_builder.cli import main
 from lor_sequence_builder.generate import generate_show
 from lor_sequence_builder.loredit import read_loredit
-from lor_sequence_builder.planner import HIGH, LOW, MID, Plan, plan_show
+from lor_sequence_builder.planner import HIGH, LOW, MID, Plan, _music, plan_show
 from lor_sequence_builder.rules import (
     RuleReport,
     RuleSet,
@@ -56,6 +56,7 @@ def synthetic_analysis(
 
     return {
         "schema_version": "2.0",
+        "configuration": {"beats_per_bar": 4},
         "audio": {"file_name": "Fictional Song.wav", "duration_seconds": duration},
         "analysis": {
             "tempo": {"bpm": bpm if beats else None},
@@ -231,6 +232,15 @@ def test_planning_is_deterministic() -> None:
     assert choreography_json(first.choreography) == choreography_json(second.choreography)
 
 
+def test_missing_downbeats_respect_the_analyzer_meter() -> None:
+    analysis = synthetic_analysis(duration=30.0, bpm=120.0, sections=((0, 0.5),))
+    analysis["configuration"]["beats_per_bar"] = 3
+    analysis["analysis"]["downbeats"] = []
+    music = _music(analysis)
+    assert music.downbeats == music.beats[::3]
+    assert "assumed a bar every 3 beats" in music.notes[0]
+
+
 def test_a_song_without_beats_still_gets_a_plan() -> None:
     plan, report = _plan(classic_yard(), synthetic_analysis(beats=False, sections=((0, 0.5),)))
     assert report.ok
@@ -400,6 +410,7 @@ def test_any_song_shape_plans_without_breaking_a_rule(seed: int) -> None:
         beats=rng.random() > 0.1,
     )
     if rng.random() < 0.3:  # waltz time
+        analysis["configuration"]["beats_per_bar"] = 3
         analysis["analysis"]["downbeats"] = analysis["analysis"]["beats"][::3]
     for make in ALL_DISPLAYS:
         _, report = _plan(make(), analysis)
