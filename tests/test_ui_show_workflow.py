@@ -53,6 +53,7 @@ def test_uncertain_requirement_update_requires_display_resync(workspace_url: str
         start_calls += 1
         current = dict(summary)
         current["token"] = f"display-{start_calls}"
+        current["display"] = "Requirement Resync Yard" + (" (resynced)" if start_calls > 1 else "")
         current["raw_requirements"] = list(saved_requirements)
         current["requirements"] = ["Never use Tree"] if saved_requirements else []
         respond(route, current)
@@ -87,7 +88,7 @@ def test_uncertain_requirement_update_requires_display_resync(workspace_url: str
 
         # A new display session reloads the persisted profile and clears uncertainty.
         page.locator("#showDisplayFile").set_input_files(display_file)
-        page.locator("#displayStatus").filter(has_text="Requirement Resync Yard").wait_for()
+        page.locator("#displayStatus").filter(has_text="Requirement Resync Yard (resynced)").wait_for()
         assert page.locator("#requirementList li").count() == 1
         assert "Never use Tree" in page.locator("#requirementList li").inner_text()
         assert page.locator("#addRequirement").is_enabled()
