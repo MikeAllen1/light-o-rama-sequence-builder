@@ -182,7 +182,7 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
             page.keyboard.press("Escape")
             assert page.locator("#viewer").is_hidden()
             page.locator("#pictureGenerated").click()
-            assert page.frame_locator("#viewerFrame").locator("svg").count() == 1
+            page.frame_locator("#viewerFrame").locator("svg").wait_for()
             page.locator("#viewerClose").click()
             page.locator("#openGenerated").click()
             page.locator("#editor").wait_for(state="visible")
