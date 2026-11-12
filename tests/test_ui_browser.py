@@ -136,6 +136,14 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                     assert "Tree" in inspector
                     assert "INTENSITY" in inspector
 
+                    # Undoing back to the exact loaded channel arrays must clear the
+                    # unsaved indicator; an undone edit is not still pending work.
+                    page.locator("#deleteButton").click()
+                    assert page.locator("#effectStat").inner_text() == "39,999"
+                    page.locator("#undoButton").click()
+                    assert page.locator("#effectStat").inner_text() == "40,000"
+                    assert page.locator("#editStatus").inner_text() == "No edits"
+
                     initial_width = page.locator("#canvasContent").evaluate(
                         "(element) => element.clientWidth"
                     )

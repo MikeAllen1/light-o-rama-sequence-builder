@@ -35,12 +35,17 @@
     undo: [],
     redo: [],
     dirty: false,
+    baselineEffects: new Map(),
+    editRevision: 0,
+    exportPending: false,
+    exportRequestId: 0,
     drag: null,
     clipboard: null,
     cursorCs: 0,
     reviewSelection: null,
     reviewDrag: null,
     reviewDirty: false,
+    reviewBaseline: null,
     animationFrame: 0,
     audioRequestId: 0,
     sequenceRequestId: 0,
@@ -1264,6 +1269,7 @@
       if (state.dirty && !window.confirm("Discard the unexported edits to " +
         state.sequence.filename + "?")) return;
       const head = new Uint8Array(await file.slice(0, 3).arrayBuffer());
+      if (requestId !== state.sequenceRequestId) return;
       openSequenceText(xmlText, file.name, head[0] === 0xEF && head[1] === 0xBB && head[2] === 0xBF);
       setBanner("Loaded " + state.sequence.props.length + " native props, " +
         state.sequence.channelCount + " channels, and " + state.sequence.effectCount.toLocaleString() +
@@ -1279,6 +1285,8 @@
 
   // Show a sequence from its text: a file the user opened, or a show just generated.
   function openSequenceText(xmlText, name, bom) {
+      // A direct/generated open supersedes any file read still in progress.
+      state.sequenceRequestId += 1;
       const doc = parseXmlDocument(xmlText);
       state.sequence = parseSequence(doc, name);
       const declaration = xmlText.replace(/^\uFEFF/, "").match(/^<\?xml[^?]*\?>/);
@@ -1416,9 +1424,10 @@
     }
   }
 
-  async function loadAudio(file, presetAnalysis) {
+  async function loadAudio(file, presetAnalysis, reviewAlreadyConfirmed = false) {
     if (!file) return;
-    if (state.reviewDirty && !window.confirm("Replace the unsaved music review?")) return;
+    if (!reviewAlreadyConfirmed && state.reviewDirty &&
+        !window.confirm("Replace the unsaved music review?")) return;
     if (file.size <= 0 || file.size > MAX_AUDIO_BYTES) {
       setBanner("The song file is empty, or larger than the 200 MB the program accepts.", "error");
       return;
@@ -1433,6 +1442,7 @@
     state.reviewDirty = false;
     state.reviewLoaded = false;
     state.reviewSelection = null;
+    captureReviewBaseline();
     if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
     state.audioUrl = null;
     audio.pause();
@@ -1514,7 +1524,7 @@
       state.reviewDirty = false;
       state.reviewSelection = null;
       if (review) {
-        if (review.lyrics != null) state.lyrics = review.lyrics;
+        state.lyrics = review.lyrics != null ? review.lyrics : null;
         if (review.meter === 3 || review.meter === 4) $("meterSelect").value = String(review.meter);
       }
       renderSequenceStats();
@@ -1522,6 +1532,7 @@
       updateEditControls();
       $("analysisBanner").title = data.analysis.method + "\n" + data.analysis.provenance +
         "\nLimitations: " + data.analysis.limitations.join(" ");
+      captureReviewBaseline();
       if (review) {
         const counts = reviewCounts();
         setBanner("Loaded music review: " + counts.confirmed + " confirmed and " + counts.fitted +
@@ -1656,7 +1667,9 @@
       if (state.reviewDirty && !window.confirm("Replace the unsaved music review?")) return;
       state.lyrics = data;
       state.reviewSelection = null;
+      state.reviewDirty = reviewHasChanges();
       refreshTimeline();
+      updateEditControls();
       setBanner(data.source === "transcribed"
         ? "Loaded " + data.lines.length + " transcribed lyric lines. They are unverified: speech recognition mishears sung words. Dashed outlines mark unverified lines."
         : "Loaded " + data.lines.length + " lyric lines from " + file.name + ".", "good");
@@ -1706,12 +1719,19 @@
     state.redo = [];
     state.dirty = false;
     state.exported = false;
+    state.baselineEffects = new Map();
+    state.editRevision = 0;
+    state.exportRequestId += 1;
+    state.exportPending = false;
     state.drag = null;
     state.clipboard = null;
     state.cursorCs = 0;
     state.channelInfo = new Map();
     for (const prop of state.sequence.props) {
-      prop.channels.forEach((channel, index) => state.channelInfo.set(channel, { prop, index }));
+      prop.channels.forEach((channel, index) => {
+        state.channelInfo.set(channel, { prop, index });
+        state.baselineEffects.set(channel, channel.effects);
+      });
     }
     updateEditControls();
   }
@@ -1883,7 +1903,10 @@
     sequence.effectTypes = types;
     state.editedChannels = edited;
     state.syncCheck = null;
-    state.dirty = true;
+    state.editRevision += 1;
+    state.dirty = Boolean(sequence.generated && !state.exported) ||
+      sequence.props.some((prop) => prop.channels.some((channel) =>
+        state.baselineEffects.get(channel) !== channel.effects));
     renderSequenceStats();
     refreshTimeline();
     updateEditControls();
@@ -1897,7 +1920,7 @@
     set("redoButton", state.redo.length > 0);
     set("deleteButton", has);
     set("duplicateButton", has);
-    set("exportButton", Boolean(state.sequence));
+    set("exportButton", Boolean(state.sequence) && !state.exportPending);
     set("saveReviewButton", Boolean(state.analysis));
     const exportButton = $("exportButton");
     if (exportButton) {
@@ -2549,19 +2572,33 @@
 
   async function exportEdited() {
     const sequence = state.sequence;
-    if (!sequence) return;
+    if (!sequence || state.exportPending) return;
+    const revision = state.editRevision;
+    const requestId = ++state.exportRequestId;
     const text = serializeSequence();
     if (text.length > MAX_XML_BYTES) {
       setBanner("The edited sequence exceeds the 50 MiB limit.", "error");
       return;
     }
+    state.exportPending = true;
+    updateEditControls();
     let result;
     try {
       result = await callEngine("/api/export", JSON.stringify({ original: sequence.source.originalXml,
         edited: text }), "application/json");
     } catch (error) {
-      setBanner("Not saved: " + problemText(error), "error");
+      if (requestId === state.exportRequestId && state.sequence === sequence) {
+        setBanner("Not saved: " + problemText(error), "error");
+      } else {
+        logProblem("An export of a previous workspace could not be completed: " + problemText(error),
+          "export");
+      }
       return;
+    } finally {
+      if (requestId === state.exportRequestId) {
+        state.exportPending = false;
+        updateEditControls();
+      }
     }
     // A show generated here is saved under its own name; an opened file gets "(edited)".
     const name = sequence.generated ? sequence.filename
@@ -2574,11 +2611,18 @@
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
-    state.dirty = false;
-    state.exported = true;
-    updateEditControls();
-    setBanner("Checked and saved " + name + " with " + result.effects.toLocaleString() +
-      " effects. Your original file is unchanged.", "good");
+    if (state.sequence === sequence && state.editRevision === revision) {
+      for (const prop of sequence.props) {
+        for (const channel of prop.channels) state.baselineEffects.set(channel, channel.effects);
+      }
+      state.dirty = false;
+      state.exported = true;
+      updateEditControls();
+      setBanner("Checked and saved " + name + " with " + result.effects.toLocaleString() +
+        " effects. Your original file is unchanged.", "good");
+    } else {
+      setBanner("Saved " + name + " as it was when you clicked Save. The workspace changed while it was being checked; current edits remain unsaved.", "warn");
+    }
   }
 
   function setupEditing() {
@@ -2677,8 +2721,30 @@
     for (const change of command.music) change.owner[change.key] = change[side];
   }
 
+  function captureReviewBaseline() {
+    const analysis = state.analysis && state.analysis.analysis;
+    const lanes = {};
+    for (const spec of Object.values(REVIEW_LANES)) {
+      lanes[spec.key] = analysis ? analysis[spec.key] : null;
+    }
+    state.reviewBaseline = { analysis, lanes, lyrics: state.lyrics,
+      lyricLines: state.lyrics ? state.lyrics.lines : null };
+  }
+
+  function reviewHasChanges() {
+    const baseline = state.reviewBaseline;
+    if (!baseline) return Boolean(state.analysis || state.lyrics);
+    const analysis = state.analysis && state.analysis.analysis;
+    if (analysis !== baseline.analysis) return true;
+    for (const spec of Object.values(REVIEW_LANES)) {
+      if (analysis && analysis[spec.key] !== baseline.lanes[spec.key]) return true;
+    }
+    return state.lyrics !== baseline.lyrics ||
+      Boolean(state.lyrics && state.lyrics.lines !== baseline.lyricLines);
+  }
+
   function afterMusicEdit(select) {
-    state.reviewDirty = true;
+    state.reviewDirty = reviewHasChanges();
     state.syncCheck = null;
     refreshTimeline();
     updateEditControls();
@@ -3096,6 +3162,7 @@
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
+    captureReviewBaseline();
     state.reviewDirty = false;
     state.reviewSaved = true;
     updateEditControls();
@@ -3118,7 +3185,9 @@
   };
 
   const show = { token: null, summary: null, audioFile: null, analysis: null, raw: [],
-    result: null, audioRequestId: 0, audioPending: false, requirementsPending: false, requirementsRequestId: 0 };
+    result: null, resultConfig: null, audioRequestId: 0, audioPending: false,
+    requirementsPending: false, requirementsRequestId: 0, displayRequestId: 0,
+    displayPending: false, batchRunning: false, generationPending: false };
 
   function showMessage(id, text, kind) {
     const element = $(id);
@@ -3187,11 +3256,16 @@
     if (show.test) download(bytesFromBase64(show.test.zip), show.test.zip_name, "application/zip");
   }
 
+  function confirmSequenceReplacement() {
+    if (state.dirty && !window.confirm("Discard the unexported edits to " +
+        state.sequence.filename + "?")) return false;
+    if (state.reviewDirty && !window.confirm("Replace the unsaved music review?")) return false;
+    return true;
+  }
+
   async function watchDisplayTest() {
     const test = show.test;
-    if (!test) return;
-    if (state.dirty && !window.confirm("Discard the unexported edits to " +
-      state.sequence.filename + "?")) return;
+    if (!test || !confirmSequenceReplacement()) return;
     openSequenceText(test.sequence, test.file_name, false);
     state.sequence.generated = true;
     updateEditControls();
@@ -3199,25 +3273,83 @@
     setBanner("Display test: press play and watch each kind of prop, then the sweep from left " +
       "to right, then everything on.", "good");
     const sound = new File([bytesFromBase64(test.sound)], test.sound_name, { type: "audio/wav" });
-    await loadAudio(sound);
+    await loadAudio(sound, null, true);
+  }
+
+  function currentShowConfig() {
+    return JSON.stringify({
+      token: show.token,
+      song: show.songName || "",
+      meter: $("meterSelect").value,
+      style: chosenStyle(),
+      requirements: show.raw || [],
+      musicFilename: $("musicFilename").value,
+      singing: $("singFaces").checked && !$("singFaces").closest("label").classList.contains("hidden")
+    });
+  }
+
+  function invalidateGeneratedResult() {
+    show.result = null;
+    show.resultConfig = null;
+    for (const id of ["openGenerated", "saveGenerated", "pictureGenerated", "reportGenerated"]) {
+      $(id).disabled = true;
+    }
+    $("showNotes").replaceChildren();
+  }
+
+  function setShowConfigurationLocked(locked) {
+    for (const id of ["showDisplayFile", "showSongFile", "requirementKind", "requirementProps",
+      "requirementSections", "requirementMax", "addRequirement", "translateRequirements",
+      "plainRequirements", "musicFilename", "singFaces", "meterSelect", "styleChoices",
+      "closeNewShow"]) {
+      const element = $(id);
+      if (!element) continue;
+      if ("disabled" in element) element.disabled = locked;
+      element.querySelectorAll("input, select, textarea, button").forEach((child) => {
+        child.disabled = locked;
+      });
+    }
+    $("requirementList").querySelectorAll("button").forEach((button) => { button.disabled = locked; });
+  }
+
+  function setRequirementControlsLocked(locked) {
+    for (const id of ["requirementKind", "requirementProps", "requirementSections",
+      "requirementMax", "addRequirement", "translateRequirements", "plainRequirements"]) {
+      const element = $(id);
+      if (!element) continue;
+      if ("disabled" in element) element.disabled = locked;
+      element.querySelectorAll("input, select, textarea, button").forEach((child) => {
+        child.disabled = locked;
+      });
+    }
+    $("requirementList").querySelectorAll("button").forEach((button) => { button.disabled = locked; });
   }
 
   function setStepEnabled() {
-    $("makeTest").disabled = !show.token;
-    $("showSongFile").disabled = !show.token;
+    $("makeTest").disabled = !show.token || show.batchRunning || show.generationPending || show.displayPending;
+    $("showSongFile").disabled = !show.token || show.batchRunning || show.generationPending || show.displayPending;
     $("showSongLabel").classList.toggle("disabled", !show.token);
     $("addRequirement").disabled = !show.token;
     $("translateRequirements").disabled = !show.token || !show.summary.can_translate;
-    $("generateShow").disabled = !(show.token && show.analysis && !show.audioPending && !show.requirementsPending);
+    $("generateShow").disabled = !(show.token && show.analysis && !show.audioPending &&
+      !show.requirementsPending && !show.generationPending && !show.batchRunning && !show.displayPending);
+    $("batchFiles").disabled = !show.token || show.batchRunning || show.generationPending || show.displayPending;
+    $("batchLabel").classList.toggle("disabled", !show.token || show.batchRunning || show.generationPending || show.displayPending);
+    setRequirementControlsLocked(show.requirementsPending || show.batchRunning || show.generationPending || show.displayPending);
   }
 
   async function chooseDisplay(file) {
-    if (!file) return;
+    if (!file || show.batchRunning || show.generationPending || show.displayPending) return;
+    const requestId = ++show.displayRequestId;
+    show.displayPending = true;
+    setShowConfigurationLocked(true);
+    setStepEnabled();
     showMessage("displayStatus", "Reading " + file.name + "…");
     try {
       if (file.size > 20 * 1024 * 1024) throw new Error("A preview must be 20 MiB or smaller.");
       const summary = await postShow("/api/show/start?name=" + encodeURIComponent(file.name),
         await file.text(), "application/xml");
+      if (requestId !== show.displayRequestId) return;
       show.token = summary.token;
       show.summary = summary;
       show.test = null;
@@ -3226,14 +3358,18 @@
       showMessage("testStatus", "");
       show.analysis = null;
       show.audioFile = null;
-      show.audioRequestId = 0;
+      show.raw = summary.raw_requirements || [];
+      show.audioRequestId += 1;
       show.audioPending = false;
       show.requirementsPending = false;
-      show.requirementsRequestId = 0;
-      show.result = null;
-      $("openGenerated").disabled = true;
-      $("saveGenerated").disabled = true;
-      $("pictureGenerated").disabled = true;
+      show.requirementsRequestId += 1;
+      invalidateGeneratedResult();
+      show.songName = "";
+      show.songSeconds = null;
+      $("musicFilename").value = "";
+      $("songStatus").textContent = "";
+      $("musicNote").textContent = "";
+      checkMusicName();
       const kinds = summary.kinds.map((kind) => kind.count + " " + kind.label).join(", ");
       const skipped = summary.props.filter((prop) => !prop.sequenceable);
       showMessage("displayStatus", summary.display + ": " + (kinds || "nothing it can sequence") +
@@ -3252,20 +3388,24 @@
           "use the form instead.";
       if (show.audioFile) await chooseSong(show.audioFile);
     } catch (error) {
-      show.token = null;
-      showMessage("displayStatus", error.message || String(error), "error");
+      if (requestId !== show.displayRequestId) return;
+      showMessage("displayStatus", (error.message || String(error)) +
+        (show.token ? " The previously loaded display remains active." : ""), "error");
     }
-    setStepEnabled();
+    if (requestId === show.displayRequestId) {
+      show.displayPending = false;
+      setShowConfigurationLocked(false);
+      setStepEnabled();
+    }
   }
 
   async function chooseSong(file) {
     if (!file || !show.token) return;
     const requestId = ++show.audioRequestId;
     show.audioPending = true;
-    show.result = null;
-    $("openGenerated").disabled = true;
-    $("saveGenerated").disabled = true;
-    $("pictureGenerated").disabled = true;
+    show.audioFile = file;
+    show.analysis = null;
+    invalidateGeneratedResult();
     $("musicFilename").value = file.name;
     show.songName = file.name;
     show.songSeconds = null;
@@ -3377,6 +3517,7 @@
   async function sendRequirements(raw, text) {
     const requestId = ++show.requirementsRequestId;
     show.requirementsPending = true;
+    setRequirementControlsLocked(true);
     setStepEnabled();
     try {
       const result = await postShow("/api/show/requirements?token=" +
@@ -3385,10 +3526,7 @@
         "application/json");
       if (requestId !== show.requirementsRequestId || result.stale) return;
       show.raw = result.raw;
-      show.result = null;
-      $("openGenerated").disabled = true;
-      $("saveGenerated").disabled = true;
-      $("pictureGenerated").disabled = true;
+      invalidateGeneratedResult();
       renderRequirements(result.requirements, result.problems);
     } catch (error) {
       if (requestId === show.requirementsRequestId) {
@@ -3397,6 +3535,7 @@
     } finally {
       if (requestId === show.requirementsRequestId) {
         show.requirementsPending = false;
+        setRequirementControlsLocked(false);
         setStepEnabled();
       }
     }
@@ -3412,8 +3551,12 @@
       remove.type = "button";
       remove.className = "link-button";
       remove.textContent = "Remove";
-      remove.addEventListener("click", () =>
-        sendRequirements(show.raw.filter((_, other) => other !== index)));
+      remove.disabled = show.requirementsPending || show.batchRunning || show.generationPending;
+      remove.addEventListener("click", () => {
+        if (!show.requirementsPending && !show.batchRunning && !show.generationPending) {
+          sendRequirements(show.raw.filter((_, other) => other !== index));
+        }
+      });
       item.appendChild(remove);
       list.appendChild(item);
     });
@@ -3423,6 +3566,7 @@
   }
 
   async function addRequirement() {
+    if (show.requirementsPending || show.batchRunning || show.generationPending) return;
     const kind = $("requirementKind").value;
     const chosen = Array.from($("requirementProps").selectedOptions).map((item) => item.value);
     if (!chosen.length) {
@@ -3446,7 +3590,13 @@
   }
 
   async function generateShow() {
+    if (show.generationPending || show.batchRunning || show.requirementsPending) return;
     const button = $("generateShow");
+    const config = currentShowConfig();
+    invalidateGeneratedResult();
+    show.generationPending = true;
+    setShowConfigurationLocked(true);
+    setStepEnabled();
     button.disabled = true;
     const singing = $("singFaces").checked && !$("singFaces").closest("label")
       .classList.contains("hidden");
@@ -3467,7 +3617,11 @@
         showMessage("generateStatus", result.report || "The plan did not pass the required rules.",
           "error");
       } else {
+        if (config !== currentShowConfig()) {
+          throw new Error("The show configuration changed while generation was running. Generate again.");
+        }
         show.result = result;
+        show.resultConfig = config;
         const parts = result.sections.map((section) => section.label + " (" + section.level + ")");
         showMessage("generateStatus", "Every rule passed. " + (show.songSeconds
           ? "A " + formatTime(show.songSeconds) + " show. " : "") + result.used.length +
@@ -3485,21 +3639,36 @@
       $("reportGenerated").disabled = false;
       }
     } catch (error) {
+      invalidateGeneratedResult();
       showMessage("generateStatus", error.message || String(error), "error");
+    } finally {
+      show.generationPending = false;
+      setShowConfigurationLocked(false);
+      setStepEnabled();
     }
-    button.disabled = false;
+  }
+
+  function resultIsCurrent() {
+    return !!show.result && !!show.resultConfig && show.resultConfig === currentShowConfig();
   }
 
   function saveGenerated() {
-    if (!show.result || !show.result.sequence) return;
+    if (!resultIsCurrent() || !show.result.sequence) {
+      invalidateGeneratedResult();
+      showMessage("generateStatus", "This result no longer matches the selected show settings. Generate it again.", "warn");
+      return;
+    }
     download(show.result.sequence, show.result.file_name, "application/xml");
   }
 
   async function openGenerated() {
     const result = show.result;
-    if (!result) return;
-    if (state.dirty && !window.confirm("Discard the unexported edits to " +
-      state.sequence.filename + "?")) return;
+    if (!resultIsCurrent()) {
+      invalidateGeneratedResult();
+      showMessage("generateStatus", "This result no longer matches the selected show settings. Generate it again.", "warn");
+      return;
+    }
+    if (!confirmSequenceReplacement()) return;
     openSequenceText(result.sequence, result.file_name, false);
     state.sequence.generated = true;
     state.dirty = true;
@@ -3507,7 +3676,7 @@
     setBanner("Generated " + result.file_name + ". Review it against the music, then Save " +
       "sequence to keep it; open it in S6 to fine-tune.", "good");
     toggleYard(true);
-    if (show.audioFile) await loadAudio(show.audioFile, show.analysis);
+    if (show.audioFile) await loadAudio(show.audioFile, show.analysis, true);
   }
 
   // Reports and pictures open inside the app (a sandboxed frame with no scripts), so
@@ -3551,13 +3720,13 @@
   }
 
   function openReport() {
-    if (!show.result) return;
+    if (!resultIsCurrent()) return;
     showViewer("Show report", show.result.summary, stem(show.result.file_name) + ".report.html",
       "text/html");
   }
 
   function openPicture() {
-    if (!show.result) return;
+    if (!resultIsCurrent()) return;
     showViewer("Plan picture", show.result.picture, stem(show.result.file_name) + ".plan.svg",
       "image/svg+xml");
   }
@@ -3565,15 +3734,27 @@
   // A playlist: each song is analyzed and built on the server one at a time, then
   // all the shows are saved together as one zip.
   async function runBatch(files) {
-    if (!show.token || !files.length) return;
+    if (!show.token || !files.length || show.batchRunning || show.generationPending) return;
+    const batchToken = show.token;
+    const batchMeter = $("meterSelect").value;
+    const batchStyle = chosenStyle() || "";
+    const batchConfig = currentShowConfig();
     show.batchRunning = true;
+    setShowConfigurationLocked(true);
     setStepEnabled();
     $("saveBatch").disabled = true;
     $("batchList").replaceChildren();
     try {
-      await postShow("/api/show/batch-clear?token=" + encodeURIComponent(show.token), "{}",
+      await postShow("/api/show/batch-clear?token=" + encodeURIComponent(batchToken), "{}",
         "application/json");
-    } catch { /* a fresh session has nothing to clear */ }
+    } catch (error) {
+      show.batchRunning = false;
+      setShowConfigurationLocked(false);
+      setStepEnabled();
+      showMessage("batchStatus", "The previous batch could not be cleared, so no new songs were built: " +
+        (error.message || String(error)), "error");
+      return;
+    }
     const rows = files.map((file) => {
       const item = document.createElement("li");
       item.textContent = file.name + ": waiting";
@@ -3583,14 +3764,21 @@
     let built = 0;
     let totalSeconds = 0;
     for (let i = 0; i < files.length; i++) {
+      if (currentShowConfig() !== batchConfig || show.token !== batchToken) {
+        for (let rest = i; rest < rows.length; rest++) {
+          rows[rest].className = "error";
+          rows[rest].textContent = files[rest].name + ": not built; show settings changed during the batch";
+        }
+        break;
+      }
       const file = files[i];
       showMessage("batchStatus", "Building " + (i + 1) + " of " + files.length + "…");
       rows[i].textContent = file.name + ": analyzing and building…";
       try {
         const result = await withProgress("batchStatus", "Sending the song", (key) =>
-          postShow("/api/show/batch?token=" + encodeURIComponent(show.token) +
+          postShow("/api/show/batch?token=" + encodeURIComponent(batchToken) +
             "&name=" + encodeURIComponent(file.name) + "&beats_per_bar=" +
-            $("meterSelect").value + "&style=" + encodeURIComponent(chosenStyle() || "") +
+            batchMeter + "&style=" + encodeURIComponent(batchStyle) +
             "&progress=" + key, file, "application/octet-stream"),
           { from: i / files.length, to: (i + 1) / files.length, last: i === files.length - 1,
             prefix: "Song " + (i + 1) + " of " + files.length + ": " });
@@ -3611,6 +3799,7 @@
       }
     }
     show.batchRunning = false;
+    setShowConfigurationLocked(false);
     setStepEnabled();
     $("saveBatch").disabled = built === 0;
     showMessage("batchStatus", built + " of " + files.length + " shows built" +
@@ -3685,16 +3874,14 @@
     $("watchTest").addEventListener("click", watchDisplayTest);
     $("musicFilename").addEventListener("input", () => {
       checkMusicName();
-      show.result = null;
-      $("openGenerated").disabled = true;
-      $("saveGenerated").disabled = true;
-      $("pictureGenerated").disabled = true;
+      invalidateGeneratedResult();
+    });
+    $("styleChoices").addEventListener("change", () => {
+      invalidateGeneratedResult();
+      showMessage("generateStatus", "Show style changed. Generate again to apply it.", "warn");
     });
     $("singFaces").addEventListener("change", () => {
-      show.result = null;
-      $("openGenerated").disabled = true;
-      $("saveGenerated").disabled = true;
-      $("pictureGenerated").disabled = true;
+      invalidateGeneratedResult();
     });
     $("openGenerated").addEventListener("click", openGenerated);
     $("saveGenerated").addEventListener("click", saveGenerated);
@@ -4458,9 +4645,11 @@
       canvasViewport.scrollLeft = 0;
     });
     $("meterSelect").addEventListener("change", () => {
+      if (show.token && show.audioFile && !show.batchRunning && !show.generationPending) {
+        chooseSong(show.audioFile);
+      }
       if (state.reviewDirty) {
-        setBanner("Meter set to " + $("meterSelect").value + "/4 for fitting bars. The analysis was " +
-          "not re-run, so your review is kept.", "good");
+        setBanner("Meter set to " + $("meterSelect").value + "/4 for fitting bars. Your saved music review is kept.", "good");
         return;
       }
       if (state.audioFile && state.audioBuffer) analyzeSelectedAudio(state.audioFile);
