@@ -4222,6 +4222,131 @@
     }
   }
 
+  // -- adding new props to a finished sequence
+
+  const addJob = { token: null, s4: false, result: null, busy: false };
+
+  function setAddButtons() {
+    $("addBuild").disabled = !addJob.token || addJob.busy;
+    $("addSave").disabled = !addJob.result || addJob.busy;
+    $("addOpen").disabled = !addJob.result || addJob.busy;
+    $("addPreviewFile").disabled = addJob.s4 || !addJob.token || addJob.busy;
+    $("addPreviewLabel").classList.toggle("disabled", $("addPreviewFile").disabled);
+  }
+
+  async function addStep(path, body, type, busyText) {
+    addJob.busy = true;
+    addJob.result = null;
+    $("addNotes").replaceChildren();
+    setAddButtons();
+    if (busyText) showMessage("addStatus", busyText);
+    try {
+      return await callEngine(path, body, type);
+    } finally {
+      addJob.busy = false;
+      setAddButtons();
+    }
+  }
+
+  async function chooseAddSequence(file) {
+    if (!file) return;
+    addJob.token = null;
+    try {
+      const result = await addStep("/api/add/sequence?name=" + encodeURIComponent(file.name),
+        file, "application/octet-stream", "Reading " + file.name + "…");
+      addJob.token = result.token;
+      addJob.s4 = result.s4;
+      showMessage("addStatus", "Read " + result.file_name + ": " + result.effects +
+        " effects on " + result.channels + " channels. " + (result.s4
+          ? "Its empty LOR channels will be filled." : "Now choose the updated preview, " +
+            "or press Add if the new props are already in the sequence's own preview."), "good");
+    } catch (error) {
+      showMessage("addStatus", problemText(error), "error");
+    }
+    setAddButtons();
+  }
+
+  async function chooseAddPreview(file) {
+    if (!file || !addJob.token) return;
+    try {
+      const result = await addStep("/api/add/preview?token=" + encodeURIComponent(addJob.token),
+        file, "application/xml", "Reading " + file.name + "…");
+      showMessage("addStatus", "Preview read: " + result.props + " props. Press Add the new props.",
+        "good");
+    } catch (error) {
+      showMessage("addStatus", problemText(error), "error");
+    }
+  }
+
+  async function chooseAddSong(file) {
+    if (!file) return;
+    if (!addJob.token) {
+      showMessage("addStatus", "Choose the finished sequence first.", "warn");
+      return;
+    }
+    try {
+      await addStep("/api/add/audio?token=" + encodeURIComponent(addJob.token), file,
+        "application/octet-stream", "Reading " + file.name + "…");
+      showMessage("addStatus", "Song ready. Press Add the new props.", "good");
+    } catch (error) {
+      showMessage("addStatus", problemText(error), "error");
+    }
+  }
+
+  async function buildAddedProps() {
+    if (!addJob.token) return;
+    try {
+      const result = await addStep("/api/add/build?token=" + encodeURIComponent(addJob.token),
+        "{}", "application/json", "Choreographing the new props and checking every rule…");
+      addJob.result = result;
+      const quality = result.quality ? " " + result.quality.summary : "";
+      showMessage("addStatus", result.added.length
+        ? "Added " + result.added.length + " prop(s): " + result.added.join(", ") +
+          ". Everything else is unchanged." + quality + " Save sequence to keep it."
+        : "No new prop could be given a part.", result.added.length ? "good" : "warn");
+      const lines = [...result.notes, ...(result.quality ? result.quality.findings : [])];
+      $("addNotes").replaceChildren(...lines.map((line) => {
+        const item = document.createElement("li");
+        item.textContent = line;
+        return item;
+      }));
+    } catch (error) {
+      showMessage("addStatus", problemText(error), "error");
+    }
+    setAddButtons();
+  }
+
+  function saveAddedProps() {
+    if (addJob.result) download(addJob.result.sequence, addJob.result.file_name, "application/xml");
+  }
+
+  function openAddedProps() {
+    const result = addJob.result;
+    if (!result || !confirmSequenceReplacement()) return;
+    openSequenceText(result.sequence, result.file_name, false);
+    state.sequence.generated = true;
+    state.dirty = true;
+    updateEditControls();
+    setBanner("Opened " + result.file_name + " with the new props. Open its audio to play it; " +
+      "Save sequence to keep it.", "good");
+  }
+
+  function setupAddProps() {
+    $("addSequenceFile").addEventListener("change", (event) => {
+      chooseAddSequence(event.target.files[0]).finally(() => { event.target.value = ""; });
+    });
+    $("addPreviewFile").addEventListener("change", (event) => {
+      chooseAddPreview(event.target.files[0]).finally(() => { event.target.value = ""; });
+    });
+    $("addSongFile").addEventListener("change", (event) => {
+      chooseAddSong(event.target.files[0]).finally(() => { event.target.value = ""; });
+    });
+    $("addBuild").addEventListener("click", buildAddedProps);
+    $("addSave").addEventListener("click", saveAddedProps);
+    $("addOpen").addEventListener("click", openAddedProps);
+    setAddButtons();
+  }
+
   function chosenStyle() {
     const picked = document.querySelector('input[name="showStyle"]:checked');
     return picked ? picked.value : null;
@@ -5844,6 +5969,7 @@
     setupYard();
     setupHero();
     setupMoreMenu();
+    setupAddProps();
     setupUpdates();
     $("clearRecent").addEventListener("click", clearRecent);
     setupDiagnostics();

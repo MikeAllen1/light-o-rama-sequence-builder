@@ -10,6 +10,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from lor_sequence_builder.add_props import AddPropsError
 from lor_sequence_builder.artifacts import write_new_text_atomically
 from lor_sequence_builder.audio_analysis import AudioAnalysisError, analyze_audio
 from lor_sequence_builder.choreography import ChoreographyError, load_choreography
@@ -274,6 +275,22 @@ def _build_parser() -> argparse.ArgumentParser:
                        help="4 for most songs, 3 for waltz time (default: 4)")
     batch.add_argument("--rules", action="append", default=[], help=_RULES_HELP)
     batch.add_argument("--ignore-saved-requirements", action="store_true", help=_IGNORE_HELP)
+    adding = commands.add_parser(
+        "add-props",
+        help="add new props to a finished sequence, leaving everything else as it is")
+    adding.add_argument("--sequence", required=True,
+                        help="the finished .loredit (S5/S6) or .lms (S4) (read only)")
+    adding.add_argument("--preview",
+                        help="S5/S6: the updated .lorprev with the new props (leave out when "
+                             "they were added to the sequence's own preview)")
+    adding.add_argument("--output", required=True, help="new sequence file")
+    adding.add_argument("--audio", help="the song, for a closer fit (optional: without it "
+                        "the beat and loud parts are read from the sequence)")
+    adding.add_argument("--style-file", help="a learned style to use instead of the "
+                        "sequence's own")
+    adding.add_argument("--beats-per-bar", type=int, choices=(3, 4), default=4)
+    adding.add_argument("--rules", action="append", default=[], help=_RULES_HELP)
+    adding.add_argument("--ignore-saved-requirements", action="store_true", help=_IGNORE_HELP)
     learn = commands.add_parser(
         "learn-style",
         help="learn a style from sequences you made by hand (.loredit or .lms), on this "
@@ -328,6 +345,33 @@ def _chosen_style(options: argparse.Namespace) -> str | Style:
     if options.style_file:
         return load_style_file(options.style_file)
     return str(options.style)
+
+
+def _add_props(options: argparse.Namespace) -> int:
+    from lor_sequence_builder.add_props import add_props
+
+    display = options.preview or options.sequence
+    rule_set = load_rule_set(
+        _profiles(display, options.rules, options.ignore_saved_requirements))
+    style = load_style_file(options.style_file) if options.style_file else None
+    result = add_props(options.sequence, options.output, rule_set,
+                       preview_path=options.preview, audio_path=options.audio, style=style,
+                       beats_per_bar=options.beats_per_bar, progress=print)
+    if not result.added:
+        print("No new prop could be given a part (see the requirements).")
+    else:
+        print(f"Added {len(result.added)} prop(s): {', '.join(result.added)}")
+    for note in (*result.notes, *(n for n in result.plan.notes
+                                  if n.startswith("Arrangement"))):
+        print(f"  {note}")
+    if result.quality is not None:
+        print(f"  Whole show, old and new props together: {result.quality.summary()}")
+        for finding in result.quality.findings:
+            if finding.status != "good":
+                print(f"    - {finding.message}")
+    print(f"Wrote {result.sequence_path}. Everything that was already in the sequence is "
+          "unchanged.")
+    return 0
 
 
 def _learn_style(options: argparse.Namespace) -> int:
@@ -510,6 +554,8 @@ def _main(arguments: list[str]) -> int:
             from lor_sequence_builder.doctor import print_checks, run_checks
 
             return print_checks(run_checks())
+        if options.command == "add-props":
+            return _add_props(options)
         if options.command == "learn-style":
             return _learn_style(options)
         if options.command == "demo":
@@ -754,6 +800,7 @@ def _main(arguments: list[str]) -> int:
         LorprevError,
         PulseGenerationError,
         StyleLearningError,
+        AddPropsError,
         OSError,
         MemoryError,
     ) as exc:

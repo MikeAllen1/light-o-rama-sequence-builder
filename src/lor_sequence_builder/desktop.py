@@ -86,11 +86,12 @@ def start_server(port: int = 0) -> tuple[ThreadingHTTPServer, str]:
 
 
 def stop_server(server: ThreadingHTTPServer) -> None:
-    from lor_sequence_builder.ui_server import SHOWS
+    from lor_sequence_builder.ui_server import ADDS, SHOWS
 
     server.shutdown()
     server.server_close()
     SHOWS.close()
+    ADDS.close()
 
 
 def self_test(result_path: Path) -> int:

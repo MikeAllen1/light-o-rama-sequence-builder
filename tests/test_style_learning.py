@@ -19,13 +19,13 @@ from lor_sequence_builder.planner import plan_show
 from lor_sequence_builder.rules import check_choreography, display_from_preview, load_rule_set
 from lor_sequence_builder.style import HIGH, LOW, MID, STYLES, get_style
 from lor_sequence_builder.style_learning import (
+    Lit,
     StyleLearningError,
-    _Lit,
-    _measure_one,
     combine,
     from_json,
     learn,
     measure,
+    measure_effects,
     nearest,
     style_from_habits,
     to_json,
@@ -180,8 +180,8 @@ def test_unusable_sequences_are_refused_plainly(tmp_path: Path, problem: str,
         measure(path)
 
 
-def _plan_lits(plan: object) -> list[_Lit]:
-    return [_Lit(f"{e.prop_id}/{e.channel_index}", e.start_centisecond, e.end_centisecond,
+def _plan_lits(plan: object) -> list[Lit]:
+    return [Lit(f"{e.prop_id}/{e.channel_index}", e.start_centisecond, e.end_centisecond,
                  "twinkle" if e.kind in {"twinkle", "shimmer"} else
                  "fade" if e.kind == "fade" else "on",
                  max(e.start_intensity, e.end_intensity))
@@ -199,7 +199,7 @@ def test_each_built_in_style_is_recognized_from_its_own_shows(
     for key in STYLES:
         plan = plan_show(analysis, display, load_rule_set(), style=get_style(key))
         lits = _plan_lits(plan)
-        habits = _measure_one(lits, len({lit.channel for lit in lits}), beats)
+        habits = measure_effects(lits, len({lit.channel for lit in lits}), beats)
         assert nearest(habits) == key
 
 

@@ -34,6 +34,7 @@ Quiet parts of the song use a few props; loud parts use more. A chorus that come
 You can also:
 
 - **Pick a style:** Classic, High energy (busy and punchy) or Elegant (calm, for ballads), or **learn your own** from a few sequences you made by hand. Every show also gets a quality check.
+- **New prop this year?** Add it to the sequences you already have; everything else in them stays exactly as it was.
 - **Set requirements** like "keep the star on all song" or "keep the mega tree dark in the verses". They are remembered for your display.
 - **Do a whole playlist at once:** choose several songs and save all the shows in one go.
 - **Run a 10-second display test** that lights every prop in a fixed order, to check your wiring before the real show.
@@ -88,6 +89,7 @@ uv run lor-sequence-builder generate --preview display.lorprev --audio song.mp3 
 uv run lor-sequence-builder generate ... --style energetic   # classic (default), energetic or elegant
 uv run lor-sequence-builder learn-style mine1.loredit mine2.loredit --output my-style.json
 uv run lor-sequence-builder generate ... --style-file my-style.json
+uv run lor-sequence-builder add-props --sequence Song.loredit --preview "This year.lorprev" --output "Song 2026.loredit"
 uv run lor-sequence-builder generate ... --lyrics song.lrc   # props the singer names light on the word
 uv run lor-sequence-builder generate-batch --preview display.lorprev --songs Playlist --output Shows
 uv run lor-sequence-builder generate ... --rules examples\requirements\gentle-show.yaml
