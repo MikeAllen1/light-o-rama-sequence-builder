@@ -187,6 +187,34 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                     )
                     assert page.locator("#audioPlayer").evaluate("(player) => Boolean(player.src)")
 
+                    # A sequence chosen while replacement audio is decoding must not
+                    # replace the current workspace or invalidate the audio request.
+                    page.evaluate(
+                        """() => {
+                          const original = AudioContext.prototype.decodeAudioData;
+                          AudioContext.prototype.decodeAudioData = function (data) {
+                            return new Promise((resolve, reject) => {
+                              setTimeout(() => original.call(this, data).then(resolve, reject), 900);
+                            });
+                          };
+                        }"""
+                    )
+                    page.locator("#audioFile").set_input_files(str(audio_path))
+                    page.locator("#sequenceFile").set_input_files(
+                        {
+                            "name": "should-not-replace.loredit",
+                            "mimeType": "text/xml",
+                            "buffer": _sequence_xml().encode("utf-8"),
+                        }
+                    )
+                    page.locator("#analysisMessage").filter(
+                        has_text="Wait for the selected song to finish loading"
+                    ).wait_for(timeout=3000)
+                    assert page.locator("#sequenceTitle").inner_text() == "Browser Acceptance"
+                    page.locator("#analysisMessage").filter(
+                        has_text="Audio analysis complete"
+                    ).wait_for(timeout=15000)
+
                     waveform_pixels = page.locator("#waveformCanvas").evaluate(
                         """(canvas) => {
                           const data = canvas.getContext('2d').getImageData(
