@@ -478,3 +478,6 @@ Anything that takes more than a moment shows a bar, what the program is doing no
 ## Opening previews from File Explorer
 
 The installer offers (checked by default) a right-click **Build a show with LOR Sequencer** on `.lorprev` files and lists the app under **Open with**, without changing the default program: S6 keeps opening previews on a double-click. Both run the app with `--preview PATH` (also on `lor-sequence-ui`), which hands the preview to the page once; New show opens with that display chosen. Only `.lorprev` files of a sensible size are accepted, and a file that cannot be used says why. Uninstalling removes the entries.
+## Watch a demo show
+
+The start page's **Watch a demo show** builds the show for the built-in invented yard and song (once per run, then reused), opens it in the workspace with the yard view showing and the song loaded with its analysis, and starts playing where the browser allows (otherwise it says to press play). Progress shows while it builds the first time.

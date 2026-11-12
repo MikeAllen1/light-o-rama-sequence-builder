@@ -3658,6 +3658,7 @@
 
   function setupNewShow() {
     $("newShowButton").addEventListener("click", openNewShow);
+    $("watchDemo").addEventListener("click", watchDemo);
     $("welcomeNewShow").addEventListener("click", openNewShow);
     $("closeNewShow").addEventListener("click", closeNewShow);
     const bind = (id, handler) => $(id).addEventListener("change", (event) => {
@@ -4419,6 +4420,33 @@
     } catch (error) {
       setBanner("That preview could not be opened: " + problemText(error), "error");
     }
+  }
+
+  // "Watch a demo show": the built-in invented yard and song, its show built here,
+  // opened in the yard view so a newcomer sees what the program does in one click.
+  async function watchDemo() {
+    if (state.dirty && !window.confirm("Discard the unexported edits to " +
+      state.sequence.filename + "?")) return;
+    const button = $("watchDemo");
+    button.disabled = true;
+    showMessage("demoStatus", "Building a show for the demo yard…");
+    try {
+      const demo = await withProgress("demoStatus", "Building a show for the demo yard",
+        (key) => callEngine("/api/demo?progress=" + key, "{}", "application/json"));
+      openSequenceText(demo.sequence, demo.file_name, false);
+      state.sequence.generated = true;
+      updateEditControls();
+      toggleYard(true);
+      const sound = new File([bytesFromBase64(demo.sound)], demo.sound_name, { type: "audio/wav" });
+      await loadAudio(sound, demo.analysis || undefined);
+      setBanner("The demo: an invented yard and song, with the show the program built for " +
+        "them. Press play to watch. To make your own, choose New show.", "good");
+      showMessage("demoStatus", "");
+      try { await $("audioPlayer").play(); } catch { /* press play instead */ }
+    } catch (error) {
+      showMessage("demoStatus", "The demo could not be built: " + problemText(error), "error");
+    }
+    button.disabled = false;
   }
 
   function setup() {

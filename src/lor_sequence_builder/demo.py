@@ -12,11 +12,17 @@ and the show report. Everything in it is made up.
 
 from __future__ import annotations
 
+import base64
+import json
 import math
+import shutil
+import tempfile
+import threading
 import uuid
 import wave
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -166,3 +172,32 @@ def build_demo(folder: str | Path) -> GeneratedShow:
     song = demo_song(target / "Demo Song.wav")
     return generate_show(preview, target / "Demo Song.loredit", load_rule_set(),
                          audio_path=song, separate=False)
+
+
+_demo_lock = threading.Lock()
+_demo_cache: dict[str, Any] = {}
+
+
+def demo_payload() -> dict[str, Any]:
+    """The demo show for the start page's "Watch a demo" button: the sequence, its
+    song (base64 WAV) and the song's analysis. Built once per run, then reused."""
+    with _demo_lock:
+        if not _demo_cache:
+            folder = Path(tempfile.mkdtemp(prefix="lor-demo-"))
+            try:
+                show = build_demo(folder / "demo")
+                analysis_path = show.analysis_path
+                _demo_cache.update(
+                    file_name=show.sequence_path.name,
+                    sequence=show.sequence_path.read_text(encoding="utf-8-sig"),
+                    sound_name="Demo Song.wav",
+                    sound=base64.b64encode((folder / "demo" / "Demo Song.wav").read_bytes())
+                    .decode("ascii"),
+                    analysis=json.loads(analysis_path.read_text(encoding="utf-8"))
+                    if analysis_path else None,
+                    rules_ok=show.report.ok,
+                )
+            finally:
+                shutil.rmtree(folder, ignore_errors=True)
+        return dict(_demo_cache)
+

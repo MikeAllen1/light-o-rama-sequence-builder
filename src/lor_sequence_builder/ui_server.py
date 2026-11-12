@@ -114,7 +114,7 @@ def _detect_audio_suffix(payload: bytes) -> str | None:
 # the rest wait their turn (and say so) instead of running the computer out of memory.
 HEAVY_AT_ONCE = 2
 _HEAVY_STEPS = {"/api/analyze", "/api/show/audio", "/api/show/generate", "/api/show/batch",
-                "/api/show/test"}
+                "/api/show/test", "/api/demo"}
 _heavy = threading.BoundedSemaphore(HEAVY_AT_ONCE)
 
 
@@ -229,6 +229,7 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
         parsed = urlsplit(self.path)
         if parsed.path not in {"/api/analyze", "/api/export", "/api/update", "/api/log",
                                "/api/diagnostics", "/api/progress", "/api/startup",
+                               "/api/demo",
                                *_SHOW_STEPS}:
             self.send_error(404, "This program has no such step.")
             return
@@ -255,6 +256,12 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
             return
         tracked = parse_qs(parsed.query).get("progress", [""])[0] or None
         with progress.tracking(tracked), _heavy_turn(parsed.path):
+            if parsed.path == "/api/demo":
+                from lor_sequence_builder.demo import demo_payload
+
+                progress.step("Building a show for the demo yard", 0.1)
+                self._send_json(200, demo_payload())
+                return
             if parsed.path in _SHOW_STEPS:
                 self._show_step(parsed.path, parse_qs(parsed.query))
                 return
