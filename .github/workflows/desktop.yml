@@ -137,6 +137,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Check out the release notes
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          sparse-checkout: docs/releases
+
       - name: Download the installer
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
@@ -158,6 +164,15 @@ jobs:
         run: |
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release upload "$TAG" installer/*.exe installer/*.zip --repo "$GITHUB_REPOSITORY" --clobber
+            body=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body)
+            if [ -z "$body" ] && [ -f "docs/releases/$TAG.md" ]; then
+              gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "docs/releases/$TAG.md"
+            fi
           else
-            gh release create "$TAG" installer/*.exe installer/*.zip --repo "$GITHUB_REPOSITORY" --title "LOR Sequencer $TAG" --notes "Windows installer for LOR Sequencer $TAG. Download LOR-Sequencer-Setup-*.exe and run it; no administrator rights are needed. Cannot run installers? LOR-Sequencer-Portable-*.zip: unzip and run LOR Sequencer.exe."
+            notes="docs/releases/$TAG.md"
+            if [ -f "$notes" ]; then
+              gh release create "$TAG" installer/*.exe installer/*.zip --repo "$GITHUB_REPOSITORY" --title "LOR Sequencer $TAG" --notes-file "$notes"
+            else
+              gh release create "$TAG" installer/*.exe installer/*.zip --repo "$GITHUB_REPOSITORY" --title "LOR Sequencer $TAG" --notes "Windows installer for LOR Sequencer $TAG. Download LOR-Sequencer-Setup-*.exe and run it; no administrator rights are needed. Cannot run installers? LOR-Sequencer-Portable-*.zip: unzip and run LOR Sequencer.exe."
+            fi
           fi
