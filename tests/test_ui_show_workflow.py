@@ -212,8 +212,18 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             assert download_info.value.suggested_filename == "Intent Test Yard shows.zip"
             assert not page.locator("#meterSelect").is_disabled()
             summary["token"] = "display-two"
+            summary["props"] = [{"name": "Linked Prop", "role": "tree",
+                                 "sequenceable": False, "reason": "linked to another prop"}]
+            summary["kinds"] = []
+            summary["faces"] = True
+            summary["can_separate_vocals"] = False
             page.locator("#showDisplayFile").set_input_files(str(preview))
             page.get_by_text("Intent Test Yard", exact=False).wait_for()
             assert page.locator("#saveBatch").is_disabled()
+            assert page.locator("#showSongFile").is_disabled()
+            assert page.locator("#makeTest").is_disabled()
+            assert page.locator("#batchFiles").is_disabled()
+            assert page.locator("#singFaces").is_disabled()
+            assert not page.locator("#singFaces").is_checked()
         finally:
             browser.close()
