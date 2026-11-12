@@ -169,7 +169,7 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                           ).data;
                           let colored = 0;
                           for (let i = 0; i < data.length; i += 4) {
-                            if (data[i] < 150 && data[i + 1] > 140 && data[i + 2] > 150) colored++;
+                            if (data[i] > 190 && data[i + 1] > 130 && data[i + 2] < 140) colored++;  // gold waveform
                           }
                           return colored;
                         }"""

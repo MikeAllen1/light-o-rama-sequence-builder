@@ -619,20 +619,20 @@
   function drawRuler(width, duration, pps) {
     const canvas = $("rulerCanvas");
     const ctx = setCanvasSize(canvas, width, RULER_HEIGHT);
-    ctx.fillStyle = "#1a2530";
+    ctx.fillStyle = "#292521";
     ctx.fillRect(0, 0, width, RULER_HEIGHT);
     const step = pps < 14 ? 10 : pps < 25 ? 5 : 2;
     ctx.font = "10px Segoe UI, sans-serif";
     for (let second = 0; second <= duration; second += 1) {
       const x = second * pps;
       const major = second % step === 0;
-      ctx.strokeStyle = major ? "#586978" : "#2e3c48";
+      ctx.strokeStyle = major ? "#72695e" : "#413b35";
       ctx.beginPath();
       ctx.moveTo(Math.floor(x) + .5, major ? 13 : 25);
       ctx.lineTo(Math.floor(x) + .5, RULER_HEIGHT);
       ctx.stroke();
       if (major) {
-        ctx.fillStyle = "#a8b6c2";
+        ctx.fillStyle = "#bdb3a6";
         ctx.fillText(formatTime(second), x + 4, 11);
       }
     }
@@ -689,15 +689,15 @@
   function drawWaveform(width, pps) {
     const canvas = $("waveformCanvas");
     const ctx = setCanvasSize(canvas, width, WAVE_HEIGHT);
-    ctx.fillStyle = "#121c25";
+    ctx.fillStyle = "#1b1916";
     ctx.fillRect(0, 0, width, WAVE_HEIGHT);
-    ctx.strokeStyle = "#263b48";
+    ctx.strokeStyle = "#3a342c";
     ctx.beginPath();
     ctx.moveTo(0, WAVE_HEIGHT / 2);
     ctx.lineTo(width, WAVE_HEIGHT / 2);
     ctx.stroke();
     if (!state.audioBuffer) {
-      ctx.fillStyle = "#657987";
+      ctx.fillStyle = "#857a6c";
       ctx.font = "11px Segoe UI, sans-serif";
       ctx.fillText("Open the matching audio file to render its real waveform", 16, 25);
       return;
@@ -710,7 +710,7 @@
     for (let channelIndex = 0; channelIndex < channelCount; channelIndex++) {
       const channelPeaks = peaks.channels[channelIndex];
       const center = channelIndex * channelHeight + channelHeight / 2;
-      ctx.strokeStyle = channelIndex === 0 ? "#78bfd0" : "#5da8bd";
+      ctx.strokeStyle = channelIndex === 0 ? "#f2c46d" : "#d9a54a";
       ctx.lineWidth = 1;
       ctx.beginPath();
       for (let x = 0; x < width; x++) {
@@ -735,28 +735,28 @@
       ctx.stroke();
     }
     if (channelCount === 2) {
-      ctx.strokeStyle = "#263b48";
+      ctx.strokeStyle = "#3a342c";
       ctx.beginPath();
       ctx.moveTo(0, WAVE_HEIGHT / 2);
       ctx.lineTo(width, WAVE_HEIGHT / 2);
       ctx.stroke();
     }
-    ctx.fillStyle = "rgba(53, 132, 160, .08)";
+    ctx.fillStyle = "rgba(242, 180, 65, .05)";
     ctx.fillRect(0, 0, width, WAVE_HEIGHT);
-    ctx.fillStyle = "#8bbdca";
+    ctx.fillStyle = "#d9b98a";
     ctx.font = "9px Segoe UI, sans-serif";
-    ctx.fillText("AUDIO · " + formatTime(state.audioBuffer.duration) +
-      " · " + state.audioBuffer.numberOfChannels + " CH", 10, 12);
+    ctx.fillText(formatTime(state.audioBuffer.duration) + ", " +
+      (state.audioBuffer.numberOfChannels > 1 ? "stereo" : "mono"), 10, 12);
   }
 
   function drawMarkers(width, pps) {
     const canvas = $("markersCanvas");
     const height = Math.max(MARKER_HEIGHT, state.lanes.length * MARKER_HEIGHT);
     const ctx = setCanvasSize(canvas, width, height);
-    ctx.fillStyle = "#121a22";
+    ctx.fillStyle = "#1d1a17";
     ctx.fillRect(0, 0, width, height);
     const colors = {
-      native: "#8096a6",
+      native: "#9a8f80",
       beats: "#54b88f",
       downbeats: "#b28be8",
       onsets: "#d99b56",
@@ -774,14 +774,14 @@
     };
     state.lanes.forEach((lane, laneIndex) => {
       const y = laneIndex * MARKER_HEIGHT;
-      ctx.fillStyle = laneIndex % 2 ? "#141e27" : "#111a22";
+      ctx.fillStyle = laneIndex % 2 ? "#1e1b18" : "#181614";
       ctx.fillRect(0, y, width, MARKER_HEIGHT);
-      ctx.strokeStyle = "#25323d";
+      ctx.strokeStyle = "#36312c";
       ctx.beginPath();
       ctx.moveTo(0, y + MARKER_HEIGHT - .5);
       ctx.lineTo(width, y + MARKER_HEIGHT - .5);
       ctx.stroke();
-      const color = colors[lane.kind] || "#8096a6";
+      const color = colors[lane.kind] || "#9a8f80";
       if (lane.kind === "tempo") {
         const values = lane.events.map((item) => Number(item.bpm)).filter(Number.isFinite);
         const low = Math.min(...values);
@@ -971,7 +971,7 @@
       ctx.restore();
     }
     if (lane.kind === "sections" && event.label) {
-      ctx.fillStyle = "#cfeff4";
+      ctx.fillStyle = "#fff0d6";
       ctx.font = "9px Segoe UI, sans-serif";
       ctx.fillText(event.label, x + 6, y + 14);
     }
@@ -1010,23 +1010,23 @@
     if (effect.type === "TWINKLE") return "#a17ce0";
     if (effect.type === "SHIMMER") return "#d79a4e";
     if (effect.type === "INTENSITY") return "#419fc7";
-    return "#7f8b96";
+    return "#968b7f";
   }
 
   function drawTracks(width, pps) {
     const canvas = $("tracksCanvas");
     const height = Math.max(ROW_HEIGHT, state.rows.length * ROW_HEIGHT);
     const ctx = setCanvasSize(canvas, width, height);
-    ctx.fillStyle = "#10171f";
+    ctx.fillStyle = "#1a1815";
     ctx.fillRect(0, 0, width, height);
 
     state.rows.forEach((row, index) => {
       const y = index * ROW_HEIGHT;
-      if (row.kind === "group") ctx.fillStyle = "#1b2732";
-      else if (row.kind === "prop") ctx.fillStyle = "#18212a";
-      else ctx.fillStyle = index % 2 ? "#111a22" : "#121c25";
+      if (row.kind === "group") ctx.fillStyle = "#2a2723";
+      else if (row.kind === "prop") ctx.fillStyle = "#24211e";
+      else ctx.fillStyle = index % 2 ? "#181614" : "#1b1916";
       ctx.fillRect(0, y, width, ROW_HEIGHT);
-      ctx.strokeStyle = "#202d38";
+      ctx.strokeStyle = "#302c28";
       ctx.beginPath();
       ctx.moveTo(0, y + ROW_HEIGHT - .5);
       ctx.lineTo(width, y + ROW_HEIGHT - .5);
@@ -1035,7 +1035,7 @@
 
     for (let second = 0; second <= getTimelineDurationSeconds(); second++) {
       const x = second * pps;
-      ctx.strokeStyle = second % 5 === 0 ? "#293844" : "#1b2731";
+      ctx.strokeStyle = second % 5 === 0 ? "#3c3731" : "#2a2622";
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(Math.floor(x) + .5, 0);
@@ -3483,7 +3483,7 @@
     state.viewer = { content, fileName, type };
     $("viewerTitle").textContent = title;
     const html = type === "image/svg+xml"
-      ? "<!doctype html><meta charset=\"utf-8\"><body style=\"margin:0;background:#0b1015\">" +
+      ? "<!doctype html><meta charset=\"utf-8\"><body style=\"margin:0;background:#12100e\">" +
         content + "</body>"
       : content;
     $("viewerFrame").srcdoc = html;
@@ -3828,7 +3828,7 @@
     ctx.fillStyle = "#05080c";
     ctx.fillRect(0, 0, width, height);
     if (!yard) {
-      ctx.fillStyle = "#7f8d99";
+      ctx.fillStyle = "#958a7c";
       ctx.font = 13 * ratio + "px Segoe UI, sans-serif";
       ctx.fillText("This sequence has no preview inside it, so the yard cannot be drawn.",
         16 * ratio, 28 * ratio);
@@ -3876,7 +3876,7 @@
           });
           ctx.setLineDash([]);
         } else {
-          ctx.strokeStyle = level > 0 ? colorOf(colors[0]) : "#56616b";
+          ctx.strokeStyle = level > 0 ? colorOf(colors[0]) : "#6a6157";
           ctx.shadowColor = colorOf(colors[0]);
           ctx.stroke();
         }
