@@ -1343,33 +1343,36 @@
     await probeAudioMetadata(file);
     if (requestId !== state.audioRequestId) return null;
     const context = new AudioContextClass();
+    let buffer;
+    let peaks;
+    let playbackSource;
     try {
       const prefix = new Uint8Array(await file.slice(0, 4).arrayBuffer());
       const hasId3 = prefix.length >= 3 && prefix[0] === 73 && prefix[1] === 68 && prefix[2] === 51;
       const hasMpegSync = prefix.length >= 2 && prefix[0] === 255 && (prefix[1] & 224) === 224;
       const mislabeledMp3 = file.name.toLowerCase().endsWith(".mp4") && (hasId3 || hasMpegSync);
-      const playbackSource = mislabeledMp3
+      playbackSource = mislabeledMp3
         ? file.slice(0, file.size, "audio/mpeg")
         : file;
       const audioBytes = await file.arrayBuffer();
-      const buffer = await context.decodeAudioData(audioBytes);
+      buffer = await context.decodeAudioData(audioBytes);
       if (requestId !== state.audioRequestId) return null;
       if (buffer.duration < 2 || buffer.duration > 1800) {
         throw new Error("Audio duration must be between 2 seconds and 30 minutes.");
       }
-      state.audioBuffer = buffer;
-      state.waveformPeaks = buildWaveformPeaks(buffer);
-      if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
-      state.audioUrl = URL.createObjectURL(playbackSource);
-      audio.src = state.audioUrl;
-      $("playButton").disabled = false;
-      $("stopButton").disabled = false;
-      if (state.sequence) refreshTimeline();
-      compareDurations();
-      return buffer.duration;
+      peaks = buildWaveformPeaks(buffer);
     } finally {
       await context.close();
     }
+    if (requestId !== state.audioRequestId) return null;
+    // Decode into temporary values. The active song is not changed until the
+    // caller has a complete buffer, waveform, and playable URL to commit together.
+    return {
+      buffer,
+      peaks,
+      url: URL.createObjectURL(playbackSource),
+      duration: buffer.duration,
+    };
   }
 
   function durationMismatchMessage() {
@@ -1433,49 +1436,56 @@
       return;
     }
     const requestId = ++state.audioRequestId;
+    let decoded;
+    try {
+      decoded = await decodeWaveform(file, requestId);
+    } catch (error) {
+      if (requestId !== state.audioRequestId) return;
+      setBanner("That song could not be played here: " + problemText(error) +
+        (state.audioFile ? " Your previous audio and music review are still loaded." : ""),
+        "error");
+      $("audioFile").value = "";
+      return;
+    }
+    if (requestId !== state.audioRequestId || !decoded) {
+      if (decoded && decoded.url) URL.revokeObjectURL(decoded.url);
+      return;
+    }
+
+    // Commit the replacement only after the complete audio decode has succeeded.
+    const previousUrl = state.audioUrl;
+    audio.pause();
     state.audioFile = file;
-    state.audioBuffer = null;
-    state.waveformPeaks = null;
-    state.analysis = null;
+    state.audioBuffer = decoded.buffer;
+    state.waveformPeaks = decoded.peaks;
+    state.audioUrl = decoded.url;
+    state.analysis = presetAnalysis || null;
     state.vocals = null;
     state.lyrics = null;
     state.reviewDirty = false;
     state.reviewLoaded = false;
     state.reviewSelection = null;
     captureReviewBaseline();
-    if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
-    state.audioUrl = null;
-    audio.pause();
-    audio.removeAttribute("src");
+    if (previousUrl) URL.revokeObjectURL(previousUrl);
+    audio.src = state.audioUrl;
     audio.load();
-    $("playButton").disabled = true;
-    $("stopButton").disabled = true;
+    $("playButton").disabled = false;
+    $("stopButton").disabled = false;
     $("playButton").textContent = "▶";
     $("analysisBanner").title = "";
     if (state.sequence) {
       renderSequenceStats();
       refreshTimeline();
     }
-    try {
-      const duration = await decodeWaveform(file, requestId);
-      if (requestId !== state.audioRequestId || duration == null) return;
-      if (presetAnalysis) {
-        // Already analyzed while building the show: use that, do not run it again.
-        state.analysis = presetAnalysis;
-        renderSequenceStats();
-        if (state.sequence) refreshTimeline();
-        return;
-      }
-      setBanner("Waveform decoded from the selected audio (" + formatTime(duration) +
-        "). Starting local musical analysis…", "good");
-      await analyzeSelectedAudio(file, requestId);
-    } catch (error) {
-      if (requestId !== state.audioRequestId) return;
-      state.audioFile = null;
-      state.audioBuffer = null;
-      state.waveformPeaks = null;
-      setBanner("That song could not be played here: " + problemText(error), "error");
+    compareDurations();
+
+    if (presetAnalysis) {
+      // Already analyzed while building the show: use that, do not run it again.
+      return;
     }
+    setBanner("Waveform decoded from the selected audio (" + formatTime(decoded.duration) +
+      "). Starting local musical analysis…", "good");
+    await analyzeSelectedAudio(file, requestId);
   }
 
   async function loadAnalysis(file) {
