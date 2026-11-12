@@ -1266,13 +1266,25 @@
     if (!file) return;
     const requestId = ++state.sequenceRequestId;
     try {
+      if (state.audioDecodePending) {
+        setBanner("Wait for the selected song to finish loading before replacing the sequence.", "warn");
+        return;
+      }
       if (file.size > MAX_XML_BYTES) throw new Error("Sequence exceeds the 50 MiB input limit.");
       const xmlText = await file.text();
       if (requestId !== state.sequenceRequestId) return;
+      if (state.audioDecodePending) {
+        setBanner("Wait for the selected song to finish loading before replacing the sequence.", "warn");
+        return;
+      }
       if (state.dirty && !window.confirm("Discard the unexported edits to " +
         state.sequence.filename + "?")) return;
       const head = new Uint8Array(await file.slice(0, 3).arrayBuffer());
       if (requestId !== state.sequenceRequestId) return;
+      if (state.audioDecodePending) {
+        setBanner("Wait for the selected song to finish loading before replacing the sequence.", "warn");
+        return;
+      }
       openSequenceText(xmlText, file.name, head[0] === 0xEF && head[1] === 0xBB && head[2] === 0xBF);
       setBanner("Loaded " + state.sequence.props.length + " native props, " +
         state.sequence.channelCount + " channels, and " + state.sequence.effectCount.toLocaleString() +
