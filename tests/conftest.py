@@ -26,3 +26,11 @@ def _no_update_check(monkeypatch: pytest.MonkeyPatch) -> None:
 def _private_log(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """The workspace log goes to the test's own folder, never the user's."""
     monkeypatch.setattr("lor_sequence_builder.diagnostics.log_folder", lambda: tmp_path / "logs")
+
+
+@pytest.fixture(autouse=True)
+def _private_recent_shows(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Recent shows go to the test's own folder, never the user's."""
+    monkeypatch.setattr("lor_sequence_builder.recent_shows.recent_folder",
+                        lambda: tmp_path / "recent-shows")
+
