@@ -260,7 +260,7 @@ def test_three_four_bar_fallback_stays_aligned_after_a_window_split() -> None:
 
     window = _Window(
         0, 50, 500, tuple(range(50, 500, 50)), (), False,
-        offset=1, beats_per_bar=3, bar_phase=0,
+        offset=0, beats_per_bar=3, bar_phase=0, bar_offset=1,
     )
     assert _bars(window) == [(150, 300), (300, 450), (450, 500)]
 
