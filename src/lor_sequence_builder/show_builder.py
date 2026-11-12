@@ -21,9 +21,7 @@ user asks for it, requirement text to the configured translator.
 
 from __future__ import annotations
 
-import base64
 import hashlib
-import io
 import json
 import os
 import secrets
@@ -550,38 +548,51 @@ class ShowSessions:
                 shutil.rmtree(work, ignore_errors=True)
 
     def batch_zip(self, token: str) -> dict[str, Any]:
-        """Every show built so far in this batch, with its report, as one zip."""
-        with self.locked(token) as session:
-            done = session.path / "batch"
-            shows = [entry for entry in session.batch if entry.get("ok")]
-            if not shows:
-                raise ShowBuildError("No batch shows have been built yet")
-            artifacts = [
-                path
-                for entry in shows
-                for path in (done / entry["show"],
-                             done / f"{entry['stem']} (generated).report.html")
-            ]
-            total_bytes = sum(path.stat().st_size for path in artifacts)
-            if total_bytes > MAX_BATCH_ARCHIVE_BYTES:
-                raise ShowBuildError(
-                    "This playlist's show files exceed the 100 MiB download limit. "
-                    "Save the playlist in smaller batches."
-                )
-            bundle = io.BytesIO()
-            with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
-                for path in artifacts:
-                    archive.write(path, path.name)
-                lines = ["Shows in this batch", ""]
-                for entry in session.batch:
-                    lines.append(f"{entry['file_name']}: " + (
-                        f"{entry['show']}" if entry.get("ok") else "not built (rules failed)"))
-                lines += ["", "Copy each song into S6's audio folder with the same name, then",
-                          "open its .loredit in the S6 Sequencer."]
-                archive.writestr("Batch - read me.txt", "\r\n".join(lines) + "\r\n")
-            name = _safe_name(session.display_name) + " shows.zip"
-            return {"zip_name": name, "count": len(shows),
-                    "zip": base64.b64encode(bundle.getvalue()).decode("ascii")}
+        """Build the batch archive on disk to avoid duplicating it in memory."""
+        archive_path: Path | None = None
+        try:
+            with self.locked(token) as session:
+                done = session.path / "batch"
+                shows = [entry for entry in session.batch if entry.get("ok")]
+                if not shows:
+                    raise ShowBuildError("No batch shows have been built yet")
+                artifacts = [
+                    path
+                    for entry in shows
+                    for path in (done / entry["show"],
+                                 done / f"{entry['stem']} (generated).report.html")
+                ]
+                total_bytes = sum(path.stat().st_size for path in artifacts)
+                if total_bytes > MAX_BATCH_ARCHIVE_BYTES:
+                    raise ShowBuildError(
+                        "This playlist's show files exceed the 100 MiB download limit. "
+                        "Save the playlist in smaller batches."
+                    )
+                with tempfile.NamedTemporaryFile(
+                    prefix="lor-batch-", suffix=".zip", delete=False
+                ) as handle:
+                    archive_path = Path(handle.name)
+                with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as archive:
+                    for path in artifacts:
+                        archive.write(path, path.name)
+                    lines = ["Shows in this batch", ""]
+                    for entry in session.batch:
+                        lines.append(f"{entry['file_name']}: " + (
+                            f"{entry['show']}" if entry.get("ok") else "not built (rules failed)"))
+                    lines += ["", "Copy each song into S6's audio folder with the same name, then",
+                              "open its .loredit in the S6 Sequencer."]
+                    archive.writestr("Batch - read me.txt", "\\r\\n".join(lines) + "\\r\\n")
+                name = _safe_name(session.display_name) + " shows.zip"
+                return {"zip_name": name, "count": len(shows), "zip_path": str(archive_path)}
+        except BaseException:
+            if archive_path is not None:
+                try:
+                    archive_path.unlink(missing_ok=True)
+                except OSError as cleanup_error:
+                    from lor_sequence_builder.diagnostics import write_log
+
+                    write_log("batch", f"Could not remove incomplete batch archive: {cleanup_error}")
+            raise
 
     def batch_clear(self, token: str) -> dict[str, Any]:
         with self.locked(token) as session:
