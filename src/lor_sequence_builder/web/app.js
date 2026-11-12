@@ -1490,13 +1490,13 @@
   }
 
   async function loadAudio(file, presetAnalysis, reviewAlreadyConfirmed = false, skipAnalysis = false) {
-    if (!file) return false;
+    if (!file) return "failed";
     if (file.size <= 0 || file.size > MAX_AUDIO_BYTES) {
       setBanner("The song file is empty, or larger than the 200 MB the program accepts.", "error");
-      return false;
+      return "failed";
     }
     if (!reviewAlreadyConfirmed && state.reviewDirty &&
-        !window.confirm("Replace the unsaved music review?")) return false;
+        !window.confirm("Replace the unsaved music review?")) return "cancelled";
     const requestId = ++state.audioRequestId;
     const reviewRevisionAtStart = state.reviewRevision;
     state.audioDecodePending = true;
@@ -1508,17 +1508,17 @@
     try {
       decoded = await decodeWaveform(file, requestId);
     } catch (error) {
-      if (requestId !== state.audioRequestId) return false;
+      if (requestId !== state.audioRequestId) return "superseded";
       state.audioDecodePending = false;
       setStepEnabled();
       setBanner("That song could not be played here: " + problemText(error) +
         (state.audioFile ? " Your previous audio and music review are still loaded." : ""), "error");
       $("audioFile").value = "";
-      return false;
+      return "failed";
     }
     if (requestId !== state.audioRequestId || !decoded) {
       if (decoded && decoded.url) URL.revokeObjectURL(decoded.url);
-      return false;
+      return "superseded";
     }
     if (state.reviewRevision !== reviewRevisionAtStart && state.reviewDirty &&
         !window.confirm("Replace the music-review changes made while the song was loading?")) {
@@ -1526,7 +1526,7 @@
       state.audioDecodePending = false;
       setStepEnabled();
       setBanner("Audio was not replaced. Your current song and music review remain loaded.", "warn");
-      return false;
+      return "cancelled";
     }
     state.audioDecodePending = false;
     setStepEnabled();
@@ -1569,12 +1569,12 @@
     if (presetAnalysis || skipAnalysis) {
       // Generated-show audio already has an analysis; short display-test audio
       // only needs to be playable and does not need another analysis pass.
-      return true;
+      return "loaded";
     }
     setBanner("Waveform decoded from the selected audio (" + formatTime(decoded.duration) +
       "). Starting local musical analysis…", "good");
     await analyzeSelectedAudio(file, requestId);
-    return true;
+    return "loaded";
   }
 
   async function loadAnalysis(file) {
@@ -3645,9 +3645,14 @@
       return;
     }
     const sound = new File([bytesFromBase64(test.sound)], test.sound_name, { type: "audio/wav" });
-    if (!await loadAudio(sound, null, true, true)) {
-      showMessage("testStatus", "The display-test audio could not be loaded. " +
-        "Your current editor sequence was left unchanged.", "error");
+    const audioStatus = await loadAudio(sound, null, true, true);
+    if (audioStatus !== "loaded") {
+      showMessage("testStatus", audioStatus === "cancelled"
+        ? "Watching the display test was cancelled; your current editor sequence was left unchanged."
+        : audioStatus === "superseded"
+          ? "Watching the display test was superseded by another song load; your current editor sequence was left unchanged."
+          : "The display-test audio could not be loaded. Your current editor sequence was left unchanged.",
+        audioStatus === "cancelled" ? "warn" : "error");
       return;
     }
     openSequenceText(test.sequence, test.file_name, false);
@@ -4175,10 +4180,17 @@
         problemText(error), "error");
       return;
     }
-    if (show.audioFile && !await loadAudio(show.audioFile, show.analysis, true)) {
-      showMessage("generateStatus", "The generated show's audio could not be loaded. " +
-        "Your current editor sequence was left unchanged.", "error");
-      return;
+    if (show.audioFile) {
+      const audioStatus = await loadAudio(show.audioFile, show.analysis, true);
+      if (audioStatus !== "loaded") {
+        showMessage("generateStatus", audioStatus === "cancelled"
+          ? "Opening was cancelled. Your current editor sequence was left unchanged."
+          : audioStatus === "superseded"
+            ? "Opening was superseded by another song load; your current editor sequence was left unchanged."
+            : "The generated show's audio could not be loaded. Your current editor sequence was left unchanged.",
+          audioStatus === "cancelled" ? "warn" : "error");
+        return;
+      }
     }
     openSequenceText(result.sequence, result.file_name, false);
     state.sequence.generated = true;
