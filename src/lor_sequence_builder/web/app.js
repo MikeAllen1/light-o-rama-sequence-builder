@@ -3755,13 +3755,23 @@
         item.sections = Array.from($("requirementSections").querySelectorAll("input:checked"))
           .map((box) => box.value);
       }
-      if (kind === "max_intensity") item.max = Number($("requirementMax").value);
+      if (kind === "max_intensity") {
+        const raw = $("requirementMax").value.trim();
+        const maximum = Number(raw);
+        if (!raw || !Number.isInteger(maximum) || maximum < 0 || maximum > 100 ||
+            maximum % 5 !== 0) {
+          showMessage("requirementStatus", "Choose a brightness limit from 0 to 100 in steps of 5.", "warn");
+          return null;
+        }
+        item.max = maximum;
+      }
       return item;
     });
     if (kind === "quiet_during" && !added[0].sections.length) {
       showMessage("requirementStatus", "Choose the parts of the song to keep them dark.", "warn");
       return;
     }
+    if (added.some((item) => item == null)) return;
     await sendRequirements(show.raw.concat(added));
   }
 
