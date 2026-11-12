@@ -8,6 +8,7 @@
   const MARKER_HEIGHT = 22;
   const MAX_XML_BYTES = 50 * 1024 * 1024;
   const MAX_AUDIO_BYTES = 200 * 1024 * 1024;
+  const MAX_BATCH_SONGS = 40;
   const MAX_XML_ELEMENTS = 100000;
   const MAX_JSON_BYTES = 5 * 1024 * 1024;
   const MAX_CANVAS_PIXELS = 36000000;
@@ -45,9 +46,12 @@
     reviewSelection: null,
     reviewDrag: null,
     reviewDirty: false,
+    reviewRevision: 0,
     reviewBaseline: null,
     animationFrame: 0,
     audioRequestId: 0,
+    audioDecodePending: false,
+    analysisRequestId: 0,
     sequenceRequestId: 0,
     vocalRequestId: 0,
     lyricRequestId: 0
@@ -461,7 +465,7 @@
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const lane = state.lanes[Math.floor((event.clientY - rect.top) / MARKER_HEIGHT)];
-    let seconds = Math.max(0, x / state.pxPerSecond);
+    let seconds = clampReviewSeconds(Math.max(0, x / state.pxPerSecond));
     if (lane && lane.kind !== "lyrics" && lane.kind !== "energy" && lane.kind !== "tempo") {
       // Snap to the nearest marker within 6 pixels, so a click lands on the event.
       const times = sortedTimes(lane.events.map((item) =>
@@ -473,6 +477,7 @@
       }
       if (best != null) seconds = best;
     }
+    seconds = clampReviewSeconds(seconds);
     seekAudio(seconds);
     inspectMoment(seconds, lane);
   }
@@ -1263,13 +1268,25 @@
     if (!file) return;
     const requestId = ++state.sequenceRequestId;
     try {
+      if (state.audioDecodePending) {
+        setBanner("Wait for the selected song to finish loading before replacing the sequence.", "warn");
+        return;
+      }
       if (file.size > MAX_XML_BYTES) throw new Error("Sequence exceeds the 50 MiB input limit.");
       const xmlText = await file.text();
       if (requestId !== state.sequenceRequestId) return;
+      if (state.audioDecodePending) {
+        setBanner("Wait for the selected song to finish loading before replacing the sequence.", "warn");
+        return;
+      }
       if (state.dirty && !window.confirm("Discard the unexported edits to " +
         state.sequence.filename + "?")) return;
       const head = new Uint8Array(await file.slice(0, 3).arrayBuffer());
       if (requestId !== state.sequenceRequestId) return;
+      if (state.audioDecodePending) {
+        setBanner("Wait for the selected song to finish loading before replacing the sequence.", "warn");
+        return;
+      }
       openSequenceText(xmlText, file.name, head[0] === 0xEF && head[1] === 0xBB && head[2] === 0xBF);
       setBanner("Loaded " + state.sequence.props.length + " native props, " +
         state.sequence.channelCount + " channels, and " + state.sequence.effectCount.toLocaleString() +
@@ -1343,42 +1360,69 @@
     await probeAudioMetadata(file);
     if (requestId !== state.audioRequestId) return null;
     const context = new AudioContextClass();
+    let buffer;
+    let peaks;
+    let playbackSource;
     try {
       const prefix = new Uint8Array(await file.slice(0, 4).arrayBuffer());
       const hasId3 = prefix.length >= 3 && prefix[0] === 73 && prefix[1] === 68 && prefix[2] === 51;
       const hasMpegSync = prefix.length >= 2 && prefix[0] === 255 && (prefix[1] & 224) === 224;
       const mislabeledMp3 = file.name.toLowerCase().endsWith(".mp4") && (hasId3 || hasMpegSync);
-      const playbackSource = mislabeledMp3
+      playbackSource = mislabeledMp3
         ? file.slice(0, file.size, "audio/mpeg")
         : file;
       const audioBytes = await file.arrayBuffer();
-      const buffer = await context.decodeAudioData(audioBytes);
+      buffer = await context.decodeAudioData(audioBytes);
       if (requestId !== state.audioRequestId) return null;
       if (buffer.duration < 2 || buffer.duration > 1800) {
         throw new Error("Audio duration must be between 2 seconds and 30 minutes.");
       }
-      state.audioBuffer = buffer;
-      state.waveformPeaks = buildWaveformPeaks(buffer);
-      if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
-      state.audioUrl = URL.createObjectURL(playbackSource);
-      audio.src = state.audioUrl;
-      $("playButton").disabled = false;
-      $("stopButton").disabled = false;
-      if (state.sequence) refreshTimeline();
-      compareDurations();
-      return buffer.duration;
+      peaks = buildWaveformPeaks(buffer);
     } finally {
       await context.close();
     }
+    if (requestId !== state.audioRequestId) return null;
+    // Decode into temporary values. Do not disturb the active song until the
+    // caller can commit the complete buffer, waveform, and playback URL together.
+    return {
+      buffer,
+      peaks,
+      url: URL.createObjectURL(playbackSource),
+      duration: buffer.duration,
+    };
+  }
+
+  function currentMusicDuration() {
+    if (state.audioBuffer && Number.isFinite(state.audioBuffer.duration) &&
+        state.audioBuffer.duration > 0) return state.audioBuffer.duration;
+    const analyzed = state.analysis && Number(state.analysis.audio && state.analysis.audio.duration_seconds);
+    return Number.isFinite(analyzed) && analyzed > 0 ? analyzed : null;
+  }
+
+  function clampReviewSeconds(seconds) {
+    const duration = currentMusicDuration();
+    return Math.max(0, Math.min(duration == null ? 1800 : duration, seconds));
   }
 
   function durationMismatchMessage() {
-    if (!state.sequence || !state.audioBuffer) return "";
-    const delta = state.audioBuffer.duration - state.sequence.durationSeconds;
-    if (Math.abs(delta) <= 0.25) return "";
-    const direction = delta > 0 ? "longer" : "shorter";
-    return "Selected audio is " + Math.abs(delta).toFixed(2) + " seconds " + direction +
-      " than the sequence; the timeline shows the full duration of both.";
+    if (!state.sequence) return "";
+    const messages = [];
+    if (state.audioBuffer) {
+      const delta = state.audioBuffer.duration - state.sequence.durationSeconds;
+      if (Math.abs(delta) > 0.25) {
+        const direction = delta > 0 ? "longer" : "shorter";
+        messages.push("Selected audio is " + Math.abs(delta).toFixed(2) + " seconds " + direction +
+          " than the sequence; the timeline shows the full duration of both.");
+      }
+    }
+    if (state.audioFile && state.sequence.audioName) {
+      const expected = state.sequence.audioName.split(/[\\/]/).pop();
+      if (expected && expected.toLowerCase() !== state.audioFile.name.toLowerCase()) {
+        messages.push("This sequence expects the audio file " + expected + ", but the selected file is " +
+          state.audioFile.name + ". Check that you selected the matching recording and that S6 can find it.");
+      }
+    }
+    return messages.join(" ");
   }
 
   function compareDurations() {
@@ -1395,13 +1439,30 @@
         callEngine("/api/analyze?beats_per_bar=" + meter + "&progress=" + key, file,
           "application/octet-stream"));
       if (requestId !== state.audioRequestId) return;
-      if (state.reviewDirty || state.reviewLoaded) {
-        // Never replace reviewed markers with fresh estimates.
+      if (meter !== $("meterSelect").value) {
+        analyzeSelectedAudio(file);
+        return;
+      }
+      if (state.reviewLoaded || state.reviewSaved || (state.reviewDirty && state.analysis)) {
+        // Never replace an existing reviewed analysis with fresh estimates.
         setBanner("Audio loaded. Your music review is kept; the fresh automatic analysis was not " +
           "applied over it.", "good");
         return;
       }
+      const previousBaseline = state.reviewBaseline;
+      const keepUnsavedReview = state.reviewDirty;
       state.analysis = payload.report;
+      captureReviewBaseline();
+      if (keepUnsavedReview && previousBaseline) {
+        state.reviewBaseline.lyrics = previousBaseline.lyrics;
+        state.reviewBaseline.lyricLines = previousBaseline.lyricLines;
+        state.reviewBaseline.meter = previousBaseline.meter;
+        state.reviewDirty = reviewHasChanges();
+      } else {
+        state.reviewDirty = false;
+      }
+      state.reviewSaved = false;
+      updateEditControls();
       renderSequenceStats();
       refreshTimeline();
       const analysis = state.analysis.analysis;
@@ -1417,6 +1478,10 @@
         (mismatch ? " " + mismatch : ""), mismatch ? "warn" : "good");
     } catch (error) {
       if (requestId !== state.audioRequestId) return;
+      if (!state.reviewLoaded) {
+        state.reviewDirty = reviewHasChanges();
+        updateEditControls();
+      }
       const mismatch = durationMismatchMessage();
       setBanner("Waveform loaded. Automatic analysis unavailable: " +
         problemText(error) + " You can still edit, or load a saved analysis file." +
@@ -1424,79 +1489,146 @@
     }
   }
 
-  async function loadAudio(file, presetAnalysis, reviewAlreadyConfirmed = false) {
-    if (!file) return;
-    if (!reviewAlreadyConfirmed && state.reviewDirty &&
-        !window.confirm("Replace the unsaved music review?")) return;
+  async function loadAudio(file, presetAnalysis, reviewAlreadyConfirmed = false, skipAnalysis = false) {
+    if (!file) return "failed";
     if (file.size <= 0 || file.size > MAX_AUDIO_BYTES) {
       setBanner("The song file is empty, or larger than the 200 MB the program accepts.", "error");
-      return;
+      return "failed";
     }
+    if (!reviewAlreadyConfirmed && state.reviewDirty &&
+        !window.confirm("Replace the unsaved music review?")) return "cancelled";
     const requestId = ++state.audioRequestId;
+    const reviewRevisionAtStart = state.reviewRevision;
+    state.audioDecodePending = true;
+    setStepEnabled();
+    state.analysisRequestId += 1;
+    state.lyricRequestId += 1;
+    state.vocalRequestId += 1;
+    let decoded;
+    try {
+      decoded = await decodeWaveform(file, requestId);
+    } catch (error) {
+      if (requestId !== state.audioRequestId) return "superseded";
+      state.audioDecodePending = false;
+      setStepEnabled();
+      setBanner("That song could not be played here: " + problemText(error) +
+        (state.audioFile ? " Your previous audio and music review are still loaded." : ""), "error");
+      $("audioFile").value = "";
+      return "failed";
+    }
+    if (requestId !== state.audioRequestId || !decoded) {
+      if (decoded && decoded.url) URL.revokeObjectURL(decoded.url);
+      return "superseded";
+    }
+    if (state.reviewRevision !== reviewRevisionAtStart && state.reviewDirty &&
+        !window.confirm("Replace the music-review changes made while the song was loading?")) {
+      if (decoded.url) URL.revokeObjectURL(decoded.url);
+      state.audioDecodePending = false;
+      setStepEnabled();
+      setBanner("Audio was not replaced. Your current song and music review remain loaded.", "warn");
+      return "cancelled";
+    }
+    state.audioDecodePending = false;
+    setStepEnabled();
+
+    // Commit the replacement only after the complete audio decode has succeeded.
+    // Imports started while decoding belong to the old workspace and must not land
+    // after this new audio becomes active.
+    state.analysisRequestId += 1;
+    state.lyricRequestId += 1;
+    state.vocalRequestId += 1;
+    clearMusicHistory();
+    const previousUrl = state.audioUrl;
+    audio.pause();
     state.audioFile = file;
-    state.audioBuffer = null;
-    state.waveformPeaks = null;
-    state.analysis = null;
+    state.audioBuffer = decoded.buffer;
+    state.waveformPeaks = decoded.peaks;
+    state.audioUrl = decoded.url;
+    state.analysis = presetAnalysis || null;
+    state.reviewRevision += 1;
     state.vocals = null;
     state.lyrics = null;
     state.reviewDirty = false;
     state.reviewLoaded = false;
+    state.reviewSaved = false;
     state.reviewSelection = null;
     captureReviewBaseline();
-    if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
-    state.audioUrl = null;
-    audio.pause();
-    audio.removeAttribute("src");
+    if (previousUrl) URL.revokeObjectURL(previousUrl);
+    audio.src = state.audioUrl;
     audio.load();
-    $("playButton").disabled = true;
-    $("stopButton").disabled = true;
+    $("playButton").disabled = false;
+    $("stopButton").disabled = false;
     $("playButton").textContent = "▶";
     $("analysisBanner").title = "";
     if (state.sequence) {
       renderSequenceStats();
       refreshTimeline();
     }
-    try {
-      const duration = await decodeWaveform(file, requestId);
-      if (requestId !== state.audioRequestId || duration == null) return;
-      if (presetAnalysis) {
-        // Already analyzed while building the show: use that, do not run it again.
-        state.analysis = presetAnalysis;
-        renderSequenceStats();
-        if (state.sequence) refreshTimeline();
-        return;
-      }
-      setBanner("Waveform decoded from the selected audio (" + formatTime(duration) +
-        "). Starting local musical analysis…", "good");
-      await analyzeSelectedAudio(file, requestId);
-    } catch (error) {
-      if (requestId !== state.audioRequestId) return;
-      state.audioFile = null;
-      state.audioBuffer = null;
-      state.waveformPeaks = null;
-      setBanner("That song could not be played here: " + problemText(error), "error");
+    compareDurations();
+
+    if (presetAnalysis || skipAnalysis) {
+      // Generated-show audio already has an analysis; short display-test audio
+      // only needs to be playable and does not need another analysis pass.
+      return "loaded";
     }
+    setBanner("Waveform decoded from the selected audio (" + formatTime(decoded.duration) +
+      "). Starting local musical analysis…", "good");
+    await analyzeSelectedAudio(file, requestId);
+    return "loaded";
   }
 
   async function loadAnalysis(file) {
     if (!file) return;
-    const requestId = ++state.audioRequestId;
+    if (state.audioDecodePending) {
+      setBanner("Wait for the selected song to finish loading before importing its analysis.", "warn");
+      $("analysisFile").value = "";
+      return;
+    }
+    const requestId = ++state.analysisRequestId;
     try {
       if (file.size > MAX_JSON_BYTES) throw new Error("Analysis JSON exceeds the 5 MiB input limit.");
       const analysisText = await file.text();
-      if (requestId !== state.audioRequestId) return;
+      if (requestId !== state.analysisRequestId) return;
       let data = JSON.parse(analysisText);
       if (!data || typeof data !== "object") throw new Error("Analysis JSON must contain an object.");
       let review = null;
       if (data.schema_version === REVIEW_SCHEMA) {
         // A saved music review: the corrected analysis, reviewed lyrics and meter.
         review = data;
+        if ((review.meter === 3 || review.meter === 4) && show.token &&
+            $("meterSelect").value !== String(review.meter) &&
+            (show.audioPending || show.requirementsPending || show.displayPending ||
+             show.generationPending || show.batchRunning || show.batchZipPending || show.testPending)) {
+          throw new Error("Wait for the current New Show operation to finish before loading a review with a different meter.");
+        }
         data = review.analysis;
         if (!data || typeof data !== "object") throw new Error("The music review has no analysis.");
-        if (review.lyrics != null) checkLyrics(review.lyrics);
+        if (review.lyrics != null) {
+          checkLyrics(review.lyrics);
+          const duration = state.audioBuffer && Number.isFinite(state.audioBuffer.duration)
+            ? state.audioBuffer.duration : Number(data.audio && data.audio.duration_seconds);
+          if (Number.isFinite(duration) && duration > 0 &&
+              review.lyrics.lines.some((line) => line.end > duration + 1)) {
+            throw new Error("The saved review's lyrics extend beyond the selected song.");
+          }
+        }
       }
-      if (state.reviewDirty && !window.confirm("Replace the unsaved music review?")) return;
       const analysis = data.analysis;
+      const currentDuration = state.audioBuffer && Number.isFinite(state.audioBuffer.duration)
+        ? state.audioBuffer.duration : null;
+      const incomingDuration = Number(data.audio && data.audio.duration_seconds);
+      if (currentDuration != null && Math.abs(incomingDuration - currentDuration) > 1) {
+        throw new Error("This analysis is for a different-length recording. Choose the analysis that matches the selected song.");
+      }
+      const analyzedName = data.audio && typeof data.audio.file_name === "string"
+        ? data.audio.file_name.split(/[\\/]/).pop() : "";
+      if (state.audioFile && analyzedName &&
+          analyzedName.toLowerCase() !== state.audioFile.name.toLowerCase() &&
+          !window.confirm("This analysis was made from " + analyzedName + ", but the selected audio is " +
+            state.audioFile.name + ". They may be different recordings. Load this analysis anyway?")) {
+        setBanner("Kept the current analysis; the selected analysis file name did not match the song.", "warn");
+        return;
+      }
       const requiredArrays = ["beats", "downbeats", "onsets", "energy",
         "phrase_boundaries", "section_candidates", "hard_stops"];
       if (data.schema_version !== "2.0" || !analysis ||
@@ -1519,13 +1651,39 @@
           }
         }
       }
+      const discardUnsavedReview = state.reviewDirty;
+      if (discardUnsavedReview && !window.confirm("Replace the unsaved music review?")) return;
+      state.audioRequestId += 1; // A valid imported analysis supersedes in-flight auto-analysis.
+      if (review || discardUnsavedReview) state.lyricRequestId += 1;
+      const previousAnalysis = state.analysis && state.analysis.analysis;
+      const previousLyrics = state.lyrics;
+      if (previousAnalysis) clearMusicHistory(previousAnalysis);
+      if (review || discardUnsavedReview) clearMusicHistory(previousLyrics);
       state.analysis = data;
+      state.reviewRevision += 1;
       state.reviewLoaded = Boolean(review);
+      state.reviewSaved = Boolean(review);
       state.reviewDirty = false;
       state.reviewSelection = null;
       if (review) {
         state.lyrics = review.lyrics != null ? review.lyrics : null;
-        if (review.meter === 3 || review.meter === 4) $("meterSelect").value = String(review.meter);
+        if (review.meter === 3 || review.meter === 4) {
+          const previousMeter = $("meterSelect").value;
+          const nextMeter = String(review.meter);
+          $("meterSelect").value = nextMeter;
+          if (previousMeter !== nextMeter && show.token) {
+            invalidateGeneratedResult();
+            if (show.batchReady && show.batchConfig !== currentBatchConfig()) {
+              show.batchReady = false;
+              $("saveBatch").disabled = true;
+              showMessage("batchStatus", "Meter changed. Rebuild the playlist before saving it.", "warn");
+            }
+            if (show.audioFile) chooseSong(show.audioFile);
+            else setStepEnabled();
+          }
+        }
+      } else if (discardUnsavedReview) {
+        state.lyrics = null;
       }
       renderSequenceStats();
       refreshTimeline();
@@ -1542,7 +1700,7 @@
         setBanner("Loaded saved analysis. Beat, downbeat, onset, section, and silence markers are labeled as estimates.", "good");
       }
     } catch (error) {
-      if (requestId !== state.audioRequestId) return;
+      if (requestId !== state.analysisRequestId) return;
       setBanner("That analysis file could not be loaded: " + problemText(error) +
         " Choose a .analysis.json or .review.json file made by this program.", "error");
     }
@@ -1550,6 +1708,11 @@
 
   async function loadVocals(file) {
     if (!file) return;
+    if (state.audioDecodePending) {
+      setBanner("Wait for the selected song to finish loading before importing its vocal report.", "warn");
+      $("vocalsFile").value = "";
+      return;
+    }
     const requestId = ++state.vocalRequestId;
     try {
       if (file.size > MAX_JSON_BYTES) throw new Error("Vocal JSON exceeds the 5 MiB input limit.");
@@ -1558,6 +1721,10 @@
       const data = JSON.parse(vocalsText);
       if (!data || typeof data !== "object") throw new Error("Vocal JSON must contain an object.");
       const duration = Number(data.duration_seconds);
+      const currentDuration = currentMusicDuration();
+      if (currentDuration != null && Math.abs(duration - currentDuration) > 1) {
+        throw new Error("This vocal report is for a different-length recording. Choose the report that matches the selected song.");
+      }
       if (data.schema_version !== "vocals-1.0" || !Number.isFinite(duration) ||
           duration <= 0 || duration > 1800 || !Array.isArray(data.limitations) ||
           typeof data.method !== "string" ||
@@ -1586,7 +1753,7 @@
     }
   }
 
-  function parseLyricsText(text, name) {
+  function parseLyricsText(text, name, duration = currentMusicDuration()) {
     const lines = [];
     const lrc = /\[(\d{1,3}):(\d{1,2}(?:\.\d{1,3})?)\]/g;
     const cue = /(?:(\d+):)?(\d{1,2}):(\d{1,2})[.,](\d{1,3})\s*-->\s*(?:(\d+):)?(\d{1,2}):(\d{1,2})[.,](\d{1,3})/;
@@ -1612,8 +1779,12 @@
     }
     if (!lines.length) throw new Error(name + ": no LRC time tags or SRT/VTT cues found.");
     lines.sort((a, b) => a.start - b.start);
-    lines.forEach((line, index) => {
-      if (line.end == null) line.end = index + 1 < lines.length ? lines[index + 1].start : line.start + 4;
+    lines.forEach((line) => {
+      if (line.end == null) {
+        const next = lines.find((candidate) => candidate.start > line.start + 0.001);
+        const limit = Number.isFinite(duration) && duration > 0 ? duration : 1800;
+        line.end = Math.min(next ? next.start : line.start + 4, limit);
+      }
       line.verified = true;
       line.words = [];
     });
@@ -1650,8 +1821,25 @@
     }
   }
 
+  function checkLyricsAgainstDuration(data, duration = currentMusicDuration()) {
+    checkLyrics(data);
+    if (Number.isFinite(duration) && duration > 0 &&
+        data.lines.some((line) => line.end > duration + 1)) {
+      throw new Error("A lyric line extends beyond the selected song");
+    }
+  }
+
   async function loadLyrics(file) {
     if (!file) return;
+    if (!state.audioBuffer && !state.analysis) {
+      setBanner("Load the song or a saved analysis before importing lyrics.", "warn");
+      return;
+    }
+    if (state.audioDecodePending) {
+      setBanner("Wait for the selected song to finish loading before importing its lyrics.", "warn");
+      $("lyricsFile").value = "";
+      return;
+    }
     const requestId = ++state.lyricRequestId;
     try {
       if (file.size > MAX_JSON_BYTES) throw new Error("Lyrics file exceeds the 5 MiB input limit.");
@@ -1661,11 +1849,20 @@
       if (/\.json$/i.test(file.name)) {
         data = JSON.parse(text);
       } else {
-        data = parseLyricsText(text, file.name);
+        data = parseLyricsText(text, file.name, currentMusicDuration());
+      }
+      // Check the song length first: a line that starts after the song ends cannot be
+      // clipped into a valid line, and "invalid line" would hide the real problem.
+      const duration = currentMusicDuration();
+      if (duration != null && Array.isArray(data && data.lines) && data.lines.some((line) =>
+        Number(line && line.start) > duration + 1 || Number(line && line.end) > duration + 1)) {
+        throw new Error("These lyrics extend beyond the selected song. Choose the matching lyrics file.");
       }
       checkLyrics(data);
       if (state.reviewDirty && !window.confirm("Replace the unsaved music review?")) return;
+      if (state.lyrics) clearMusicHistory(state.lyrics);
       state.lyrics = data;
+      state.reviewRevision += 1;
       state.reviewSelection = null;
       state.reviewDirty = reviewHasChanges();
       refreshTimeline();
@@ -1711,12 +1908,21 @@
   const DEFAULT_LENGTH_CS = 50;
   const MAX_UNDO = 300;
 
+  function clearMusicHistory(owner) {
+    const keep = (command) => !Array.isArray(command.music) ||
+      (owner && !command.music.some((change) => change.owner === owner));
+    state.undo = state.undo.filter(keep);
+    state.redo = state.redo.filter(keep);
+  }
+
   function resetEditing() {
     state.selection = [];
     state.selectionSet = new Set();
     state.selectedEffect = null;
-    state.undo = [];
-    state.redo = [];
+    // Sequence history belongs to the file being replaced. Music-review history
+    // remains valid because loading a new sequence does not replace the song.
+    state.undo = state.undo.filter((command) => Array.isArray(command.music));
+    state.redo = state.redo.filter((command) => Array.isArray(command.music));
     state.dirty = false;
     state.exported = false;
     state.baselineEffects = new Map();
@@ -1766,28 +1972,40 @@
   }
 
   function checkChannel(channel, effects) {
-    const before = new Set(channel.effects);
+    // Compare timing against the loaded/exported baseline, not object identity.
+    // Property edits replace effect objects without changing their original timing;
+    // they must not turn a pre-existing S6 overlap into a newly introduced overlap.
+    const originalSpans = new Map();
+    const baseline = state.baselineEffects.get(channel) || channel.effects;
+    for (const effect of baseline) {
+      const key = effect.start + ":" + effect.end;
+      originalSpans.set(key, (originalSpans.get(key) || 0) + 1);
+    }
     const limit = state.sequence.durationCs;
     const active = [];
     for (const effect of effects) {
-      if (!before.has(effect)) {
+      const key = effect.start + ":" + effect.end;
+      const count = originalSpans.get(key) || 0;
+      const isOriginalTiming = count > 0;
+      if (isOriginalTiming) originalSpans.set(key, count - 1);
+      if (!isOriginalTiming) {
         if (effect.start < 0) return "an effect would start before the song";
         if (effect.end <= effect.start) return "an effect would have no length";
         if (effect.end > limit) return "an effect would run past the end of the sequence";
       }
       // Compare with every active interval so nested source overlaps cannot hide
-      // a newly introduced overlap.
+      // a newly introduced overlap. Baseline timing spans are a multiset because
+      // S6 files can contain exact duplicate effects.
       for (let index = active.length - 1; index >= 0; index--) {
         if (active[index].end <= effect.start) active.splice(index, 1);
       }
-      if (active.some((previous) => !(before.has(previous) && before.has(effect)))) {
+      if (active.some((previous) => !(previous.isOriginalTiming && isOriginalTiming))) {
         return "effects would overlap on " + channelName(channel);
       }
-      active.push(effect);
+      active.push({ end: effect.end, isOriginalTiming });
     }
     return null;
   }
-
   function checkChanges(changes) {
     for (const [channel, effects] of changes) {
       const sorted = sortEffects(effects);
@@ -1833,8 +2051,37 @@
     afterEdit();
   }
 
+  function sameEffectArray(left, right) {
+    if (left.length !== right.length) return false;
+    for (let index = 0; index < left.length; index++) {
+      const a = left[index];
+      const b = right[index];
+      if (a === b) continue;
+      const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+      for (const key of keys) {
+        const av = a[key];
+        const bv = b[key];
+        if (key === "attributes" && av && bv) {
+          // Same native attributes in any order: an effect rebuilt with its own
+          // values is not an edit.
+          const names = Object.keys(av);
+          if (names.length !== Object.keys(bv).length ||
+              names.some((name) => !Object.prototype.hasOwnProperty.call(bv, name) ||
+                String(av[name]) !== String(bv[name]))) return false;
+        } else if (av !== bv) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
   function applyChanges(label, changes, selected) {
     if (!changes.size) return false;
+    if (Array.from(changes).every(([channel, after]) => sameEffectArray(channel.effects, after))) {
+      setBanner("No change was made.", "");
+      return false;
+    }
     const problem = checkChanges(changes);
     if (problem) {
       setBanner("Not changed: " + problem + ".", "warn");
@@ -2317,6 +2564,8 @@
       preview.error = checkChanges(preview.changes);
       setBanner(preview.label + (preview.error ? ": not allowed, " + preview.error : "") +
         (event.altKey ? " (snapping off)" : ""), preview.error ? "warn" : "");
+    } else {
+      setBanner("No valid change at this position; an effect needs a positive length.", "warn");
     }
     drag.preview = preview;
     drawTracks(Number(canvas.width), state.pxPerSecond);
@@ -2336,6 +2585,8 @@
       applyChanges(preview.label, preview.changes, Array.from(preview.selected));
     } else {
       if (preview && preview.error) setBanner("Not changed: " + preview.error + ".", "warn");
+      else if (!preview) setBanner("Not changed: the drag did not produce a valid effect.", "warn");
+      else setBanner("No change was made.", "");
       drawTracks(Number($("tracksCanvas").width), state.pxPerSecond);
     }
   }
@@ -2360,10 +2611,13 @@
   }
 
   function handleEditKey(event) {
-    if (!state.sequence || $("editor").classList.contains("hidden")) return;
+    if (!state.sequence || $("editor").classList.contains("hidden") ||
+        !$("viewer").classList.contains("hidden")) return;
     const target = event.target;
-    if (target && ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
+    if (target && (["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName) ||
+        target.isContentEditable)) return;
     const mod = event.ctrlKey || event.metaKey;
+    if (target && ["BUTTON", "A", "AUDIO", "VIDEO"].includes(target.tagName)) return;
     const key = event.key.toLowerCase();
     let handled = true;
     if (mod && key === "z" && !event.shiftKey) undoEdit();
@@ -2373,7 +2627,13 @@
     else if (mod && key === "x") { if (copySelection()) deleteSelection(); }
     else if (mod && key === "v") pasteClipboard();
     else if (!mod && (key === "delete" || key === "backspace")) {
-      if (!deleteReviewSelection()) deleteSelection();
+      if (state.reviewSelection) {
+        if (!deleteReviewSelection()) {
+          setBanner("Not deleted: the selected music-review marker is no longer available.", "warn");
+        }
+      } else {
+        deleteSelection();
+      }
     } else if (!mod && key === "enter" && state.reviewSelection) confirmReviewSelection();
     else if (key === "escape") {
       setSelection([]);
@@ -2500,8 +2760,9 @@
     apply.addEventListener("click", () => {
       const values = {};
       const percent = (id) => {
-        const value = Number($(id).value);
-        if (!Number.isInteger(value) || value < 0 || value > 100) {
+        const raw = $(id).value.trim();
+        const value = Number(raw);
+        if (!raw || !Number.isInteger(value) || value < 0 || value > 100) {
           throw new Error("intensities are whole numbers from 0 to 100");
         }
         return value;
@@ -2515,9 +2776,11 @@
             : { fade: false, level: percent("editIntensity") };
         }
         if (items.length === 1) {
-          values.start = Math.round(Number($("editStart").value) * 100);
-          values.end = Math.round(Number($("editEnd").value) * 100);
-          if (!Number.isFinite(values.start) || !Number.isFinite(values.end)) {
+          const startText = $("editStart").value.trim();
+          const endText = $("editEnd").value.trim();
+          values.start = Math.round(Number(startText) * 100);
+          values.end = Math.round(Number(endText) * 100);
+          if (!startText || !endText || !Number.isFinite(values.start) || !Number.isFinite(values.end)) {
             throw new Error("times must be numbers of seconds");
           }
         }
@@ -2576,6 +2839,10 @@
     const revision = state.editRevision;
     const requestId = ++state.exportRequestId;
     const text = serializeSequence();
+    const exportedEffects = new Map();
+    for (const prop of sequence.props) {
+      for (const channel of prop.channels) exportedEffects.set(channel, channel.effects);
+    }
     if (text.length > MAX_XML_BYTES) {
       setBanner("The edited sequence exceeds the 50 MiB limit.", "error");
       return;
@@ -2590,8 +2857,10 @@
       if (requestId === state.exportRequestId && state.sequence === sequence) {
         setBanner("Not saved: " + problemText(error), "error");
       } else {
-        logProblem("An export of a previous workspace could not be completed: " + problemText(error),
-          "export");
+        const message = "Not saved: " + sequence.filename + " could not be exported: " +
+          problemText(error) + ". The current workspace was not changed.";
+        setBanner(message, "error");
+        logProblem(message, "export");
       }
       return;
     } finally {
@@ -2611,17 +2880,24 @@
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
-    if (state.sequence === sequence && state.editRevision === revision) {
-      for (const prop of sequence.props) {
-        for (const channel of prop.channels) state.baselineEffects.set(channel, channel.effects);
-      }
-      state.dirty = false;
+    // The validated download is now the baseline for the next export. Keep the
+    // original disk file untouched, but compare subsequent edits against the last
+    // successfully exported copy rather than the first file ever opened.
+    sequence.source.originalXml = text;
+    if (state.sequence === sequence) {
+      for (const [channel, effects] of exportedEffects) state.baselineEffects.set(channel, effects);
       state.exported = true;
+      state.dirty = sequence.props.some((prop) => prop.channels.some((channel) =>
+        state.baselineEffects.get(channel) !== channel.effects));
       updateEditControls();
-      setBanner("Checked and saved " + name + " with " + result.effects.toLocaleString() +
-        " effects. Your original file is unchanged.", "good");
+      if (state.editRevision === revision) {
+        setBanner("Checked and saved " + name + " with " + result.effects.toLocaleString() +
+          " effects. Your original file is unchanged.", "good");
+      } else {
+        setBanner("Saved " + name + " as it was when you clicked Save. Edits made while it was being checked remain unsaved.", "warn");
+      }
     } else {
-      setBanner("Saved " + name + " as it was when you clicked Save. The workspace changed while it was being checked; current edits remain unsaved.", "warn");
+      setBanner("Saved " + name + " from the previous workspace; the current workspace was not changed.", "warn");
     }
   }
 
@@ -2631,7 +2907,9 @@
     canvas.addEventListener("pointermove", handleTrackPointerMove);
     canvas.addEventListener("pointerup", handleTrackPointerUp);
     canvas.addEventListener("pointercancel", () => {
+      const cancelled = Boolean(state.drag);
       state.drag = null;
+      if (cancelled) setBanner("Drag cancelled; no sequence changes were made.", "warn");
       if (state.sequence) drawTracks(Number(canvas.width), state.pxPerSecond);
     });
     canvas.addEventListener("dblclick", handleTrackDoubleClick);
@@ -2646,7 +2924,12 @@
     markers.addEventListener("pointerdown", handleMarkerPointerDown);
     markers.addEventListener("pointermove", handleMarkerPointerMove);
     markers.addEventListener("pointerup", handleMarkerPointerUp);
-    markers.addEventListener("pointercancel", () => { state.reviewDrag = null; });
+    markers.addEventListener("pointercancel", () => {
+      const cancelled = Boolean(state.reviewDrag);
+      state.reviewDrag = null;
+      if (cancelled) setBanner("Marker drag cancelled; no music-review changes were made.", "warn");
+      if (state.sequence) drawMarkers(Number(markers.width), state.pxPerSecond);
+    });
     markers.addEventListener("dblclick", handleMarkerDoubleClick);
     window.addEventListener("beforeunload", (event) => {
       if (state.dirty || state.reviewDirty) event.preventDefault();
@@ -2708,6 +2991,30 @@
   }
 
   function applyMusic(label, changes, select) {
+    try {
+      for (const change of changes) {
+        if (state.lyrics && change.owner === state.lyrics && change.key === "lines") {
+          checkLyricsAgainstDuration({ schema_version: "lyrics-1.0", source: state.lyrics.source, lines: change.after });
+          continue;
+        }
+        const duration = Number(state.analysis && state.analysis.audio &&
+          state.analysis.audio.duration_seconds);
+        if (change.owner === (state.analysis && state.analysis.analysis) &&
+            Object.values(REVIEW_LANES).some((spec) => spec.key === change.key) &&
+            (!Number.isFinite(duration) || change.after.some((event) =>
+              !Number.isFinite(eventTime(event)) || eventTime(event) < 0 ||
+              eventTime(event) > duration + 1))) {
+          throw new Error("a marker must be within the analyzed song");
+        }
+      }
+    } catch (error) {
+      setBanner("Not changed: " + error.message + ".", "warn");
+      return false;
+    }
+    if (changes.every((change) => JSON.stringify(change.before) === JSON.stringify(change.after))) {
+      setBanner("No change was made.", "");
+      return false;
+    }
     const command = { label, music: changes };
     performMusic(command, "after");
     state.undo.push(command);
@@ -2728,14 +3035,14 @@
       lanes[spec.key] = analysis ? analysis[spec.key] : null;
     }
     state.reviewBaseline = { analysis, lanes, lyrics: state.lyrics,
-      lyricLines: state.lyrics ? state.lyrics.lines : null };
+      lyricLines: state.lyrics ? state.lyrics.lines : null, meter: $("meterSelect").value };
   }
 
   function reviewHasChanges() {
     const baseline = state.reviewBaseline;
     if (!baseline) return Boolean(state.analysis || state.lyrics);
     const analysis = state.analysis && state.analysis.analysis;
-    if (analysis !== baseline.analysis) return true;
+    if (analysis !== baseline.analysis || baseline.meter !== $("meterSelect").value) return true;
     for (const spec of Object.values(REVIEW_LANES)) {
       if (analysis && analysis[spec.key] !== baseline.lanes[spec.key]) return true;
     }
@@ -2744,6 +3051,7 @@
   }
 
   function afterMusicEdit(select) {
+    state.reviewRevision += 1;
     state.reviewDirty = reviewHasChanges();
     state.syncCheck = null;
     refreshTimeline();
@@ -2800,7 +3108,7 @@
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const lane = state.lanes[Math.floor((event.clientY - rect.top) / MARKER_HEIGHT)];
-    const seconds = Math.max(0, x / state.pxPerSecond);
+    const seconds = clampReviewSeconds(Math.max(0, x / state.pxPerSecond));
     const hit = { lane, x, seconds, target: reviewLane(lane), event: null, edge: null };
     if (!hit.target) return hit;
     const pps = state.pxPerSecond;
@@ -2860,16 +3168,18 @@
     if (!drag.moved && Math.abs(event.clientX - drag.startX) < DRAG_THRESHOLD) return;
     drag.moved = true;
     const rect = canvas.getBoundingClientRect();
-    const raw = Math.max(0, (event.clientX - rect.left) / state.pxPerSecond);
+    const raw = clampReviewSeconds(Math.max(0, (event.clientX - rect.left) / state.pxPerSecond));
     const { hit } = drag;
     let cs = snap(Math.round(raw * 100), drag.candidates, event.altKey);
+    cs = Math.round(clampReviewSeconds(cs / 100) * 100);
     if (hit.edge) {
       cs = snap(Math.round(raw * 100), drag.candidates, event.altKey);
     } else if (hit.lane.kind === "lyrics") {
       const offset = drag.hit.seconds - Number(hit.event.start);
       cs = snap(Math.round((raw - offset) * 100), drag.candidates, event.altKey);
+      cs = Math.round(clampReviewSeconds(cs / 100) * 100);
     }
-    drag.preview = cs / 100;
+    drag.preview = clampReviewSeconds(cs / 100);
     setBanner((hit.edge ? "Line " + hit.edge + " " : hit.target.name + " ") + "→ " +
       formatCentiseconds(cs) + (event.altKey ? " (snapping off)" : ""), "");
     drawMarkers(Number(canvas.width), state.pxPerSecond);
@@ -2885,19 +3195,37 @@
     const { hit } = drag;
     let replacement;
     if (hit.edge) {
-      const start = hit.edge === "start" ? drag.preview : Number(hit.event.start);
-      const end = hit.edge === "end" ? drag.preview : Number(hit.event.end);
+      const duration = currentMusicDuration();
+      const originalStart = Number(hit.event.start);
+      const originalEnd = Number(hit.event.end);
+      const start = hit.edge === "start"
+        ? Math.min(drag.preview, originalEnd - 0.05) : originalStart;
+      const end = hit.edge === "end"
+        ? Math.min(drag.preview, duration == null ? drag.preview : duration) : originalEnd;
       if (end - start < 0.05) {
         setBanner("Not changed: a lyric line needs some length.", "warn");
         drawMarkers(Number($("markersCanvas").width), state.pxPerSecond);
         return;
       }
-      replacement = Object.assign({}, hit.event, { start: round3(start), end: round3(end) });
+      const words = (hit.event.words || []).filter((word) =>
+        Number(word.end) > start && Number(word.start) < end).map((word) => Object.assign({}, word, {
+        start: round3(Math.max(start, Number(word.start))),
+        end: round3(Math.min(end, Number(word.end)))
+      })).filter((word) => word.end > word.start);
+      replacement = Object.assign({}, hit.event, { start: round3(start), end: round3(end), words });
+    } else if (hit.lane.kind === "lyrics") {
+      const duration = currentMusicDuration();
+      const length = Number(hit.event.end) - Number(hit.event.start);
+      const latestStart = duration == null ? 1800 - length : Math.max(0, duration - length);
+      replacement = movedEvent(hit.event, Math.min(drag.preview, latestStart));
     } else {
       replacement = movedEvent(hit.event, drag.preview);
     }
     const after = replaceEvent(hit.target, hit.event, replacement);
-    if (!after) return;
+    if (!after) {
+      setBanner("Not changed: the selected marker is no longer available.", "warn");
+      return;
+    }
     applyMusic((hit.edge ? "Trimmed a lyric line" : "Moved a " + hit.target.name.toLowerCase()) +
       " to " + formatCentiseconds(drag.preview * 100), [musicChange(hit.target, after)],
     { kind: hit.lane.kind, event: replacement });
@@ -2907,10 +3235,17 @@
     if (!state.sequence) return;
     const hit = markerHit(event);
     if (!hit.target || hit.event) return;
-    const seconds = snap(Math.round(hit.seconds * 100), snapCandidates(), event.altKey) / 100;
+    const seconds = clampReviewSeconds(
+      snap(Math.round(hit.seconds * 100), snapCandidates(), event.altKey) / 100);
     let created;
     if (hit.lane.kind === "lyrics") {
-      created = { start: round3(seconds), end: round3(seconds + 2), text: "(new line)",
+      const duration = currentMusicDuration();
+      const end = Math.min(duration == null ? 1800 : duration, seconds + 2);
+      if (end - seconds < 0.05) {
+        setBanner("Not changed: there is not enough song left for a lyric line.", "warn");
+        return;
+      }
+      created = { start: round3(seconds), end: round3(end), text: "(new line)",
         verified: false, words: [] };
     } else {
       created = newMarker(hit.lane.kind, seconds);
@@ -2957,8 +3292,10 @@
         setBanner("Not changed: a lyric line needs words.", "warn");
         return;
       }
-      if (!(values.end - values.start >= 0.05) || values.start < 0) {
-        setBanner("Not changed: the line must end after it starts.", "warn");
+      const duration = currentMusicDuration();
+      if (!(values.end - values.start >= 0.05) || values.start < 0 ||
+          (duration != null && values.end > duration)) {
+        setBanner("Not changed: the line must have a positive length and stay within the selected song.", "warn");
         return;
       }
       const delta = values.start - Number(event.start);
@@ -2973,9 +3310,19 @@
           ? words.map((word, index) => Object.assign({}, word, { text: typed[index], verified: true }))
           : [];
       }
+      words = words.filter((word) => Number(word.end) > values.start &&
+        Number(word.start) < values.end).map((word) => Object.assign({}, word, {
+        start: round3(Math.max(values.start, Number(word.start))),
+        end: round3(Math.min(values.end, Number(word.end)))
+      })).filter((word) => word.end > word.start);
       replacement = Object.assign({}, event, { text, start: round3(values.start),
         end: round3(values.end), words, verified: true });
     } else {
+      const duration = currentMusicDuration();
+      if (values.time < 0 || (duration != null && values.time > duration)) {
+        setBanner("Not changed: the marker must stay within the selected song.", "warn");
+        return;
+      }
       replacement = Object.assign({}, event, { time: round3(values.time), status: "confirmed" });
       if (selection.kind === "sections") replacement.label = values.label || null;
     }
@@ -3011,6 +3358,11 @@
     const end = eventTime(next);
     const method = "fitted between confirmed bars (" + bars + " bars of " + meter + ")";
     const step = (end - start) / (bars * meter);
+    const impliedBpm = 60 / step;
+    if (!Number.isFinite(impliedBpm) || impliedBpm > 300) {
+      setBanner("Not changed: that bar count would create an implausibly fast tempo. Choose fewer bars or farther-apart anchors.", "warn");
+      return;
+    }
     const beats = analysis.beats.filter((event) =>
       eventTime(event) < start - 0.05 || eventTime(event) > end + 0.05);
     for (let index = 0; index <= bars * meter; index++) {
@@ -3086,11 +3438,17 @@
     }
     form.appendChild(reviewButton("reviewApply", "Apply", () => {
       if (event.text != null) {
-        editSelected({ text: $("reviewText").value, start: Number($("reviewStart").value),
-          end: Number($("reviewEnd").value) });
+        const startText = $("reviewStart").value.trim();
+        const endText = $("reviewEnd").value.trim();
+        if (!startText || !endText) {
+          setBanner("Not changed: lyric start and end must both be numbers of seconds.", "warn");
+          return;
+        }
+        editSelected({ text: $("reviewText").value, start: Number(startText), end: Number(endText) });
       } else {
-        const time = Number($("reviewTime").value);
-        if (!Number.isFinite(time) || time < 0) {
+        const timeText = $("reviewTime").value.trim();
+        const time = Number(timeText);
+        if (!timeText || !Number.isFinite(time) || time < 0) {
           setBanner("Not changed: the time must be a number of seconds.", "warn");
           return;
         }
@@ -3112,8 +3470,15 @@
         const bar = medianBarSeconds();
         const bars = numberInput("fitBars", Math.max(1, Math.round(bar ? gap / bar : 1)), 1, 64, 1);
         fit.appendChild(field("Bars to " + formatCentiseconds(eventTime(next) * 100), bars));
-        fit.appendChild(reviewButton("fitBarsButton", "Fit bars and beats evenly", () =>
-          fitBetweenBars(event, Number($("fitBars").value))));
+        fit.appendChild(reviewButton("fitBarsButton", "Fit bars and beats evenly", () => {
+          const raw = $("fitBars").value.trim();
+          const count = Number(raw);
+          if (!raw || !Number.isInteger(count) || count < 1 || count > 64) {
+            setBanner("Not changed: enter a whole number of bars from 1 to 64.", "warn");
+            return;
+          }
+          fitBetweenBars(event, count);
+        }));
       } else {
         const hint = document.createElement("div");
         hint.textContent = "Confirm a later bar to fit the bars and beats between them.";
@@ -3185,10 +3550,11 @@
   };
 
   const show = { token: null, summary: null, audioFile: null, analysis: null, raw: [],
-    result: null, resultConfig: null, audioRequestId: 0, audioPending: false,
-    requirementsPending: false, requirementsRequestId: 0, displayRequestId: 0,
+    result: null, resultConfig: null, audioRequestId: 0, audioPending: false, audioUncertain: false,
+    analysisMeter: null, requirementsPending: false, requirementsUncertain: false, requirementsRequestId: 0, displayRequestId: 0,
     displayPending: false, testPending: false, batchRunning: false, batchToken: null,
-    batchConfig: null, batchReady: false, generationPending: false };
+    batchConfig: null, batchReady: false, batchUncertain: false, batchZipPending: false,
+    generationPending: false };
 
   function showMessage(id, text, kind) {
     const element = $(id);
@@ -3223,7 +3589,8 @@
   }
 
   function download(bytes, name, type) {
-    const url = URL.createObjectURL(new Blob([bytes], { type }));
+    const payload = bytes instanceof Blob ? bytes : new Blob([bytes], { type });
+    const url = URL.createObjectURL(payload);
     const link = document.createElement("a");
     link.href = url;
     link.download = name;
@@ -3235,11 +3602,9 @@
 
   async function makeDisplayTest() {
     if (!show.token || show.testPending || show.batchRunning || show.generationPending ||
-        show.displayPending || show.audioPending || show.requirementsPending) return;
+        show.batchZipPending || show.displayPending || show.audioPending || show.requirementsPending || show.requirementsUncertain) return;
     const token = show.token;
-    show.test = null;
-    $("watchTest").disabled = true;
-    $("saveTest").disabled = true;
+    // Keep the last valid test until its replacement has been built successfully.
     show.testPending = true;
     setShowConfigurationLocked(true);
     setStepEnabled();
@@ -3256,7 +3621,10 @@
       $("watchTest").disabled = false;
       $("saveTest").disabled = false;
     } catch (error) {
-      if (show.token === token) showMessage("testStatus", error.message || String(error), "error");
+      if (show.token === token) {
+        showMessage("testStatus", (error.message || String(error)) +
+          (show.test ? " The previous display test is still available." : ""), "error");
+      }
     } finally {
       show.testPending = false;
       setShowConfigurationLocked(false);
@@ -3277,15 +3645,31 @@
 
   async function watchDisplayTest() {
     const test = show.test;
-    if (!test || !confirmSequenceReplacement()) return;
+    if (!test || generatedActionsBlocked() || !confirmSequenceReplacement()) return;
+    try {
+      parseSequence(parseXmlDocument(test.sequence), test.file_name);
+    } catch (error) {
+      showMessage("testStatus", "The display-test sequence could not be opened: " +
+        problemText(error), "error");
+      return;
+    }
+    const sound = new File([bytesFromBase64(test.sound)], test.sound_name, { type: "audio/wav" });
+    const audioStatus = await loadAudio(sound, null, true, true);
+    if (audioStatus !== "loaded") {
+      showMessage("testStatus", audioStatus === "cancelled"
+        ? "Watching the display test was cancelled; your current editor sequence was left unchanged."
+        : audioStatus === "superseded"
+          ? "Watching the display test was superseded by another song load; your current editor sequence was left unchanged."
+          : "The display-test audio could not be loaded. Your current editor sequence was left unchanged.",
+        audioStatus === "cancelled" ? "warn" : "error");
+      return;
+    }
     openSequenceText(test.sequence, test.file_name, false);
     state.sequence.generated = true;
     updateEditControls();
     toggleYard(true);
     setBanner("Display test: press play and watch each kind of prop, then the sweep from left " +
       "to right, then everything on.", "good");
-    const sound = new File([bytesFromBase64(test.sound)], test.sound_name, { type: "audio/wav" });
-    await loadAudio(sound, null, true);
   }
 
   function currentBatchConfig() {
@@ -3309,12 +3693,23 @@
     });
   }
 
+  function generatedActionsBlocked() {
+    return state.audioDecodePending || show.audioPending || show.requirementsPending ||
+      show.requirementsUncertain || show.displayPending || show.generationPending || show.batchRunning ||
+      show.batchZipPending || show.testPending;
+  }
+
+  function updateGeneratedControls() {
+    const ready = !generatedActionsBlocked() && resultIsCurrent();
+    for (const id of ["openGenerated", "saveGenerated", "pictureGenerated", "reportGenerated"]) {
+      $(id).disabled = !ready;
+    }
+  }
+
   function invalidateGeneratedResult() {
     show.result = null;
     show.resultConfig = null;
-    for (const id of ["openGenerated", "saveGenerated", "pictureGenerated", "reportGenerated"]) {
-      $(id).disabled = true;
-    }
+    updateGeneratedControls();
     $("showNotes").replaceChildren();
   }
 
@@ -3334,34 +3729,69 @@
   }
 
   function setRequirementControlsLocked(locked) {
+    const disabled = locked || show.requirementsUncertain;
     for (const id of ["requirementKind", "requirementProps", "requirementSections",
       "requirementMax", "addRequirement", "translateRequirements", "plainRequirements"]) {
       const element = $(id);
       if (!element) continue;
-      if ("disabled" in element) element.disabled = locked;
+      if ("disabled" in element) element.disabled = disabled;
       element.querySelectorAll("input, select, textarea, button").forEach((child) => {
-        child.disabled = locked;
+        child.disabled = disabled;
       });
     }
-    $("requirementList").querySelectorAll("button").forEach((button) => { button.disabled = locked; });
+    $("requirementList").querySelectorAll("button").forEach((button) => { button.disabled = disabled; });
+  }
+
+  function hasSequenceableProps() {
+    return Boolean(show.summary && show.summary.props.some((prop) => prop.sequenceable));
   }
 
   function setStepEnabled() {
-    $("makeTest").disabled = !show.token || show.batchRunning || show.generationPending ||
-      show.displayPending || show.testPending || show.audioPending || show.requirementsPending;
-    $("showSongFile").disabled = !show.token || show.batchRunning || show.generationPending || show.displayPending;
-    $("showSongLabel").classList.toggle("disabled", !show.token);
-    $("addRequirement").disabled = !show.token;
-    $("translateRequirements").disabled = !show.token || !show.summary.can_translate;
-    $("generateShow").disabled = !(show.token && show.analysis && !show.audioPending &&
-      !show.requirementsPending && !show.generationPending && !show.batchRunning && !show.displayPending);
-    $("batchFiles").disabled = !show.token || show.batchRunning || show.generationPending || show.displayPending;
-    $("batchLabel").classList.toggle("disabled", !show.token || show.batchRunning || show.generationPending || show.displayPending);
-    setRequirementControlsLocked(show.requirementsPending || show.batchRunning || show.generationPending || show.displayPending);
+    const hasProps = hasSequenceableProps();
+    $("watchTest").disabled = !show.test || generatedActionsBlocked();
+    $("saveTest").disabled = !show.test || generatedActionsBlocked();
+    $("makeTest").disabled = !show.token || !hasProps || show.requirementsUncertain || show.batchRunning ||
+      show.generationPending || show.batchZipPending || show.displayPending || show.testPending ||
+      show.audioPending || show.requirementsPending;
+    $("showSongFile").disabled = !show.token || !hasProps || show.requirementsUncertain || show.batchRunning ||
+      show.generationPending || show.batchZipPending || show.displayPending || show.testPending ||
+      show.audioPending || show.requirementsPending;
+    $("meterSelect").disabled = state.audioDecodePending || show.requirementsUncertain || show.batchRunning || show.generationPending ||
+      show.batchZipPending || show.displayPending || show.testPending || show.audioPending ||
+      show.requirementsPending;
+    $("singFaces").disabled = !show.token || !show.summary || !show.summary.faces ||
+      !show.summary.can_separate_vocals || show.requirementsUncertain || show.batchRunning || show.generationPending ||
+      show.batchZipPending || show.displayPending || show.testPending || show.audioPending ||
+      show.requirementsPending;
+    $("showSongLabel").classList.toggle("disabled", !show.token || !hasProps || show.requirementsUncertain);
+    $("addRequirement").disabled = !show.token || show.requirementsUncertain || show.testPending || show.batchRunning ||
+      show.generationPending || show.batchZipPending || show.displayPending || show.requirementsPending;
+    $("translateRequirements").disabled = !show.token || !show.summary.can_translate || show.requirementsUncertain || show.testPending ||
+      show.batchRunning || show.generationPending || show.batchZipPending || show.displayPending || show.requirementsPending;
+    $("generateShow").disabled = !(show.token && hasProps && show.analysis && !show.audioUncertain && !show.requirementsUncertain &&
+      !show.audioPending && !show.requirementsPending && !show.generationPending && !show.batchRunning &&
+      !show.batchZipPending && !show.displayPending && !show.testPending &&
+      show.analysisMeter === $("meterSelect").value);
+    $("batchFiles").disabled = !show.token || !hasProps || show.requirementsUncertain || show.batchRunning ||
+      show.generationPending || show.batchZipPending || show.displayPending || show.testPending ||
+      show.audioPending || show.requirementsPending;
+    $("batchLabel").classList.toggle("disabled", !show.token || !hasProps || show.batchRunning || show.generationPending ||
+      show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending || show.requirementsUncertain);
+    setRequirementControlsLocked(show.requirementsPending || show.batchRunning || show.generationPending ||
+      show.batchZipPending || show.displayPending || show.testPending);
+    $("saveBatch").disabled = !show.batchReady || show.batchUncertain || show.requirementsUncertain ||
+      show.batchRunning || show.batchZipPending || show.generationPending || show.displayPending ||
+      show.audioPending || show.requirementsPending || show.testPending;
+    $("showDisplayFile").disabled = show.displayPending || show.batchRunning || show.batchZipPending ||
+      show.generationPending || show.testPending || show.audioPending || show.requirementsPending;
+    $("closeNewShow").disabled = state.audioDecodePending || show.audioPending || show.requirementsPending ||
+      show.displayPending || show.generationPending || show.batchRunning || show.batchZipPending || show.testPending;
+    updateGeneratedControls();
   }
 
   async function chooseDisplay(file) {
-    if (!file || show.batchRunning || show.generationPending || show.displayPending || show.testPending) return;
+    if (!file || show.batchRunning || show.batchZipPending || show.generationPending ||
+        show.displayPending || show.testPending || show.requirementsPending) return;
     const requestId = ++show.displayRequestId;
     show.displayPending = true;
     setShowConfigurationLocked(true);
@@ -3378,6 +3808,7 @@
       show.batchToken = null;
       show.batchConfig = null;
       show.batchReady = false;
+      show.batchUncertain = false;
       $("saveBatch").disabled = true;
       $("batchList").replaceChildren();
       showMessage("batchStatus", "");
@@ -3385,7 +3816,10 @@
       $("saveTest").disabled = true;
       showMessage("testStatus", "");
       show.analysis = null;
+      show.analysisMeter = null;
       show.audioFile = null;
+      show.audioUncertain = false;
+      show.requirementsUncertain = false;
       show.raw = summary.raw_requirements || [];
       show.audioRequestId += 1;
       show.audioPending = false;
@@ -3406,6 +3840,7 @@
       fillRequirementForm();
       fillStyles(summary.styles || [], summary.default_style);
       renderRequirements(summary.requirements, []);
+      $("singFaces").checked = Boolean(summary.faces && summary.can_separate_vocals);
       $("singFaces").closest("label").classList.toggle("hidden", !summary.faces);
       $("singNote").textContent = summary.faces ? (summary.can_separate_vocals
         ? "Splitting the vocals out takes a few minutes per song."
@@ -3428,41 +3863,76 @@
   }
 
   async function chooseSong(file) {
-    if (!file || !show.token) return;
+    if (!file || !show.token || show.audioPending || show.batchRunning || show.batchZipPending ||
+        show.generationPending || show.displayPending || show.testPending || show.requirementsPending || show.requirementsUncertain) return;
     const requestId = ++show.audioRequestId;
+    const token = show.token;
+    const meter = $("meterSelect").value;
+    let requestSent = false;
     show.audioPending = true;
-    show.audioFile = file;
-    show.analysis = null;
-    invalidateGeneratedResult();
-    $("musicFilename").value = file.name;
-    show.songName = file.name;
-    show.songSeconds = null;
-    checkMusicName();
     showMessage("songStatus", "Analyzing " + file.name + " on this computer…");
     setStepEnabled();
     try {
       if (file.size <= 0 || file.size > 200 * 1024 * 1024) {
         throw new Error("Audio must be non-empty and 200 MiB or smaller.");
       }
-      const payload = await withProgress("songStatus", "Sending the song", (key) =>
-        postShow("/api/show/audio?token=" + encodeURIComponent(show.token) +
-          "&beats_per_bar=" + $("meterSelect").value + "&request_id=" + requestId +
+      if (file.name.length > 200) {
+        throw new Error("Song file names must be 200 characters or fewer. Rename the file and try again.");
+      }
+      const payload = await withProgress("songStatus", "Sending the song", (key) => {
+        requestSent = true;
+        return postShow("/api/show/audio?token=" + encodeURIComponent(token) +
+          "&beats_per_bar=" + meter + "&request_id=" + requestId +
           "&name=" + encodeURIComponent(file.name) + "&progress=" + key, file,
-          "application/octet-stream"));
-      if (requestId !== show.audioRequestId || payload.stale) return;
+          "application/octet-stream");
+      });
+      if (requestId !== show.audioRequestId || token !== show.token) return;
+      if (payload.stale) {
+        show.audioUncertain = true;
+        showMessage("songStatus", "The server rejected this stale song upload. Re-select a song to resync before generating.", "warn");
+        return;
+      }
+      const report = payload && payload.report;
+      const duration = report && report.audio && report.audio.duration_seconds;
+      if (!report || !Number.isFinite(duration) || !report.analysis ||
+          !Array.isArray(report.analysis.section_candidates)) {
+        throw new Error("The program returned an incomplete song analysis.");
+      }
+      // Publish the replacement only after analysis and server-side commit succeed.
+      // A transport/server failure after commit is treated as uncertain, not as a
+      // safe rollback, because the client may not have received the committed report.
+      show.audioUncertain = false;
       show.audioFile = file;
-      show.analysis = payload.report;
-      show.songSeconds = payload.report.audio.duration_seconds;
-      const analysis = payload.report.analysis;
+      show.analysis = report;
+      show.analysisMeter = meter;
+      show.songSeconds = duration;
+      show.songName = file.name;
+      $("musicFilename").value = file.name;
+      checkMusicName();
+      invalidateGeneratedResult();
+      const analysis = report.analysis;
       const tempo = analysis.tempo && analysis.tempo.bpm != null ? analysis.tempo.bpm + " BPM"
         : "no steady tempo";
-      showMessage("songStatus", file.name + ": " + formatTime(payload.report.audio.duration_seconds) +
+      showMessage("songStatus", file.name + ": " + formatTime(duration) +
         ", about " + tempo + ", " + analysis.section_candidates.length + " section changes.",
         "good");
     } catch (error) {
-      if (requestId === show.audioRequestId) {
-        show.analysis = null;
-        showMessage("songStatus", error.message || String(error), "error");
+      if (requestId === show.audioRequestId && token === show.token) {
+        const status = error && Number.isInteger(error.status) ? error.status : null;
+        const sessionExpired = status === 422 &&
+          /put away after a long break/i.test(String(error.message || ""));
+        const uncertain = show.audioUncertain ||
+          (requestSent && (status == null || status >= 500 || sessionExpired));
+        if (uncertain) show.audioUncertain = true;
+        const previous = show.audioFile
+          ? (uncertain
+            ? " The server may have accepted the upload; re-select a song to resync before generating."
+            : " The previous song (" + show.audioFile.name + ") remains selected and usable.")
+          : (uncertain
+            ? " The server may have accepted the upload; re-select a song to confirm its state before generating."
+            : " Choose another song and try again.");
+        showMessage("songStatus", (error.message || String(error)) + previous, "error");
+        $("showSongFile").value = "";
       }
     } finally {
       if (requestId === show.audioRequestId) {
@@ -3471,7 +3941,6 @@
       }
     }
   }
-
   function fillStyles(styles, chosen) {
     const box = $("styleChoices");
     box.replaceChildren();
@@ -3543,6 +4012,8 @@
   }
 
   async function sendRequirements(raw, text) {
+    if (!show.token || show.requirementsPending || show.requirementsUncertain || show.batchRunning || show.batchZipPending ||
+        show.generationPending || show.displayPending || show.testPending) return;
     const requestId = ++show.requirementsRequestId;
     show.requirementsPending = true;
     setRequirementControlsLocked(true);
@@ -3552,18 +4023,45 @@
         encodeURIComponent(show.token) + "&request_id=" + requestId,
         JSON.stringify(text ? { requirements: raw, text } : { requirements: raw }),
         "application/json");
-      if (requestId !== show.requirementsRequestId || result.stale) return;
+      if (requestId !== show.requirementsRequestId) return;
+      if (result.stale) {
+        show.requirementsUncertain = true;
+        showMessage("requirementStatus",
+          "The server has a newer requirements revision than this workspace. " +
+          "Re-select the display to resync its saved profile before generating or building a playlist.",
+          "error");
+        return;
+      }
+      show.requirementsUncertain = false;
+      const requirementsChanged = JSON.stringify(show.raw) !== JSON.stringify(result.raw);
       show.raw = result.raw;
-      invalidateGeneratedResult();
-      if (show.batchReady) {
-        show.batchReady = false;
-        $("saveBatch").disabled = true;
-        showMessage("batchStatus", "Requirements changed. Rebuild the playlist before saving it.", "warn");
+      if (text && !result.problems.length &&
+          $("plainRequirements").value.trim() === text.trim()) {
+        $("plainRequirements").value = "";
+      }
+      if (requirementsChanged) {
+        invalidateGeneratedResult();
+        if (show.batchReady) {
+          show.batchReady = false;
+          $("saveBatch").disabled = true;
+          showMessage("batchStatus", "Requirements changed. Rebuild the playlist before saving it.", "warn");
+        }
       }
       renderRequirements(result.requirements, result.problems);
     } catch (error) {
       if (requestId === show.requirementsRequestId) {
-        showMessage("requirementStatus", error.message || String(error), "error");
+        const status = error && Number.isInteger(error.status) ? error.status : null;
+        const sessionExpired = status === 422 &&
+          /put away after a long break/i.test(String(error.message || ""));
+        if (status == null || status >= 500 || sessionExpired) {
+          show.requirementsUncertain = true;
+          showMessage("requirementStatus",
+            "The server may have saved these requirements, but confirmation was lost. " +
+            "Re-select the display to resync its saved profile before generating or building a playlist.",
+            "error");
+        } else {
+          showMessage("requirementStatus", error.message || String(error), "error");
+        }
       }
     } finally {
       if (requestId === show.requirementsRequestId) {
@@ -3599,7 +4097,8 @@
   }
 
   async function addRequirement() {
-    if (show.requirementsPending || show.batchRunning || show.generationPending) return;
+    if (show.requirementsPending || show.batchRunning || show.batchZipPending ||
+        show.generationPending || show.displayPending || show.testPending) return;
     const kind = $("requirementKind").value;
     const chosen = Array.from($("requirementProps").selectedOptions).map((item) => item.value);
     if (!chosen.length) {
@@ -3612,21 +4111,33 @@
         item.sections = Array.from($("requirementSections").querySelectorAll("input:checked"))
           .map((box) => box.value);
       }
-      if (kind === "max_intensity") item.max = Number($("requirementMax").value);
+      if (kind === "max_intensity") {
+        const raw = $("requirementMax").value.trim();
+        const maximum = Number(raw);
+        if (!raw || !Number.isInteger(maximum) || maximum < 0 || maximum > 100 ||
+            maximum % 5 !== 0) {
+          showMessage("requirementStatus", "Choose a brightness limit from 0 to 100 in steps of 5.", "warn");
+          return null;
+        }
+        item.max = maximum;
+      }
       return item;
     });
     if (kind === "quiet_during" && !added[0].sections.length) {
       showMessage("requirementStatus", "Choose the parts of the song to keep them dark.", "warn");
       return;
     }
+    if (added.some((item) => item == null)) return;
     await sendRequirements(show.raw.concat(added));
   }
 
   async function generateShow() {
-    if (show.generationPending || show.batchRunning || show.requirementsPending) return;
+    if (show.audioUncertain || show.requirementsUncertain || show.generationPending || show.batchRunning || show.batchZipPending ||
+        show.requirementsPending || show.audioPending || show.displayPending || show.testPending) return;
     const button = $("generateShow");
     const config = currentShowConfig();
-    invalidateGeneratedResult();
+    const previousResultIsCurrent = resultIsCurrent() && show.resultConfig === config;
+    if (!previousResultIsCurrent) invalidateGeneratedResult();
     show.generationPending = true;
     setShowConfigurationLocked(true);
     setStepEnabled();
@@ -3642,13 +4153,9 @@
           key, JSON.stringify({ music_filename: $("musicFilename").value, sing: singing,
           style: chosenStyle() }), "application/json"));
       if (!result.rules_ok) {
-        show.result = null;
-        $("openGenerated").disabled = true;
-      $("saveGenerated").disabled = true;
-        $("pictureGenerated").disabled = true;
-        $("showNotes").replaceChildren();
-        showMessage("generateStatus", result.report || "The plan did not pass the required rules.",
-          "error");
+        if (!previousResultIsCurrent) invalidateGeneratedResult();
+        showMessage("generateStatus", (result.report || "The plan did not pass the required rules.") +
+          (previousResultIsCurrent ? " The previous valid show is still available." : ""), "error");
       } else {
         if (config !== currentShowConfig()) {
           throw new Error("The show configuration changed while generation was running. Generate again.");
@@ -3672,8 +4179,10 @@
       $("reportGenerated").disabled = false;
       }
     } catch (error) {
-      invalidateGeneratedResult();
-      showMessage("generateStatus", error.message || String(error), "error");
+      if (!previousResultIsCurrent || config !== currentShowConfig()) invalidateGeneratedResult();
+      showMessage("generateStatus", (error.message || String(error)) +
+        (previousResultIsCurrent && config === currentShowConfig()
+          ? " The previous valid show is still available." : ""), "error");
     } finally {
       show.generationPending = false;
       setShowConfigurationLocked(false);
@@ -3686,6 +4195,7 @@
   }
 
   function saveGenerated() {
+    if (generatedActionsBlocked()) return;
     if (!resultIsCurrent() || !show.result.sequence) {
       invalidateGeneratedResult();
       showMessage("generateStatus", "This result no longer matches the selected show settings. Generate it again.", "warn");
@@ -3696,12 +4206,32 @@
 
   async function openGenerated() {
     const result = show.result;
+    if (generatedActionsBlocked()) return;
     if (!resultIsCurrent()) {
       invalidateGeneratedResult();
       showMessage("generateStatus", "This result no longer matches the selected show settings. Generate it again.", "warn");
       return;
     }
     if (!confirmSequenceReplacement()) return;
+    try {
+      parseSequence(parseXmlDocument(result.sequence), result.file_name);
+    } catch (error) {
+      showMessage("generateStatus", "The generated sequence could not be opened: " +
+        problemText(error), "error");
+      return;
+    }
+    if (show.audioFile) {
+      const audioStatus = await loadAudio(show.audioFile, show.analysis, true);
+      if (audioStatus !== "loaded") {
+        showMessage("generateStatus", audioStatus === "cancelled"
+          ? "Opening was cancelled. Your current editor sequence was left unchanged."
+          : audioStatus === "superseded"
+            ? "Opening was superseded by another song load; your current editor sequence was left unchanged."
+            : "The generated show's audio could not be loaded. Your current editor sequence was left unchanged.",
+          audioStatus === "cancelled" ? "warn" : "error");
+        return;
+      }
+    }
     openSequenceText(result.sequence, result.file_name, false);
     state.sequence.generated = true;
     state.dirty = true;
@@ -3709,7 +4239,6 @@
     setBanner("Generated " + result.file_name + ". Review it against the music, then Save " +
       "sequence to keep it; open it in S6 to fine-tune.", "good");
     toggleYard(true);
-    if (show.audioFile) await loadAudio(show.audioFile, show.analysis, true);
   }
 
   // Reports and pictures open inside the app (a sandboxed frame with no scripts), so
@@ -3768,13 +4297,13 @@
   }
 
   function openReport() {
-    if (!resultIsCurrent()) return;
+    if (generatedActionsBlocked() || !resultIsCurrent()) return;
     showViewer("Show report", show.result.summary, stem(show.result.file_name) + ".report.html",
       "text/html");
   }
 
   function openPicture() {
-    if (!resultIsCurrent()) return;
+    if (generatedActionsBlocked() || !resultIsCurrent()) return;
     showViewer("Plan picture", show.result.picture, stem(show.result.file_name) + ".plan.svg",
       "image/svg+xml");
   }
@@ -3782,31 +4311,61 @@
   // A playlist: each song is analyzed and built on the server one at a time, then
   // all the shows are saved together as one zip.
   async function runBatch(files) {
-    if (!show.token || !files.length || show.batchRunning || show.generationPending ||
+    if (!show.token || !files.length || show.batchRunning || show.batchZipPending || show.generationPending ||
+        show.requirementsUncertain ||
         show.testPending || show.displayPending || show.audioPending || show.requirementsPending) return;
+    if (files.length > MAX_BATCH_SONGS) {
+      showMessage("batchStatus", "A playlist can contain at most " + MAX_BATCH_SONGS +
+        " songs. No new playlist was started; select 40 or fewer.", "error");
+      return;
+    }
+    const seenNames = new Set();
+    const duplicateNames = new Set();
+    for (const file of files) {
+      const key = file.name.toLowerCase();
+      if (seenNames.has(key)) duplicateNames.add(file.name);
+      seenNames.add(key);
+    }
+    if (duplicateNames.size) {
+      showMessage("batchStatus", "The playlist contains duplicate audio filenames: " +
+        Array.from(duplicateNames).join(", ") +
+        ". Rename the files before building so S6 can distinguish the songs.", "error");
+      return;
+    }
     const batchToken = show.token;
     const batchMeter = $("meterSelect").value;
     const batchStyle = chosenStyle() || "";
     const batchConfig = currentBatchConfig();
-    show.batchToken = batchToken;
-    show.batchConfig = batchConfig;
-    show.batchReady = false;
+    const previousBatchIsUsable = show.batchReady && !show.batchUncertain &&
+      show.batchToken === batchToken && show.batchConfig === currentBatchConfig();
     show.batchRunning = true;
     setShowConfigurationLocked(true);
     setStepEnabled();
     $("saveBatch").disabled = true;
-    $("batchList").replaceChildren();
     try {
       await postShow("/api/show/batch-clear?token=" + encodeURIComponent(batchToken), "{}",
         "application/json");
     } catch (error) {
+      const status = error && Number.isInteger(error.status) ? error.status : null;
+      const sessionExpired = status === 422 &&
+        /put away after a long break/i.test(String(error.message || ""));
+      show.batchUncertain = show.batchUncertain || status == null || sessionExpired;
+      if (show.batchUncertain) show.batchReady = false;
       show.batchRunning = false;
       setShowConfigurationLocked(false);
       setStepEnabled();
-      showMessage("batchStatus", "The previous batch could not be cleared, so no new songs were built: " +
-        (error.message || String(error)), "error");
+      $("saveBatch").disabled = !previousBatchIsUsable || show.batchUncertain;
+      showMessage("batchStatus", show.batchUncertain
+        ? "The server's playlist state is uncertain. Start the batch again to reset and rebuild before downloading."
+        : "The previous batch could not be cleared, so no new songs were built: " +
+          (error.message || String(error)), "error");
       return;
     }
+    show.batchUncertain = false;
+    show.batchToken = batchToken;
+    show.batchConfig = batchConfig;
+    show.batchReady = false;
+    $("batchList").replaceChildren();
     const rows = files.map((file) => {
       const item = document.createElement("li");
       item.textContent = file.name + ": waiting";
@@ -3846,35 +4405,77 @@
           rows[i].title = result.problem || "";
         }
       } catch (error) {
+        const status = error && Number.isInteger(error.status) ? error.status : null;
+        const sessionExpired = status === 422 &&
+          /put away after a long break/i.test(String(error.message || ""));
+        const uncertain = status == null || status >= 500 || sessionExpired;
         rows[i].className = "error";
-        rows[i].textContent = file.name + ": " + (error.message || String(error));
+        rows[i].textContent = file.name + (uncertain
+          ? ": upload outcome is uncertain; restart the playlist before downloading"
+          : ": " + (error.message || String(error)));
+        if (uncertain) {
+          show.batchUncertain = true;
+          for (let rest = i + 1; rest < rows.length; rest++) {
+            rows[rest].className = "error";
+            rows[rest].textContent = files[rest].name + ": not attempted because the previous upload outcome is uncertain";
+          }
+          break;
+        }
       }
     }
     show.batchRunning = false;
     setShowConfigurationLocked(false);
     setStepEnabled();
-    show.batchReady = built > 0 && show.token === batchToken &&
+    show.batchReady = built > 0 && !show.batchUncertain && show.token === batchToken &&
       show.batchConfig === currentBatchConfig();
-    $("saveBatch").disabled = !show.batchReady;
-    showMessage("batchStatus", built + " of " + files.length + " shows built" +
-      (totalSeconds ? ", " + formatTime(totalSeconds) + " of music in all." : ".") +
-      (built ? " Save all shows downloads them with their reports." : ""), built ? "good" : "error");
+    $("saveBatch").disabled = !show.batchReady || show.batchUncertain;
+    showMessage("batchStatus", show.batchUncertain
+      ? "A song upload may have committed without a confirmation. Restart the playlist before downloading."
+      : built + " of " + files.length + " shows built" +
+        (totalSeconds ? ", " + formatTime(totalSeconds) + " of music in all." : ".") +
+        (built ? " Save all shows downloads them with their reports." : ""),
+      show.batchUncertain ? "warn" : built ? "good" : "error");
   }
 
   async function saveBatch() {
     const token = show.batchToken;
+    if (show.batchZipPending || show.batchRunning || show.batchUncertain || show.requirementsUncertain || show.generationPending ||
+        show.displayPending || show.audioPending || show.requirementsPending || show.testPending) return;
     if (!show.batchReady || !token || token !== show.token ||
         !show.batchConfig || show.batchConfig !== currentBatchConfig()) {
       $("saveBatch").disabled = true;
       showMessage("batchStatus", "There are no completed shows for the current display. Build the playlist again.", "warn");
       return;
     }
+    show.batchZipPending = true;
+    setShowConfigurationLocked(true);
+    setStepEnabled();
+    showMessage("batchStatus", "Packaging the completed shows and reports…");
     try {
-      const result = await postShow("/api/show/batch-zip?token=" + encodeURIComponent(token),
-        "{}", "application/json");
-      download(bytesFromBase64(result.zip), result.zip_name, "application/zip");
+      const response = await fetch(
+        "/api/show/batch-zip?token=" + encodeURIComponent(token),
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
+      );
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload && payload.error ? payload.error
+          : "The playlist archive could not be downloaded (code " + response.status + ").");
+      }
+      if (token !== show.token || !show.batchReady || show.batchConfig !== currentBatchConfig()) {
+        showMessage("batchStatus", "The playlist changed while it was being packaged. Build it again before saving.", "warn");
+        return;
+      }
+      const disposition = response.headers.get("Content-Disposition") || "";
+      const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+      const fileName = encodedName ? decodeURIComponent(encodedName[1]) : "shows.zip";
+      download(await response.blob(), fileName, "application/zip");
+      showMessage("batchStatus", "Saved the completed playlist as " + fileName + ".", "good");
     } catch (error) {
       showMessage("batchStatus", error.message || String(error), "error");
+    } finally {
+      show.batchZipPending = false;
+      setShowConfigurationLocked(false);
+      setStepEnabled();
     }
   }
 
@@ -3922,7 +4523,11 @@
     $("addRequirement").addEventListener("click", addRequirement);
     $("translateRequirements").addEventListener("click", () => {
       const text = $("plainRequirements").value.trim();
-      if (text) sendRequirements(show.raw, text);
+      if (!text) {
+        showMessage("requirementStatus", "Enter a requirement in plain English before translating it.", "warn");
+        return;
+      }
+      sendRequirements(show.raw, text);
     });
     $("generateShow").addEventListener("click", generateShow);
     $("makeTest").addEventListener("click", makeDisplayTest);
@@ -4298,7 +4903,10 @@
   // with nothing to play yet, it says what to do instead of doing nothing.
   function yardButtonClicked() {
     if (!$("newShow").classList.contains("hidden")) {
-      if (show.result && show.result.sequence) {
+      if (generatedActionsBlocked()) {
+        showMessage("generateStatus", "Wait for the current show operation to finish before opening Yard view.", "warn");
+        $("generateStatus").scrollIntoView({ block: "center" });
+      } else if (resultIsCurrent()) {
         openGenerated();
       } else {
         showMessage("generateStatus", "Generate a show first; Yard view then plays it on a " +
@@ -4895,6 +5503,7 @@
       canvasViewport.scrollLeft = 0;
     });
     $("meterSelect").addEventListener("change", () => {
+      if (show.token) invalidateGeneratedResult();
       if (show.batchReady && show.batchConfig !== currentBatchConfig()) {
         show.batchReady = false;
         $("saveBatch").disabled = true;
@@ -4903,22 +5512,39 @@
       if (show.token && show.audioFile && !show.batchRunning && !show.generationPending) {
         chooseSong(show.audioFile);
       }
-      if (state.reviewDirty) {
-        setBanner("Meter set to " + $("meterSelect").value + "/4 for fitting bars. Your saved music review is kept.", "good");
+      const keepReview = state.reviewDirty || state.reviewLoaded || state.reviewSaved;
+      state.reviewRevision += 1;
+      if (keepReview) {
+        state.reviewDirty = reviewHasChanges();
+        updateEditControls();
+        setBanner("Meter changed to " + $("meterSelect").value + "/4. Your existing review was kept; automatic analysis was not rerun. Save the review to retain the new meter.", "warn");
         return;
       }
-      if (state.audioFile && state.audioBuffer) analyzeSelectedAudio(state.audioFile);
+      if (state.audioFile && state.audioBuffer) {
+        analyzeSelectedAudio(state.audioFile);
+      } else if (state.analysis) {
+        state.reviewDirty = reviewHasChanges();
+        updateEditControls();
+        setBanner("Meter changed. Save the music review to preserve the new meter.", "warn");
+      }
     });
     $("playButton").addEventListener("click", async () => {
-      if (!state.audioFile) return;
+      const requestedFile = state.audioFile;
+      if (!requestedFile) return;
       if (audio.paused) {
         try {
           await audio.play();
+          // The user may have stopped playback or replaced the song while the
+          // browser was resolving play(). Never let that stale continuation
+          // restore the playing icon or animation.
+          if (audio.paused || state.audioFile !== requestedFile) return;
           $("playButton").textContent = "Ⅱ";
           cancelAnimationFrame(state.animationFrame);
           state.animationFrame = requestAnimationFrame(tickPlayback);
         } catch (error) {
-          setBanner("Audio playback could not start: " + (error.message || String(error)), "warn");
+          if (state.audioFile === requestedFile) {
+            setBanner("Audio playback could not start: " + (error.message || String(error)), "warn");
+          }
         }
       } else {
         audio.pause();

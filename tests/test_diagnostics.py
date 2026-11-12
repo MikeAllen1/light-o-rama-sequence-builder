@@ -41,6 +41,42 @@ def test_the_log_is_capped_per_run(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert len((tmp_path / "workspace.log").read_text(encoding="utf-8").splitlines()) == 3
 
 
+def test_leftover_sweep_does_not_count_failed_removals(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import os
+    import time
+
+    leftover = tmp_path / "lor-audio-abandoned"
+    leftover.mkdir()
+    old = time.time() - 48 * 60 * 60
+    os.utime(leftover, (old, old))
+
+    def refuse_removal(path: Path) -> None:
+        raise PermissionError("still in use")
+
+    monkeypatch.setattr("shutil.rmtree", refuse_removal)
+    assert diagnostics.sweep_leftovers(folder=tmp_path) == 0
+    assert leftover.is_dir()
+
+
+def test_leftover_sweep_removes_abandoned_batch_archives(tmp_path: Path) -> None:
+    import os
+    import time
+
+    abandoned = tmp_path / "lor-batch-abandoned.zip"
+    abandoned.write_bytes(b"old archive")
+    old = time.time() - 48 * 60 * 60
+    os.utime(abandoned, (old, old))
+
+    active = tmp_path / "lor-batch-active.zip"
+    active.write_bytes(b"active archive")
+
+    assert diagnostics.sweep_leftovers(folder=tmp_path) == 1
+    assert not abandoned.exists()
+    assert active.exists()
+
+
 def test_the_report_has_the_version_checks_steps_and_logs(tmp_path: Path) -> None:
     write_log("page", "Plan picture failed", tmp_path)
     (tmp_path / "desktop.log").write_text("window started\n", encoding="utf-8")
