@@ -48,15 +48,21 @@ def test_the_workspace_builds_a_playlist(
     token = started["token"]
     first, second = _songs(tmp_path / "songs", "Jingle.wav", "Silent.wav")
     results = []
-    for song, name in ((first, "Jingle.wav"), (second, "Silent.wav"), (second, "Jingle.wav")):
+    for song, name in ((first, "Jingle.wav"), (second, "Silent.wav")):
         status, result = _post(f"{server}/api/show/batch?token={token}&name={name}&style=elegant",
                                song.read_bytes(), "application/octet-stream")
         assert status == 200, result
         results.append(result)
     assert all(r["ok"] for r in results)
     assert [r["show"] for r in results] == ["Jingle (generated).loredit",
-                                            "Silent (generated).loredit",
-                                            "Jingle (2) (generated).loredit"]
+                                            "Silent (generated).loredit"]
+    # Duplicate names are rejected rather than creating ambiguous audio links.
+    status, duplicate = _post(
+        f"{server}/api/show/batch?token={token}&name=jInGlE.WAV&style=elegant",
+        second.read_bytes(), "application/octet-stream",
+    )
+    assert status == 422
+    assert "duplicate audio files" in duplicate["error"]
     request = Request(
         f"{server}/api/show/batch-zip?token={token}",
         data=b"{}", method="POST", headers={"Content-Type": "application/json"},
