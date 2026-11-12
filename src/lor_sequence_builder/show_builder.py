@@ -516,9 +516,21 @@ class ShowSessions:
                 except RulesFailedError as failed:
                     entry.update(ok=False, problem=failed.report.format_text()[:2000])
                 else:
-                    shutil.copyfile(show.sequence_path, done / output.name)
-                    shutil.copyfile(show.summary_path,
-                                    done / f"{unique} (generated).report.html")
+                    # Publish both artifacts without overwriting anything. If the
+                    # report cannot be published after the sequence, remove the
+                    # sequence link so the batch manifest and directory stay in sync.
+                    published: list[Path] = []
+                    try:
+                        sequence_target = done / output.name
+                        report_target = done / f"{unique} (generated).report.html"
+                        os.link(show.sequence_path, sequence_target)
+                        published.append(sequence_target)
+                        os.link(show.summary_path, report_target)
+                        published.append(report_target)
+                    except OSError:
+                        for target in published:
+                            target.unlink(missing_ok=True)
+                        raise
                     entry.update(ok=True, show=output.name,
                                  parts=len(show.plan.sections),
                                  props=len(show.plan.used_props))
