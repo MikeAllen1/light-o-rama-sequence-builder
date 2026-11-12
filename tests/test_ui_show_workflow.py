@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import threading
+from collections.abc import Iterator
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
@@ -13,7 +14,7 @@ playwright_api = pytest.importorskip("playwright.sync_api")
 
 
 @pytest.fixture
-def workspace_url() -> str:
+def workspace_url() -> Iterator[str]:
     server = ThreadingHTTPServer(("127.0.0.1", 0), SequencerRequestHandler)
     server.daemon_threads = True
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -47,7 +48,6 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
         "raw_requirements": [],
     }
     test_calls = 0
-    display_calls = 0
 
     def respond(route: object, body: dict[str, object], status: int = 200) -> None:
         route.fulfill(status=status, content_type="application/json", body=json.dumps(body))  # type: ignore[attr-defined]
