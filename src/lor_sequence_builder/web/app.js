@@ -1416,9 +1416,10 @@
     }
   }
 
-  async function loadAudio(file, presetAnalysis) {
+  async function loadAudio(file, presetAnalysis, reviewAlreadyConfirmed = false) {
     if (!file) return;
-    if (state.reviewDirty && !window.confirm("Replace the unsaved music review?")) return;
+    if (!reviewAlreadyConfirmed && state.reviewDirty &&
+        !window.confirm("Replace the unsaved music review?")) return;
     if (file.size <= 0 || file.size > MAX_AUDIO_BYTES) {
       setBanner("The song file is empty, or larger than the 200 MB the program accepts.", "error");
       return;
@@ -3118,7 +3119,9 @@
   };
 
   const show = { token: null, summary: null, audioFile: null, analysis: null, raw: [],
-    result: null, audioRequestId: 0, audioPending: false, requirementsPending: false, requirementsRequestId: 0 };
+    result: null, resultConfig: null, audioRequestId: 0, audioPending: false,
+    requirementsPending: false, requirementsRequestId: 0, batchRunning: false,
+    generationPending: false };
 
   function showMessage(id, text, kind) {
     const element = $(id);
@@ -3187,11 +3190,16 @@
     if (show.test) download(bytesFromBase64(show.test.zip), show.test.zip_name, "application/zip");
   }
 
+  function confirmSequenceReplacement() {
+    if (state.dirty && !window.confirm("Discard the unexported edits to " +
+        state.sequence.filename + "?")) return false;
+    if (state.reviewDirty && !window.confirm("Replace the unsaved music review?")) return false;
+    return true;
+  }
+
   async function watchDisplayTest() {
     const test = show.test;
-    if (!test) return;
-    if (state.dirty && !window.confirm("Discard the unexported edits to " +
-      state.sequence.filename + "?")) return;
+    if (!test || !confirmSequenceReplacement()) return;
     openSequenceText(test.sequence, test.file_name, false);
     state.sequence.generated = true;
     updateEditControls();
@@ -3199,7 +3207,48 @@
     setBanner("Display test: press play and watch each kind of prop, then the sweep from left " +
       "to right, then everything on.", "good");
     const sound = new File([bytesFromBase64(test.sound)], test.sound_name, { type: "audio/wav" });
-    await loadAudio(sound);
+    await loadAudio(sound, null, true);
+  }
+
+  function currentShowConfig() {
+    return JSON.stringify({
+      token: show.token,
+      song: show.songName || "",
+      meter: $("meterSelect").value,
+      style: chosenStyle(),
+      requirements: show.raw || [],
+      musicFilename: $("musicFilename").value,
+      singing: $("singFaces").checked && !$("singFaces").closest("label").classList.contains("hidden")
+    });
+  }
+
+  function invalidateGeneratedResult() {
+    show.result = null;
+    show.resultConfig = null;
+    for (const id of ["openGenerated", "saveGenerated", "pictureGenerated", "reportGenerated"]) {
+      $(id).disabled = true;
+    }
+    $("showNotes").replaceChildren();
+  }
+
+  function setShowConfigurationLocked(locked) {
+    for (const id of ["showDisplayFile", "showSongFile", "requirementKind", "requirementProps",
+      "requirementSections", "requirementMax", "addRequirement", "translateRequirements",
+      "plainRequirements", "musicFilename", "singFaces", "meterSelect", "styleChoices",
+      "closeNewShow"]) {
+      const element = $(id);
+      if (element) element.disabled = locked;
+    }
+    $("requirementList").querySelectorAll("button").forEach((button) => { button.disabled = locked; });
+  }
+
+  function setRequirementControlsLocked(locked) {
+    for (const id of ["requirementKind", "requirementProps", "requirementSections",
+      "requirementMax", "addRequirement", "translateRequirements", "plainRequirements"]) {
+      const element = $(id);
+      if (element) element.disabled = locked;
+    }
+    $("requirementList").querySelectorAll("button").forEach((button) => { button.disabled = locked; });
   }
 
   function setStepEnabled() {
@@ -3208,7 +3257,11 @@
     $("showSongLabel").classList.toggle("disabled", !show.token);
     $("addRequirement").disabled = !show.token;
     $("translateRequirements").disabled = !show.token || !show.summary.can_translate;
-    $("generateShow").disabled = !(show.token && show.analysis && !show.audioPending && !show.requirementsPending);
+    $("generateShow").disabled = !(show.token && show.analysis && !show.audioPending &&
+      !show.requirementsPending && !show.generationPending && !show.batchRunning);
+    $("batchFiles").disabled = !show.token || show.batchRunning || show.generationPending;
+    $("batchLabel").classList.toggle("disabled", !show.token || show.batchRunning || show.generationPending);
+    setRequirementControlsLocked(show.requirementsPending || show.batchRunning || show.generationPending);
   }
 
   async function chooseDisplay(file) {
@@ -3230,10 +3283,13 @@
       show.audioPending = false;
       show.requirementsPending = false;
       show.requirementsRequestId = 0;
-      show.result = null;
-      $("openGenerated").disabled = true;
-      $("saveGenerated").disabled = true;
-      $("pictureGenerated").disabled = true;
+      invalidateGeneratedResult();
+      show.songName = "";
+      show.songSeconds = null;
+      $("musicFilename").value = "";
+      $("songStatus").textContent = "";
+      $("musicNote").textContent = "";
+      checkMusicName();
       const kinds = summary.kinds.map((kind) => kind.count + " " + kind.label).join(", ");
       const skipped = summary.props.filter((prop) => !prop.sequenceable);
       showMessage("displayStatus", summary.display + ": " + (kinds || "nothing it can sequence") +
@@ -3252,8 +3308,8 @@
           "use the form instead.";
       if (show.audioFile) await chooseSong(show.audioFile);
     } catch (error) {
-      show.token = null;
-      showMessage("displayStatus", error.message || String(error), "error");
+      showMessage("displayStatus", (error.message || String(error)) +
+        " The previously loaded display remains active.", "error");
     }
     setStepEnabled();
   }
@@ -3262,10 +3318,7 @@
     if (!file || !show.token) return;
     const requestId = ++show.audioRequestId;
     show.audioPending = true;
-    show.result = null;
-    $("openGenerated").disabled = true;
-    $("saveGenerated").disabled = true;
-    $("pictureGenerated").disabled = true;
+    invalidateGeneratedResult();
     $("musicFilename").value = file.name;
     show.songName = file.name;
     show.songSeconds = null;
@@ -3377,6 +3430,7 @@
   async function sendRequirements(raw, text) {
     const requestId = ++show.requirementsRequestId;
     show.requirementsPending = true;
+    setRequirementControlsLocked(true);
     setStepEnabled();
     try {
       const result = await postShow("/api/show/requirements?token=" +
@@ -3385,10 +3439,7 @@
         "application/json");
       if (requestId !== show.requirementsRequestId || result.stale) return;
       show.raw = result.raw;
-      show.result = null;
-      $("openGenerated").disabled = true;
-      $("saveGenerated").disabled = true;
-      $("pictureGenerated").disabled = true;
+      invalidateGeneratedResult();
       renderRequirements(result.requirements, result.problems);
     } catch (error) {
       if (requestId === show.requirementsRequestId) {
@@ -3397,6 +3448,7 @@
     } finally {
       if (requestId === show.requirementsRequestId) {
         show.requirementsPending = false;
+        setRequirementControlsLocked(false);
         setStepEnabled();
       }
     }
@@ -3412,8 +3464,12 @@
       remove.type = "button";
       remove.className = "link-button";
       remove.textContent = "Remove";
-      remove.addEventListener("click", () =>
-        sendRequirements(show.raw.filter((_, other) => other !== index)));
+      remove.disabled = show.requirementsPending || show.batchRunning || show.generationPending;
+      remove.addEventListener("click", () => {
+        if (!show.requirementsPending && !show.batchRunning && !show.generationPending) {
+          sendRequirements(show.raw.filter((_, other) => other !== index));
+        }
+      });
       item.appendChild(remove);
       list.appendChild(item);
     });
@@ -3423,6 +3479,7 @@
   }
 
   async function addRequirement() {
+    if (show.requirementsPending || show.batchRunning || show.generationPending) return;
     const kind = $("requirementKind").value;
     const chosen = Array.from($("requirementProps").selectedOptions).map((item) => item.value);
     if (!chosen.length) {
@@ -3446,7 +3503,13 @@
   }
 
   async function generateShow() {
+    if (show.generationPending || show.batchRunning || show.requirementsPending) return;
     const button = $("generateShow");
+    const config = currentShowConfig();
+    invalidateGeneratedResult();
+    show.generationPending = true;
+    setShowConfigurationLocked(true);
+    setStepEnabled();
     button.disabled = true;
     const singing = $("singFaces").checked && !$("singFaces").closest("label")
       .classList.contains("hidden");
@@ -3467,7 +3530,11 @@
         showMessage("generateStatus", result.report || "The plan did not pass the required rules.",
           "error");
       } else {
+        if (config !== currentShowConfig()) {
+          throw new Error("The show configuration changed while generation was running. Generate again.");
+        }
         show.result = result;
+        show.resultConfig = config;
         const parts = result.sections.map((section) => section.label + " (" + section.level + ")");
         showMessage("generateStatus", "Every rule passed. " + (show.songSeconds
           ? "A " + formatTime(show.songSeconds) + " show. " : "") + result.used.length +
@@ -3485,21 +3552,36 @@
       $("reportGenerated").disabled = false;
       }
     } catch (error) {
+      invalidateGeneratedResult();
       showMessage("generateStatus", error.message || String(error), "error");
+    } finally {
+      show.generationPending = false;
+      setShowConfigurationLocked(false);
+      setStepEnabled();
     }
-    button.disabled = false;
+  }
+
+  function resultIsCurrent() {
+    return !!show.result && !!show.resultConfig && show.resultConfig === currentShowConfig();
   }
 
   function saveGenerated() {
-    if (!show.result || !show.result.sequence) return;
+    if (!resultIsCurrent() || !show.result.sequence) {
+      invalidateGeneratedResult();
+      showMessage("generateStatus", "This result no longer matches the selected show settings. Generate it again.", "warn");
+      return;
+    }
     download(show.result.sequence, show.result.file_name, "application/xml");
   }
 
   async function openGenerated() {
     const result = show.result;
-    if (!result) return;
-    if (state.dirty && !window.confirm("Discard the unexported edits to " +
-      state.sequence.filename + "?")) return;
+    if (!resultIsCurrent()) {
+      invalidateGeneratedResult();
+      showMessage("generateStatus", "This result no longer matches the selected show settings. Generate it again.", "warn");
+      return;
+    }
+    if (!confirmSequenceReplacement()) return;
     openSequenceText(result.sequence, result.file_name, false);
     state.sequence.generated = true;
     state.dirty = true;
@@ -3507,7 +3589,7 @@
     setBanner("Generated " + result.file_name + ". Review it against the music, then Save " +
       "sequence to keep it; open it in S6 to fine-tune.", "good");
     toggleYard(true);
-    if (show.audioFile) await loadAudio(show.audioFile, show.analysis);
+    if (show.audioFile) await loadAudio(show.audioFile, show.analysis, true);
   }
 
   // Reports and pictures open inside the app (a sandboxed frame with no scripts), so
@@ -3551,13 +3633,13 @@
   }
 
   function openReport() {
-    if (!show.result) return;
+    if (!resultIsCurrent()) return;
     showViewer("Show report", show.result.summary, stem(show.result.file_name) + ".report.html",
       "text/html");
   }
 
   function openPicture() {
-    if (!show.result) return;
+    if (!resultIsCurrent()) return;
     showViewer("Plan picture", show.result.picture, stem(show.result.file_name) + ".plan.svg",
       "image/svg+xml");
   }
@@ -3565,15 +3647,27 @@
   // A playlist: each song is analyzed and built on the server one at a time, then
   // all the shows are saved together as one zip.
   async function runBatch(files) {
-    if (!show.token || !files.length) return;
+    if (!show.token || !files.length || show.batchRunning || show.generationPending) return;
+    const batchToken = show.token;
+    const batchMeter = $("meterSelect").value;
+    const batchStyle = chosenStyle() || "";
+    const batchConfig = currentShowConfig();
     show.batchRunning = true;
+    setShowConfigurationLocked(true);
     setStepEnabled();
     $("saveBatch").disabled = true;
     $("batchList").replaceChildren();
     try {
-      await postShow("/api/show/batch-clear?token=" + encodeURIComponent(show.token), "{}",
+      await postShow("/api/show/batch-clear?token=" + encodeURIComponent(batchToken), "{}",
         "application/json");
-    } catch { /* a fresh session has nothing to clear */ }
+    } catch (error) {
+      show.batchRunning = false;
+      setShowConfigurationLocked(false);
+      setStepEnabled();
+      showMessage("batchStatus", "The previous batch could not be cleared, so no new songs were built: " +
+        (error.message || String(error)), "error");
+      return;
+    }
     const rows = files.map((file) => {
       const item = document.createElement("li");
       item.textContent = file.name + ": waiting";
@@ -3588,9 +3682,9 @@
       rows[i].textContent = file.name + ": analyzing and building…";
       try {
         const result = await withProgress("batchStatus", "Sending the song", (key) =>
-          postShow("/api/show/batch?token=" + encodeURIComponent(show.token) +
+          postShow("/api/show/batch?token=" + encodeURIComponent(batchToken) +
             "&name=" + encodeURIComponent(file.name) + "&beats_per_bar=" +
-            $("meterSelect").value + "&style=" + encodeURIComponent(chosenStyle() || "") +
+            batchMeter + "&style=" + encodeURIComponent(batchStyle) +
             "&progress=" + key, file, "application/octet-stream"),
           { from: i / files.length, to: (i + 1) / files.length, last: i === files.length - 1,
             prefix: "Song " + (i + 1) + " of " + files.length + ": " });
@@ -3611,6 +3705,7 @@
       }
     }
     show.batchRunning = false;
+    setShowConfigurationLocked(false);
     setStepEnabled();
     $("saveBatch").disabled = built === 0;
     showMessage("batchStatus", built + " of " + files.length + " shows built" +
@@ -3685,16 +3780,14 @@
     $("watchTest").addEventListener("click", watchDisplayTest);
     $("musicFilename").addEventListener("input", () => {
       checkMusicName();
-      show.result = null;
-      $("openGenerated").disabled = true;
-      $("saveGenerated").disabled = true;
-      $("pictureGenerated").disabled = true;
+      invalidateGeneratedResult();
+    });
+    $("styleChoices").addEventListener("change", () => {
+      invalidateGeneratedResult();
+      showMessage("generateStatus", "Show style changed. Generate again to apply it.", "warn");
     });
     $("singFaces").addEventListener("change", () => {
-      show.result = null;
-      $("openGenerated").disabled = true;
-      $("saveGenerated").disabled = true;
-      $("pictureGenerated").disabled = true;
+      invalidateGeneratedResult();
     });
     $("openGenerated").addEventListener("click", openGenerated);
     $("saveGenerated").addEventListener("click", saveGenerated);
@@ -4442,9 +4535,11 @@
       canvasViewport.scrollLeft = 0;
     });
     $("meterSelect").addEventListener("change", () => {
+      if (show.token && show.audioFile && !show.batchRunning && !show.generationPending) {
+        chooseSong(show.audioFile);
+      }
       if (state.reviewDirty) {
-        setBanner("Meter set to " + $("meterSelect").value + "/4 for fitting bars. The analysis was " +
-          "not re-run, so your review is kept.", "good");
+        setBanner("Meter set to " + $("meterSelect").value + "/4 for fitting bars. Your saved music review is kept.", "good");
         return;
       }
       if (state.audioFile && state.audioBuffer) analyzeSelectedAudio(state.audioFile);
