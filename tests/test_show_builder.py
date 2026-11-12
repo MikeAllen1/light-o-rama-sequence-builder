@@ -200,6 +200,30 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
             page.locator("#showDisplayFile").set_input_files(str(preview))
             page.locator("#displayStatus.good").wait_for(timeout=20000)
             assert "arches" in page.locator("#displayStatus").inner_text()
+
+            # The playlist loop must compare like-for-like configuration snapshots.
+            # An unchanged setup should build each selected song, not stop before song 1.
+            batch_calls = 0
+            page.route("**/api/show/batch-clear?*", lambda route: route.fulfill(
+                status=200, content_type="application/json", body='{"cleared":true}'))
+
+            def build_batch_song(route: Any) -> None:
+                nonlocal batch_calls
+                batch_calls += 1
+                route.fulfill(
+                    status=200, content_type="application/json",
+                    body='{"ok":true,"duration":20,"parts":3,"props":8}',
+                )
+
+            page.route("**/api/show/batch?*", build_batch_song)
+            page.locator("#batchFiles").set_input_files(str(audio))
+            page.locator("#batchStatus.good").wait_for(timeout=60000)
+            assert "1 of 1 shows built" in page.locator("#batchStatus").inner_text()
+            assert batch_calls == 1
+            assert not page.locator("#saveBatch").is_disabled()
+            page.unroute("**/api/show/batch?*")
+            page.unroute("**/api/show/batch-clear?*")
+
             page.locator("#makeTest").click()
             page.locator("#testStatus.good").wait_for(timeout=30000)
             with page.expect_download() as test_files:
