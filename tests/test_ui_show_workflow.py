@@ -56,12 +56,22 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 1440, "height": 1000})
         page.route("**/api/show/start*", lambda route: respond(route, summary))
-        page.route("**/api/show/audio*", lambda route: respond(route, {
-            "report": {
-                "audio": {"duration_seconds": 3.0},
-                "analysis": {"tempo": {"bpm": 120}, "section_candidates": []},
-            }
-        }))
+        audio_calls = 0
+
+        def analyze_audio(route: object) -> None:
+            nonlocal audio_calls
+            audio_calls += 1
+            if audio_calls == 2:
+                respond(route, {"error": "simulated audio failure"}, 422)
+            else:
+                respond(route, {
+                    "report": {
+                        "audio": {"duration_seconds": 3.0},
+                        "analysis": {"tempo": {"bpm": 120}, "section_candidates": []},
+                    }
+                })
+
+        page.route("**/api/show/audio*", analyze_audio)
         page.route("**/api/show/generate*", lambda route: respond(route, {
             "rules_ok": True,
             "file_name": "song (generated).loredit",
@@ -106,6 +116,13 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
                 "name": "song.wav", "mimeType": "audio/wav", "buffer": b"fake audio",
             })
             page.locator("#songStatus").filter(has_text="song.wav").wait_for()
+            page.locator("#showSongFile").set_input_files({
+                "name": "replacement.wav", "mimeType": "audio/wav", "buffer": b"bad audio",
+            })
+            page.locator("#songStatus").filter(has_text="simulated audio failure").wait_for()
+            assert "song.wav" in page.locator("#songStatus").inner_text()
+            assert page.locator("#musicFilename").input_value() == "song.wav"
+            assert not page.locator("#generateShow").is_disabled()
             page.locator("#generateShow").click()
             page.locator("#generateStatus").filter(has_text="Every rule passed").wait_for()
             assert not page.locator("#saveGenerated").is_disabled()
