@@ -25,7 +25,7 @@ def _sequence_xml() -> str:
         for index in range(1, 40000)
     )
     return f"""<?xml version="1.0" encoding="utf-8"?>
-<sequence saveFileVersion="15" totalCentiseconds="10000" musicTitle="Browser Acceptance">
+<sequence saveFileVersion="15" totalCentiseconds="10000" musicTitle="Browser Acceptance" musicFilename="expected-song.wav">
   <PreviewClass id="preview">
     <PropGroup id="group-front" Name="Front Yard">
       <member id="prop-tree" />
@@ -164,6 +164,7 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                     page.locator("#analysisMessage").filter(
                         has_text="Audio analysis complete"
                     ).wait_for(timeout=15000)
+                    assert "expects the audio file expected-song.wav" in page.locator("#analysisMessage").inner_text()
                     assert not page.locator("#playButton").is_disabled()
                     assert "Beat candidates" in page.locator("#markerLabels").inner_text()
                     assert "RMS energy envelope" in page.locator("#markerLabels").inner_text()
