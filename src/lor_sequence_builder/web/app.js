@@ -1825,6 +1825,10 @@
 
   async function loadLyrics(file) {
     if (!file) return;
+    if (!state.audioBuffer && !state.analysis) {
+      setBanner("Load the song or a saved analysis before importing lyrics.", "warn");
+      return;
+    }
     if (state.audioDecodePending) {
       setBanner("Wait for the selected song to finish loading before importing its lyrics.", "warn");
       $("lyricsFile").value = "";
