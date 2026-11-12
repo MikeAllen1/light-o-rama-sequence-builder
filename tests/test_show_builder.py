@@ -10,8 +10,8 @@ import time
 from collections.abc import Iterator
 from http.server import ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
 from types import SimpleNamespace
+from typing import Any
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
