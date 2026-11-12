@@ -256,7 +256,7 @@ def test_a_single_downbeat_preserves_its_phase_when_reconstructing_bars() -> Non
 
 
 def test_three_four_bar_fallback_stays_aligned_after_a_window_split() -> None:
-    from lor_sequence_builder.planner import _Window, _bars
+    from lor_sequence_builder.planner import _bars, _Window
 
     window = _Window(
         0, 50, 500, tuple(range(50, 500, 50)), (), False,
@@ -269,7 +269,7 @@ def test_three_four_bar_fallback_stays_aligned_after_a_window_split() -> None:
 def test_three_four_phrases_reconstruct_missing_downbeats_after_a_stop(
     downbeats: tuple[int, ...],
 ) -> None:
-    from lor_sequence_builder.planner import _Window, _phrases
+    from lor_sequence_builder.planner import _phrases, _Window
 
     window = _Window(
         0, 0, 1800, tuple(range(0, 1800, 50)), downbeats, False,
