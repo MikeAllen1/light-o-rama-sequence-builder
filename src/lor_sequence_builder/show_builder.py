@@ -533,6 +533,23 @@ class ShowSessions:
                 except RulesFailedError as failed:
                     entry.update(ok=False, problem=failed.report.format_text()[:2000])
                 else:
+                    existing_artifacts = [
+                        path
+                        for previous in session.batch if previous.get("ok")
+                        for path in (
+                            done / previous["show"],
+                            done / f"{previous['stem']} (generated).report.html",
+                        )
+                    ]
+                    existing_bytes = sum(path.stat().st_size for path in existing_artifacts)
+                    candidate_bytes = (
+                        show.sequence_path.stat().st_size + show.summary_path.stat().st_size
+                    )
+                    if existing_bytes + candidate_bytes > MAX_BATCH_ARCHIVE_BYTES:
+                        raise ShowBuildError(
+                            "Adding this show would exceed the 100 MiB playlist download limit. "
+                            "Save the current playlist before adding more songs."
+                        )
                     # Publish both artifacts without overwriting anything. If the
                     # report cannot be published after the sequence, remove the
                     # sequence link so the batch manifest and directory stay in sync.
