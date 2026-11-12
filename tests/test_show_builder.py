@@ -209,6 +209,19 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
             page.locator("#songStatus.good").wait_for(timeout=60000)
             assert "BPM" in page.locator("#songStatus").inner_text()
             assert page.locator("#musicFilename").input_value() == "beat.wav"
+
+            # A failed replacement must not discard the last successfully analyzed song.
+            bad_audio = tmp_path / "rejected.wav"
+            bad_audio.write_bytes(b"synthetic audio upload")
+            page.route("**/api/show/audio?*", lambda route: route.fulfill(
+                status=422, content_type="application/json",
+                body='{"error":"synthetic upload failure"}'))
+            page.locator("#showSongFile").set_input_files(str(bad_audio))
+            page.locator("#songStatus.error").wait_for(timeout=10000)
+            assert "beat.wav" in page.locator("#songStatus").inner_text()
+            assert page.locator("#musicFilename").input_value() == "beat.wav"
+            assert not page.locator("#generateShow").is_disabled()
+            page.unroute("**/api/show/audio?*")
             assert "S6 will look for beat.wav" in page.locator("#musicNote").inner_text()
             page.locator("#musicFilename").fill("Beat.mp3")
             assert "your song file is beat.wav" in page.locator("#musicNote.warn").inner_text()
