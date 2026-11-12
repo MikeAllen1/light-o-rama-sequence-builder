@@ -512,11 +512,10 @@ class ShowSessions:
                 shows = [entry for entry in session.batch if entry.get("ok")]
                 if not shows:
                     raise ShowBuildError("No batch shows have been built yet")
-                handle = tempfile.NamedTemporaryFile(
+                with tempfile.NamedTemporaryFile(
                     prefix="lor-batch-", suffix=".zip", delete=False
-                )
-                archive_path = Path(handle.name)
-                handle.close()
+                ) as handle:
+                    archive_path = Path(handle.name)
                 with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as archive:
                     for entry in shows:
                         for path in (done / entry["show"],
