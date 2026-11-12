@@ -142,7 +142,7 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             page.locator("#showSongFile").set_input_files({
                 "name": "song.wav", "mimeType": "audio/wav", "buffer": b"fake audio",
             })
-            page.locator("#songStatus").filter(has_text="song.wav").wait_for()
+            page.locator("#songStatus.good").filter(has_text="song.wav").wait_for()
             page.locator("#showSongFile").set_input_files({
                 "name": "replacement.wav", "mimeType": "audio/wav", "buffer": b"bad audio",
             })
