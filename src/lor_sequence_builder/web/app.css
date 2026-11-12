@@ -311,6 +311,9 @@ canvas { display: block; }
 .style-choice strong { font-size: 12px; }
 .style-choice span { font-size: 11px; color: var(--muted); line-height: 1.4; }
 .style-choice:has(input:checked) { border-color: var(--accent); }
+.style-choice .remove-style { grid-column: 2; justify-self: start; font-size: 11px; padding: 1px 6px; }
+.learn-style { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin-bottom: 6px; }
+.learn-style .edit-field { max-width: 200px; }
 
 /* Yard view */
 .yard-panel {

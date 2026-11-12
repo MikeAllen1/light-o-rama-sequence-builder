@@ -68,6 +68,27 @@ Everything is worked out on your computer; nothing is sent anywhere.
 
 A style never changes which rules the show must pass. On the command line: `generate ... --style energetic`.
 
+### Your own style
+
+If you have sequenced songs by hand, the program can learn how you do it. In **New show**, step 4, type a name and press **Learn my style from my sequences…**, then choose a few of your own `.loredit` (S5/S6) or `.lms` (S4) sequences. Different songs work best. It measures:
+
+- how long your lights stay on, in beats (quick hits or long holds), using each sequence's own timing grid for the beat;
+- how often you fade instead of cutting off;
+- how bright you go;
+- how much of the yard you light at once;
+- whether you flash most of the yard together, and whether you twinkle.
+
+It then starts from the built-in style closest to that and adjusts it: slower or faster grids, fades or sharp cuts, your brightness, more or fewer props leading at once, flashes, and twinkling stars. The new style shows up next to Classic, High energy and Elegant, says what it changed, and works with any yard and any song. **Remove** deletes it.
+
+Only the measurements are kept: nothing of the sequences themselves (no names, channels or timings), and nothing leaves your computer. On the command line:
+
+```
+lor-sequence-builder learn-style "Song 1.loredit" "Song 2.loredit" --name "My style" --output my-style.json
+lor-sequence-builder generate --preview yard.lorprev --audio song.mp3 --output show.loredit --style-file my-style.json
+```
+
+Add `--keep` to `learn-style` to make it a choice in the app too.
+
 ### The quality check
 
 Passing the rules makes a show valid; the quality check asks whether it is good. Every show is scored out of 100 and the report (`<show>.report.html`, and `quality` in the plan) lists what it found and where:

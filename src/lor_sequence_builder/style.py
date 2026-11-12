@@ -206,8 +206,17 @@ DEFAULT_STYLE = "classic"
 
 
 def get_style(key: str | None) -> Style:
-    """The style named ``key`` (default: classic); raises ValueError for an unknown one."""
+    """The style named ``key`` (default: classic), or a learned style kept for the app
+    (``mine:<name>``); raises ValueError for an unknown one."""
     name = (key or DEFAULT_STYLE).strip().lower()
+    if name.startswith("mine:"):
+        # A style learned from the user's own sequences and kept for the app.
+        from lor_sequence_builder.style_learning import StyleLearningError, load_saved
+
+        try:
+            return load_saved(name)
+        except StyleLearningError as exc:
+            raise ValueError(str(exc)) from exc
     if name not in STYLES:
         raise ValueError(f"Unknown style {key!r}; choose one of: {', '.join(STYLES)}")
     return STYLES[name]

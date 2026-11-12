@@ -108,7 +108,7 @@ def generate_show(
     separate: bool | None = None,
     progress: Callable[[str], None] | None = None,
     vocal_beats: bool = False,
-    style: str | None = None,
+    style: str | Style | None = None,
     lyrics_path: str | Path | None = None,
 ) -> GeneratedShow:
     """Build a show. ``preview_path`` is a ``.lorprev`` (S5/S6 output, ``.loredit``)
@@ -119,7 +119,7 @@ def generate_show(
     if (audio_path is None) == (analysis_path is None):
         raise SequenceWriteError("Give either the audio file or an existing analysis, not both")
     try:
-        chosen_style = get_style(style)
+        chosen_style = style if isinstance(style, Style) else get_style(style)
     except ValueError as exc:
         raise SequenceWriteError(str(exc)) from exc
     lyrics = read_lyrics(lyrics_path) if lyrics_path is not None else None
