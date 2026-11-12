@@ -553,7 +553,11 @@ class ShowSessions:
 
     def batch_clear(self, token: str) -> dict[str, Any]:
         with self.locked(token) as session:
-            shutil.rmtree(session.path / "batch", ignore_errors=True)
+            done = session.path / "batch"
+            if done.exists():
+                # Do not report a successful reset while old batch artifacts remain.
+                # Keep the in-memory manifest intact if the filesystem refuses removal.
+                shutil.rmtree(done)
             session.batch.clear()
         return {"cleared": True}
 
