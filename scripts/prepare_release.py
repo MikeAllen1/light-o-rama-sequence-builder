@@ -70,13 +70,32 @@ def merged_since_last_version(root: Path = ROOT) -> list[str]:
     return [s for s in subjects if re.search(r"\(#\d+\)$", s)]
 
 
+INSTALLER_URL = "https://github.com/MikeAllen1/light-o-rama-sequence-builder/releases/latest/download/LOR-Sequencer-Setup.exe"
+PORTABLE_URL = "https://github.com/MikeAllen1/light-o-rama-sequence-builder/releases/latest/download/LOR-Sequencer-Portable.zip"
+HOW_TO_INSTALL = [
+    "## How to install",
+    "",
+    (f"1. **[Download LOR-Sequencer-Setup.exe]({INSTALLER_URL})** (or click "
+    "LOR-Sequencer-Setup.exe under Assets at the bottom of this page)."),
+    ("2. Double-click it. If Windows says \"Windows protected your PC\", click **More info**, "
+    "then **Run anyway**."),
+    ("3. Click through the installer. It puts LOR Sequencer on your Start menu. Already have "
+    "it? Run the new one over it; your settings are kept."),
+    "",
+    ("**Don't download \"Source code (zip)\" or \"Source code (tar.gz)\".** GitHub adds "
+    "those to every release; they are for programmers and will not run."),
+    "",
+    (f"Can't run installers on your PC? Download [LOR-Sequencer-Portable.zip]({PORTABLE_URL}), "
+    "right-click it, choose **Extract All**, open the folder and double-click "
+    "**LOR Sequencer.exe**."),
+]
+
+
 def notes(version: str, titles: list[str]) -> str:
-    lines = [f"# LOR Sequencer {version}", "", "What's new:", ""]
+    lines = [f"# LOR Sequencer {version}", "", *HOW_TO_INSTALL, "", "## What's new", ""]
     lines += [f"- {title}" for title in reversed(titles)] or ["- (fill in)"]
-    lines += ["", "Download LOR-Sequencer-Setup-" + version + ".exe below and run it over your "
-              "current copy; it replaces it and keeps your settings. Cannot run installers? "
-              "LOR-Sequencer-Portable-" + version + ".zip: unzip it and run LOR Sequencer.exe.",
-              "", "Free to use, not to sell."]
+    lines += ["", "Everything runs on your computer; nothing is sent anywhere.", "",
+              "Free to use, not to sell."]
     return "\n".join(lines) + "\n"
 
 

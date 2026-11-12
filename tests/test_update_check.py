@@ -28,6 +28,8 @@ def _checking(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_versions_parse_and_compare() -> None:
     assert parse_version("v0.2.0") == (0, 2, 0)
     assert parse_version("1.10") == (1, 10, 0)
+    # A tag typed as "v.0.1.6" in the GitHub page still counts.
+    assert parse_version("v.0.1.6") == (0, 1, 6)
     assert parse_version("v1.0.0-beta") is None
     assert parse_version("v0.10.0") > parse_version("v0.9.9")  # type: ignore[operator]
 
