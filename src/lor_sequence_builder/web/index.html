@@ -43,8 +43,8 @@
         <input id="lyricsFile" type="file" accept=".json,.lrc,.srt,.vtt,application/json,text/plain">
       </label>
       <span class="toolbar-divider"></span>
-      <button id="playButton" class="icon-button" type="button" disabled aria-label="Play audio">▶</button>
-      <button id="stopButton" class="icon-button" type="button" disabled aria-label="Stop audio">■</button>
+      <button id="playButton" class="icon-button" type="button" disabled aria-label="Play audio (Space)" title="Play or pause (Space). Press ? for all shortcuts.">▶</button>
+      <button id="stopButton" class="icon-button" type="button" disabled aria-label="Stop audio (Home)" title="Stop and go back to the start (Home)">■</button>
       <label class="meter-control" title="Meter used for downbeat analysis">
         <span>Meter</span>
         <select id="meterSelect">
@@ -117,41 +117,41 @@
           <p>"I built this to make LOR sequences easier for people who don't have the time or the musical ability to create their own."</p>
           <footer>Mike, who runs a Light-O-Rama display of his own. Free to use, not to sell.</footer>
         </blockquote>
-        <p class="version-line"><span id="versionText">Version</span> · <button id="checkUpdates" class="link-like" type="button">Check for updates</button> · <button id="copyDiagnostics" class="link-like" type="button" title="Version, system checks and recent errors, to paste when asking for help">Copy diagnostics</button></p>
+        <p class="version-line"><span id="versionText">Version</span> · <button id="checkUpdates" class="link-like" type="button">Check for updates</button> · <button id="showShortcuts" class="link-like" type="button">Keyboard shortcuts</button> · <button id="copyDiagnostics" class="link-like" type="button" title="Version, system checks and recent errors, to paste when asking for help">Copy diagnostics</button></p>
       </div>
     </section>
 
     <section id="newShow" class="new-show hidden" aria-labelledby="newShowTitle">
       <div class="new-show-head">
         <div>
-          <h2 id="newShowTitle">Build a show for your display</h2>
+          <h1 id="newShowTitle">Build a show for your display</h1>
           <p>Everything runs on this computer. The result opens in the workspace to review; save it and fine-tune it in S6.</p>
         </div>
         <button id="closeNewShow" class="tool-button subtle" type="button">Close</button>
       </div>
       <ol class="show-steps">
         <li class="show-step">
-          <h3><span class="step-number">1</span>Your display</h3>
+          <h2><span class="step-number">1</span>Your display</h2>
           <p>The S6 preview (.lorprev) for your yard. The program reads what each prop is from it.</p>
           <label class="tool-button primary"><span>Choose preview</span>
             <input id="showDisplayFile" type="file" accept=".lorprev,.xml,application/xml,text/xml"></label>
-          <div id="displayStatus" class="step-status"></div>
+          <div id="displayStatus" class="step-status" role="status" aria-live="polite"></div>
           <div class="test-actions">
             <button id="makeTest" class="tool-button" type="button" disabled title="A short sequence that lights every prop in turn, to check wiring before a full show">10-second display test</button>
             <button id="watchTest" class="tool-button subtle" type="button" disabled>Watch the test</button>
             <button id="saveTest" class="tool-button subtle" type="button" disabled>Save test files</button>
           </div>
-          <div id="testStatus" class="step-status"></div>
+          <div id="testStatus" class="step-status" role="status" aria-live="polite"></div>
         </li>
         <li class="show-step">
-          <h3><span class="step-number">2</span>The song</h3>
+          <h2><span class="step-number">2</span>The song</h2>
           <p>The audio file S6 will play. It is analyzed here for beats, bars, sections and hits.</p>
           <label id="showSongLabel" class="tool-button primary disabled"><span>Choose song</span>
             <input id="showSongFile" type="file" disabled accept="audio/*,.mp3,.mp4,.wav,.flac,.m4a,.ogg,.opus"></label>
-          <div id="songStatus" class="step-status"></div>
+          <div id="songStatus" class="step-status" role="status" aria-live="polite"></div>
         </li>
         <li class="show-step">
-          <h3><span class="step-number">3</span>Requirements <span class="optional">optional</span></h3>
+          <h2><span class="step-number">3</span>Requirements <span class="optional">optional</span></h2>
           <p>Anything the show must do on your display. They are remembered for this display.</p>
           <div class="requirement-form">
             <label class="edit-field"><span>Requirement</span><select id="requirementKind"></select></label>
@@ -168,10 +168,10 @@
             <div id="plainNote" class="step-note"></div>
           </div>
           <ul id="requirementList" class="requirement-list"></ul>
-          <div id="requirementStatus" class="step-status"></div>
+          <div id="requirementStatus" class="step-status" role="status" aria-live="polite"></div>
         </li>
         <li class="show-step">
-          <h3><span class="step-number">4</span>Generate</h3>
+          <h2><span class="step-number">4</span>Generate</h2>
           <div class="style-label">Style</div>
           <div id="styleChoices" class="style-choices" role="radiogroup" aria-label="Show style"></div>
           <label class="edit-field wide"><span>Audio file name S6 should play (as it appears in S6's audio folder)</span>
@@ -186,10 +186,10 @@
             <button id="reportGenerated" class="tool-button subtle" type="button" disabled>Show report</button>
             <button id="pictureGenerated" class="tool-button subtle" type="button" disabled>Plan picture</button>
           </div>
-          <div id="generateStatus" class="step-status"></div>
+          <div id="generateStatus" class="step-status" role="status" aria-live="polite"></div>
           <ul id="showNotes" class="show-notes"></ul>
           <div class="batch">
-            <h4>A whole playlist at once</h4>
+            <h3>A whole playlist at once</h3>
             <p>Choose several songs and each one gets its own show, with this display, style and requirements. Their sequences play the song under its own file name, and faces stay still in batch shows.</p>
             <div class="generate-actions">
               <label id="batchLabel" class="tool-button disabled"><span>Choose songs</span>
@@ -197,13 +197,14 @@
               <button id="saveBatch" class="tool-button" type="button" disabled>Save all shows</button>
             </div>
             <ol id="batchList" class="batch-list"></ol>
-            <div id="batchStatus" class="step-status"></div>
+            <div id="batchStatus" class="step-status" role="status" aria-live="polite"></div>
           </div>
         </li>
       </ol>
     </section>
 
-    <section id="editor" class="editor hidden">
+    <section id="editor" class="editor hidden" aria-labelledby="editorTitle">
+      <h1 id="editorTitle" class="visually-hidden">Sequence workspace</h1>
       <div class="sequence-bar">
         <div class="sequence-identity">
           <div class="sequence-title" id="sequenceTitle">No sequence loaded</div>
@@ -245,7 +246,7 @@
       </div>
 
       <div id="yardPanel" class="yard-panel hidden" aria-label="Yard view">
-        <canvas id="yardCanvas" class="yard-canvas"></canvas>
+        <canvas id="yardCanvas" class="yard-canvas" role="img" aria-label="Drawing of the display, lit as the show plays"></canvas>
         <div class="yard-caption"><span>Yard view</span><span id="yardStatus"></span>
           <span class="yard-note">Drawn from the preview inside the sequence; S6's visualizer is the reference.</span></div>
       </div>
@@ -259,7 +260,7 @@
             <div id="trackLabels"></div>
           </div>
         </aside>
-        <div class="canvas-viewport" id="canvasViewport">
+        <div class="canvas-viewport" id="canvasViewport" tabindex="0" role="region" aria-label="Timeline: tracks and effects (scroll with the arrow keys)">
           <div class="canvas-content" id="canvasContent">
             <canvas id="rulerCanvas" class="ruler-canvas"></canvas>
             <canvas id="waveformCanvas" class="waveform-canvas"></canvas>
@@ -305,7 +306,7 @@
               <button id="viewerClose" class="tool-button subtle" type="button">Close</button>
             </span>
           </div>
-          <iframe id="viewerFrame" class="viewer-frame" sandbox="" title="Report"></iframe>
+          <iframe id="viewerFrame" tabindex="0" class="viewer-frame" sandbox="" title="Contents of the window"></iframe>
         </div>
       </div>
 </body>

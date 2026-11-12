@@ -3523,6 +3523,7 @@
           "font:12px/1.5 Consolas,monospace;white-space:pre-wrap\">" + escapeHtml(content) + "</pre>"
         : content;
     $("viewerFrame").srcdoc = html;
+    if ($("viewer").classList.contains("hidden")) state.viewerReturn = document.activeElement;
     $("viewer").classList.remove("hidden");
     $("viewerClose").focus();
   }
@@ -3544,6 +3545,20 @@
     $("viewer").classList.add("hidden");
     $("viewerFrame").srcdoc = "";
     state.viewer = null;
+    // Back to where the reader was before the window opened.
+    const back = state.viewerReturn;
+    state.viewerReturn = null;
+    if (back && typeof back.focus === "function" && document.contains(back)) back.focus();
+  }
+
+  // Tab stays inside the open window (Save a copy, Close, the page shown).
+  function trapViewerFocus(event) {
+    if (event.key !== "Tab" || $("viewer").classList.contains("hidden")) return;
+    const stops = [$("viewerSave"), $("viewerClose"), $("viewerFrame")];
+    const index = stops.indexOf(document.activeElement);
+    const next = (index + (event.shiftKey ? -1 : 1) + stops.length) % stops.length;
+    stops[index === -1 ? 0 : next].focus();
+    event.preventDefault();
   }
 
   function stem(name) {
@@ -3705,6 +3720,7 @@
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && !$("viewer").classList.contains("hidden")) closeViewer();
     });
+    document.addEventListener("keydown", trapViewerFocus);
     for (const [value, text] of Object.entries(REQUIREMENT_KINDS)) {
       $("requirementKind").appendChild(option(value, text));
     }
@@ -4405,6 +4421,57 @@
     }
   }
 
+  // Playback from the keyboard, like a video player. Ignored while typing, and Space is
+  // left to a focused button so it still presses that button.
+  const SHORTCUTS = [
+    ["Space or K", "Play or pause"],
+    ["J / L", "Back or forward 5 seconds"],
+    ["Home", "Back to the start"],
+    ["Y", "Show or hide the yard view"],
+    ["Ctrl+Z / Ctrl+Y", "Undo or redo an edit"],
+    ["Arrow keys", "Move the selected effects (Shift: further)"],
+    ["Delete", "Delete the selected effects"],
+    ["Esc", "Clear the selection, or close a window"],
+    ["?", "This list"],
+  ];
+
+  function showShortcuts() {
+    showViewer("Keyboard shortcuts", SHORTCUTS.map(([keys, what]) =>
+      keys.padEnd(18) + what).join("\n"), "LOR Sequencer shortcuts.txt", "text/plain");
+  }
+
+  function handlePlaybackKey(event) {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const target = event.target;
+    if (target && (["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName) ||
+      target.isContentEditable)) return;
+    if (!$("viewer").classList.contains("hidden")) return;
+    const key = event.key;
+    if (key === "?") {
+      showShortcuts();
+      event.preventDefault();
+      return;
+    }
+    if ($("editor").classList.contains("hidden") || !state.sequence) return;
+    const audio = $("audioPlayer");
+    const onButton = target && target.closest && target.closest("button, a, label");
+    if ((key === " " && !onButton) || key === "k" || key === "K") {
+      if (!$("playButton").disabled) $("playButton").click();
+    } else if ((key === "j" || key === "J" || key === "l" || key === "L") && state.audioFile) {
+      const step = key.toLowerCase() === "j" ? -5 : 5;
+      audio.currentTime = Math.max(0, Math.min(audio.duration || 0, audio.currentTime + step));
+      updatePlayhead();
+    } else if (key === "Home" && state.audioFile) {
+      audio.currentTime = 0;
+      updatePlayhead();
+    } else if (key === "y" || key === "Y") {
+      $("yardButton").click();
+    } else {
+      return;
+    }
+    event.preventDefault();
+  }
+
   function setup() {
     const bindFile = (id, handler) => $(id).addEventListener("change", (event) => {
       const file = event.target.files && event.target.files[0];
@@ -4472,7 +4539,14 @@
       updatePlayhead();
     });
     audio.addEventListener("ended", () => $("playButton").textContent = "▶");
-    audio.addEventListener("pause", () => $("playButton").textContent = "▶");
+    audio.addEventListener("pause", () => {
+      $("playButton").textContent = "▶";
+      $("playButton").setAttribute("aria-label", "Play audio (Space)");
+    });
+    audio.addEventListener("play", () => $("playButton").setAttribute("aria-label",
+      "Pause audio (Space)"));
+    document.addEventListener("keydown", handlePlaybackKey);
+    $("showShortcuts").addEventListener("click", showShortcuts);
     audio.addEventListener("timeupdate", updatePlayhead);
     canvasViewport.addEventListener("scroll", syncScroll);
     window.addEventListener("resize", () => {

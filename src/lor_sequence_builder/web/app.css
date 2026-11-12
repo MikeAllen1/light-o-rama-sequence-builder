@@ -8,7 +8,7 @@
   --line-soft: #2e2a26;
   --text: #f1e9de;
   --muted: #a49b90;
-  --faint: #7e7367;
+  --faint: #a09584;
   --accent: #f2b441;
   --accent-2: #9b82e8;
   --green: #9ccc7d;
@@ -40,7 +40,14 @@ button { color: inherit; }
 .tool-button.primary:hover { background: #cc5426; }
 .tool-button.subtle { background: transparent; border-color: #3f3933; color: #b4ada4; }
 .tool-button.large { min-height: 42px; padding: 0 17px; }
-.tool-button input { display: none; }
+.visually-hidden, .tool-button input[type="file"], .link-button input[type="file"] {
+  position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.tool-button input:not([type="file"]) { display: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tool-button:focus-within, .link-button:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tool-button:has(input:focus:not(:focus-visible)), .link-button:has(input:focus:not(:focus-visible)) { outline: none; }
+.canvas-viewport:focus-visible { outline-offset: -2px; }
 .toolbar-divider { height: 24px; width: 1px; background: var(--line); margin: 0 4px; }
 .icon-button { width: 34px; padding: 0; font-size: 12px; }
 .icon-button:disabled { opacity: .35; cursor: default; }
@@ -67,7 +74,6 @@ main { height: calc(100% - 66px); }
 .hero-or { color: var(--muted); font-size: 13px; }
 .hero-or .link-button { color: #f2c46d; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .hero-or .link-button:hover { color: #ffd98f; }
-.link-button input { display: none; }
 .welcome-note { margin: 22px 0 0; color: #8d8478; font-size: 12px; }
 .hero-yard { margin: 0; }
 .hero-yard canvas { display: block; width: 100%; aspect-ratio: 16 / 10; border-radius: 14px;
@@ -136,7 +142,7 @@ main { height: calc(100% - 66px); }
 .label-ruler { height: 38px; position: sticky; top: 0; z-index: 3; background: #2a2622; color: #bdb6ae; font-size: 11px; }
 .label-wave { height: 94px; color: #d5b476; font-size: 11px; background: #24211e; }
 .marker-label { height: 22px; color: #b3aca3; font-size: 9px; background: #211e1b; }
-.marker-label .source { color: #81766a; margin-left: auto; font-size: 8px; }
+.marker-label .source { color: #a09584; margin-left: auto; font-size: 8px; }
 .marker-label .source.low-confidence { color: #92877b; opacity: .75; }
 .track-label { height: 22px; font-size: 10px; color: #b1a99f; gap: 7px; }
 .track-label.group { height: 22px; background: #2a2723; color: #e7dccd; font-weight: 750; }
@@ -145,7 +151,7 @@ main { height: calc(100% - 66px); }
 .track-label button {
   border: 0; background: none; color: inherit; padding: 0; cursor: pointer; font-size: 10px; width: 12px;
 }
-.track-label .track-meta { margin-left: auto; color: #7b7064; font-size: 8px; }
+.track-label .track-meta { margin-left: auto; color: #a09584; font-size: 8px; }
 .canvas-viewport { overflow: auto; position: relative; background: #1a1815; }
 .canvas-content { position: relative; min-width: 100%; }
 canvas { display: block; }
@@ -167,7 +173,7 @@ canvas { display: block; }
   background: #211e1b; border-top: 1px solid var(--line);
 }
 .inspector { min-width: 330px; max-width: 52%; flex: 0 0 560px; }
-.inspector-heading { color: #8e8274; font: 700 13px/1.2 Rockwell, Georgia, serif; }
+.inspector-heading { color: #b0a493; font: 700 13px/1.2 Rockwell, Georgia, serif; }
 .inspector-content { color: #c6c0ba; font-size: 10px; margin-top: 6px; line-height: 1.5; }
 .inspector-content .inspector-primary { color: #faf5eb; font-weight: 700; }
 .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 13px; color: #9b9185; font-size: 9px; }
@@ -178,7 +184,7 @@ canvas { display: block; }
 .legend-shimmer { background: #d79a4e; }
 .legend-beat { background: #55b88e; }
 .legend-downbeat { background: #b28ce9; }
-.read-only-note { margin-left: auto; color: #7b7064; font-size: 11px; white-space: nowrap; }
+.read-only-note { margin-left: auto; color: #a09584; font-size: 11px; white-space: nowrap; }
 @media (max-width: 1560px) {
   .connection-status { display: none; }
 }
@@ -245,12 +251,12 @@ canvas { display: block; }
 /* New show */
 .new-show { height: 100%; overflow-y: auto; padding: 26px 34px 40px; }
 .new-show-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; max-width: 980px; }
-.new-show-head h2 { margin: 6px 0 6px; font: 700 30px/1.15 Rockwell, "Roboto Slab", Georgia, serif; color: #fff3e2; }
+.new-show-head h1 { margin: 6px 0 6px; font: 700 30px/1.15 Rockwell, "Roboto Slab", Georgia, serif; color: #fff3e2; }
 .new-show-head p, .show-step p { margin: 0 0 12px; color: var(--muted); font-size: 13px; line-height: 1.5; }
 .show-steps { list-style: none; padding: 0; margin: 26px 0 0; display: grid; gap: 0; max-width: 980px; }
 .show-step { position: relative; padding: 24px 0 26px 62px; border-top: 1px solid var(--line); }
 .show-step .step-number { top: 18px; }
-.show-step h3 { margin: 0 0 6px; font: 700 20px/1.2 Rockwell, "Roboto Slab", Georgia, serif; color: #fff3e2; }
+.show-step h2 { margin: 0 0 6px; font: 700 20px/1.2 Rockwell, "Roboto Slab", Georgia, serif; color: #fff3e2; }
 .show-step .optional { color: var(--faint); font: italic 400 13px/1 Georgia, serif; margin-left: 8px; }
 .step-status { margin-top: 10px; font-size: 13px; color: var(--muted); line-height: 1.5; }
 .step-status.good { color: var(--green); }
@@ -325,7 +331,7 @@ canvas { display: block; }
 @media (prefers-reduced-motion: reduce) { .progress-fill { transition: none; }
   .progress.slow .progress-fill { animation: none; } }
 .batch { margin-top: 26px; padding-top: 18px; border-top: 1px dashed var(--line); }
-.batch h4 { margin: 0 0 6px; font: 700 16px/1.2 Rockwell, "Roboto Slab", Georgia, serif; color: #fff3e2; }
+.batch h3 { margin: 0 0 6px; font: 700 16px/1.2 Rockwell, "Roboto Slab", Georgia, serif; color: #fff3e2; }
 .batch-list { margin: 10px 0 0; padding-left: 20px; color: var(--muted); font-size: 13px; line-height: 1.7; }
 .batch-list .good { color: var(--green); }
 .batch-list .error { color: var(--red); }

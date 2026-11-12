@@ -474,3 +474,12 @@ Every problem ends in plain words that say what to do, and bugs leave a trail in
 ## Progress
 
 Anything that takes more than a moment shows a bar, what the program is doing now and the time so far, under its status line: reading and analyzing a song (in New show, playlists and the workspace), generating a show, and making the display test. The engine reports real stages ("Reading the song", "Finding the beats", "Finding the bars and the parts of the song", "Planning the show", "Checking the rules and writing the sequence", "Writing the show report"); the page asks a few times a second under a random key it sent with the request. Splitting out the vocals, which takes minutes, shows a moving striped bar and says it takes a few minutes and is still working. A playlist's bar covers the whole playlist ("Song 2 of 5: Finding the beats…"). Jobs that finish within half a second never show a bar. The bar never moves backwards.
+
+## Keyboard and screen readers
+
+- **Every file picker can be reached with Tab** (they were hidden in a way that took them out of the keyboard order, so a keyboard user could not start a show), and every control shows a focus outline.
+- **Shortcuts in the workspace:** Space or K play and pause, J and L go back and forward 5 seconds, Home goes to the start, Y shows the yard view, ? lists every shortcut (also under **Keyboard shortcuts** on the start page). They are ignored while typing, and Space still presses a focused button.
+- **Screen readers:** each screen has one main heading and headings in order, status lines are announced, the timeline is a labelled region that can be scrolled with the arrow keys, the yard drawing is labelled, and the play button says whether it will play or pause.
+- **Windows:** Tab stays inside an open window (report, picture, shortcuts), Esc closes it, and focus goes back to where it was.
+- **Contrast:** faint text is now readable (at least 4.5:1).
+- **Checked automatically:** an axe scan of the start page, New show and the workspace must find nothing serious, and tests cover the keyboard order, the shortcuts and the window focus.
