@@ -197,6 +197,7 @@
     const audioName = root.getAttribute("musicFilename") || "";
     return {
       doc,
+      yard: parseYard(doc),
       filename,
       name: root.getAttribute("musicTitle") || root.getAttribute("name") || filename,
       artist: root.getAttribute("musicArtist") || "",
@@ -1159,6 +1160,7 @@
     const visibleTime = Math.min(seconds, getTimelineDurationSeconds());
     playhead.style.left = (visibleTime * state.pxPerSecond) + "px";
     playhead.style.display = state.audioBuffer ? "block" : "none";
+    drawYard(yardSeconds());
   }
 
   function seekAudio(seconds) {
@@ -1847,6 +1849,7 @@
     renderSequenceStats();
     refreshTimeline();
     updateEditControls();
+    drawYard(yardSeconds());
   }
 
   function updateEditControls() {
@@ -2164,6 +2167,7 @@
     if (!state.sequence || event.button !== 0) return;
     const hit = trackHit(event);
     state.cursorCs = hit.cs;
+    if (!state.audioBuffer) drawYard(yardSeconds());
     const additive = event.shiftKey || event.ctrlKey || event.metaKey;
     const base = { startX: event.clientX, moved: false, preview: null };
     if (hit.effect) {
@@ -3399,6 +3403,7 @@
     updateEditControls();
     setBanner("Generated " + result.file_name + ". Review it against the music, then Save " +
       "sequence to keep it; open it in S6 to fine-tune.", "good");
+    toggleYard(true);
     if (show.audioFile) await loadAudio(show.audioFile, show.analysis);
   }
 
@@ -3450,6 +3455,343 @@
     for (const [value, text] of Object.entries(REQUIREMENT_KINDS)) {
       $("requirementKind").appendChild(option(value, text));
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Yard view: the display drawn from the preview embedded in the sequence, each
+  // channel lit by its effects at the playhead. A quick way to watch a show
+  // without S6; it approximates the look (shapes are simplified and twinkle is
+  // random), and S6's own visualizer stays the reference.
+
+  const COLOR_NAMES = {
+    red: "#ff3b30", green: "#30d158", blue: "#2f7bff", white: "#f4f4ee",
+    "warm white": "#ffd9a0", "cool white": "#e8f1ff", yellow: "#ffd60a", orange: "#ff9500",
+    purple: "#af52de", pink: "#ff5fa2", gold: "#ffc94d", cyan: "#40e0ff", magenta: "#ff40ff",
+    amber: "#ffb000", violet: "#8a5cff"
+  };
+
+  function colorOf(name) {
+    const key = String(name || "").trim().toLowerCase();
+    return COLOR_NAMES[key] || "#ffd9a0";
+  }
+
+  function numberAttr(node, name) {
+    const text = node.getAttribute(name);
+    if (text == null || text.trim() === "") return null;
+    const value = Number(text);
+    return Number.isFinite(value) ? value : null;
+  }
+
+  // Split a polyline into ``parts`` pieces of equal length, in order.
+  function splitLine(points, parts) {
+    if (parts <= 1 || points.length < 2) return [points];
+    const lengths = [0];
+    for (let i = 1; i < points.length; i++) {
+      lengths.push(lengths[i - 1] + Math.hypot(points[i][0] - points[i - 1][0],
+        points[i][1] - points[i - 1][1]));
+    }
+    const total = lengths[lengths.length - 1] || 1;
+    const at = (distance) => {
+      let i = 1;
+      while (i < lengths.length - 1 && lengths[i] < distance) i++;
+      const span = lengths[i] - lengths[i - 1] || 1;
+      const share = (distance - lengths[i - 1]) / span;
+      return [points[i - 1][0] + (points[i][0] - points[i - 1][0]) * share,
+        points[i - 1][1] + (points[i][1] - points[i - 1][1]) * share];
+    };
+    const pieces = [];
+    for (let part = 0; part < parts; part++) {
+      const from = total * part / parts;
+      const to = total * (part + 1) / parts;
+      const piece = [at(from)];
+      for (let i = 1; i < points.length - 1; i++) {
+        if (lengths[i] > from && lengths[i] < to) piece.push(points[i]);
+      }
+      piece.push(at(to));
+      pieces.push(piece);
+    }
+    return pieces;
+  }
+
+  // Strands for a shape drawn in a box: an arch, a tree, a star, a snowflake...
+  function boxStrands(shapeName, cx, cy, w, h, radians, channels) {
+    const name = shapeName.toLowerCase();
+    const rotate = (points) => points.map(([x, y]) => {
+      const dx = x - cx;
+      const dy = y - cy;
+      return [cx + dx * Math.cos(radians) - dy * Math.sin(radians),
+        cy + dx * Math.sin(radians) + dy * Math.cos(radians)];
+    });
+    if (name.includes("tree")) {
+      // Strands fan from the top down to the base, one per channel.
+      const strands = [];
+      for (let i = 0; i < channels; i++) {
+        const share = channels === 1 ? 0.5 : i / (channels - 1);
+        strands.push(rotate([[cx, cy + h / 2], [cx - w / 2 + w * share, cy - h / 2]]));
+      }
+      if (channels === 1) {
+        return [rotate([[cx - w / 2, cy - h / 2], [cx, cy + h / 2], [cx + w / 2, cy - h / 2],
+          [cx - w / 2, cy - h / 2]])];
+      }
+      return strands;
+    }
+    let outline;
+    if (name.includes("arch")) {
+      outline = [];
+      for (let k = 0; k <= 24; k++) {
+        const angle = Math.PI * (1 - k / 24);
+        outline.push([cx + Math.cos(angle) * w / 2, cy - h / 2 + Math.sin(angle) * h]);
+      }
+    } else if (name.includes("star")) {
+      outline = [];
+      for (let k = 0; k <= 10; k++) {
+        const radius = k % 2 === 0 ? 1 : 0.45;
+        const angle = Math.PI / 2 + Math.PI * k / 5;
+        outline.push([cx + Math.cos(angle) * radius * w / 2, cy + Math.sin(angle) * radius * h / 2]);
+      }
+    } else if (name.includes("snow") || name.includes("flake")) {
+      const arms = [];
+      for (let k = 0; k < 6; k++) {
+        const angle = Math.PI * k / 3 + Math.PI / 2;
+        arms.push(rotate([[cx, cy], [cx + Math.cos(angle) * w / 2, cy + Math.sin(angle) * h / 2]]));
+      }
+      if (channels <= 1) return [arms.flat()];
+      // Channels light the flake from the center out: inner, then outer parts of every arm.
+      const strands = [];
+      for (let i = 0; i < channels; i++) {
+        strands.push(arms.flatMap((arm) => splitLine(arm, channels)[i]));
+      }
+      return strands;
+    } else if (/circle|wreath|ball|ring|round|candy/.test(name)) {
+      outline = [];
+      for (let k = 0; k <= 32; k++) {
+        const angle = 2 * Math.PI * k / 32;
+        outline.push([cx + Math.cos(angle) * w / 2, cy + Math.sin(angle) * h / 2]);
+      }
+    } else {
+      outline = [[cx - w / 2, cy - h / 2], [cx - w / 2, cy + h / 2], [cx + w / 2, cy + h / 2],
+        [cx + w / 2, cy - h / 2], [cx - w / 2, cy - h / 2]];
+    }
+    return splitLine(rotate(outline), channels);
+  }
+
+  function pointStrands(shapeName, points, channels) {
+    if (/unconnected/i.test(shapeName)) {
+      const segments = [];
+      for (let i = 0; i + 1 < points.length; i += 2) segments.push([points[i], points[i + 1]]);
+      if (!segments.length) return [];
+      if (channels <= 1) return [segments.flat()];
+      const strands = [];
+      for (let i = 0; i < channels; i++) {
+        const from = Math.floor(segments.length * i / channels);
+        const to = Math.max(from + 1, Math.floor(segments.length * (i + 1) / channels));
+        strands.push(segments.slice(from, to).flat());
+      }
+      return strands;
+    }
+    return splitLine(points, channels);
+  }
+
+  // Read the preview that S6 keeps inside the sequence into drawable props.
+  function parseYard(doc) {
+    const preview = doc.documentElement.querySelector(":scope > PreviewClass");
+    if (!preview) return null;
+    const yard = [];
+    for (const node of preview.children) {
+      if (node.localName !== "PropClass") continue;
+      const shape = Array.from(node.children).find((child) => child.localName === "shape");
+      if (!shape) continue;
+      const grid = (node.getAttribute("ChannelGrid") || "").split(";").filter(Boolean)
+        .map((entry) => entry.split(","));
+      const channels = Math.max(1, grid.length);
+      const traditional = (node.getAttribute("TraditionalColors") || "").split(",")
+        .map((item) => item.trim()).filter(Boolean);
+      const colors = grid.map((entry, index) => {
+        const named = (entry[5] || "").trim();
+        if (/^multi/i.test(named)) return traditional.length > 1 ? traditional : ["Red", "Green"];
+        return [named || traditional[index] || traditional[0] || "Warm White"];
+      });
+      const shapeName = shape.getAttribute("ShapeName") || "";
+      const points = Array.from(shape.children).filter((child) => child.localName === "point")
+        .map((point) => [numberAttr(point, "x"), numberAttr(point, "y")])
+        .filter(([x, y]) => x != null && y != null);
+      const cx = numberAttr(shape, "OffsetX");
+      const cy = numberAttr(shape, "OffsetY");
+      const w = numberAttr(shape, "ScaleX");
+      const h = numberAttr(shape, "ScaleY");
+      let strands = [];
+      if (cx != null && cy != null && w != null && h != null) {
+        strands = boxStrands(shapeName, cx, cy, Math.abs(w), Math.abs(h),
+          numberAttr(shape, "Radians") || 0, channels);
+      } else if (points.length >= 2) {
+        strands = pointStrands(shapeName, points, channels);
+      }
+      if (!strands.length) continue;
+      yard.push({ id: node.getAttribute("id") || "", name: node.getAttribute("Name") || "",
+        strands, colors: colors.length ? colors : [traditional.length ? traditional : ["Warm White"]],
+        pixel: /dmx|rgb|pixel/i.test((node.getAttribute("DeviceType") || "") + " " +
+          (node.getAttribute("StringType") || "")) });
+    }
+    if (!yard.length) return null;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const prop of yard) {
+      for (const strand of prop.strands) {
+        for (const [x, y] of strand) {
+          minX = Math.min(minX, x);
+          maxX = Math.max(maxX, x);
+          minY = Math.min(minY, y);
+          maxY = Math.max(maxY, y);
+        }
+      }
+    }
+    return { props: yard, bounds: { minX, minY, maxX, maxY } };
+  }
+
+  // A channel's brightness (0..1) at a time, from its effects.
+  function channelLevel(channel, cs) {
+    if (!channel.sortedFor || channel.sortedFor !== channel.effects) {
+      channel.sorted = channel.effects.slice().sort((a, b) => a.start - b.start);
+      channel.sortedFor = channel.effects;
+    }
+    const list = channel.sorted;
+    let low = 0;
+    let high = list.length - 1;
+    let found = -1;
+    while (low <= high) {
+      const middle = (low + high) >> 1;
+      if (list[middle].start <= cs) {
+        found = middle;
+        low = middle + 1;
+      } else {
+        high = middle - 1;
+      }
+    }
+    let level = 0;
+    for (let i = found; i >= 0 && i > found - 4; i--) {
+      const effect = list[i];
+      if (effect.end <= cs) continue;
+      const attrs = effect.attributes;
+      let value;
+      if (attrs.startIntensity != null && attrs.endIntensity != null) {
+        const share = (cs - effect.start) / Math.max(1, effect.end - effect.start);
+        value = Number(attrs.startIntensity) +
+          (Number(attrs.endIntensity) - Number(attrs.startIntensity)) * share;
+      } else {
+        value = Number(attrs.intensity != null ? attrs.intensity : 100);
+      }
+      if (effect.type === "TWINKLE" || effect.type === "SHIMMER") {
+        const step = effect.type === "SHIMMER" ? 4 : 12;
+        const seed = Math.sin((Math.floor(cs / step) + 1) * 12.9898 + effect.start * 0.0781) * 43758.5;
+        value *= 0.35 + 0.65 * (seed - Math.floor(seed));
+      }
+      level = Math.max(level, (Number.isFinite(value) ? value : 0) / 100);
+    }
+    return Math.max(0, Math.min(1, level));
+  }
+
+  function yardVisible() {
+    return Boolean(state.sequence && state.yardOpen && !$("yardPanel").classList.contains("hidden"));
+  }
+
+  function drawYard(seconds) {
+    if (!yardVisible()) return;
+    const canvas = $("yardCanvas");
+    const yard = state.sequence.yard;
+    const box = canvas.getBoundingClientRect();
+    const ratio = window.devicePixelRatio || 1;
+    const width = Math.max(1, Math.round(box.width * ratio));
+    const height = Math.max(1, Math.round(box.height * ratio));
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#05080c";
+    ctx.fillRect(0, 0, width, height);
+    if (!yard) {
+      ctx.fillStyle = "#7f8d99";
+      ctx.font = 13 * ratio + "px Segoe UI, sans-serif";
+      ctx.fillText("This sequence has no preview inside it, so the yard cannot be drawn.",
+        16 * ratio, 28 * ratio);
+      return;
+    }
+    const { minX, minY, maxX, maxY } = yard.bounds;
+    const pad = 0.06;
+    const spanX = Math.max(1e-6, maxX - minX);
+    const spanY = Math.max(1e-6, maxY - minY);
+    const scale = Math.min(width * (1 - 2 * pad) / spanX, height * (1 - 2 * pad) / spanY);
+    const offsetX = (width - spanX * scale) / 2;
+    const offsetY = (height - spanY * scale) / 2;
+    const toX = (x) => offsetX + (x - minX) * scale;
+    const toY = (y) => height - (offsetY + (y - minY) * scale);
+    const cs = Math.round(seconds * 100);
+    const byId = state.sequence.propsById || (state.sequence.propsById =
+      new Map(state.sequence.props.map((prop) => [prop.id, prop])));
+    const line = Math.max(1.5, 2.2 * ratio);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    let lit = 0;
+    for (const prop of yard.props) {
+      const sequenced = byId.get(prop.id);
+      prop.strands.forEach((strand, index) => {
+        const channel = sequenced && sequenced.channels[index];
+        const level = channel ? channelLevel(channel, cs) : 0;
+        const colors = prop.colors[Math.min(index, prop.colors.length - 1)] || ["Warm White"];
+        ctx.beginPath();
+        strand.forEach(([x, y], k) => {
+          if (k === 0) ctx.moveTo(toX(x), toY(y));
+          else ctx.lineTo(toX(x), toY(y));
+        });
+        // Unlit strands stay faintly visible so the layout reads.
+        ctx.globalAlpha = 0.14 + 0.86 * level;
+        ctx.lineWidth = line;
+        ctx.shadowBlur = level > 0.05 ? 14 * ratio * level : 0;
+        if (colors.length > 1) {
+          // Multicolor strings: alternate the colors along the strand.
+          colors.forEach((name, c) => {
+            ctx.setLineDash([5 * ratio, 5 * ratio * (colors.length - 1)]);
+            ctx.lineDashOffset = -c * 5 * ratio;
+            ctx.strokeStyle = colorOf(name);
+            ctx.shadowColor = colorOf(name);
+            ctx.stroke();
+          });
+          ctx.setLineDash([]);
+        } else {
+          ctx.strokeStyle = level > 0 ? colorOf(colors[0]) : "#56616b";
+          ctx.shadowColor = colorOf(colors[0]);
+          ctx.stroke();
+        }
+        if (level > 0.05) lit += 1;
+      });
+    }
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+    $("yardStatus").textContent = formatCentiseconds(cs) + " · " + lit + " channel(s) lit";
+    // For tests and support: what was drawn.
+    canvas.dataset.props = String(yard.props.length);
+    canvas.dataset.lit = String(lit);
+    canvas.dataset.bounds = [minX, minY, maxX, maxY].map((v) => v.toFixed(3)).join(",");
+  }
+
+  function toggleYard(open) {
+    state.yardOpen = open == null ? !state.yardOpen : open;
+    $("yardPanel").classList.toggle("hidden", !state.yardOpen);
+    $("yardButton").classList.toggle("active", state.yardOpen);
+    $("yardButton").setAttribute("aria-pressed", String(state.yardOpen));
+    if (state.yardOpen) drawYard(yardSeconds());
+  }
+
+  function yardSeconds() {
+    return state.audioBuffer && Number.isFinite(audio.currentTime) ? audio.currentTime
+      : (state.cursorCs || 0) / 100;
+  }
+
+  function setupYard() {
+    $("yardButton").addEventListener("click", () => toggleYard());
+    window.addEventListener("resize", () => drawYard(yardSeconds()));
   }
 
   function setup() {
@@ -3528,6 +3870,7 @@
     $("waveformCanvas").addEventListener("click", (event) => seekFromPointer(event, $("waveformCanvas")));
     setupEditing();
     setupNewShow();
+    setupYard();
   }
 
   setup();
