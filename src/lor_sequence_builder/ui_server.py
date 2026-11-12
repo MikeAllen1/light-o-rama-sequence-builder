@@ -482,7 +482,14 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
                 while chunk := source.read(1024 * 1024):
                     self.wfile.write(chunk)
         finally:
-            path.unlink(missing_ok=True)
+            # A cleanup failure must not turn an already-sent successful download
+            # into a second HTTP error response (or corrupt the ZIP stream).
+            try:
+                path.unlink(missing_ok=True)
+            except OSError as exc:
+                from lor_sequence_builder.diagnostics import write_log
+
+                write_log("server", f"Could not remove downloaded batch archive: {exc}")
 
     def _send_json(self, status: int, payload: dict[str, Any]) -> None:
         if status >= 400:
