@@ -38,6 +38,7 @@
     baselineEffects: new Map(),
     editRevision: 0,
     exportPending: false,
+    exportRequestId: 0,
     drag: null,
     clipboard: null,
     cursorCs: 0,
@@ -1715,6 +1716,7 @@
     state.exported = false;
     state.baselineEffects = new Map();
     state.editRevision = 0;
+    state.exportRequestId += 1;
     state.exportPending = false;
     state.drag = null;
     state.clipboard = null;
@@ -2567,6 +2569,7 @@
     const sequence = state.sequence;
     if (!sequence || state.exportPending) return;
     const revision = state.editRevision;
+    const requestId = ++state.exportRequestId;
     const text = serializeSequence();
     if (text.length > MAX_XML_BYTES) {
       setBanner("The edited sequence exceeds the 50 MiB limit.", "error");
@@ -2582,8 +2585,10 @@
       setBanner("Not saved: " + problemText(error), "error");
       return;
     } finally {
-      state.exportPending = false;
-      updateEditControls();
+      if (requestId === state.exportRequestId) {
+        state.exportPending = false;
+        updateEditControls();
+      }
     }
     // A show generated here is saved under its own name; an opened file gets "(edited)".
     const name = sequence.generated ? sequence.filename
