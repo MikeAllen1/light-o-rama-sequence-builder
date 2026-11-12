@@ -6,6 +6,7 @@ import io
 import json
 import zipfile
 from pathlib import Path
+from typing import Any
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -36,7 +37,7 @@ def test_the_workspace_builds_a_playlist(
     created_archives: list[Path] = []
     original_batch_zip = SHOWS.batch_zip
 
-    def capture_archive(token: str) -> dict[str, object]:
+    def capture_archive(token: str) -> dict[str, Any]:
         result = original_batch_zip(token)
         created_archives.append(Path(result["zip_path"]))
         return result
