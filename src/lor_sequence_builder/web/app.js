@@ -3192,7 +3192,8 @@
   const show = { token: null, summary: null, audioFile: null, analysis: null, raw: [],
     result: null, resultConfig: null, audioRequestId: 0, audioPending: false,
     requirementsPending: false, requirementsRequestId: 0, displayRequestId: 0,
-    displayPending: false, batchRunning: false, generationPending: false };
+    displayPending: false, displayTestPending: false, testRequestId: 0,
+    batchRunning: false, generationPending: false, analysisMeter: null };
 
   function showMessage(id, text, kind) {
     const element = $(id);
@@ -3237,12 +3238,21 @@
   }
 
   async function makeDisplayTest() {
-    $("makeTest").disabled = true;
+    if (!show.token || show.displayTestPending || show.audioPending || show.batchRunning ||
+        show.generationPending || show.displayPending) return;
+    const token = show.token;
+    const requestId = ++show.testRequestId;
+    show.displayTestPending = true;
+    setShowConfigurationLocked(true);
+    setStepEnabled();
+    $("watchTest").disabled = true;
+    $("saveTest").disabled = true;
     showMessage("testStatus", "Making the display test…");
     try {
       const test = await withProgress("testStatus", "Starting", (key) =>
-        postShow("/api/show/test?token=" + encodeURIComponent(show.token) + "&progress=" + key,
+        postShow("/api/show/test?token=" + encodeURIComponent(token) + "&progress=" + key,
           "{}", "application/json"));
+      if (requestId !== show.testRequestId || token !== show.token) return;
       show.test = test;
       showMessage("testStatus", "Ready: " + test.schedule.length + " steps in 10 seconds. Save the " +
         "files, copy the sound into S6's audio folder, and play the sequence in S6; the text " +
@@ -3250,11 +3260,18 @@
       $("watchTest").disabled = false;
       $("saveTest").disabled = false;
     } catch (error) {
-      showMessage("testStatus", error.message || String(error), "error");
+      if (requestId === show.testRequestId && token === show.token) {
+        showMessage("testStatus", error.message || String(error), "error");
+        $("watchTest").disabled = !show.test;
+        $("saveTest").disabled = !show.test;
+      }
+    } finally {
+      if (requestId === show.testRequestId) {
+        show.displayTestPending = false;
+        setShowConfigurationLocked(false);
+        setStepEnabled();
+      }
     }
-    $("makeTest").disabled = !show.token;
-    $("batchFiles").disabled = !show.token || show.batchRunning;
-    $("batchLabel").classList.toggle("disabled", !show.token || show.batchRunning);
   }
 
   function saveDisplayTest() {
@@ -3331,20 +3348,27 @@
   }
 
   function setStepEnabled() {
-    $("makeTest").disabled = !show.token || show.batchRunning || show.generationPending || show.displayPending;
-    $("showSongFile").disabled = !show.token || show.batchRunning || show.generationPending || show.displayPending;
+    $("makeTest").disabled = !show.token || show.batchRunning || show.generationPending ||
+      show.displayPending || show.displayTestPending || show.audioPending;
+    $("showSongFile").disabled = !show.token || show.batchRunning || show.generationPending ||
+      show.displayPending || show.displayTestPending || show.audioPending;
+    $("meterSelect").disabled = show.batchRunning || show.generationPending || show.displayPending ||
+      show.displayTestPending || show.audioPending;
     $("showSongLabel").classList.toggle("disabled", !show.token);
     $("addRequirement").disabled = !show.token;
     $("translateRequirements").disabled = !show.token || !show.summary.can_translate;
     $("generateShow").disabled = !(show.token && show.analysis && !show.audioPending &&
-      !show.requirementsPending && !show.generationPending && !show.batchRunning && !show.displayPending);
-    $("batchFiles").disabled = !show.token || show.batchRunning || show.generationPending || show.displayPending;
-    $("batchLabel").classList.toggle("disabled", !show.token || show.batchRunning || show.generationPending || show.displayPending);
+      !show.requirementsPending && !show.generationPending && !show.batchRunning && !show.displayPending &&
+      !show.displayTestPending && show.analysisMeter === $("meterSelect").value);
+    $("batchFiles").disabled = !show.token || show.batchRunning || show.generationPending ||
+      show.displayPending || show.displayTestPending || show.audioPending || show.requirementsPending;
+    $("batchLabel").classList.toggle("disabled", !$("batchFiles").disabled);
     setRequirementControlsLocked(show.requirementsPending || show.batchRunning || show.generationPending || show.displayPending);
   }
 
   async function chooseDisplay(file) {
-    if (!file || show.batchRunning || show.generationPending || show.displayPending) return;
+    if (!file || show.batchRunning || show.generationPending || show.displayPending ||
+        show.displayTestPending || show.audioPending || show.requirementsPending) return;
     const requestId = ++show.displayRequestId;
     show.displayPending = true;
     setShowConfigurationLocked(true);
@@ -3362,6 +3386,7 @@
       $("saveTest").disabled = true;
       showMessage("testStatus", "");
       show.analysis = null;
+      show.analysisMeter = null;
       show.audioFile = null;
       show.raw = summary.raw_requirements || [];
       show.audioRequestId += 1;
@@ -3405,16 +3430,12 @@
   }
 
   async function chooseSong(file) {
-    if (!file || !show.token) return;
+    if (!file || !show.token || show.audioPending || show.batchRunning || show.generationPending ||
+        show.displayPending || show.displayTestPending || show.requirementsPending) return;
     const requestId = ++show.audioRequestId;
+    const token = show.token;
+    const meter = $("meterSelect").value;
     show.audioPending = true;
-    show.audioFile = file;
-    show.analysis = null;
-    invalidateGeneratedResult();
-    $("musicFilename").value = file.name;
-    show.songName = file.name;
-    show.songSeconds = null;
-    checkMusicName();
     showMessage("songStatus", "Analyzing " + file.name + " on this computer…");
     setStepEnabled();
     try {
@@ -3422,14 +3443,21 @@
         throw new Error("Audio must be non-empty and 200 MiB or smaller.");
       }
       const payload = await withProgress("songStatus", "Sending the song", (key) =>
-        postShow("/api/show/audio?token=" + encodeURIComponent(show.token) +
-          "&beats_per_bar=" + $("meterSelect").value + "&request_id=" + requestId +
+        postShow("/api/show/audio?token=" + encodeURIComponent(token) +
+          "&beats_per_bar=" + meter + "&request_id=" + requestId +
           "&name=" + encodeURIComponent(file.name) + "&progress=" + key, file,
           "application/octet-stream"));
-      if (requestId !== show.audioRequestId || payload.stale) return;
+      if (requestId !== show.audioRequestId || token !== show.token || payload.stale) return;
+      // Publish the new selection only after the server has analyzed and committed it.
+      // A rejected upload therefore leaves the previous song and analysis usable.
       show.audioFile = file;
       show.analysis = payload.report;
+      show.analysisMeter = meter;
       show.songSeconds = payload.report.audio.duration_seconds;
+      show.songName = file.name;
+      $("musicFilename").value = file.name;
+      checkMusicName();
+      invalidateGeneratedResult();
       const analysis = payload.report.analysis;
       const tempo = analysis.tempo && analysis.tempo.bpm != null ? analysis.tempo.bpm + " BPM"
         : "no steady tempo";
@@ -3437,9 +3465,12 @@
         ", about " + tempo + ", " + analysis.section_candidates.length + " section changes.",
         "good");
     } catch (error) {
-      if (requestId === show.audioRequestId) {
-        show.analysis = null;
-        showMessage("songStatus", error.message || String(error), "error");
+      if (requestId === show.audioRequestId && token === show.token) {
+        const previous = show.audioFile
+          ? " The previous song (" + show.audioFile.name + ") remains selected and usable."
+          : " Choose another song and try again.";
+        showMessage("songStatus", (error.message || String(error)) + previous, "error");
+        $("showSongFile").value = "";
       }
     } finally {
       if (requestId === show.audioRequestId) {
@@ -3595,7 +3626,8 @@
   }
 
   async function generateShow() {
-    if (show.generationPending || show.batchRunning || show.requirementsPending) return;
+    if (show.generationPending || show.batchRunning || show.requirementsPending ||
+        show.audioPending || show.displayPending || show.displayTestPending) return;
     const button = $("generateShow");
     const config = currentShowConfig();
     invalidateGeneratedResult();
@@ -3739,7 +3771,8 @@
   // A playlist: each song is analyzed and built on the server one at a time, then
   // all the shows are saved together as one zip.
   async function runBatch(files) {
-    if (!show.token || !files.length || show.batchRunning || show.generationPending) return;
+    if (!show.token || !files.length || show.batchRunning || show.generationPending ||
+        show.audioPending || show.requirementsPending || show.displayPending || show.displayTestPending) return;
     const batchToken = show.token;
     const batchMeter = $("meterSelect").value;
     const batchStyle = chosenStyle() || "";
