@@ -30,14 +30,25 @@
         <span>Open audio</span>
         <input id="audioFile" type="file" accept="audio/*,.mp3,.mp4,.wav,.flac,.m4a,.ogg,.opus">
       </label>
-      <label class="tool-button subtle" title="An analysis JSON, or a saved music review">
-        <span>Load analysis</span>
-        <input id="analysisFile" type="file" accept=".json,application/json">
-      </label>
-      <label class="tool-button subtle">
-        <span>Load vocals</span>
-        <input id="vocalsFile" type="file" accept=".json,application/json">
-      </label>
+      <div class="tool-menu">
+        <button id="moreButton" class="tool-button subtle" type="button" aria-haspopup="true"
+          aria-expanded="false" aria-controls="moreMenu"
+          title="Optional files for a song you have worked on before">More ▾</button>
+        <div id="moreMenu" class="tool-menu-panel hidden" role="group" aria-label="More">
+          <label id="analysisFileLabel" class="tool-button subtle menu-item"
+            data-ready="A music review you saved here (.review.json), or a song's .analysis.json from the command line. Brings back your corrected beats, sections and lyrics. Not needed otherwise: opening the audio analyzes the song."
+            data-waiting="Open a sequence first.">
+            <span>Open music review</span>
+            <input id="analysisFile" type="file" accept=".review.json,.analysis.json,.json,application/json">
+          </label>
+          <label id="vocalsFileLabel" class="tool-button subtle menu-item"
+            data-ready="The .vocals.json saved with a show that has singing faces. Adds singing lanes to line up mouth effects with the words."
+            data-waiting="Open the song (or its music review) first.">
+            <span>Open singing timing</span>
+            <input id="vocalsFile" type="file" accept=".vocals.json,.json,application/json">
+          </label>
+        </div>
+      </div>
       <label class="tool-button subtle">
         <span>Load lyrics</span>
         <input id="lyricsFile" type="file" accept=".json,.lrc,.srt,.vtt,application/json,text/plain">
