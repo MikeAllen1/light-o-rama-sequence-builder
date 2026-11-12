@@ -548,30 +548,31 @@ class ShowSessions:
                 shutil.rmtree(work, ignore_errors=True)
 
     def batch_zip(self, token: str) -> dict[str, Any]:
-        """Build the batch archive on disk to avoid duplicating it in memory."""
-        archive_path: Path | None = None
-        try:
-            with self.locked(token) as session:
-                done = session.path / "batch"
-                shows = [entry for entry in session.batch if entry.get("ok")]
-                if not shows:
-                    raise ShowBuildError("No batch shows have been built yet")
-                artifacts = [
-                    path
-                    for entry in shows
-                    for path in (done / entry["show"],
-                                 done / f"{entry['stem']} (generated).report.html")
-                ]
-                total_bytes = sum(path.stat().st_size for path in artifacts)
-                if total_bytes > MAX_BATCH_ARCHIVE_BYTES:
-                    raise ShowBuildError(
-                        "This playlist's show files exceed the 100 MiB download limit. "
-                        "Save the playlist in smaller batches."
-                    )
+        """Create a disk-backed ZIP of every successfully built show and report."""
+        with self.locked(token) as session:
+            done = session.path / "batch"
+            shows = [entry for entry in session.batch if entry.get("ok")]
+            if not shows:
+                raise ShowBuildError("No batch shows have been built yet")
+            artifacts = [
+                path
+                for entry in shows
+                for path in (done / entry["show"],
+                             done / f"{entry['stem']} (generated).report.html")
+            ]
+            total_bytes = sum(path.stat().st_size for path in artifacts)
+            if total_bytes > MAX_BATCH_ARCHIVE_BYTES:
+                raise ShowBuildError(
+                    "This playlist's show files exceed the 100 MiB download limit. "
+                    "Save the playlist in smaller batches."
+                )
+
+            archive_path: Path | None = None
+            try:
                 with tempfile.NamedTemporaryFile(
                     prefix="lor-batch-", suffix=".zip", delete=False
-                ) as handle:
-                    archive_path = Path(handle.name)
+                ) as temporary:
+                    archive_path = Path(temporary.name)
                 with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as archive:
                     for path in artifacts:
                         archive.write(path, path.name)
@@ -583,16 +584,16 @@ class ShowSessions:
                               "open its .loredit in the S6 Sequencer."]
                     archive.writestr("Batch - read me.txt", "\\r\\n".join(lines) + "\\r\\n")
                 name = _safe_name(session.display_name) + " shows.zip"
-                return {"zip_name": name, "count": len(shows), "zip_path": str(archive_path)}
-        except BaseException:
-            if archive_path is not None:
-                try:
-                    archive_path.unlink(missing_ok=True)
-                except OSError as cleanup_error:
-                    from lor_sequence_builder.diagnostics import write_log
+                return {"zip_path": str(archive_path), "zip_name": name, "count": len(shows)}
+            except BaseException:
+                if archive_path is not None:
+                    try:
+                        archive_path.unlink(missing_ok=True)
+                    except OSError as cleanup_error:
+                        from lor_sequence_builder.diagnostics import write_log
 
-                    write_log("batch", f"Could not remove incomplete batch archive: {cleanup_error}")
-            raise
+                        write_log("server", f"Could not remove incomplete batch archive: {cleanup_error}")
+                raise
 
     def batch_clear(self, token: str) -> dict[str, Any]:
         with self.locked(token) as session:
