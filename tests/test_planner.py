@@ -265,6 +265,19 @@ def test_three_four_bar_fallback_stays_aligned_after_a_window_split() -> None:
     assert _bars(window) == [(150, 300), (300, 450), (450, 500)]
 
 
+def test_three_four_phrases_reconstruct_missing_downbeats_after_a_stop() -> None:
+    from lor_sequence_builder.planner import _Window, _phrases
+
+    window = _Window(
+        0, 0, 1800, tuple(range(0, 1800, 50)), (0,), False,
+        offset=0, beats_per_bar=3, bar_phase=0, bar_offset=0,
+    )
+    phrases = _phrases(window)
+    assert [(phrase.start, phrase.end) for phrase in phrases] == [
+        (0, 600), (600, 1200), (1200, 1800),
+    ]
+
+
 def _preview(tmp_path: Path, display: DisplayBuilder) -> Path:
     path = tmp_path / "yard.lorprev"
     ET.ElementTree(display.element()).write(path, encoding="utf-8", xml_declaration=True)
