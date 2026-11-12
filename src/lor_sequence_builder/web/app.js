@@ -3470,8 +3470,9 @@
   }
 
   function generatedActionsBlocked() {
-    return show.audioPending || show.requirementsPending || show.displayPending ||
-      show.generationPending || show.batchRunning || show.batchZipPending || show.testPending;
+    return state.audioDecodePending || show.audioPending || show.requirementsPending ||
+      show.displayPending || show.generationPending || show.batchRunning ||
+      show.batchZipPending || show.testPending;
   }
 
   function updateGeneratedControls() {
