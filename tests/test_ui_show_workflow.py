@@ -72,18 +72,28 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
                 })
 
         page.route("**/api/show/audio*", analyze_audio)
-        page.route("**/api/show/generate*", lambda route: respond(route, {
-            "rules_ok": True,
-            "file_name": "song (generated).loredit",
-            "sequence": "<sequence />",
-            "picture": "<svg xmlns='http://www.w3.org/2000/svg' />",
-            "summary": "<!doctype html><title>Test</title>",
-            "report": "Passed",
-            "sections": [{"label": "Verse", "level": "Low"}],
-            "used": ["Tree"],
-            "skipped": [],
-            "notes": [],
-        }))
+        fail_next_generation = False
+
+        def generate_show(route: object) -> None:
+            nonlocal fail_next_generation
+            if fail_next_generation:
+                fail_next_generation = False
+                respond(route, {"error": "simulated generation failure"}, 500)
+            else:
+                respond(route, {
+                    "rules_ok": True,
+                    "file_name": "song (generated).loredit",
+                    "sequence": "<sequence />",
+                    "picture": "<svg xmlns='http://www.w3.org/2000/svg' />",
+                    "summary": "<!doctype html><title>Test</title>",
+                    "report": "Passed",
+                    "sections": [{"label": "Verse", "level": "Low"}],
+                    "used": ["Tree"],
+                    "skipped": [],
+                    "notes": [],
+                })
+
+        page.route("**/api/show/generate*", generate_show)
         fail_next_batch_clear = False
 
         def clear_batch(route: object) -> None:
@@ -147,6 +157,12 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             assert not page.locator("#generateShow").is_disabled()
             page.locator("#generateShow").click()
             page.locator("#generateStatus").filter(has_text="Every rule passed").wait_for()
+            assert not page.locator("#saveGenerated").is_disabled()
+
+            fail_next_generation = True
+            page.locator("#generateShow").click()
+            page.locator("#generateStatus").filter(has_text="simulated generation failure").wait_for()
+            assert "previous valid show is still available" in page.locator("#generateStatus").inner_text()
             assert not page.locator("#saveGenerated").is_disabled()
 
             page.locator('input[name="showStyle"][value="elegant"]').check()
