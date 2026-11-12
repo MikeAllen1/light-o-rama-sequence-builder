@@ -3753,6 +3753,9 @@
       if (file.size <= 0 || file.size > 200 * 1024 * 1024) {
         throw new Error("Audio must be non-empty and 200 MiB or smaller.");
       }
+      if (file.name.length > 200) {
+        throw new Error("Song file names must be 200 characters or fewer. Rename the file and try again.");
+      }
       const payload = await withProgress("songStatus", "Sending the song", (key) =>
         postShow("/api/show/audio?token=" + encodeURIComponent(token) +
           "&beats_per_bar=" + meter + "&request_id=" + requestId +
