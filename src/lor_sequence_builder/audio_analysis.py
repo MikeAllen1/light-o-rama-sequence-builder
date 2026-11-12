@@ -801,6 +801,11 @@ def analyze_audio(
             ffmpeg_version = _normalize(source, normalized, input_demuxer)
             samples, duration = _read_samples(normalized)
 
+        # The startup warm-up exercises librosa/NumPy's first-use paths. If a
+        # user chooses a song immediately, wait for that one-time work to finish
+        # before starting real analysis rather than competing for CPU or racing
+        # first-use initialization.
+        _wait_for_background_warmup()
         rms = _frame_rms(samples)
         spectra = _Spectra(samples)
         envelope = _onset_envelope(spectra)
@@ -982,6 +987,8 @@ def decode_audio(audio_path: str | Path) -> tuple[npt.NDArray[np.float32], float
 
 
 _warmed = threading.Event()
+_warmup_lock = threading.Lock()
+_warmup_thread: threading.Thread | None = None
 
 
 def warm_up() -> bool:
@@ -1015,6 +1022,22 @@ def warm_up() -> bool:
     return True
 
 
+def _wait_for_background_warmup() -> None:
+    """Let an already-started startup warm-up finish before real analysis begins."""
+    with _warmup_lock:
+        thread = _warmup_thread
+    if thread is not None and thread is not threading.current_thread():
+        thread.join()
+
+
 def warm_up_in_background() -> None:
-    threading.Thread(target=warm_up, name="analysis-warm-up", daemon=True).start()
+    """Start at most one warm-up worker for this process."""
+    global _warmup_thread
+    with _warmup_lock:
+        if _warmed.is_set() or (_warmup_thread is not None and _warmup_thread.is_alive()):
+            return
+        _warmup_thread = threading.Thread(
+            target=warm_up, name="analysis-warm-up", daemon=True
+        )
+        _warmup_thread.start()
 
