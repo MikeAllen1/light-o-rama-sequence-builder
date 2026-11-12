@@ -189,7 +189,8 @@ def _music(analysis: dict[str, Any]) -> _Music:
                 and candidate["label"].strip() and isinstance(candidate.get("time"), int | float)):
             labels[_snap(_cs(float(candidate["time"])), downbeats)] = (
                 candidate["label"].strip().lower())
-    return _Music(duration, beats, downbeats, energy, starts, stops, notes, labels,\n                   beats_per_bar, phase)
+    return _Music(duration, beats, downbeats, energy, starts, stops, notes, labels,
+                   beats_per_bar, phase)
 
 
 def _snap(time: int, grid: list[int]) -> int:
