@@ -1,0 +1,17 @@
+# A softer show for a quiet street: the biggest props are dimmer, and the mega
+# tree waits for the music to build before it joins in.
+schema_version: rules-1.0
+name: Gentle show
+requirements:
+  - id: dim-mega-tree
+    type: max_intensity
+    props: {role: mega_tree}
+    max: 60
+  - id: dim-arches
+    type: max_intensity
+    props: {role: arch}
+    max: 75
+  - id: mega-tree-rests-at-the-edges
+    type: quiet_during
+    props: {role: mega_tree}
+    sections: [intro, outro]

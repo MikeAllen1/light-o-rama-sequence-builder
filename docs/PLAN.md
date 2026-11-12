@@ -210,6 +210,29 @@ Build reports, docs, Python package distribution, example profiles, and installa
 
 **Done when:** A new user can install and run by following README; reports cover generated/used/unused props, unsupported items, rules compliance, and physical-test needs; examples are included; CI is green.
 
+**Status: Built (Issue #60); owner install check pending.**
+
+**Delivered:**
+- **Show report:** every generated show gets `<show>.report.html`, one page with no scripts or outside links. It covers:
+  - the rules result and props lit, by kind
+  - a **Check in the yard** list: the audio name S6 must find, props it could not identify or identified only from their name, multi-segment direction, per-channel colors, singing faces, chase order, brightness limits, and the street-view check
+  - the song's parts and big moments
+  - every prop as used, left dark (with the reason) or not sequenced (with the reason)
+  - the requirements applied
+  - every rule's result, the planner's notes, and the files
+
+  New show has a **Show report** button.
+- **`doctor`:** checks Python, the libraries, FFmpeg (with the install command for the computer's system), decoding a test tone, the workspace files, and the data folders. It also lists the optional add-ons and the translator. It exits 1 when a required check fails.
+- **`demo FOLDER`:** writes an invented yard (arches row, mini trees, mega tree, two snowflake columns, star, house outline) and a 48-second synthesized song with a quiet, loud and closing part, then generates the show. It refuses a non-empty folder.
+- **Launchers:**
+  - `Start LOR Sequencer.cmd` (Windows, double-click): checks uv and FFmpeg, offers to install FFmpeg with winget, syncs the locked environment, and starts the workspace.
+  - `start-lor-sequencer.sh` for macOS and Linux.
+  - `.gitattributes` keeps their line endings.
+- **Example requirement profiles** (`examples/requirements/`): keep the star on, a gentle show, save the tree for the chorus, skip a broken prop. Each is tested against the demo yard.
+- **README quick start** for a non-programmer (uv, FFmpeg, download ZIP, double-click, New show) and a [user guide](USER_GUIDE.md): first show, how it plans, getting better results from the preview, requirements, singing faces, music review and lyrics, fine-tuning in S6, troubleshooting, privacy.
+- **CI:** builds the wheel and installs it with the locked, hash-checked dependencies in a clean environment, then runs `doctor`, `demo` and `lor-sequence-ui --help` from it.
+
+
 ### Phase 11A — Browser-first sequencing workspace
 
 **Status: In progress. Owner-authorized on 2026-11-11.**  

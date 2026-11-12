@@ -1,29 +1,53 @@
 # Light-O-Rama Sequence Builder
 
-A display-independent Light-O-Rama S6 sequence builder with a Python CLI and a browser-based local sequencing workspace for inspecting, editing, reviewing, and creating sequences. Desktop packaging is deliberately deferred until the end.
+Turn a song and your Light-O-Rama S6 display into a finished, native S6 sequence. Choose your display's preview and a song, add anything the show must do, and it plans a show for your own props: beats, bars and sections drive the motion, groups take turns leading, snowflakes fall, faces sing. Every show is checked against sequencing rules before it is written, and comes with a one-page report of what it did and what to check in the yard. Everything runs on your own computer.
 
-**Project status:** Phases 0 through 8 are merged; the owner playback gates for Phase 7 (planner) and Phase 8 (singing faces) remain open. Phases 11A and 11B provide the browser sequencing workspace, effect editing, and music review. Browser-based new-show creation and review-data validation are merged. Owner visual acceptance on real sequences remains open. It is not a desktop app; desktop packaging remains a final-stage deliverable. See [docs/PLAN.md](docs/PLAN.md) for the authoritative status.
+**Project status:** the generator, the browser workspace and building a show from the browser are working. Desktop packaging (a normal installer) is the last stage. See [docs/PLAN.md](docs/PLAN.md) for the detailed status.
 
-## Product workflow
+## Quick start (Windows, no programming)
 
-The planned workflow is:
+1. **Install uv** (it installs everything else). Open PowerShell and paste:
+   ```powershell
+   powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+   ```
+2. **Install FFmpeg** (it reads your songs):
+   ```powershell
+   winget install --id Gyan.FFmpeg -e
+   ```
+   The launcher offers to do this for you if it is missing.
+3. **Get the program:** on GitHub, choose **Code → Download ZIP**, and unzip it anywhere (for example `Documents\LOR Sequencer`).
+4. **Start it:** double-click **Start LOR Sequencer** in that folder. The first start takes a few minutes to set up; after that it opens in your browser in seconds. Keep the black window open while you use it.
+5. **Build a show:** click **New show**, choose your display's S6 preview file (`.lorprev`), choose the song, and click **Generate show**. Open the **Show report**, then **Save sequence** and open the `.loredit` in the S6 Sequencer.
 
-1. `analyze-preview`: read the required `.lorprev` and report what each prop is (arch, mega tree, singing face, ...), with evidence and a review list.
-2. Review the report. Correct anything wrong in the S6 Preview Editor itself (shape type, grouping, start location, name) and run it again; the preview is the only input.
-3. `generate` — create a new native S6 `.loredit`, a Timeline JSON file, and a report.
+On macOS or Linux, install uv and FFmpeg the same way for your system and run `start-lor-sequencer.sh`.
 
-The implementation is deliberately staged. The native S6 read/write path, audio analysis, planner, and browser sequencing workspace are established. Planner improvements and browser-based show creation continue in separate phases.
+**Not sure it is set up right?** In the program folder run `uv run lor-sequence-builder doctor`: it checks everything and says how to fix what is missing. `uv run lor-sequence-builder demo "Demo Show"` builds a complete show for an invented yard and song, without any of your files.
 
-See [docs/PLAN.md](docs/PLAN.md) for the phase order, acceptance criteria, and handoff log. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the intended system boundaries and data contracts.
+The [user guide](docs/USER_GUIDE.md) walks through a first show, requirements, singing faces and common problems.
 
-## Requirements
+## What you get for each show
 
-- Python 3.12
-- `uv`
+- `<song> (generated).loredit`: the native S6 sequence. Open it in the S6 Sequencer to play it or fine-tune it.
+- **Show report** (`.report.html`): what was used and left dark and why, props it cannot sequence (pixel, DMX), your requirements, every rule, the song's parts and big moments, and a checklist for the yard.
+- **Plan picture** (`.plan.svg`): the whole show at a glance.
+- Details for the curious: the plan, the timeline and the rule results as JSON.
 
-Install uv using the official instructions: https://docs.astral.sh/uv/getting-started/installation/
+## Command line
 
-## Setup (PowerShell)
+Everything in the browser also works from the command line:
+
+```powershell
+uv run lor-sequence-builder generate --preview display.lorprev --audio song.mp3 --output song.loredit
+uv run lor-sequence-builder generate ... --rules examples\requirements\gentle-show.yaml
+uv run lor-sequence-builder requirements display.lorprev   # describe your display's requirements once
+uv run lor-sequence-builder analyze-preview display.lorprev --report display.analysis.json
+uv run lor-sequence-builder doctor
+uv run lor-sequence-builder demo "Demo Show"
+```
+
+Example requirement profiles are in [examples/requirements](examples/requirements/README.md).
+
+## For developers
 
 ```powershell
 git clone https://github.com/MikeAllen1/light-o-rama-sequence-builder.git
@@ -32,7 +56,9 @@ uv sync --locked
 uv run lor-sequence-builder --help
 ```
 
-## Current commands
+Python 3.12 or newer and `uv` are required; FFmpeg must be on PATH. The workflow is: `analyze-preview` reads the `.lorprev` and reports what each prop is, with evidence; correct anything wrong in the S6 Preview Editor itself (shape type, grouping, start location, name); `generate` creates the native `.loredit`, a Timeline JSON file and the reports. See [docs/PLAN.md](docs/PLAN.md) for the phase order and handoff log, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for system boundaries and data contracts.
+
+## Command reference
 
 Inspect a sequence:
 

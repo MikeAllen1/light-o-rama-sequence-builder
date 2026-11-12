@@ -3353,6 +3353,7 @@
       }));
         $("openGenerated").disabled = false;
         $("pictureGenerated").disabled = false;
+      $("reportGenerated").disabled = false;
       }
     } catch (error) {
       showMessage("generateStatus", error.message || String(error), "error");
@@ -3372,6 +3373,13 @@
     setBanner("Generated " + result.file_name + ". Review it against the music, then Save " +
       "sequence to keep it; open it in S6 to fine-tune.", "good");
     if (show.audioFile) await loadAudio(show.audioFile, show.analysis);
+  }
+
+  function openReport() {
+    if (!show.result) return;
+    const url = URL.createObjectURL(new Blob([show.result.summary], { type: "text/html" }));
+    window.open(url, "_blank", "noopener");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 
   function openPicture() {
@@ -3411,6 +3419,7 @@
     });
     $("openGenerated").addEventListener("click", openGenerated);
     $("pictureGenerated").addEventListener("click", openPicture);
+    $("reportGenerated").addEventListener("click", openReport);
     for (const [value, text] of Object.entries(REQUIREMENT_KINDS)) {
       $("requirementKind").appendChild(option(value, text));
     }

@@ -1,0 +1,8 @@
+# Keep the mega tree dark until the loud parts, so it means something when it lights.
+schema_version: rules-1.0
+name: Save the tree for the chorus
+requirements:
+  - id: mega-tree-only-in-loud-parts
+    type: quiet_during
+    props: {role: mega_tree}
+    sections: [intro, verse, pre-chorus, bridge, outro]

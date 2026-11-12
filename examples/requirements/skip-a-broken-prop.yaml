@@ -1,0 +1,9 @@
+# A prop is broken or not set up this year: leave it out of every show.
+# Change the name to the prop's name in your preview.
+schema_version: rules-1.0
+name: Skip a broken prop
+requirements:
+  - id: skip-arch-3
+    type: never_use
+    props: {names: [Arch 3]}
+    note: Replace "Arch 3" with the name of the prop to leave out.
