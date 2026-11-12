@@ -3616,28 +3616,37 @@
     $("requirementList").querySelectorAll("button").forEach((button) => { button.disabled = locked; });
   }
 
+  function hasSequenceableProps() {
+    return Boolean(show.summary && show.summary.props.some((prop) => prop.sequenceable));
+  }
+
   function setStepEnabled() {
+    const hasProps = hasSequenceableProps();
     $("watchTest").disabled = !show.test || generatedActionsBlocked();
     $("saveTest").disabled = !show.test;
-    $("makeTest").disabled = !show.token || show.batchRunning || show.generationPending ||
+    $("makeTest").disabled = !show.token || !hasProps || show.batchRunning || show.generationPending ||
       show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending;
-    $("showSongFile").disabled = !show.token || show.batchRunning || show.generationPending ||
+    $("showSongFile").disabled = !show.token || !hasProps || show.batchRunning || show.generationPending ||
       show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending;
     $("meterSelect").disabled = state.audioDecodePending || show.batchRunning || show.generationPending ||
       show.batchZipPending || show.displayPending || show.testPending || show.audioPending ||
       show.requirementsPending;
-    $("showSongLabel").classList.toggle("disabled", !show.token);
+    $("singFaces").disabled = !show.token || !show.summary || !show.summary.faces ||
+      !show.summary.can_separate_vocals || show.batchRunning || show.generationPending ||
+      show.batchZipPending || show.displayPending || show.testPending || show.audioPending ||
+      show.requirementsPending;
+    $("showSongLabel").classList.toggle("disabled", !show.token || !hasProps);
     $("addRequirement").disabled = !show.token || show.testPending || show.batchRunning ||
       show.generationPending || show.batchZipPending || show.displayPending || show.requirementsPending;
     $("translateRequirements").disabled = !show.token || !show.summary.can_translate || show.testPending ||
       show.batchRunning || show.generationPending || show.batchZipPending || show.displayPending || show.requirementsPending;
-    $("generateShow").disabled = !(show.token && show.analysis && !show.audioPending &&
+    $("generateShow").disabled = !(show.token && hasProps && show.analysis && !show.audioPending &&
       !show.requirementsPending && !show.generationPending && !show.batchRunning &&
       !show.batchZipPending && !show.displayPending && !show.testPending &&
       show.analysisMeter === $("meterSelect").value);
-    $("batchFiles").disabled = !show.token || show.batchRunning || show.generationPending ||
+    $("batchFiles").disabled = !show.token || !hasProps || show.batchRunning || show.generationPending ||
       show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending;
-    $("batchLabel").classList.toggle("disabled", !show.token || show.batchRunning || show.generationPending ||
+    $("batchLabel").classList.toggle("disabled", !show.token || !hasProps || show.batchRunning || show.generationPending ||
       show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending);
     setRequirementControlsLocked(show.requirementsPending || show.batchRunning || show.generationPending ||
       show.batchZipPending || show.displayPending || show.testPending);
@@ -3695,6 +3704,7 @@
       fillRequirementForm();
       fillStyles(summary.styles || [], summary.default_style);
       renderRequirements(summary.requirements, []);
+      $("singFaces").checked = Boolean(summary.faces && summary.can_separate_vocals);
       $("singFaces").closest("label").classList.toggle("hidden", !summary.faces);
       $("singNote").textContent = summary.faces ? (summary.can_separate_vocals
         ? "Splitting the vocals out takes a few minutes per song."
