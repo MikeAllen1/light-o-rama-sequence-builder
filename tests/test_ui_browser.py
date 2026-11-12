@@ -144,6 +144,13 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                     assert page.locator("#effectStat").inner_text() == "40,000"
                     assert page.locator("#editStatus").inner_text() == "No edits"
 
+                    # Changing a property on an effect with a pre-existing timing
+                    # overlap is valid; only newly introduced overlaps are rejected.
+                    page.locator("#editIntensity").fill("70")
+                    page.locator("#editApply").click()
+                    assert page.locator("#editStatus").inner_text() != "No edits"
+                    assert "effects would overlap" not in page.locator("#analysisMessage").inner_text()
+
                     initial_width = page.locator("#canvasContent").evaluate(
                         "(element) => element.clientWidth"
                     )
