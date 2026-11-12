@@ -77,6 +77,11 @@ def start_server(port: int = 0) -> tuple[ThreadingHTTPServer, str]:
     server = ThreadingHTTPServer(("127.0.0.1", port), SequencerRequestHandler)
     server.daemon_threads = True
     threading.Thread(target=server.serve_forever, name="workspace-server", daemon=True).start()
+    from lor_sequence_builder.audio_analysis import warm_up_in_background
+    from lor_sequence_builder.diagnostics import sweep_leftovers
+
+    warm_up_in_background()
+    threading.Thread(target=sweep_leftovers, name="sweep-leftovers", daemon=True).start()
     return server, f"http://127.0.0.1:{server.server_address[1]}/"
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import tempfile
+import threading
 import webbrowser
 from collections.abc import Sequence
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -429,6 +430,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("The packaged sequencing workspace assets are missing")
 
     server = ThreadingHTTPServer(("127.0.0.1", options.port), SequencerRequestHandler)
+    from lor_sequence_builder.audio_analysis import warm_up_in_background
+    from lor_sequence_builder.diagnostics import sweep_leftovers
+
+    warm_up_in_background()
+    threading.Thread(target=sweep_leftovers, name="sweep-leftovers", daemon=True).start()
     server.daemon_threads = True
     address = server.server_address
     url = "http://127.0.0.1:" + str(address[1]) + "/"

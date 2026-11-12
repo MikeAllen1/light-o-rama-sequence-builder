@@ -461,3 +461,12 @@ Every problem ends in plain words that say what to do, and bugs leave a trail in
 - **Page:** one shared call to the engine. When the engine has stopped it says so ("Close LOR Sequencer and open it again"); files that cannot be opened say which kind of file was expected; every error shown is added to the diagnostics trail.
 - **Command line:** known problems print one `error:` line; anything unexpected prints a reference and where the details are, never a traceback (`--debug` or `LOR_DEBUG=1` shows it); Ctrl+C prints "Stopped."; `diagnostics` prints the report.
 - **Desktop app:** a failure while starting shows a message box with the reason and the log's location, instead of the app vanishing.
+
+## Speed and housekeeping
+
+- **Song analysis computes the spectrum once.** The onset envelope, high-band hits, crash detector and section features share one power spectrogram and its mel bands instead of recomputing them; the analysis is identical (a test compares against librosa directly). A 3.5-minute song: 2.4 s to 2.1 s once warm.
+- **Warm-up.** The audio libraries compile their maths on first use, adding about 2 seconds to the first song. The workspace and the desktop app run the analysis on a few seconds of made-up music in the background as they start, so the first song is as quick as the rest (4.3 s to 2.4 s for a 3.5-minute song).
+- **Leftovers are swept.** At start, the program's own temporary folders (by their `lor-` prefixes) untouched for a day, left by a forced close, are removed.
+- **Long breaks.** A New show now keeps for 12 hours of no use (still at most four at once), and an expired one says to choose the preview again.
+- **Plain wording for song problems:** FFmpeg missing (with how to install it), a song that cannot be read (damaged, copy-protected, not audio), too short, too long, too large.
+- Checked and left alone: generating a show takes about a second, and the workspace opens a 7.7 MB hand-made sequence in about a second and redraws in milliseconds.

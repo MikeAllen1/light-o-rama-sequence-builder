@@ -1419,7 +1419,7 @@
     if (!file) return;
     if (state.reviewDirty && !window.confirm("Replace the unsaved music review?")) return;
     if (file.size <= 0 || file.size > MAX_AUDIO_BYTES) {
-      setBanner("Audio must be non-empty and no larger than 200 MiB.", "error");
+      setBanner("The song file is empty, or larger than the 200 MB the program accepts.", "error");
       return;
     }
     const requestId = ++state.audioRequestId;
