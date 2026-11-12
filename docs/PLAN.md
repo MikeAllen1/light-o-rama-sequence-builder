@@ -437,3 +437,7 @@ A 10-second sequence that checks the wiring before a full show: each kind of pro
 New show also gets **Save show** in the generate step, and **Yard view** from New show opens the generated show (or says to generate one first) instead of doing nothing.
 
 **Verified:** every fictional display gets a test that passes the rules; the order (kinds, sweep, all on), channel order, left-to-right order and one-mouth-at-a-time are tested; the browser test makes, saves and downloads the test and the show.
+
+## Landing page
+
+The workspace's welcome screen is a landing page: what the program does in plain words, a live drawing of an invented yard lit to a 112 BPM beat (arches chase, mini trees trade beats, snowflakes fall, the mega tree spins, the outline pulses on the bar, everything flashes every fourth bar), the three steps (preview, song, show), what each kind of prop does, and why it was built. Warm bulb colors and a slab headline replace the earlier teal dashboard look. The drawing holds still for people who ask for reduced motion and only draws while the page is showing.
