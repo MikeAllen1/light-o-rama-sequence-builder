@@ -285,7 +285,7 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
                 style = query.get("style", [""])[0] or None
                 self._send_json(200, SHOWS.batch_song(
                     token, payload, suffix, INPUT_DEMUXERS[suffix],
-                    query.get("name", ["song"])[0][:200], int(meter), style))
+                    query.get("name", ["song"])[0], int(meter), style))
             elif path == "/api/show/audio":
                 payload = self._read_body("application/octet-stream", _MAX_UPLOAD_BYTES,
                                           "Audio")
