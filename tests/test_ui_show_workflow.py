@@ -218,7 +218,7 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             summary["faces"] = True
             summary["can_separate_vocals"] = False
             page.locator("#showDisplayFile").set_input_files(str(preview))
-            page.get_by_text("Intent Test Yard", exact=False).wait_for()
+            page.locator("#displayStatus").filter(has_text="nothing it can sequence").wait_for()
             assert page.locator("#saveBatch").is_disabled()
             assert page.locator("#showSongFile").is_disabled()
             assert page.locator("#makeTest").is_disabled()
