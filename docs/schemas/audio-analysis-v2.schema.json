@@ -452,6 +452,41 @@
           "items": {
             "$ref": "#/$defs/strengthEvent"
           }
+        },
+        "bar_signatures": {
+          "type": "array",
+          "description": "What each bar sounds like: its harmony (12 pitch-class shares, unit length) and tone colour (6 timbre coefficients relative to the song). Bars of a part that returns sound alike. Optional, heuristic; never names a part.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "time",
+              "chroma",
+              "timbre"
+            ],
+            "properties": {
+              "time": {
+                "type": "number",
+                "minimum": 0
+              },
+              "chroma": {
+                "type": "array",
+                "minItems": 12,
+                "maxItems": 12,
+                "items": {
+                  "type": "number"
+                }
+              },
+              "timbre": {
+                "type": "array",
+                "minItems": 6,
+                "maxItems": 6,
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
         }
       }
     }

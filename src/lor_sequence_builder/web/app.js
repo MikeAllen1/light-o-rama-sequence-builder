@@ -3717,7 +3717,8 @@
     keep_on: "Keep on all song",
     never_use: "Never use",
     quiet_during: "Keep dark during",
-    max_intensity: "Limit brightness to"
+    max_intensity: "Limit brightness to",
+    light_whole: "Light whole (every channel together, never one side alone)"
   };
 
   const show = { token: null, summary: null, audioFile: null, analysis: null, raw: [],
@@ -3882,7 +3883,9 @@
       style: chosenStyle(),
       requirements: show.raw || [],
       musicFilename: $("musicFilename").value,
-      singing: $("singFaces").checked && !$("singFaces").closest("label").classList.contains("hidden")
+      singing: $("singFaces").checked && !$("singFaces").closest("label").classList.contains("hidden"),
+      words: show.words || "",
+      singer: $("singerSelect").value
     });
   }
 
@@ -3953,7 +3956,7 @@
       show.batchZipPending || show.displayPending || show.testPending || show.audioPending ||
       show.requirementsPending;
     $("singFaces").disabled = !show.token || !show.summary || !show.summary.faces ||
-      !show.summary.can_separate_vocals || show.requirementsUncertain || show.batchRunning || show.generationPending ||
+      !(show.summary.can_separate_vocals || show.words) || show.requirementsUncertain || show.batchRunning || show.generationPending ||
       show.batchZipPending || show.displayPending || show.testPending || show.audioPending ||
       show.requirementsPending;
     $("showSongLabel").classList.toggle("disabled", !show.token || !hasProps || show.requirementsUncertain);
@@ -4039,6 +4042,9 @@
       renderRequirements(summary.requirements, []);
       $("singFaces").checked = Boolean(summary.faces && summary.can_separate_vocals);
       $("singFaces").closest("label").classList.toggle("hidden", !summary.faces);
+      $("wordsRow").classList.toggle("hidden", !summary.faces);
+      show.words = "";
+      $("singerLabel").classList.add("hidden");
       $("singNote").textContent = summary.faces ? (summary.can_separate_vocals
         ? "Splitting the vocals out takes a few minutes per song."
         : "Needs the vocals add-on (uv sync --extra vocals); without it the mouths stay still.")
@@ -4104,6 +4110,12 @@
       show.analysisMeter = meter;
       show.songSeconds = duration;
       show.songName = file.name;
+      if (show.words) {
+        // A word file belongs to the song it was made for.
+        show.words = "";
+        $("singerLabel").classList.add("hidden");
+        $("singNote").textContent = "New song: choose its word file again for lip-sync.";
+      }
       $("musicFilename").value = file.name;
       checkMusicName();
       invalidateGeneratedResult();
@@ -4347,6 +4359,31 @@
     setAddButtons();
   }
 
+  async function chooseWords(file) {
+    if (!file || !show.token) return;
+    if (!show.songName) {
+      showMessage("generateStatus", "Choose the song first; a word file belongs to one song.", "warn");
+      return;
+    }
+    try {
+      const result = await postShow("/api/show/words?token=" + encodeURIComponent(show.token),
+        file, "application/json");
+      show.words = file.name;
+      const select = $("singerSelect");
+      select.replaceChildren(...result.singers.map((singer) =>
+        option(singer.name, singer.name + " (" + singer.words + " words)")));
+      $("singerLabel").classList.toggle("hidden", result.singers.length < 2);
+      $("singFaces").checked = true;
+      $("singNote").textContent = "Lip-sync from " + file.name + ": " + result.words +
+        " words. " + (result.singers.length > 1 ? "Choose who the faces sing; they stay closed " +
+        "for the other singers." : "");
+      invalidateGeneratedResult();
+      setStepEnabled();
+    } catch (error) {
+      $("singNote").textContent = problemText(error);
+    }
+  }
+
   function chosenStyle() {
     const picked = document.querySelector('input[name="showStyle"]:checked');
     return picked ? picked.value : null;
@@ -4537,7 +4574,8 @@
       const result = await withProgress("generateStatus", "Starting", (key) =>
         postShow("/api/show/generate?token=" + encodeURIComponent(show.token) + "&progress=" +
           key, JSON.stringify({ music_filename: $("musicFilename").value, sing: singing,
-          style: chosenStyle() }), "application/json"));
+          style: chosenStyle(), singer: show.words ? $("singerSelect").value || null : null }),
+          "application/json"));
       if (!result.rules_ok) {
         if (!previousResultIsCurrent) invalidateGeneratedResult();
         showMessage("generateStatus", (result.report || "The plan did not pass the required rules.") +
@@ -4948,6 +4986,10 @@
     $("singFaces").addEventListener("change", () => {
       invalidateGeneratedResult();
     });
+    $("wordsFile").addEventListener("change", (event) => {
+      chooseWords(event.target.files[0]).finally(() => { event.target.value = ""; });
+    });
+    $("singerSelect").addEventListener("change", () => invalidateGeneratedResult());
     $("openGenerated").addEventListener("click", openGenerated);
     $("saveGenerated").addEventListener("click", saveGenerated);
     $("pictureGenerated").addEventListener("click", openPicture);

@@ -362,3 +362,5 @@ canvas { display: block; }
 .add-props h2 { margin: 0 0 6px; font-size: 16px; }
 .add-props p { margin: 0 0 8px; font-size: 13px; line-height: 1.5; }
 .add-props .hint { font-size: 12px; color: var(--muted); }
+.words-row { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin-top: 8px; }
+.words-row .edit-field { max-width: 220px; }

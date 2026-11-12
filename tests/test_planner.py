@@ -31,6 +31,7 @@ from tests.display_builders import (
     line_drawn_yard,
     roofline_house,
 )
+from tests.style_helpers import leads_only
 from tests.test_audio_analysis import _rhythmic_track
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
@@ -75,10 +76,12 @@ def synthetic_analysis(
 
 
 def _plan(display: DisplayBuilder, analysis: dict[str, Any] | None = None,
-          rule_set: RuleSet | None = None) -> tuple[Plan, RuleReport]:
+          rule_set: RuleSet | None = None, glow: bool = False) -> tuple[Plan, RuleReport]:
+    """Plan with Classic; without its glow unless asked, so tests see the leads."""
     rules = rule_set or load_rule_set()
     preview = display.element()
-    plan = plan_show(analysis or synthetic_analysis(), display_from_preview(preview), rules)
+    plan = plan_show(analysis or synthetic_analysis(), display_from_preview(preview), rules,
+                     style=get_style("classic") if glow else leads_only("classic"))
     return plan, check_choreography(preview, plan.choreography, rules)
 
 
@@ -339,18 +342,15 @@ def test_each_kind_of_prop_keeps_its_part_through_the_song() -> None:
                                   sections=((0.0, 0.1), (8.0, 0.95), (40.0, 0.3)))
     plan, report = _plan(display, analysis)
     assert report.ok
-    # Arches always chase on the beat, quiet or loud: never a different pattern.
+    # Arches always chase on the beat grid, quiet or loud: never a different pattern.
     kinds = {m.kind for m in plan.choreography.movements}
     assert kinds == {"chase"}
     beats = {round(t["time"] * 100) for t in analysis["analysis"]["beats"]}
     assert all(m.start_centisecond in beats for m in plan.choreography.movements)
-    # Loud parts are fuller: two arches lit at once instead of one.
-    loud = [e for e in plan.choreography.effects if 1000 <= e.start_centisecond < 3800]
-    quiet = [e for e in plan.choreography.effects if 4100 <= e.start_centisecond < 6200]
-    def mean_length(effects: list[Any]) -> float:
-        return float(sum(e.end_centisecond - e.start_centisecond for e in effects)) / len(effects)
-
-    assert mean_length(loud) > 1.5 * mean_length(quiet) / 2
+    # Loud parts are fuller: more arch light at a time than in the quiet part.
+    loud = _lit_time(plan.choreography, 1000, 3800) / 2800
+    quiet = _lit_time(plan.choreography, 4100, 6200) / 2100
+    assert loud > 1.2 * quiet
 
 
 def test_the_intro_starts_focused_and_the_song_ends_with_a_fade() -> None:
@@ -621,7 +621,7 @@ def test_a_part_that_comes_back_keeps_its_handoffs_moves_anew_and_the_last_choru
     # Elegant repeats a returning part exactly.
     elegant = plan_show(synthetic_analysis(duration=96.0, sections=SONG_FORM),
                         display_from_preview(display.element()), load_rule_set(),
-                        style=get_style("elegant"))
+                        style=leads_only("elegant"))
     # (After the first bar: the first verse fades in from the quiet intro, the second
     # follows a chorus.)
     first, second = _shape(elegant, 1750, 3200), _shape(elegant, 4950, 6400)

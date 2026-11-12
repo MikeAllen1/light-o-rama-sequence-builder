@@ -99,6 +99,8 @@ class _Session:
     audio_revision: int = 0
     requirements_revision: int = 0
     generated_dir: Path | None = None
+    # A WhisperX word file for the singing faces, when the user gave one.
+    words_path: Path | None = None
     requirements: tuple[Requirement, ...] = ()
     batch: list[dict[str, Any]] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
@@ -326,6 +328,8 @@ class ShowSessions:
                 raise
             old_audio = session.audio_path
             session.audio_path = audio
+            # A word file belongs to one song.
+            session.words_path = None
             session.analysis_path = analysis
             session.audio_name = audio_name
             if old_audio is not None and old_audio.parent != session.path:
@@ -421,12 +425,44 @@ class ShowSessions:
                 "sound": base64.b64encode(test.sound_path.read_bytes()).decode("ascii"),
             }
 
+    def add_words(self, token: str, payload: bytes) -> dict[str, Any]:
+        """Keep a WhisperX word file for lip-sync; returns who sings, most words first."""
+        from lor_sequence_builder.vocals import (
+            VocalAnalysisError,
+            is_word_file,
+            singers,
+            vocals_from_words,
+        )
+
+        try:
+            data = json.loads(payload.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
+            raise ShowBuildError("That is not a word file (expected WhisperX JSON).") from exc
+        if not is_word_file(data):
+            raise ShowBuildError("That is not a word file: expected WhisperX output with "
+                                 "segments and word timings.")
+        try:
+            vocals_from_words(data)
+        except VocalAnalysisError as exc:
+            raise ShowBuildError(str(exc)) from exc
+        with self.locked(token) as session:
+            path = session.path / "words.json"
+            path.write_bytes(payload)
+            session.words_path = path
+        named = singers(data)
+        words = sum(count for _, count in named)
+        return {"singers": [{"name": name, "words": count} for name, count in named],
+                "words": words}
+
     def generate(self, token: str, body: dict[str, Any]) -> dict[str, Any]:
         music = body.get("music_filename")
         sing_value = body.get("sing", False)
         if not isinstance(sing_value, bool):
             raise ShowBuildError("'sing' must be a JSON boolean")
         sing = sing_value
+        singer = body.get("singer") or None
+        if singer is not None and (not isinstance(singer, str) or len(singer) > 100):
+            raise ShowBuildError("'singer' must be a speaker name")
         style = body.get("style") or None
         if style is not None and not isinstance(style, str):
             raise ShowBuildError("Unknown style; choose one of: " + ", ".join(STYLES))
@@ -453,7 +489,9 @@ class ShowSessions:
                 vocals: Path | None = None
                 note = None
                 if display_has_mouths(session.display, rule_set):
-                    if sing and separation_available():
+                    if sing and session.words_path is not None:
+                        vocals = session.words_path
+                    elif sing and separation_available():
                         vocals = separate_vocals(session.audio_path, run / "vocals.wav")
                     elif sing:
                         note = ("Singing faces need the vocals add-on (uv sync --extra vocals); "
@@ -464,7 +502,9 @@ class ShowSessions:
                     show = generate_show(session.preview_path, output, rule_set,
                                          analysis_path=session.analysis_path,
                                          music_filename=music.strip(), vocals_path=vocals,
-                                         separate=False, style=style)
+                                         separate=False, style=style,
+                                         singer=singer if vocals == session.words_path
+                                         else None)
                 except RulesFailedError as failed:
                     if session.generated_dir is not None:
                         shutil.rmtree(session.generated_dir, ignore_errors=True)

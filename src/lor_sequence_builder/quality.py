@@ -98,17 +98,25 @@ def _spans(times: Sequence[bool], step: int, minimum: int) -> list[tuple[int, in
 
 
 def lit_share(effects: Iterable[Effect], props: set[str], duration: int,
-              step: int = STEP) -> list[float]:
-    """The share of ``props`` lit at each step of the song."""
+              step: int = STEP, weighted: bool = True) -> list[float]:
+    """How much of ``props`` is lit at each step of the song, weighted by brightness
+    (a prop at full counts 1, a prop glowing at 40% counts 0.4), or, with
+    ``weighted`` off, the share of props lit at all."""
     count = duration // step + 1
-    lit: list[set[str]] = [set() for _ in range(count)]
+    index = {pid: i for i, pid in enumerate(sorted(props))}
+    level = [[0.0] * len(index) for _ in range(count)]
     for e in effects:
-        if e.prop_id not in props or max(e.start_intensity, e.end_intensity) <= 0:
+        i = index.get(e.prop_id)
+        if i is None or max(e.start_intensity, e.end_intensity) <= 0:
             continue
+        span = max(1, e.end_centisecond - e.start_centisecond)
         for t in range(e.start_centisecond // step, min(count, -(-e.end_centisecond // step))):
-            lit[t].add(e.prop_id)
+            at = min(max(t * step, e.start_centisecond), e.end_centisecond)
+            value = (e.start_intensity + (e.end_intensity - e.start_intensity)
+                     * (at - e.start_centisecond) / span) / 100 if weighted else 1.0
+            level[t][i] = max(level[t][i], value)
     total = max(1, len(props))
-    return [len(s) / total for s in lit]
+    return [sum(row) / total for row in level]
 
 
 def _near(times: list[int], value: int, tolerance: int) -> bool:
@@ -157,20 +165,7 @@ def _style_check(effects: Sequence[Effect], props: set[str], duration: int,
     import statistics
 
     used = [e for e in effects if e.prop_id in props]
-    by_channel: dict[tuple[str, int], list[Effect]] = defaultdict(list)
-    for e in used:
-        by_channel[(e.prop_id, e.channel_index)].append(e)
-    lengths: list[int] = []
-    for items in by_channel.values():
-        items.sort(key=lambda e: e.start_centisecond)
-        start, end = items[0].start_centisecond, items[0].end_centisecond
-        for e in items[1:]:
-            if e.start_centisecond <= end:
-                end = max(end, e.end_centisecond)
-            else:
-                lengths.append(end - start)
-                start, end = e.start_centisecond, e.end_centisecond
-        lengths.append(end - start)
+    lengths = [e.end_centisecond - e.start_centisecond for e in used]
     hold = statistics.median(lengths) / beat if lengths else 0.0
     fades = sum(1 for e in used if e.kind == "fade") / max(1, len(used))
     top = max((level for _, _, level in sections), default=0)
@@ -194,9 +189,9 @@ def _style_check(effects: Sequence[Effect], props: set[str], duration: int,
     missed: list[str] = []
     low, high = profile.hold_beats
     if hold < low:
-        missed.append(f"lights stay on {hold:.1f} beats, shorter than its {low:g}")
+        missed.append(f"effects last {hold:.1f} beats, shorter than its {low:g}")
     elif hold > high:
-        missed.append(f"lights stay on {hold:.1f} beats, longer than its {high:g}")
+        missed.append(f"effects last {hold:.1f} beats, longer than its {high:g}")
     low, high = profile.fade_share
     if not low <= fades <= high:
         missed.append(f"{fades:.0%} of effects fade (it aims for {low:.0%}-{high:.0%})")
@@ -234,6 +229,7 @@ def check(
     style_name: str = "",
     beat: int = 0,
     accents: int = 0,
+    mirrors: set[str] | None = None,
 ) -> QualityReport:
     """Check a show. ``sections`` are (start, end, level 0-2); ``music`` the times
     of beats, drum hits and onsets; ``quiet`` where the song itself is silent or
@@ -260,9 +256,10 @@ def check(
         findings.append(Finding("too_much_at_once", "good",
                                 "The yard is never all lit except at the big moments."))
 
-    # Dead air.
+    # Dead air: nothing lit at all, however dim.
+    any_lit = lit_share(effects, props, duration, weighted=False)
     dead = _spans([s <= DEAD_SHARE and not inside(quiet, i * STEP)
-                   for i, s in enumerate(share)], STEP, DEAD_SPAN)
+                   for i, s in enumerate(any_lit)], STEP, DEAD_SPAN)
     measures["dead_air_seconds"] = sum(b - a for a, b in dead) / 100
     if dead:
         findings.append(Finding(
@@ -285,8 +282,12 @@ def check(
     by_role: dict[str, list[str]] = defaultdict(list)
     for pid in sorted(props):
         by_role[roles.get(pid, "unknown")].append(pid)
+    # Props that show another prop's light on purpose (a resting mouth with its
+    # face, a prop on the same circuit) are not lockstep.
+    mirrored = mirrors or set()
     pairs = [(a, b) for pids in by_role.values() for a, b in itertools.combinations(pids, 2)
-             if len(timelines[a]) >= 10 and timelines[a] == timelines[b]]
+             if len(timelines[a]) >= 10 and timelines[a] == timelines[b]
+             and a not in mirrored and b not in mirrored]
     measures["lockstep_pairs"] = len(pairs)
     findings.append(Finding(
         "lockstep", "note" if pairs else "good",
