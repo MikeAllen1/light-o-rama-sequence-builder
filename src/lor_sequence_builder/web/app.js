@@ -3188,7 +3188,7 @@
     result: null, resultConfig: null, audioRequestId: 0, audioPending: false,
     requirementsPending: false, requirementsRequestId: 0, displayRequestId: 0,
     displayPending: false, testPending: false, batchRunning: false, batchToken: null,
-    batchReady: false, generationPending: false };
+    batchConfig: null, batchReady: false, generationPending: false };
 
   function showMessage(id, text, kind) {
     const element = $(id);
@@ -3236,6 +3236,9 @@
     if (!show.token || show.testPending || show.batchRunning || show.generationPending ||
         show.displayPending || show.audioPending || show.requirementsPending) return;
     const token = show.token;
+    show.test = null;
+    $("watchTest").disabled = true;
+    $("saveTest").disabled = true;
     show.testPending = true;
     setShowConfigurationLocked(true);
     setStepEnabled();
@@ -3282,6 +3285,15 @@
       "to right, then everything on.", "good");
     const sound = new File([bytesFromBase64(test.sound)], test.sound_name, { type: "audio/wav" });
     await loadAudio(sound, null, true);
+  }
+
+  function currentBatchConfig() {
+    return JSON.stringify({
+      token: show.token,
+      meter: $("meterSelect").value,
+      style: chosenStyle(),
+      requirements: show.raw || []
+    });
   }
 
   function currentShowConfig() {
@@ -3363,6 +3375,7 @@
       show.summary = summary;
       show.test = null;
       show.batchToken = null;
+      show.batchConfig = null;
       show.batchReady = false;
       $("saveBatch").disabled = true;
       $("batchList").replaceChildren();
@@ -3541,6 +3554,11 @@
       if (requestId !== show.requirementsRequestId || result.stale) return;
       show.raw = result.raw;
       invalidateGeneratedResult();
+      if (show.batchReady) {
+        show.batchReady = false;
+        $("saveBatch").disabled = true;
+        showMessage("batchStatus", "Requirements changed. Rebuild the playlist before saving it.", "warn");
+      }
       renderRequirements(result.requirements, result.problems);
     } catch (error) {
       if (requestId === show.requirementsRequestId) {
@@ -3753,8 +3771,9 @@
     const batchToken = show.token;
     const batchMeter = $("meterSelect").value;
     const batchStyle = chosenStyle() || "";
-    const batchConfig = currentShowConfig();
+    const batchConfig = currentBatchConfig();
     show.batchToken = batchToken;
+    show.batchConfig = batchConfig;
     show.batchReady = false;
     show.batchRunning = true;
     setShowConfigurationLocked(true);
@@ -3818,7 +3837,8 @@
     show.batchRunning = false;
     setShowConfigurationLocked(false);
     setStepEnabled();
-    show.batchReady = built > 0 && show.token === batchToken;
+    show.batchReady = built > 0 && show.token === batchToken &&
+      show.batchConfig === currentBatchConfig();
     $("saveBatch").disabled = !show.batchReady;
     showMessage("batchStatus", built + " of " + files.length + " shows built" +
       (totalSeconds ? ", " + formatTime(totalSeconds) + " of music in all." : ".") +
@@ -3827,7 +3847,8 @@
 
   async function saveBatch() {
     const token = show.batchToken;
-    if (!show.batchReady || !token || token !== show.token) {
+    if (!show.batchReady || !token || token !== show.token ||
+        !show.batchConfig || show.batchConfig !== currentBatchConfig()) {
       $("saveBatch").disabled = true;
       showMessage("batchStatus", "There are no completed shows for the current display. Build the playlist again.", "warn");
       return;
@@ -3835,10 +3856,6 @@
     try {
       const result = await postShow("/api/show/batch-zip?token=" + encodeURIComponent(token),
         "{}", "application/json");
-      if (show.token !== token || show.batchToken !== token) {
-        showMessage("batchStatus", "The display changed before the download was ready. Build the playlist again.", "warn");
-        return;
-      }
       download(bytesFromBase64(result.zip), result.zip_name, "application/zip");
     } catch (error) {
       showMessage("batchStatus", error.message || String(error), "error");
@@ -3906,6 +3923,11 @@
     });
     $("styleChoices").addEventListener("change", () => {
       invalidateGeneratedResult();
+      if (show.batchReady) {
+        show.batchReady = false;
+        $("saveBatch").disabled = true;
+        showMessage("batchStatus", "Show style changed. Rebuild the playlist before saving it.", "warn");
+      }
       showMessage("generateStatus", "Show style changed. Generate again to apply it.", "warn");
     });
     $("singFaces").addEventListener("change", () => {
@@ -4673,6 +4695,11 @@
       canvasViewport.scrollLeft = 0;
     });
     $("meterSelect").addEventListener("change", () => {
+      if (show.batchReady && show.batchConfig !== currentBatchConfig()) {
+        show.batchReady = false;
+        $("saveBatch").disabled = true;
+        showMessage("batchStatus", "Meter changed. Rebuild the playlist before saving it.", "warn");
+      }
       if (show.token && show.audioFile && !show.batchRunning && !show.generationPending) {
         chooseSong(show.audioFile);
       }
