@@ -66,7 +66,7 @@ from lor_sequence_builder.vocal_separation import (
 )
 
 MAX_SESSIONS = 4
-SESSION_SECONDS = 2 * 60 * 60
+SESSION_SECONDS = 12 * 60 * 60
 MAX_REQUIREMENTS = 50
 MAX_BATCH_SONGS = 40
 
@@ -169,7 +169,8 @@ class ShowSessions:
                 self._drop(token)
                 session = None
             if session is None:
-                raise ShowBuildError("This show was not found or has expired; start again")
+                raise ShowBuildError("This New show was put away after a long break. Choose your "
+                                     "preview again to carry on; saved requirements come back.")
             session.last_used = time.monotonic()
             return session
 
@@ -186,7 +187,8 @@ class ShowSessions:
                 self._drop(token)
                 session = None
             if session is None:
-                raise ShowBuildError("This show was not found or has expired; start again")
+                raise ShowBuildError("This New show was put away after a long break. Choose your "
+                                     "preview again to carry on; saved requirements come back.")
             session.lock.acquire()
             session.last_used = time.monotonic()
         try:
@@ -205,7 +207,8 @@ class ShowSessions:
                 preview = preview_element(read_lorprev(preview_path))
                 display = display_from_preview(preview)
             except (ValueError, OSError) as exc:
-                raise ShowBuildError(f"Cannot read this preview: {exc}") from exc
+                raise ShowBuildError(f"This preview could not be read ({exc}). Choose the "
+                                     ".lorprev file exported from S6's Preview Editor.") from exc
             name = preview.get("Name") or Path(file_name).stem or "Display"
             session = _Session(secrets.token_urlsafe(18), folder, preview_path, display,
                                _display_key(preview, payload), name)

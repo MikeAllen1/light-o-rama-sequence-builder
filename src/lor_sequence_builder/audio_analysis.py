@@ -16,6 +16,7 @@ import platform
 import shutil
 import subprocess
 import tempfile
+import threading
 import wave
 from importlib import metadata
 from pathlib import Path
@@ -99,7 +100,9 @@ def _normalize(path: Path, output: Path, input_demuxer: str | None = None) -> st
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
         raise AudioAnalysisError(
-            "FFmpeg is required for audio decoding; install FFmpeg and ensure it is on PATH"
+            "Reading songs needs FFmpeg, which is not installed here. The Windows app includes "
+            "it; otherwise install it (Windows: winget install --id Gyan.FFmpeg -e, macOS: brew "
+            "install ffmpeg) and open a new window"
         )
     try:
         version_result = subprocess.run(
@@ -129,16 +132,20 @@ def _normalize(path: Path, output: Path, input_demuxer: str | None = None) -> st
             timeout=MAX_DURATION_SECONDS + 120,
         )
     except subprocess.TimeoutExpired as exc:
-        raise AudioAnalysisError("FFmpeg audio normalization exceeded its time limit") from exc
+        raise AudioAnalysisError("Reading this song took too long and was stopped. Try a "
+                                 "shorter song, or an MP3 copy of it") from exc
     if completed.returncode != 0:
-        detail = completed.stderr.strip()[-500:]
-        raise AudioAnalysisError(f"FFmpeg could not decode the audio: {detail}")
+        lines = completed.stderr.strip().splitlines()
+        detail = lines[-1][-200:] if lines else "no details"
+        raise AudioAnalysisError(
+            "This song could not be read. It may be damaged, copy-protected, or not really "
+            f"audio; try another copy, or convert it to MP3 ({detail})")
     try:
         normalized_size = output.stat().st_size
     except OSError as exc:
         raise AudioAnalysisError("FFmpeg did not create its normalized output") from exc
     if normalized_size > MAX_NORMALIZED_BYTES:
-        raise AudioAnalysisError("Normalized audio exceeds the configured disk-space limit")
+        raise AudioAnalysisError("This song is too long to analyze")
     return ffmpeg_version
 
 
@@ -155,9 +162,11 @@ def _read_samples(wav_path: Path) -> tuple[npt.NDArray[np.float32], float]:
                     f"Normalized audio must be mono 16-bit PCM at {SAMPLE_RATE} Hz"
                 )
             if duration < MIN_DURATION_SECONDS:
-                raise AudioAnalysisError("Audio must be at least 2 seconds long")
+                raise AudioAnalysisError("This song is shorter than 2 seconds (at least 2 "
+                                         "seconds long is needed); choose the full song")
             if duration > MAX_DURATION_SECONDS or frames_total > MAX_DECODED_SAMPLES:
-                raise AudioAnalysisError("Audio exceeds the 30-minute analysis limit")
+                raise AudioAnalysisError("This song is longer than 30 minutes, the most the "
+                                         "program analyzes (the 30-minute analysis limit)")
             raw = source.readframes(frames_total)
     except (OSError, wave.Error) as exc:
         raise AudioAnalysisError(f"Cannot read normalized PCM audio: {exc}") from exc
@@ -182,9 +191,45 @@ def _frames_to_times(frames: IntArray | FloatArray) -> FloatArray:
     )
 
 
-def _onset_envelope(samples: npt.NDArray[np.float32]) -> FloatArray:
+class _Spectra:
+    """The song's spectrum, worked out once and shared.
+
+    The onset envelope, the high-band hits, the crash detector and the section
+    features all read mel spectrograms of the same power spectrogram. librosa would
+    recompute it for each; the results here are the same values, made once.
+    """
+
+    def __init__(self, samples: npt.NDArray[np.float32]) -> None:
+        self.samples = samples
+        self._power: npt.NDArray[np.float32] | None = None
+        self._mel: dict[tuple[float, int], npt.NDArray[np.float32]] = {}
+
+    @property
+    def power(self) -> npt.NDArray[np.float32]:
+        if self._power is None:
+            self._power = np.abs(librosa.stft(self.samples, n_fft=2048,
+                                              hop_length=HOP_LENGTH)) ** 2
+        return self._power
+
+    def mel(self, fmin: float = 0.0, n_mels: int = 128) -> npt.NDArray[np.float32]:
+        key = (fmin, n_mels)
+        if key not in self._mel:
+            self._mel[key] = librosa.feature.melspectrogram(
+                S=self.power, sr=SAMPLE_RATE, fmin=fmin, n_mels=n_mels)
+        return self._mel[key]
+
+    def log_mel(self, fmin: float = 0.0, n_mels: int = 128) -> npt.NDArray[np.float32]:
+        return np.asarray(librosa.power_to_db(self.mel(fmin, n_mels)))
+
+
+def _spectra(samples: npt.NDArray[np.float32] | _Spectra) -> _Spectra:
+    return samples if isinstance(samples, _Spectra) else _Spectra(samples)
+
+
+def _onset_envelope(samples: npt.NDArray[np.float32] | _Spectra) -> FloatArray:
     return np.asarray(
-        librosa.onset.onset_strength(y=samples, sr=SAMPLE_RATE, hop_length=HOP_LENGTH),
+        librosa.onset.onset_strength(S=_spectra(samples).log_mel(), sr=SAMPLE_RATE,
+                                     hop_length=HOP_LENGTH),
         dtype=np.float64,
     )
 
@@ -227,11 +272,11 @@ def _detect_onsets(envelope: FloatArray) -> list[dict[str, Any]]:
 HIGH_BAND_HZ = 5000.0
 
 
-def _high_hits(samples: npt.NDArray[np.float32]) -> list[dict[str, Any]]:
+def _high_hits(samples: npt.NDArray[np.float32] | _Spectra) -> list[dict[str, Any]]:
     """Hits in the high frequencies: tambourine, sleigh bells, hi-hats, shakers."""
     envelope = np.asarray(
-        librosa.onset.onset_strength(y=samples, sr=SAMPLE_RATE, hop_length=HOP_LENGTH,
-                                     fmin=HIGH_BAND_HZ, n_mels=32),
+        librosa.onset.onset_strength(S=_spectra(samples).log_mel(HIGH_BAND_HZ, 32),
+                                     sr=SAMPLE_RATE, hop_length=HOP_LENGTH),
         dtype=np.float64,
     )
     frames = np.asarray(
@@ -260,7 +305,7 @@ CRASH_RING = 0.55
 CRASH_SPACING = 1.0
 
 
-def _crashes(samples: npt.NDArray[np.float32], hits: list[dict[str, Any]]
+def _crashes(samples: npt.NDArray[np.float32] | _Spectra, hits: list[dict[str, Any]]
              ) -> list[dict[str, Any]]:
     """Cymbal crash candidates: loud high-frequency hits that ring on afterwards.
 
@@ -272,8 +317,7 @@ def _crashes(samples: npt.NDArray[np.float32], hits: list[dict[str, Any]]
     """
     if not hits:
         return []
-    mel = librosa.feature.melspectrogram(y=samples, sr=SAMPLE_RATE, hop_length=HOP_LENGTH,
-                                         fmin=HIGH_BAND_HZ, n_mels=32)
+    mel = _spectra(samples).mel(HIGH_BAND_HZ, 32)
     energy = np.asarray(np.sqrt(np.sum(mel, axis=0)), dtype=np.float64)
     if energy.size == 0:
         return []
@@ -496,7 +540,7 @@ def _section_recurrence_novelty(features: FloatArray) -> FloatArray:
 
 
 def _structural_sections(
-    samples: npt.NDArray[np.float32],
+    samples: npt.NDArray[np.float32] | _Spectra,
     beat_frames: IntArray,
     beat_chroma: FloatArray,
     downbeat_indices: IntArray,
@@ -505,7 +549,7 @@ def _structural_sections(
     beat_count = len(beat_frames)
     if beat_count < SECTION_KERNEL_BEATS * 2 or downbeat_indices.size < 3:
         return []
-    mfcc = librosa.feature.mfcc(y=samples, sr=SAMPLE_RATE, hop_length=HOP_LENGTH, n_mfcc=13)
+    mfcc = librosa.feature.mfcc(S=_spectra(samples).log_mel(), sr=SAMPLE_RATE, n_mfcc=13)
     features = np.vstack([
         np.asarray(librosa.util.normalize(beat_chroma, axis=0), dtype=np.float64),
         np.asarray(
@@ -514,7 +558,8 @@ def _structural_sections(
         ),
     ])
     novelty = _section_recurrence_novelty(features)[:beat_count]
-    rms = np.asarray(librosa.feature.rms(y=samples, hop_length=HOP_LENGTH), dtype=np.float64)
+    rms = np.asarray(librosa.feature.rms(y=_spectra(samples).samples, hop_length=HOP_LENGTH),
+                     dtype=np.float64)
     loudness = _beat_sync(np.log1p(rms * 100.0), beat_frames)[0]
     loudness_change = np.zeros(beat_count, dtype=np.float64)
     span = min(SECTION_LOUDNESS_SPAN_BEATS, loudness.size // 2)
@@ -742,7 +787,8 @@ def analyze_audio(
             raise AudioAnalysisError(f"Audio input is not a regular file: {source}")
         size = source.stat().st_size
         if size <= 0 or size > MAX_INPUT_BYTES:
-            raise AudioAnalysisError("Audio file must be non-empty and no larger than 200 MiB")
+            raise AudioAnalysisError("The song file is empty, or larger than the 200 MB the "
+                                     "program accepts")
         resolved = {source.resolve(), json_path.resolve(), plot_path.resolve()}
         if len(resolved) != 3:
             raise AudioAnalysisError("Input, JSON output, and plot output must be different paths")
@@ -756,9 +802,10 @@ def analyze_audio(
             samples, duration = _read_samples(normalized)
 
         rms = _frame_rms(samples)
-        envelope = _onset_envelope(samples)
+        spectra = _Spectra(samples)
+        envelope = _onset_envelope(spectra)
         onsets = _detect_onsets(envelope)
-        high_hits = _high_hits(samples)
+        high_hits = _high_hits(spectra)
         bpm, beat_frames, tempo_stability, beat_contrast = _track_beats(
             envelope, min_bpm, max_bpm
         )
@@ -790,7 +837,7 @@ def analyze_audio(
             downbeat_indices = np.arange(phase, len(beat_times), beats_per_bar, dtype=np.int64)
             downbeats = [beat_times[int(i)] for i in downbeat_indices]
             for beat_index, score in _structural_sections(
-                samples, beat_frames, beat_chroma, downbeat_indices
+                spectra, beat_frames, beat_chroma, downbeat_indices
             ):
                 structural.append({
                     "time": beat_times[beat_index],
@@ -871,7 +918,7 @@ def analyze_audio(
                 ],
                 "onsets": onsets,
                 "high_hits": high_hits,
-                "crashes": _crashes(samples, high_hits),
+                "crashes": _crashes(spectra, high_hits),
                 "tempo_curve": _tempo_curve(envelope, bpm),
                 "energy": energy,
                 "phrase_boundaries": phrases,
@@ -926,8 +973,48 @@ def decode_audio(audio_path: str | Path) -> tuple[npt.NDArray[np.float32], float
         raise AudioAnalysisError(f"Audio input is not a regular file: {source}")
     size = source.stat().st_size
     if size <= 0 or size > MAX_INPUT_BYTES:
-        raise AudioAnalysisError("Audio file must be non-empty and no larger than 200 MiB")
+        raise AudioAnalysisError("The song file is empty, or larger than the 200 MB the program "
+                                 "accepts")
     with tempfile.TemporaryDirectory(prefix="lor-decode-") as folder:
         normalized = Path(folder) / "normalized.wav"
         _normalize(source, normalized)
         return _read_samples(normalized)
+
+
+_warmed = threading.Event()
+
+
+def warm_up() -> bool:
+    """Run the analysis once on a few seconds of made-up music, in memory.
+
+    The audio libraries compile their number crunching the first time it is used,
+    which adds a few seconds to the first song. Calling this in the background when
+    the program starts pays that cost before anyone chooses a song. Never raises.
+    """
+    if _warmed.is_set():
+        return True
+    try:
+        rate, seconds = SAMPLE_RATE, 8.0
+        time = np.arange(int(rate * seconds), dtype=np.float32) / rate
+        samples = (0.2 * np.sin(2 * np.pi * 220.0 * time)).astype(np.float32)
+        for beat in np.arange(0.0, seconds, 0.5):
+            start = int(beat * rate)
+            click = np.exp(-np.arange(800) / 120.0).astype(np.float32)
+            samples[start:start + 800] += click[: max(0, min(800, samples.size - start))]
+        spectra = _Spectra(samples)
+        envelope = _onset_envelope(spectra)
+        _high_hits(spectra)
+        _, frames, _, _ = _track_beats(envelope, 60, 180)
+        if frames.size >= 2:
+            _beat_chroma(samples, frames)
+        librosa.feature.mfcc(S=spectra.log_mel(), sr=SAMPLE_RATE, n_mfcc=13)
+        librosa.feature.rms(y=samples, hop_length=HOP_LENGTH)
+    except Exception:  # noqa: BLE001 - a failed warm-up only means a slower first song
+        return False
+    _warmed.set()
+    return True
+
+
+def warm_up_in_background() -> None:
+    threading.Thread(target=warm_up, name="analysis-warm-up", daemon=True).start()
+

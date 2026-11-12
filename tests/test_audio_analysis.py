@@ -534,7 +534,7 @@ def test_analyzer_rejects_input_over_200_mib_before_decoding(tmp_path: Path) -> 
     with audio.open("wb") as output:
         output.truncate(200 * 1024 * 1024 + 1)
 
-    with pytest.raises(AudioAnalysisError, match="200 MiB"):
+    with pytest.raises(AudioAnalysisError, match="200 MB"):
         analyze_audio(audio, tmp_path / "large.json", tmp_path / "large.svg")
 
 
