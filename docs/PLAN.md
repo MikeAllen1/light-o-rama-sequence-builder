@@ -441,3 +441,7 @@ New show also gets **Save show** in the generate step, and **Yard view** from Ne
 ## Landing page
 
 The workspace's welcome screen is a landing page: what the program does in plain words, a live drawing of an invented yard lit to a 112 BPM beat (arches chase, mini trees trade beats, snowflakes fall, the mega tree spins, the outline pulses on the bar, everything flashes every fourth bar), the three steps (preview, song, show), what each kind of prop does, and why it was built. Warm bulb colors and a slab headline replace the earlier teal dashboard look. The drawing holds still for people who ask for reduced motion and only draws while the page is showing.
+
+## Update check
+
+Once per start the workspace asks GitHub for the project's latest published release (a fixed HTTPS address, five-second timeout, at most 1 MB, remembered for six hours). If it is newer than the running version, a corner note links to the installer. Links are only passed on when they point at this project's own release pages and downloads; drafts, pre-releases and an empty release list are not news, and being offline is quiet. **Later** skips that version, **Stop checking** turns it off, `LOR_NO_UPDATE_CHECK=1` turns it off for the whole program, and the start page has a manual **Check for updates** with the running version. Tests never reach GitHub.

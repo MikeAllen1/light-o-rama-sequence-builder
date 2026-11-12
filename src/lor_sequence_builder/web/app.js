@@ -4076,6 +4076,62 @@
     }
   }
 
+  // Once per start, ask the local server whether a newer release is on GitHub. People
+  // can stop it ("Stop checking"); a manual check on the landing page still works.
+  const UPDATE_KEY = "lorSequencer.updateCheck";
+
+  function updatePreference() {
+    try { return window.localStorage.getItem(UPDATE_KEY); } catch { return null; }
+  }
+
+  function setUpdatePreference(value) {
+    try {
+      if (value) window.localStorage.setItem(UPDATE_KEY, value);
+      else window.localStorage.removeItem(UPDATE_KEY);
+    } catch { /* storage unavailable: the choice lasts until the window closes */ }
+  }
+
+  async function checkForUpdate(manual) {
+    if (!manual && updatePreference() === "off") return;
+    if (manual) $("versionText").textContent = "Checking…";
+    let result;
+    try {
+      result = await postShow("/api/update", "", "application/json");
+    } catch (error) {
+      result = { error: error.message || String(error) };
+    }
+    if (result.current) $("versionText").textContent = "Version " + result.current;
+    if (result.newer && result.latest) {
+      if (!manual && updatePreference() === "skip:" + result.latest) return;
+      $("updateText").textContent = "LOR Sequencer " + result.latest + " is out (you have " +
+        result.current + ").";
+      $("updateLink").href = result.installer || result.page;
+      $("updateLink").textContent = result.installer ? "Download the installer" : "See what's new";
+      $("updateBar").dataset.latest = result.latest;
+      $("updateBar").classList.remove("hidden");
+    } else if (manual) {
+      $("versionText").textContent = "Version " + (result.current || "") + (result.error
+        ? " (could not reach GitHub)" : result.disabled ? " (update checks are off)"
+          : " (up to date)");
+    }
+  }
+
+  function setupUpdates() {
+    $("updateLater").addEventListener("click", () => {
+      setUpdatePreference("skip:" + ($("updateBar").dataset.latest || ""));
+      $("updateBar").classList.add("hidden");
+    });
+    $("updateOff").addEventListener("click", () => {
+      setUpdatePreference("off");
+      $("updateBar").classList.add("hidden");
+    });
+    $("checkUpdates").addEventListener("click", () => {
+      setUpdatePreference(null);
+      checkForUpdate(true);
+    });
+    checkForUpdate(false);
+  }
+
   function setup() {
     const bindFile = (id, handler) => $(id).addEventListener("change", (event) => {
       const file = event.target.files && event.target.files[0];
@@ -4154,6 +4210,7 @@
     setupNewShow();
     setupYard();
     setupHero();
+    setupUpdates();
   }
 
   setup();

@@ -93,6 +93,16 @@ main { height: calc(100% - 66px); }
   .hero, .steps, .jobs dl { grid-template-columns: 1fr; }
   .landing { padding: 32px 16px 56px; }
 }
+.update-bar { position: fixed; right: 20px; bottom: 20px; z-index: 40; max-width: min(460px, calc(100% - 32px));
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 12px 16px; border-radius: 10px;
+  background: #3a2414; border: 1px solid #6b3b1d; color: #ffe7c7; font-size: 13px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .45); }
+.update-bar span { flex-basis: 100%; }
+.update-bar a { color: #ffd98f; font-weight: 700; }
+.link-like { border: 0; padding: 0; background: none; color: #c9a77d; font-size: inherit; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 3px; }
+.version-line { margin-top: 40px; color: #7d756b; font-size: 12px; }
+.version-line .link-like { color: #9a8b78; }
 .hidden { display: none !important; }
 .editor { height: 100%; display: flex; flex-direction: column; min-height: 0; }
 .sequence-bar {

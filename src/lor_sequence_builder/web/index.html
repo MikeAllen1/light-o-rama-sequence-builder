@@ -61,6 +61,12 @@
     <div id="connectionStatus" class="connection-status">On this computer</div>
   </header>
 
+  <div id="updateBar" class="update-bar hidden" role="status">
+    <span id="updateText"></span>
+    <a id="updateLink" href="#" target="_blank" rel="noopener noreferrer">Get it</a>
+    <button id="updateLater" class="link-like" type="button">Later</button>
+    <button id="updateOff" class="link-like" type="button">Stop checking</button>
+  </div>
   <main>
     <section id="welcome" class="welcome">
       <div class="landing">
@@ -111,6 +117,7 @@
           <p>"I built this to make LOR sequences easier for people who don't have the time or the musical ability to create their own."</p>
           <footer>Mike, who runs a Light-O-Rama display of his own. Free to use, not to sell.</footer>
         </blockquote>
+        <p class="version-line"><span id="versionText">Version</span> · <button id="checkUpdates" class="link-like" type="button">Check for updates</button></p>
       </div>
     </section>
 

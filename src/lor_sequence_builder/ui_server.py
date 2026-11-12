@@ -127,10 +127,15 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
     def do_POST(self) -> None:
         """Analyze audio, check an edited sequence, or build a new show."""
         parsed = urlsplit(self.path)
-        if parsed.path not in {"/api/analyze", "/api/export", *_SHOW_STEPS}:
+        if parsed.path not in {"/api/analyze", "/api/export", "/api/update", *_SHOW_STEPS}:
             self.send_error(404)
             return
         if not self._is_same_origin():
+            return
+        if parsed.path == "/api/update":
+            from lor_sequence_builder.update_check import check_for_update
+
+            self._send_json(200, check_for_update())
             return
         if parsed.path == "/api/export":
             self._check_export()
