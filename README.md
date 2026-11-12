@@ -17,7 +17,7 @@ Turn a song and your Light-O-Rama S6 display into a finished, native S6 sequence
    The launcher offers to do this for you if it is missing.
 3. **Get the program:** on GitHub, choose **Code → Download ZIP**, and unzip it anywhere (for example `Documents\LOR Sequencer`).
 4. **Start it:** double-click **Start LOR Sequencer** in that folder. The first start takes a few minutes to set up; after that it opens in your browser in seconds. Keep the black window open while you use it.
-5. **Build a show:** click **New show**, choose your display's S6 preview file (`.lorprev`), choose the song, pick a style (Classic, High energy or Elegant), and click **Generate show**. Open the **Show report**, then **Save sequence** and open the `.loredit` in the S6 Sequencer.
+5. **Build a show:** click **New show**, choose your display's S6 preview file (`.lorprev`), choose the song, pick a style (Classic, High energy or Elegant), and click **Generate show**. Watch it in the **Yard view** with the song, open the **Show report**, then **Save sequence** and open the `.loredit` in the S6 Sequencer.
 
 On macOS or Linux, install uv and FFmpeg the same way for your system and run `start-lor-sequencer.sh`.
 

@@ -27,6 +27,18 @@ The reference lanes are ordered like a DAW arrangement: lyrics and vocals direct
 
 The shared horizontal extent covers the longer of the sequence and selected audio, so neither the lighting sequence nor an audio tail is silently clipped when their durations differ. Audio analysis timestamps are seconds from the decoded audio start and are mapped onto the same horizontal time axis as the sequence's centisecond timestamps. Native timing grids and inferred audio-analysis events remain visually and semantically distinct.
 
+## Yard view
+
+**Yard view** (toolbar) draws the display above the timeline and lights it at the playhead, so a show can be watched against the music without opening S6. The drawing comes from the preview that S6 keeps inside every sequence:
+- Props drawn as lines use their own points; unconnected lines are drawn as pairs.
+- Shapes drawn in a box are simplified: arches as arcs, trees as fanned strands from the top, stars, snowflakes (center out), circles, and rectangles for anything else. Rotation is applied.
+- Each channel is one part of its prop, in channel order.
+- Colors come from the channel grid. Multicolor strings alternate their colors along the strand.
+
+Brightness follows each channel's effects: steady and fading intensity exactly, twinkle and shimmer as a random flicker. Unlit strands stay faintly visible so the layout reads. During playback the view follows the song. Without audio, clicking a time on the tracks shows that moment. New show opens the yard view with every generated show.
+
+It is an approximation for review: S6's own visualizer remains the reference for exact shapes and pixel effects. A sequence without an embedded preview shows a message instead.
+
 ## Building a new show
 
 **New show** (or **Build a new show** on the start page) runs the whole generator from the browser, one step at a time:
