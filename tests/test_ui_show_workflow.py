@@ -159,6 +159,16 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             page.locator("#generateStatus").filter(has_text="Every rule passed").wait_for()
             assert not page.locator("#saveGenerated").is_disabled()
 
+            # Opening a generated sequence must not replace the editor if its audio
+            # cannot be decoded. This mocked upload is deliberately not a real WAV.
+            page.locator("#openGenerated").click()
+            page.wait_for_function(
+                "() => document.querySelector('#generateStatus').textContent.includes(" +
+                "'audio could not be loaded')"
+            )
+            assert page.locator("#newShow").is_visible()
+            assert page.locator("#editor").is_hidden()
+
             fail_next_generation = True
             page.locator("#generateShow").click()
             page.locator("#generateStatus").filter(has_text="simulated generation failure").wait_for()
@@ -174,6 +184,16 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             page.locator("#makeTest").click()
             page.locator("#testStatus").filter(has_text="Ready:").wait_for()
             assert not page.locator("#watchTest").is_disabled()
+
+            # The display-test fixture has no sound bytes; watching it must fail
+            # without replacing the current editor sequence.
+            page.locator("#watchTest").click()
+            page.locator("#testStatus").filter(
+                has_text="display-test audio could not be loaded"
+            ).wait_for(timeout=10000)
+            assert page.locator("#newShow").is_visible()
+            assert page.locator("#editor").is_hidden()
+
             page.locator("#makeTest").click()
             page.locator("#testStatus").filter(has_text="simulated test failure").wait_for()
             assert not page.locator("#watchTest").is_disabled()
