@@ -1438,15 +1438,28 @@
         callEngine("/api/analyze?beats_per_bar=" + meter + "&progress=" + key, file,
           "application/octet-stream"));
       if (requestId !== state.audioRequestId) return;
-      if (state.reviewDirty || state.reviewLoaded || state.reviewSaved) {
-        // Never replace reviewed or saved markers with fresh estimates.
+      if (meter !== $("meterSelect").value) {
+        analyzeSelectedAudio(file);
+        return;
+      }
+      if (state.reviewLoaded || state.reviewSaved || (state.reviewDirty && state.analysis)) {
+        // Never replace an existing reviewed analysis with fresh estimates.
         setBanner("Audio loaded. Your music review is kept; the fresh automatic analysis was not " +
           "applied over it.", "good");
         return;
       }
+      const previousBaseline = state.reviewBaseline;
+      const keepUnsavedReview = state.reviewDirty;
       state.analysis = payload.report;
       captureReviewBaseline();
-      state.reviewDirty = false;
+      if (keepUnsavedReview && previousBaseline) {
+        state.reviewBaseline.lyrics = previousBaseline.lyrics;
+        state.reviewBaseline.lyricLines = previousBaseline.lyricLines;
+        state.reviewBaseline.meter = previousBaseline.meter;
+        state.reviewDirty = reviewHasChanges();
+      } else {
+        state.reviewDirty = false;
+      }
       state.reviewSaved = false;
       renderSequenceStats();
       refreshTimeline();
