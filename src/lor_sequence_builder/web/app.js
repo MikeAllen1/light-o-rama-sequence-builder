@@ -3612,9 +3612,19 @@
 
   async function saveBatch() {
     try {
-      const result = await postShow("/api/show/batch-zip?token=" + encodeURIComponent(show.token),
-        "{}", "application/json");
-      download(bytesFromBase64(result.zip), result.zip_name, "application/zip");
+      const response = await fetch(
+        "/api/show/batch-zip?token=" + encodeURIComponent(show.token),
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
+      );
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload && payload.error ? payload.error
+          : "The batch archive could not be downloaded (code " + response.status + ").");
+      }
+      const disposition = response.headers.get("Content-Disposition") || "";
+      const encodedName = disposition.match(/filename\\*=UTF-8''([^;]+)/i);
+      const fileName = encodedName ? decodeURIComponent(encodedName[1]) : "shows.zip";
+      download(await response.arrayBuffer(), fileName, "application/zip");
     } catch (error) {
       showMessage("batchStatus", error.message || String(error), "error");
     }
