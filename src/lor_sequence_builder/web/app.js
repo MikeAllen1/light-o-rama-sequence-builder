@@ -3923,7 +3923,8 @@
         show.audioPending || show.displayPending || show.testPending) return;
     const button = $("generateShow");
     const config = currentShowConfig();
-    invalidateGeneratedResult();
+    const previousResultIsCurrent = resultIsCurrent() && show.resultConfig === config;
+    if (!previousResultIsCurrent) invalidateGeneratedResult();
     show.generationPending = true;
     setShowConfigurationLocked(true);
     setStepEnabled();
@@ -3939,13 +3940,9 @@
           key, JSON.stringify({ music_filename: $("musicFilename").value, sing: singing,
           style: chosenStyle() }), "application/json"));
       if (!result.rules_ok) {
-        show.result = null;
-        $("openGenerated").disabled = true;
-      $("saveGenerated").disabled = true;
-        $("pictureGenerated").disabled = true;
-        $("showNotes").replaceChildren();
-        showMessage("generateStatus", result.report || "The plan did not pass the required rules.",
-          "error");
+        if (!previousResultIsCurrent) invalidateGeneratedResult();
+        showMessage("generateStatus", (result.report || "The plan did not pass the required rules.") +
+          (previousResultIsCurrent ? " The previous valid show is still available." : ""), "error");
       } else {
         if (config !== currentShowConfig()) {
           throw new Error("The show configuration changed while generation was running. Generate again.");
@@ -3969,8 +3966,10 @@
       $("reportGenerated").disabled = false;
       }
     } catch (error) {
-      invalidateGeneratedResult();
-      showMessage("generateStatus", error.message || String(error), "error");
+      if (!previousResultIsCurrent || config !== currentShowConfig()) invalidateGeneratedResult();
+      showMessage("generateStatus", (error.message || String(error)) +
+        (previousResultIsCurrent && config === currentShowConfig()
+          ? " The previous valid show is still available." : ""), "error");
     } finally {
       show.generationPending = false;
       setShowConfigurationLocked(false);
