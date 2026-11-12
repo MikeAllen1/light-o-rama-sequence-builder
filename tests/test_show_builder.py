@@ -111,6 +111,30 @@ def test_a_show_is_built_step_by_step_and_requirements_are_remembered(
     assert status == 200 and len(again["requirements"]) == 1
 
 
+def test_requirement_persistence_failure_does_not_publish_session_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    sessions = show_builder.ShowSessions()
+    started = sessions.start(preview, "yard.lorprev")
+    token = started["token"]
+
+    def fail_persist(session: Any, requirements: Any) -> None:
+        raise OSError("disk is unavailable")
+
+    monkeypatch.setattr(sessions, "_remember", fail_persist)
+    with pytest.raises(OSError, match="disk is unavailable"):
+        sessions.set_requirements(token, {"requirements": [
+            {"type": "never_use", "props": {"names": ["Mini Tree 1"]}},
+        ]}, request_id=1)
+
+    session = sessions.get(token)
+    assert session.requirements == ()
+    assert session.requirements_revision == 0
+    sessions.close()
+
+
 def test_show_steps_refuse_bad_requests(server: str) -> None:
     assert _post(server + "/api/show/start", b"<nope/>", "application/xml")[0] == 422
     assert _post(server + "/api/show/start", b"x", "text/plain")[0] == 415
