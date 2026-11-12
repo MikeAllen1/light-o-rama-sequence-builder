@@ -94,14 +94,20 @@ def test_the_answer_is_remembered_for_a_while() -> None:
     assert len(calls) == 1
 
 
-def test_the_workspace_shows_a_newer_release(server: str, monkeypatch: pytest.MonkeyPatch,  # noqa: F811
-                                             tmp_path: Path) -> None:
-    from playwright import sync_api
-
+def test_the_server_answers_the_workspace(server: str,  # noqa: F811
+                                         monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(update_check, "_fetch_latest", _release)
     update_check._cache.clear()
     status, result = _json(server + "/api/update", {})
     assert status == 200 and result["newer"] and result["installer"] == INSTALLER
+    update_check._cache.clear()
+
+
+def test_the_workspace_shows_a_newer_release(server: str, monkeypatch: pytest.MonkeyPatch,  # noqa: F811
+                                             tmp_path: Path) -> None:
+    sync_api = pytest.importorskip("playwright.sync_api")
+    monkeypatch.setattr(update_check, "_fetch_latest", _release)
+    update_check._cache.clear()
     with sync_api.sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         try:
