@@ -19,8 +19,20 @@ Nothing is uploaded anywhere. The program runs on your computer and reads your f
 5. **Requirements (optional):** see below. Skip this the first time.
 6. **Generate:** pick a **style** (below), check the audio file name (it must match the song's name in S6's audio folder) and click **Generate show**.
 7. Click **Show report** and read **Check in the yard**. Click **Plan picture** for the whole show at a glance.
-8. Click **Open in the workspace**. The **Yard view** opens above the timeline: press play to watch your yard light up with the song (the lanes above the tracks show the beats, bars and sections it followed). Then **Save sequence**.
+8. Click **Save show** to get the `.loredit` file now, or **Open in the workspace** first.Click **Open in the workspace** (or **Yard view** at the top) to watch it: the yard view opens above the timeline, and play lights your yard with the song (the lanes above the tracks show the beats, bars and sections it followed). **Save sequence** saves it from there.
 9. Open the saved `.loredit` in the S6 Sequencer and play it.
+
+## Check your wiring first: the 10-second display test
+
+After step 3, **Make 10-second test** builds a short sequence that lights your display in a fixed order, so anything dark or out of place points at wiring, a controller address or the preview:
+
+| Time | What lights |
+| --- | --- |
+| 0.5 to 6.5 s | One kind of prop at a time: outlines, icicles, arches, mini trees, mega trees, stars, snowflakes, faces, decorations. A prop with several channels lights them one after another in channel order, so a strand wired backwards shows. A singing face shows its outline and steps through each mouth. |
+| 6.5 to 9.0 s | A sweep across the yard from left to right. |
+| 9.0 to 10.0 s | Everything on, then a fade. |
+
+**Watch test** plays it on the yard view. **Save test** downloads a zip with the sequence, its sound (`LOR Display Test.wav`, which goes in S6's audio folder) and a "what to watch" list of when each prop should light. On the command line: `lor-sequence-builder display-test --preview display.lorprev --output "Display Test"`.
 
 To try everything without your own files, run `uv run lor-sequence-builder demo "Demo Show"` in the program folder: it writes an invented yard, an invented song and the finished show.
 

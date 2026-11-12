@@ -21,7 +21,9 @@ user asks for it, requirement text to the configured translator.
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import io
 import json
 import os
 import secrets
@@ -29,6 +31,7 @@ import shutil
 import tempfile
 import threading
 import time
+import zipfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -93,6 +96,12 @@ class _Session:
     @property
     def path(self) -> Path:
         return Path(self.folder.name)
+
+
+def _safe_name(name: str) -> str:
+    """A file name made from a display name: letters, digits, spaces and a few marks."""
+    cleaned = "".join(ch if ch.isalnum() or ch in " -_()." else "_" for ch in name).strip(" .")
+    return cleaned[:80] or "Display test"
 
 
 def requirements_folder() -> Path:
@@ -327,6 +336,32 @@ class ShowSessions:
             temporary.unlink(missing_ok=True)
 
     # -- 4. generate
+
+    def display_test(self, token: str) -> dict[str, Any]:
+        """A 10-second test for this display, as files to save and to watch."""
+        from lor_sequence_builder.display_test import build_display_test
+
+        with self.locked(token) as session:
+            folder = session.path / ("test-" + secrets.token_hex(6))
+            name = f"{session.display_name} - display test"
+            try:
+                test = build_display_test(session.preview_path, folder, name=_safe_name(name))
+            except (FileExistsError, OSError) as exc:
+                raise ShowBuildError(f"The display test could not be written: {exc}") from exc
+            bundle = io.BytesIO()
+            with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
+                for path in (test.sequence_path, test.sound_path, test.notes_path):
+                    archive.write(path, path.name)
+            return {
+                "file_name": test.sequence_path.name,
+                "zip_name": test.sequence_path.stem + ".zip",
+                "sound_name": test.sound_path.name,
+                "sequence": test.sequence_path.read_text(encoding="utf-8"),
+                "notes": test.notes_path.read_text(encoding="utf-8"),
+                "schedule": [{"start": a, "end": b, "what": what} for a, b, what in test.schedule],
+                "zip": base64.b64encode(bundle.getvalue()).decode("ascii"),
+                "sound": base64.b64encode(test.sound_path.read_bytes()).decode("ascii"),
+            }
 
     def generate(self, token: str, body: dict[str, Any]) -> dict[str, Any]:
         music = body.get("music_filename")

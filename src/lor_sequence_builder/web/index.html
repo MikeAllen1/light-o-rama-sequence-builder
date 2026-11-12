@@ -97,6 +97,12 @@
           <label class="tool-button primary"><span>Choose preview</span>
             <input id="showDisplayFile" type="file" accept=".lorprev,.xml,application/xml,text/xml"></label>
           <div id="displayStatus" class="step-status"></div>
+          <div class="test-actions">
+            <button id="makeTest" class="tool-button" type="button" disabled title="A short sequence that lights every prop in turn, to check wiring before a full show">10-second display test</button>
+            <button id="watchTest" class="tool-button subtle" type="button" disabled>Watch the test</button>
+            <button id="saveTest" class="tool-button subtle" type="button" disabled>Save test files</button>
+          </div>
+          <div id="testStatus" class="step-status"></div>
         </li>
         <li class="show-step">
           <h3>2. The song</h3>
@@ -135,6 +141,7 @@
           <div id="singNote" class="step-note"></div>
           <div class="generate-actions">
             <button id="generateShow" class="tool-button primary" type="button" disabled>Generate show</button>
+            <button id="saveGenerated" class="tool-button" type="button" disabled>Save show</button>
             <button id="openGenerated" class="tool-button" type="button" disabled>Open in the workspace</button>
             <button id="reportGenerated" class="tool-button subtle" type="button" disabled>Show report</button>
             <button id="pictureGenerated" class="tool-button subtle" type="button" disabled>Plan picture</button>

@@ -36,6 +36,7 @@ The [user guide](docs/USER_GUIDE.md) walks through a first show, requirements, s
 - `<song> (generated).loredit`: the native S6 sequence. Open it in the S6 Sequencer to play it or fine-tune it.
 - **Show report** (`.report.html`): what was used and left dark and why, props it cannot sequence (pixel, DMX), your requirements, every rule, the song's parts and big moments, and a checklist for the yard.
 - **Plan picture** (`.plan.svg`): the whole show at a glance.
+- **10-second display test**: before a full show, light every prop in a fixed order to check the wiring (`display-test`, or **Make 10-second test** in New show).
 - Details for the curious: the plan, the timeline and the rule results as JSON.
 
 ## Command line

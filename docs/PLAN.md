@@ -429,3 +429,11 @@ The original Phase 4 baseline was merged in `2b962bd39d51b052c3f97d76876a29176dc
 - Final hardening: corrected cross-platform frame-time test tolerance; documented leading-silence hard-stop candidates; beat-grid confidence is reported separately from tempo confidence.
 - Historical state at the close of PR #9: real-song review was pending and the stdlib baseline was not accepted. This was superseded by PR #17 and the owner acceptance recorded in the Phase 4 section above.
 - Current Phase 4 status: complete and accepted for steady songs, with the swung/rubato limitation explicitly retained.
+
+## Display test
+
+A 10-second sequence that checks the wiring before a full show: each kind of prop in turn (multi-channel props light their channels in channel order, faces step through their mouths), a left-to-right sweep from the preview positions, then everything on and a fade. It comes with a short sound (`LOR Display Test.wav`) and a "what to watch" list, and passes the same rules as every show. In the workspace: **Make 10-second test**, **Watch test**, **Save test**; on the command line: `display-test`.
+
+New show also gets **Save show** in the generate step, and **Yard view** from New show opens the generated show (or says to generate one first) instead of doing nothing.
+
+**Verified:** every fictional display gets a test that passes the rules; the order (kinds, sweep, all on), channel order, left-to-right order and one-mouth-at-a-time are tested; the browser test makes, saves and downloads the test and the show.

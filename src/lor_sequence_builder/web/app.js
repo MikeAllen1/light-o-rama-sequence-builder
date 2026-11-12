@@ -3121,7 +3121,63 @@
     else $("welcome").classList.remove("hidden");
   }
 
+  function bytesFromBase64(text) {
+    const raw = atob(text);
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    return bytes;
+  }
+
+  function download(bytes, name, type) {
+    const url = URL.createObjectURL(new Blob([bytes], { type }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+
+  async function makeDisplayTest() {
+    $("makeTest").disabled = true;
+    showMessage("testStatus", "Making the display test…");
+    try {
+      const test = await postShow("/api/show/test?token=" + encodeURIComponent(show.token), "{}",
+        "application/json");
+      show.test = test;
+      showMessage("testStatus", "Ready: " + test.schedule.length + " steps in 10 seconds. Save the " +
+        "files, copy the sound into S6's audio folder, and play the sequence in S6; the text " +
+        "file says what should light when. Watch the test to see it here first.", "good");
+      $("watchTest").disabled = false;
+      $("saveTest").disabled = false;
+    } catch (error) {
+      showMessage("testStatus", error.message || String(error), "error");
+    }
+    $("makeTest").disabled = !show.token;
+  }
+
+  function saveDisplayTest() {
+    if (show.test) download(bytesFromBase64(show.test.zip), show.test.zip_name, "application/zip");
+  }
+
+  async function watchDisplayTest() {
+    const test = show.test;
+    if (!test) return;
+    if (state.dirty && !window.confirm("Discard the unexported edits to " +
+      state.sequence.filename + "?")) return;
+    openSequenceText(test.sequence, test.file_name, false);
+    state.sequence.generated = true;
+    updateEditControls();
+    toggleYard(true);
+    setBanner("Display test: press play and watch each kind of prop, then the sweep from left " +
+      "to right, then everything on.", "good");
+    const sound = new File([bytesFromBase64(test.sound)], test.sound_name, { type: "audio/wav" });
+    await loadAudio(sound);
+  }
+
   function setStepEnabled() {
+    $("makeTest").disabled = !show.token;
     $("showSongFile").disabled = !show.token;
     $("showSongLabel").classList.toggle("disabled", !show.token);
     $("addRequirement").disabled = !show.token;
@@ -3138,6 +3194,10 @@
         await file.text(), "application/xml");
       show.token = summary.token;
       show.summary = summary;
+      show.test = null;
+      $("watchTest").disabled = true;
+      $("saveTest").disabled = true;
+      showMessage("testStatus", "");
       show.analysis = null;
       show.audioFile = null;
       show.audioRequestId = 0;
@@ -3146,6 +3206,7 @@
       show.requirementsRequestId = 0;
       show.result = null;
       $("openGenerated").disabled = true;
+      $("saveGenerated").disabled = true;
       $("pictureGenerated").disabled = true;
       const kinds = summary.kinds.map((kind) => kind.count + " " + kind.label).join(", ");
       const skipped = summary.props.filter((prop) => !prop.sequenceable);
@@ -3177,6 +3238,7 @@
     show.audioPending = true;
     show.result = null;
     $("openGenerated").disabled = true;
+      $("saveGenerated").disabled = true;
     $("pictureGenerated").disabled = true;
     $("musicFilename").value = file.name;
     showMessage("songStatus", "Analyzing " + file.name + " on this computer…");
@@ -3293,6 +3355,7 @@
       show.raw = result.raw;
       show.result = null;
       $("openGenerated").disabled = true;
+      $("saveGenerated").disabled = true;
       $("pictureGenerated").disabled = true;
       renderRequirements(result.requirements, result.problems);
     } catch (error) {
@@ -3366,6 +3429,7 @@
       if (!result.rules_ok) {
         show.result = null;
         $("openGenerated").disabled = true;
+      $("saveGenerated").disabled = true;
         $("pictureGenerated").disabled = true;
         $("showNotes").replaceChildren();
         showMessage("generateStatus", result.report || "The plan did not pass the required rules.",
@@ -3374,7 +3438,7 @@
         show.result = result;
         const parts = result.sections.map((section) => section.label + " (" + section.level + ")");
         showMessage("generateStatus", "Every rule passed. " + result.used.length +
-          " props used. Parts: " + parts.join(", ") + "." + (result.skipped.length
+          " props used. Click Save show for the .loredit file. Parts: " + parts.join(", ") + "." + (result.skipped.length
           ? " Left out: " + result.skipped.map((item) => item.name + " (" + item.reason + ")")
             .join("; ") + "." : ""), "good");
         $("showNotes").replaceChildren(...result.notes.map((note) => {
@@ -3383,6 +3447,7 @@
         return item;
       }));
         $("openGenerated").disabled = false;
+        $("saveGenerated").disabled = false;
         $("pictureGenerated").disabled = false;
       $("reportGenerated").disabled = false;
       }
@@ -3390,6 +3455,11 @@
       showMessage("generateStatus", error.message || String(error), "error");
     }
     button.disabled = false;
+  }
+
+  function saveGenerated() {
+    if (!show.result || !show.result.sequence) return;
+    download(show.result.sequence, show.result.file_name, "application/xml");
   }
 
   async function openGenerated() {
@@ -3474,17 +3544,23 @@
       if (text) sendRequirements(show.raw, text);
     });
     $("generateShow").addEventListener("click", generateShow);
+    $("makeTest").addEventListener("click", makeDisplayTest);
+    $("saveTest").addEventListener("click", saveDisplayTest);
+    $("watchTest").addEventListener("click", watchDisplayTest);
     $("musicFilename").addEventListener("input", () => {
       show.result = null;
       $("openGenerated").disabled = true;
+      $("saveGenerated").disabled = true;
       $("pictureGenerated").disabled = true;
     });
     $("singFaces").addEventListener("change", () => {
       show.result = null;
       $("openGenerated").disabled = true;
+      $("saveGenerated").disabled = true;
       $("pictureGenerated").disabled = true;
     });
     $("openGenerated").addEventListener("click", openGenerated);
+    $("saveGenerated").addEventListener("click", saveGenerated);
     $("pictureGenerated").addEventListener("click", openPicture);
     $("reportGenerated").addEventListener("click", openReport);
     $("viewerClose").addEventListener("click", closeViewer);
@@ -3824,13 +3900,34 @@
     if (state.yardOpen) drawYard(yardSeconds());
   }
 
+  // The yard lives in the workspace. From New show, it opens the generated show there;
+  // with nothing to play yet, it says what to do instead of doing nothing.
+  function yardButtonClicked() {
+    if (!$("newShow").classList.contains("hidden")) {
+      if (show.result && show.result.sequence) {
+        openGenerated();
+      } else {
+        showMessage("generateStatus", "Generate a show first; Yard view then plays it on a " +
+          "drawing of your display.", "error");
+        $("generateStatus").scrollIntoView({ block: "center" });
+      }
+      return;
+    }
+    if (!state.sequence) {
+      setBanner("Open a sequence or make a New show first; Yard view plays it on a drawing " +
+        "of the display.", "error");
+      return;
+    }
+    toggleYard();
+  }
+
   function yardSeconds() {
     return state.audioBuffer && Number.isFinite(audio.currentTime) ? audio.currentTime
       : (state.cursorCs || 0) / 100;
   }
 
   function setupYard() {
-    $("yardButton").addEventListener("click", () => toggleYard());
+    $("yardButton").addEventListener("click", yardButtonClicked);
     window.addEventListener("resize", () => drawYard(yardSeconds()));
   }
 
