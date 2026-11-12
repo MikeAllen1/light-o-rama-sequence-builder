@@ -3468,9 +3468,7 @@
     if (!show.token || show.testPending || show.batchRunning || show.generationPending ||
         show.batchZipPending || show.displayPending || show.audioPending || show.requirementsPending) return;
     const token = show.token;
-    show.test = null;
-    $("watchTest").disabled = true;
-    $("saveTest").disabled = true;
+    // Keep the last valid test until its replacement has been built successfully.
     show.testPending = true;
     setShowConfigurationLocked(true);
     setStepEnabled();
@@ -3487,7 +3485,10 @@
       $("watchTest").disabled = false;
       $("saveTest").disabled = false;
     } catch (error) {
-      if (show.token === token) showMessage("testStatus", error.message || String(error), "error");
+      if (show.token === token) {
+        showMessage("testStatus", (error.message || String(error)) +
+          (show.test ? " The previous display test is still available." : ""), "error");
+      }
     } finally {
       show.testPending = false;
       setShowConfigurationLocked(false);
