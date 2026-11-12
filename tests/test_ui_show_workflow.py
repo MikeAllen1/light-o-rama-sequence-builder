@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from lor_sequence_builder.ui_server import SequencerRequestHandler
+from tests.test_ui_editing import sequence_text
 
 playwright_api = pytest.importorskip("playwright.sync_api")
 
@@ -116,11 +117,7 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
         "raw_requirements": [],
     }
     test_calls = 0
-    sequence_xml = (
-        '<sequence saveFileVersion="15" totalCentiseconds="1000"><SequenceProps>'
-        '<SeqProp id="tree" name="Tree"><channel row="0" col="0" color="0"/>'
-        '</SeqProp></SequenceProps></sequence>'
-    )
+    sequence_xml = sequence_text()
 
     def respond(route: object, body: dict[str, object], status: int = 200) -> None:
         route.fulfill(status=status, content_type="application/json", body=json.dumps(body))  # type: ignore[attr-defined]
