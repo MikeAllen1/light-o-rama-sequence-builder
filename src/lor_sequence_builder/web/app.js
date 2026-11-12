@@ -1391,12 +1391,24 @@
   }
 
   function durationMismatchMessage() {
-    if (!state.sequence || !state.audioBuffer) return "";
-    const delta = state.audioBuffer.duration - state.sequence.durationSeconds;
-    if (Math.abs(delta) <= 0.25) return "";
-    const direction = delta > 0 ? "longer" : "shorter";
-    return "Selected audio is " + Math.abs(delta).toFixed(2) + " seconds " + direction +
-      " than the sequence; the timeline shows the full duration of both.";
+    if (!state.sequence) return "";
+    const messages = [];
+    if (state.audioBuffer) {
+      const delta = state.audioBuffer.duration - state.sequence.durationSeconds;
+      if (Math.abs(delta) > 0.25) {
+        const direction = delta > 0 ? "longer" : "shorter";
+        messages.push("Selected audio is " + Math.abs(delta).toFixed(2) + " seconds " + direction +
+          " than the sequence; the timeline shows the full duration of both.");
+      }
+    }
+    if (state.audioFile && state.sequence.audioName) {
+      const expected = state.sequence.audioName.split(/[\\/]/).pop();
+      if (expected && expected.toLowerCase() !== state.audioFile.name.toLowerCase()) {
+        messages.push("This sequence expects the audio file " + expected + ", but the selected file is " +
+          state.audioFile.name + ". Check that you selected the matching recording and that S6 can find it.");
+      }
+    }
+    return messages.join(" ");
   }
 
   function compareDurations() {
