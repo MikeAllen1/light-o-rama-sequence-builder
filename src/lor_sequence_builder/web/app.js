@@ -4280,7 +4280,7 @@
       const status = error && Number.isInteger(error.status) ? error.status : null;
       const sessionExpired = status === 422 &&
         /put away after a long break/i.test(String(error.message || ""));
-      show.batchUncertain = status == null || status >= 500 || sessionExpired;
+      show.batchUncertain = show.batchUncertain || status == null || sessionExpired;
       if (show.batchUncertain) show.batchReady = false;
       show.batchRunning = false;
       setShowConfigurationLocked(false);
