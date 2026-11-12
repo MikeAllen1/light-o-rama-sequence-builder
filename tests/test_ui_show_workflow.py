@@ -102,9 +102,12 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
 
         page.route("**/api/show/generate*", generate_show)
         fail_next_batch_clear = False
+        batch_clear_calls = 0
+        batch_song_calls = 0
 
         def clear_batch(route: object) -> None:
-            nonlocal fail_next_batch_clear
+            nonlocal fail_next_batch_clear, batch_clear_calls
+            batch_clear_calls += 1
             if fail_next_batch_clear:
                 fail_next_batch_clear = False
                 respond(route, {"error": "simulated reset failure"}, 500)
@@ -112,9 +115,12 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
                 respond(route, {"cleared": True})
 
         page.route("**/api/show/batch-clear*", clear_batch)
-        page.route("**/api/show/batch?*", lambda route: respond(route, {
-            "ok": True, "duration": 3.0, "parts": 2, "props": 1,
-        }))
+        def build_batch_song(route: object) -> None:
+            nonlocal batch_song_calls
+            batch_song_calls += 1
+            respond(route, {"ok": True, "duration": 3.0, "parts": 2, "props": 1})
+
+        page.route("**/api/show/batch?*", build_batch_song)
         page.route("**/api/show/batch-zip*", lambda route: route.fulfill(
             status=200,
             content_type="application/zip",
@@ -253,13 +259,16 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             page.locator("#batchStatus").filter(has_text="at most 40 songs").wait_for()
             assert page.locator("#batchList").inner_text() == previous_playlist_rows
             assert not page.locator("#saveBatch").is_disabled()
-            assert batch_calls == 1
+            assert batch_clear_calls == 1
+            assert batch_song_calls == 1
 
             fail_next_batch_clear = True
             page.locator("#batchFiles").set_input_files([
                 {"name": "replacement.wav", "mimeType": "audio/wav", "buffer": b"replacement"},
             ])
             page.locator("#batchStatus").filter(has_text="simulated reset failure").wait_for()
+            assert batch_clear_calls == 2
+            assert batch_song_calls == 1
             assert page.locator("#batchList").inner_text() == previous_playlist_rows
             assert not page.locator("#saveBatch").is_disabled()
             page.locator('input[name="showStyle"][value="classic"]').check()
