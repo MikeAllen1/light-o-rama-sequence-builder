@@ -474,3 +474,7 @@ Every problem ends in plain words that say what to do, and bugs leave a trail in
 ## Progress
 
 Anything that takes more than a moment shows a bar, what the program is doing now and the time so far, under its status line: reading and analyzing a song (in New show, playlists and the workspace), generating a show, and making the display test. The engine reports real stages ("Reading the song", "Finding the beats", "Finding the bars and the parts of the song", "Planning the show", "Checking the rules and writing the sequence", "Writing the show report"); the page asks a few times a second under a random key it sent with the request. Splitting out the vocals, which takes minutes, shows a moving striped bar and says it takes a few minutes and is still working. A playlist's bar covers the whole playlist ("Song 2 of 5: Finding the beats…"). Jobs that finish within half a second never show a bar. The bar never moves backwards.
+
+## Recent shows
+
+Every show New show builds (one song or each song of a playlist) is copied, with its report and plan picture and a small description (file, display, song, style, when), into `shows` in the user data folder; the newest 30 are kept. The start page lists them (hidden when there are none) with Open (workspace and yard view), Save, Report and Remove, plus Remove all. Ids are timestamps plus a random part and are checked before any file is touched; a full disk only means a show is not kept. Tests keep their recent shows in their own folder.
