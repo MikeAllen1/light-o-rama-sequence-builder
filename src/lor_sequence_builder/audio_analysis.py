@@ -26,6 +26,8 @@ import librosa
 import numpy as np
 import numpy.typing as npt
 
+from lor_sequence_builder import progress
+
 ANALYSIS_SCHEMA_VERSION = "2.0"
 SAMPLE_RATE = 22_050
 HOP_LENGTH = 512
@@ -798,14 +800,17 @@ def analyze_audio(
         plot_path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="lor-audio-") as directory:
             normalized = Path(directory) / "normalized.wav"
+            progress.step("Reading the song", 0.02)
             ffmpeg_version = _normalize(source, normalized, input_demuxer)
             samples, duration = _read_samples(normalized)
 
+        progress.step("Listening for the beat and the hits", 0.15)
         rms = _frame_rms(samples)
         spectra = _Spectra(samples)
         envelope = _onset_envelope(spectra)
         onsets = _detect_onsets(envelope)
         high_hits = _high_hits(spectra)
+        progress.step("Finding the beats", 0.35)
         bpm, beat_frames, tempo_stability, beat_contrast = _track_beats(
             envelope, min_bpm, max_bpm
         )
@@ -832,6 +837,7 @@ def analyze_audio(
         bar_confidence = 0.0
         structural: list[dict[str, Any]] = []
         if bpm is not None and len(beat_times) >= 2 * beats_per_bar:
+            progress.step("Finding the bars and the parts of the song", 0.55)
             beat_chroma = _beat_chroma(samples, beat_frames)
             phase, bar_confidence = _downbeat_phase(beat_chroma, len(beat_times), beats_per_bar)
             downbeat_indices = np.arange(phase, len(beat_times), beats_per_bar, dtype=np.int64)
@@ -848,6 +854,7 @@ def analyze_audio(
                     "method": "self_similarity_novelty_plus_loudness_change_at_downbeats",
                 })
 
+        progress.step("Finding the loud and quiet parts", 0.8)
         energy = _energy_curve(rms)
         minimum_stop_silence = max(0.75, (60.0 / bpm) * 1.5) if bpm else 0.75
         stops = _hard_stops(rms, minimum_stop_silence)
@@ -927,6 +934,7 @@ def analyze_audio(
                 **({"beat_guidance": guidance} if guidance is not None else {}),
             },
         }
+        progress.step("Saving what it found", 0.92)
         serialized = json.dumps(report, indent=2, sort_keys=True) + "\n"
         # Build both artifacts beside their destinations, then publish with
         # atomic no-overwrite links. If either publication fails, remove the

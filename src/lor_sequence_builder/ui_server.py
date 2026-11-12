@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qs, urlsplit
 
-from lor_sequence_builder import __version__
+from lor_sequence_builder import __version__, progress
 from lor_sequence_builder.audio_analysis import (
     INPUT_DEMUXERS,
     MAX_INPUT_BYTES,
@@ -170,10 +170,15 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
     def _post(self) -> None:
         parsed = urlsplit(self.path)
         if parsed.path not in {"/api/analyze", "/api/export", "/api/update", "/api/log",
-                               "/api/diagnostics", *_SHOW_STEPS}:
+                               "/api/diagnostics", "/api/progress", *_SHOW_STEPS}:
             self.send_error(404, "This program has no such step.")
             return
         if not self._is_same_origin():
+            return
+        if parsed.path == "/api/progress":
+            key = parse_qs(parsed.query).get("key", [""])[0]
+            self._send_json(200, progress.snapshot(key) if progress.valid_key(key)
+                            else {"known": False})
             return
         if parsed.path in {"/api/log", "/api/diagnostics"}:
             self._diagnostics(parsed.path)
@@ -186,10 +191,12 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/export":
             self._check_export()
             return
-        if parsed.path in _SHOW_STEPS:
-            self._show_step(parsed.path, parse_qs(parsed.query))
-            return
-        self._analyze(parsed.query)
+        tracked = parse_qs(parsed.query).get("progress", [""])[0] or None
+        with progress.tracking(tracked):
+            if parsed.path in _SHOW_STEPS:
+                self._show_step(parsed.path, parse_qs(parsed.query))
+                return
+            self._analyze(parsed.query)
 
     def _show_step(self, path: str, query: dict[str, list[str]]) -> None:
         token = query.get("token", [""])[0]
