@@ -608,10 +608,10 @@ def _constraints(display: Display, rule_set: RuleSet, vocals_known: bool) -> _Co
                 else:
                     c.channels[pid] = keep
             elif req.type == "light_whole":
-                allowed = c.channels.get(pid, [])
-                if len(allowed) > 1:
-                    c.channels[pid] = allowed[:1]
-                    c.copies[(pid, allowed[0])].extend((pid, ch) for ch in allowed[1:])
+                whole = c.channels.get(pid, [])
+                if len(whole) > 1:
+                    c.channels[pid] = whole[:1]
+                    c.copies[(pid, whole[0])].extend((pid, ch) for ch in whole[1:])
         if req.type == "move_direction":
             c.directions.append((set(chosen), req.params.get("movement", "chase"),
                                  req.params["direction"]))
@@ -1862,6 +1862,10 @@ def _sing(planner: _Planner, face: _Face, regions: list[tuple[int, int]],
                 continue
             if "closed" in shapes and a - cursor >= 5:
                 planner.light(shapes["closed"], section, cursor, a)
+            elif a - cursor < 5:
+                # Too short to close the mouth: the opening starts a moment early, so
+                # the face is never shown without a mouth.
+                a = cursor
             if "round" in shapes and b - a >= 40 and index % 3 == 2:
                 shape = "round"
             elif strength >= 0.6 and "open" in shapes:
@@ -1870,7 +1874,7 @@ def _sing(planner: _Planner, face: _Face, regions: list[tuple[int, int]],
                 shape = next((s for s in ("half", "open", "round") if s in shapes), "closed")
             planner.light(shapes[shape], section, a, b)
             cursor = b
-        if "closed" in shapes and end - cursor >= 5:
+        if "closed" in shapes and end > cursor:
             planner.light(shapes["closed"], section, cursor, end)
 
 

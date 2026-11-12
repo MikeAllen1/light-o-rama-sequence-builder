@@ -110,6 +110,7 @@ def generate_show(
     vocal_beats: bool = False,
     style: str | Style | None = None,
     lyrics_path: str | Path | None = None,
+    singer: str | None = None,
 ) -> GeneratedShow:
     """Build a show. ``preview_path`` is a ``.lorprev`` (S5/S6 output, ``.loredit``)
     or the user's own S4 sequence (``.lms`` output with the same channels). Vocals for singing faces come from ``vocals_path`` (a vocals-only
@@ -126,7 +127,7 @@ def generate_show(
     with ExitStack() as stack:
         return _generate(stack, preview_path, output_path, rule_set, audio_path, analysis_path,
                          music_filename, beats_per_bar, vocals_path, separate, progress,
-                         vocal_beats, chosen_style, lyrics)
+                         vocal_beats, chosen_style, lyrics, singer)
 
 
 def _generate(
@@ -144,6 +145,7 @@ def _generate(
     vocal_beats: bool,
     chosen_style: Style,
     lyrics: dict[str, Any] | None,
+    singer: str | None = None,
 ) -> GeneratedShow:
     paths = output_paths(output_path)
     s4 = Path(preview_path).suffix.lower() == ".lms"
@@ -225,7 +227,7 @@ def _generate(
         vocals = analyze_vocals(vocals_audio, paths["vocals"], source)
         written_vocals = paths["vocals"]
     elif vocals_path is not None:
-        vocals = load_vocals(vocals_path)
+        vocals = load_vocals(vocals_path, singer)
     elif wants_vocals:
         vocals_note = (
             "Face mouths stay still: pass a vocals-only file with --vocals, or install "
