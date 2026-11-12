@@ -1058,16 +1058,17 @@ def _sparkle(planner: _Planner, window: _Window, props: list[str], hits: list[in
 
 BARS_PER_PHRASE = 4
 def _phrases(window: _Window) -> list[_Window]:
-    """Four-bar phrases counted from the first bar start; short leftovers join a neighbor."""
-    # Bars are counted from the window's first bar even when its body starts a beat
-    # later (after an accent), so phrases stay on the song's four-bar grid.
-    marks = [d for d in window.downbeats if d < window.end]
+    """Four-bar phrases counted from the song's bar grid; short leftovers join a neighbor."""
+    # Reconstruct missing bar starts after a hard stop using the preserved global
+    # phase and meter, rather than collapsing the entire window into one phrase.
+    marks = [start for start, _ in _bars(window)]
     cuts = [window.start]
     # A pickup before the first bar belongs to the first phrase.
     for index in range(BARS_PER_PHRASE, len(marks), BARS_PER_PHRASE):
         cuts.append(marks[index])
     cuts.append(window.end)
-    bar = (marks[1] - marks[0]) if len(marks) >= 2 else window.end - window.start
+    bar = (_bars(window)[0][1] - _bars(window)[0][0]
+           if marks else window.end - window.start)
     # A leftover shorter than two bars is folded into the phrase before it.
     while len(cuts) > 2 and cuts[-1] - cuts[-2] < 2 * bar:
         del cuts[-2]
