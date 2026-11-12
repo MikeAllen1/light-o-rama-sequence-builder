@@ -548,7 +548,7 @@ class ShowSessions:
                     if existing_bytes + candidate_bytes > MAX_BATCH_ARCHIVE_BYTES:
                         raise ShowBuildError(
                             "Adding this show would exceed the 100 MiB playlist download limit. "
-                            "Save the current playlist before adding more songs."
+                            "Save the current playlist, then start another playlist for the remaining songs."
                         )
                     # Publish both artifacts without overwriting anything. If the
                     # report cannot be published after the sequence, remove the
