@@ -4303,7 +4303,7 @@
         return;
       }
       const disposition = response.headers.get("Content-Disposition") || "";
-      const encodedName = disposition.match(/filename\\*=UTF-8''([^;]+)/i);
+      const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/i);
       const fileName = encodedName ? decodeURIComponent(encodedName[1]) : "shows.zip";
       download(await response.blob(), fileName, "application/zip");
       showMessage("batchStatus", "Saved the completed playlist as " + fileName + ".", "good");
