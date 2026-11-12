@@ -229,6 +229,57 @@ def test_batch_publish_failure_removes_partial_artifact(
     sessions.close()
 
 
+def test_batch_song_rejects_archive_overflow_before_publishing_new_show(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    sessions = show_builder.ShowSessions()
+    token = sessions.start(preview, "yard.lorprev")["token"]
+    session = sessions.get(token)
+    done = session.path / "batch"
+    done.mkdir()
+    existing_show = done / "Existing (generated).loredit"
+    existing_report = done / "Existing (generated).report.html"
+    existing_show.write_bytes(b"x" * 80)
+    existing_report.write_bytes(b"")
+    session.batch.append({
+        "ok": True, "stem": "Existing", "file_name": "existing.wav",
+        "show": existing_show.name,
+    })
+
+    def fake_analyze(audio: Path, report: Path, picture: Path, **kwargs: Any) -> dict[str, Any]:
+        report.write_text("{}", encoding="utf-8")
+        return {"audio": {"duration_seconds": 10.0}}
+
+    def fake_generate(preview_path: Path, output: Path, rule_set: Any, **kwargs: Any) -> Any:
+        output.write_bytes(b"y" * 30)
+        summary = output.with_suffix(".report.html")
+        summary.write_bytes(b"z" * 10)
+        return SimpleNamespace(
+            sequence_path=output,
+            summary_path=summary,
+            plan=SimpleNamespace(sections=(1,), used_props=("Tree",)),
+        )
+
+    monkeypatch.setattr(show_builder, "MAX_BATCH_ARCHIVE_BYTES", 100)
+    monkeypatch.setattr(show_builder, "analyze_audio", fake_analyze)
+    monkeypatch.setattr(show_builder, "load_rule_set", lambda profiles: object())
+    monkeypatch.setattr(show_builder, "generate_show", fake_generate)
+
+    with pytest.raises(show_builder.ShowBuildError, match="100 MiB playlist download limit"):
+        sessions.batch_song(token, b"audio", ".wav", "ffmpeg", "new.wav", 4, None)
+
+    assert session.batch == [{
+        "ok": True, "stem": "Existing", "file_name": "existing.wav",
+        "show": existing_show.name,
+    }]
+    assert existing_show.read_bytes() == b"x" * 80
+    assert existing_report.is_file()
+    assert not (done / "New (generated).loredit").exists()
+    assert not (done / "New (generated).report.html").exists()
+    sessions.close()
+
+
 def test_batch_zip_rejects_oversized_archive_before_allocating_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
