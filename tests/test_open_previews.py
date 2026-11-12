@@ -16,8 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_only_real_previews_are_offered(tmp_path: Path) -> None:
-    for name, content, words in (("yard.txt", b"<x/>", "not an S6 preview"),
-                                 ("gone.lorprev", None, "not an S6 preview"),
+    for name, content, words in (("yard.txt", b"<x/>", "not an S5/S6 preview"),
+                                 ("gone.lorprev", None, "not an S5/S6 preview"),
                                  ("bad.lorprev", b"\xff\xfe\x00bad", "not a readable")):
         path = tmp_path / name
         if content is not None:

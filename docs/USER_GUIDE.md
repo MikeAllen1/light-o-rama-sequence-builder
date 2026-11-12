@@ -4,7 +4,7 @@ This guide is for someone with a Light-O-Rama S6 display who wants a show for a 
 
 ## What you need
 
-- Your display's **S6 preview file** (`.lorprev`). This is the only description of your yard the program uses: every prop, its shape, its channels and where it stands.
+- Your display's **S5/S6 preview file** (`.lorprev`). This is the only description of your yard the program uses: every prop, its shape, its channels and where it stands.
 - **With S4** (which has no previews): one of your own S4 sequences (`.lms`) instead. Any song you have sequenced for the display will do; only its channels are used. Each channel becomes a prop, channel groups are kept, and the show is saved as a new `.lms` with exactly the same channels. Name channels plainly ("Arch 3", "Mini Tree 2", "Roof") so the program can tell what they are. The 10-second display test is S5/S6 only.
 - The **song** (MP3, M4A, WAV, FLAC, OGG and other common formats).
 - **S4, S5 or S6** to play the result, and to fine-tune it if you like. S5 previews and sequences work exactly like S6's.
@@ -15,13 +15,13 @@ Nothing is uploaded anywhere. The program runs on your computer and reads your f
 
 1. Double-click **Start LOR Sequencer**. Your browser opens the workspace.
 2. Click **New show**. (Or right-click your preview in File Explorer and choose **Build a show with LOR Sequencer**: the app opens with that display already chosen. The installer offers this; S6 stays the program that opens previews.)
-3. **Your display:** choose the `.lorprev`. The panel says what it found, for example "7 arches, 14 snowflakes, 1 mega tree", and lists any prop it cannot sequence, with the reason (pixel and DMX props, or props that follow another prop).
+3. **Your display:** choose the `.lorprev` (S5/S6) or one of your `.lms` sequences (S4). The panel says what it found, for example "7 arches, 14 snowflakes, 1 mega tree", and lists any prop it cannot sequence, with the reason (pixel and DMX props, or props that follow another prop).
 4. **The song:** choose the audio file. It is analyzed for beats, bars, sections, high-pitched hits (tambourine, sleigh bells) and cymbal crashes. A three-minute song takes a few seconds to half a minute.
 5. **Requirements (optional):** see below. Skip this the first time.
-6. **Generate:** pick a **style** (below), check the audio file name (it must match the song's name in S6's audio folder) and click **Generate show**.
+6. **Generate:** pick a **style** (below), check the audio file name (it must match the song's name in the Sequencer's audio folder) and click **Generate show**.
 7. Click **Show report** and read **Check in the yard**. Click **Plan picture** for the whole show at a glance.
 8. Click **Save show** to get the `.loredit` file now, or **Open in the workspace** first.Click **Open in the workspace** (or **Yard view** at the top) to watch it: the yard view opens above the timeline, and play lights your yard with the song (the lanes above the tracks show the beats, bars and sections it followed). **Save sequence** saves it from there.
-9. Open the saved `.loredit` in the S6 Sequencer and play it.
+9. Open the saved `.loredit` (S5/S6) or `.lms` (S4) in the Sequencer and play it.
 
 ## A whole playlist at once
 

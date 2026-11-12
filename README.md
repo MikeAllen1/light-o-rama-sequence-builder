@@ -2,7 +2,7 @@
 
 **Light-O-Rama sequences, without the hundred hours.**
 
-Sequencing one song by hand can eat a whole weekend, and it helps to have an ear for music. LOR Sequencer does it for you: give it your Light-O-Rama S6 preview and a song, and you get back a native S6 sequence that knows your arches from your snowflakes.
+Sequencing one song by hand can eat a whole weekend, and it helps to have an ear for music. LOR Sequencer does it for you: give it your Light-O-Rama display and a song, and you get back a native sequence that knows your arches from your snowflakes. It works with S4, S5 and S6.
 
 ![The invented demo yard playing the show LOR Sequencer made for it](docs/images/demo-yard.gif)
 
@@ -14,9 +14,9 @@ Free. No administrator rights needed, and everything it needs is included. Runni
 
 ## How it works
 
-1. **Your preview.** Choose the `.lorprev` you already have. It is the map: every prop, its channels, and where it stands in the yard.
+1. **Your display.** Choose the S5/S6 `.lorprev` you already have, or with S4, any of your `.lms` sequences. It is the map: every prop, its channels, and where it stands in the yard.
 2. **Your song.** Any MP3, WAV or M4A. The program finds the beats, the bars, the loud parts, the sleigh bells and the cymbal crashes.
-3. **Your show.** Pick a style and click **Generate show**. Watch it play on a drawing of your yard, then save the `.loredit` and open it in the S6 Sequencer. Play it as it is, or fine-tune it there.
+3. **Your show.** Pick a style and click **Generate show**. Watch it play on a drawing of your yard, then save it (`.loredit` for S5/S6, `.lms` for S4) and open it in the Light-O-Rama Sequencer. Play it as it is, or fine-tune it there.
 
 ## What your show does
 
@@ -63,7 +63,7 @@ You can also:
    The launcher offers to do this for you if it is missing.
 3. **Get the program:** on GitHub, choose **Code → Download ZIP**, and unzip it anywhere (for example `Documents\LOR Sequencer`).
 4. **Start it:** double-click **Start LOR Sequencer** in that folder. The first start takes a few minutes to set up; after that it opens in your browser in seconds. Keep the black window open while you use it.
-5. **Build a show:** click **New show**, choose your display's S6 preview file (`.lorprev`), choose the song, pick a style (Classic, High energy or Elegant), and click **Generate show**. Watch it in the **Yard view** with the song, open the **Show report**, then **Save show** and open the `.loredit` in the S6 Sequencer.
+5. **Build a show:** click **New show**, choose your display's S5/S6 preview (`.lorprev`) or, with S4, one of your sequences (`.lms`), choose the song, pick a style (Classic, High energy or Elegant), and click **Generate show**. Watch it in the **Yard view** with the song, open the **Show report**, then **Save show** and open the `.loredit` in the S6 Sequencer.
 
 On macOS or Linux, install uv and FFmpeg the same way for your system and run `start-lor-sequencer.sh`.
 
@@ -73,7 +73,7 @@ The [user guide](docs/USER_GUIDE.md) walks through a first show, requirements, s
 
 ## What you get for each show
 
-- `<song> (generated).loredit`: the native S6 sequence. Open it in the S6 Sequencer to play it or fine-tune it.
+- `<song> (generated).loredit` (S5/S6) or `.lms` (S4): the native sequence. Open it in the Sequencer to play it or fine-tune it.
 - **Show report** (`.report.html`): what was used and left dark and why, props it cannot sequence (pixel, DMX), your requirements, every rule, the song's parts and big moments, and a checklist for the yard.
 - **Plan picture** (`.plan.svg`): the whole show at a glance.
 - **10-second display test**: before a full show, light every prop in a fixed order to check the wiring (`display-test`, or **Make 10-second test** in New show).
@@ -147,7 +147,7 @@ Start the local browser-based sequencing interface:
 uv run lor-sequence-ui
 ```
 
-The server binds only to `127.0.0.1`. Open a native S6 v15 `.loredit` file and its matching audio. The workspace builds tracks from the sequence's actual props, channels, embedded prop groups, timing grids, and effects; the waveform is decoded from the selected audio. When served by this command, the selected audio is sent only to the local Python analysis endpoint and held in a temporary directory while the existing librosa analyzer runs. The source audio and sequence are not modified or retained by the server.
+The server binds only to `127.0.0.1`. Open an S5/S6 `.loredit` (v15) or S4 `.lms` (v14) and its matching audio. The workspace builds tracks from the sequence's actual props, channels, embedded prop groups, timing grids, and effects; the waveform is decoded from the selected audio. When served by this command, the selected audio is sent only to the local Python analysis endpoint and held in a temporary directory while the existing librosa analyzer runs. The source audio and sequence are not modified or retained by the server.
 
 The workspace supports synchronized navigation, playback, musical marker visualization, track expansion/collapse, and effect editing: select, move, trim, create, delete, duplicate, undo/redo, snapping to musical events, one-click retiming of out-of-sync hits, and a checked export to a new file. A music review corrects beats, bars, crashes, hits, section names and lyrics, fits a tempo map between confirmed bars, and saves a review file that `generate --analysis` accepts (see docs/SEQUENCER_UI.md). Optional saved audio-analysis JSON and `vocals-1.0` JSON can be loaded. Vocal regions and syllable candidates are heuristic; the current vocal format does not recognize words or provide lyrics.
 
