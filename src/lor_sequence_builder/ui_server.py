@@ -127,10 +127,14 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
     def do_POST(self) -> None:
         """Analyze audio, check an edited sequence, or build a new show."""
         parsed = urlsplit(self.path)
-        if parsed.path not in {"/api/analyze", "/api/export", "/api/update", *_SHOW_STEPS}:
+        if parsed.path not in {"/api/analyze", "/api/export", "/api/update", "/api/log",
+                               "/api/diagnostics", *_SHOW_STEPS}:
             self.send_error(404)
             return
         if not self._is_same_origin():
+            return
+        if parsed.path in {"/api/log", "/api/diagnostics"}:
+            self._diagnostics(parsed.path)
             return
         if parsed.path == "/api/update":
             from lor_sequence_builder.update_check import check_for_update
@@ -317,7 +321,27 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
         except OSError:
             self._send_json(500, {"error": "Local audio analysis could not complete"})
 
+    def _diagnostics(self, path: str) -> None:
+        from lor_sequence_builder.diagnostics import report, write_log
+
+        body = self._read_json()
+        if body is None:
+            return
+        if path == "/api/log":
+            where = str(body.get("where", ""))[:200]
+            write_log("page", f"{str(body.get('message', ''))[:1500]} ({where})")
+            self._send_json(200, {"ok": True})
+            return
+        steps = body.get("steps")
+        clean = [str(step) for step in steps[:100]] if isinstance(steps, list) else []
+        self._send_json(200, {"text": report(str(body.get("browser", "")), clean)})
+
     def _send_json(self, status: int, payload: dict[str, Any]) -> None:
+        if status >= 400:
+            from lor_sequence_builder.diagnostics import write_log
+
+            write_log("server", f"{urlsplit(self.path).path} answered {status}: "
+                      f"{str(payload.get('error', ''))[:500]}")
         body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
