@@ -1446,6 +1446,8 @@
       }
       state.analysis = payload.report;
       captureReviewBaseline();
+      state.reviewDirty = false;
+      state.reviewSaved = false;
       renderSequenceStats();
       refreshTimeline();
       const analysis = state.analysis.analysis;
@@ -1461,6 +1463,10 @@
         (mismatch ? " " + mismatch : ""), mismatch ? "warn" : "good");
     } catch (error) {
       if (requestId !== state.audioRequestId) return;
+      if (!state.reviewLoaded) {
+        state.reviewDirty = reviewHasChanges();
+        updateEditControls();
+      }
       const mismatch = durationMismatchMessage();
       setBanner("Waveform loaded. Automatic analysis unavailable: " +
         problemText(error) + " You can still edit, or load a saved analysis file." +
@@ -2954,14 +2960,14 @@
       lanes[spec.key] = analysis ? analysis[spec.key] : null;
     }
     state.reviewBaseline = { analysis, lanes, lyrics: state.lyrics,
-      lyricLines: state.lyrics ? state.lyrics.lines : null };
+      lyricLines: state.lyrics ? state.lyrics.lines : null, meter: $("meterSelect").value };
   }
 
   function reviewHasChanges() {
     const baseline = state.reviewBaseline;
     if (!baseline) return Boolean(state.analysis || state.lyrics);
     const analysis = state.analysis && state.analysis.analysis;
-    if (analysis !== baseline.analysis) return true;
+    if (analysis !== baseline.analysis || baseline.meter !== $("meterSelect").value) return true;
     for (const spec of Object.values(REVIEW_LANES)) {
       if (analysis && analysis[spec.key] !== baseline.lanes[spec.key]) return true;
     }
@@ -5077,11 +5083,21 @@
       if (show.token && show.audioFile && !show.batchRunning && !show.generationPending) {
         chooseSong(show.audioFile);
       }
-      if (state.reviewDirty) {
-        setBanner("Meter set to " + $("meterSelect").value + "/4 for fitting bars. Your saved music review is kept.", "good");
+      const keepReview = state.reviewDirty || state.reviewLoaded;
+      state.reviewRevision += 1;
+      if (keepReview) {
+        state.reviewDirty = reviewHasChanges();
+        updateEditControls();
+        setBanner("Meter changed to " + $("meterSelect").value + "/4. Your existing review was kept; automatic analysis was not rerun. Save the review to retain the new meter.", "warn");
         return;
       }
-      if (state.audioFile && state.audioBuffer) analyzeSelectedAudio(state.audioFile);
+      if (state.audioFile && state.audioBuffer) {
+        analyzeSelectedAudio(state.audioFile);
+      } else if (state.analysis) {
+        state.reviewDirty = reviewHasChanges();
+        updateEditControls();
+        setBanner("Meter changed. Save the music review to preserve the new meter.", "warn");
+      }
     });
     $("playButton").addEventListener("click", async () => {
       const requestedFile = state.audioFile;
