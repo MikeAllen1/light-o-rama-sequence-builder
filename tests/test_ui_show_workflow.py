@@ -242,6 +242,19 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             page.locator("#batchStatus").filter(has_text="1 of 1 shows built").wait_for()
             assert not page.locator("#saveBatch").is_disabled()
             previous_playlist_rows = page.locator("#batchList").inner_text()
+
+            # An over-limit selection must be rejected before the previous batch
+            # is cleared or any song is uploaded.
+            oversized = [
+                {"name": f"Song {index:02d}.wav", "mimeType": "audio/wav", "buffer": b"audio"}
+                for index in range(41)
+            ]
+            page.locator("#batchFiles").set_input_files(oversized)
+            page.locator("#batchStatus").filter(has_text="at most 40 songs").wait_for()
+            assert page.locator("#batchList").inner_text() == previous_playlist_rows
+            assert not page.locator("#saveBatch").is_disabled()
+            assert batch_calls == 1
+
             fail_next_batch_clear = True
             page.locator("#batchFiles").set_input_files([
                 {"name": "replacement.wav", "mimeType": "audio/wav", "buffer": b"replacement"},
