@@ -1383,8 +1383,9 @@
     const meter = $("meterSelect").value;
     setBanner("Analyzing the selected audio locally: tempo, beats, downbeats, transients, sections, and pauses…");
     try {
-      const payload = await callEngine("/api/analyze?beats_per_bar=" + meter, file,
-        "application/octet-stream");
+      const payload = await withProgress("analysisBanner", "Sending the song", (key) =>
+        callEngine("/api/analyze?beats_per_bar=" + meter + "&progress=" + key, file,
+          "application/octet-stream"));
       if (requestId !== state.audioRequestId) return;
       if (state.reviewDirty || state.reviewLoaded) {
         // Never replace reviewed markers with fresh estimates.
@@ -3165,8 +3166,9 @@
     $("makeTest").disabled = true;
     showMessage("testStatus", "Making the display test…");
     try {
-      const test = await postShow("/api/show/test?token=" + encodeURIComponent(show.token), "{}",
-        "application/json");
+      const test = await withProgress("testStatus", "Starting", (key) =>
+        postShow("/api/show/test?token=" + encodeURIComponent(show.token) + "&progress=" + key,
+          "{}", "application/json"));
       show.test = test;
       showMessage("testStatus", "Ready: " + test.schedule.length + " steps in 10 seconds. Save the " +
         "files, copy the sound into S6's audio folder, and play the sequence in S6; the text " +
@@ -3274,9 +3276,11 @@
       if (file.size <= 0 || file.size > 200 * 1024 * 1024) {
         throw new Error("Audio must be non-empty and 200 MiB or smaller.");
       }
-      const payload = await postShow("/api/show/audio?token=" + encodeURIComponent(show.token) +
-        "&beats_per_bar=" + $("meterSelect").value + "&request_id=" + requestId +
-        "&name=" + encodeURIComponent(file.name), file, "application/octet-stream");
+      const payload = await withProgress("songStatus", "Sending the song", (key) =>
+        postShow("/api/show/audio?token=" + encodeURIComponent(show.token) +
+          "&beats_per_bar=" + $("meterSelect").value + "&request_id=" + requestId +
+          "&name=" + encodeURIComponent(file.name) + "&progress=" + key, file,
+          "application/octet-stream"));
       if (requestId !== show.audioRequestId || payload.stale) return;
       show.audioFile = file;
       show.analysis = payload.report;
@@ -3450,10 +3454,10 @@
       ? "Splitting the vocals and planning the show; this can take a few minutes…"
       : "Planning the show and checking every rule…");
     try {
-      const result = await postShow("/api/show/generate?token=" + encodeURIComponent(show.token),
-        JSON.stringify({ music_filename: $("musicFilename").value, sing: singing,
-          style: chosenStyle() }),
-        "application/json");
+      const result = await withProgress("generateStatus", "Starting", (key) =>
+        postShow("/api/show/generate?token=" + encodeURIComponent(show.token) + "&progress=" +
+          key, JSON.stringify({ music_filename: $("musicFilename").value, sing: singing,
+          style: chosenStyle() }), "application/json"));
       if (!result.rules_ok) {
         show.result = null;
         $("openGenerated").disabled = true;
@@ -3583,9 +3587,13 @@
       showMessage("batchStatus", "Building " + (i + 1) + " of " + files.length + "…");
       rows[i].textContent = file.name + ": analyzing and building…";
       try {
-        const result = await postShow("/api/show/batch?token=" + encodeURIComponent(show.token) +
-          "&name=" + encodeURIComponent(file.name) + "&beats_per_bar=" + $("meterSelect").value +
-          "&style=" + encodeURIComponent(chosenStyle() || ""), file, "application/octet-stream");
+        const result = await withProgress("batchStatus", "Sending the song", (key) =>
+          postShow("/api/show/batch?token=" + encodeURIComponent(show.token) +
+            "&name=" + encodeURIComponent(file.name) + "&beats_per_bar=" +
+            $("meterSelect").value + "&style=" + encodeURIComponent(chosenStyle() || "") +
+            "&progress=" + key, file, "application/octet-stream"),
+          { from: i / files.length, to: (i + 1) / files.length, last: i === files.length - 1,
+            prefix: "Song " + (i + 1) + " of " + files.length + ": " });
         if (result.ok) {
           built += 1;
           totalSeconds += result.duration || 0;
@@ -4321,6 +4329,80 @@
       }
     }, true);
     $("copyDiagnostics").addEventListener("click", copyDiagnostics);
+  }
+
+  // Progress for anything that takes more than a moment: a bar, what the program is
+  // doing now (as the engine reports it) and the time so far, under the status line.
+  // `run` gets a key to send as &progress=KEY; quick jobs finish before it appears.
+  function newProgressKey() {
+    const bytes = new Uint8Array(8);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  function progressBox(anchorId) {
+    const id = anchorId + "Progress";
+    let box = $(id);
+    if (!box) {
+      box = document.createElement("div");
+      box.id = id;
+      box.className = "progress hidden";
+      box.setAttribute("role", "progressbar");
+      box.setAttribute("aria-valuemin", "0");
+      box.setAttribute("aria-valuemax", "100");
+      box.innerHTML = '<div class="progress-track"><span class="progress-fill"></span></div>' +
+        '<div class="progress-text"></div>';
+      $(anchorId).insertAdjacentElement("afterend", box);
+    }
+    return box;
+  }
+
+  function seconds(value) {
+    const total = Math.round(value);
+    return total < 60 ? total + " s" : formatTime(total);
+  }
+
+  async function withProgress(anchorId, firstStep, run, scale) {
+    const key = newProgressKey();
+    const box = progressBox(anchorId);
+    const fill = box.querySelector(".progress-fill");
+    const text = box.querySelector(".progress-text");
+    const started = performance.now();
+    const range = scale || { from: 0, to: 1, prefix: "" };
+    let stopped = false;
+    const paint = (fraction, step, slow, elapsed) => {
+      const shown = range.from + (range.to - range.from) * Math.max(0, Math.min(1, fraction));
+      fill.style.width = Math.round(shown * 100) + "%";
+      box.setAttribute("aria-valuenow", String(Math.round(shown * 100)));
+      box.classList.toggle("slow", Boolean(slow));
+      text.textContent = range.prefix + step + "… " + seconds(elapsed) +
+        (slow ? " so far. This part takes a few minutes; it is still working." : "");
+    };
+    const poll = async () => {
+      while (!stopped) {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        if (stopped) break;
+        const elapsed = (performance.now() - started) / 1000;
+        box.classList.remove("hidden");
+        try {
+          const state = await callEngine("/api/progress?key=" + key, "{}", "application/json");
+          if (stopped) break;
+          if (state.known) paint(state.fraction, state.step, state.slow, elapsed);
+          else paint(0, firstStep, false, elapsed);
+        } catch {
+          paint(0, firstStep, false, elapsed);
+        }
+      }
+    };
+    paint(0, firstStep, false, 0);
+    const polling = poll();
+    try {
+      return await run(key);
+    } finally {
+      stopped = true;
+      await polling.catch(() => {});
+      if (!scale || scale.last) box.classList.add("hidden");
+    }
   }
 
   function setup() {

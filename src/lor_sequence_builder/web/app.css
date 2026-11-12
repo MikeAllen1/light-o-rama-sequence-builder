@@ -312,6 +312,18 @@ canvas { display: block; }
   padding: 10px 14px; border-bottom: 1px solid var(--line); }
 .viewer-actions { display: flex; gap: 8px; }
 .viewer-frame { flex: 1; width: 100%; border: 0; background: #fdfcfb; }
+.progress { margin-top: 10px; max-width: 560px; }
+.progress-track { height: 8px; border-radius: 999px; background: var(--panel-3); overflow: hidden; }
+.progress-fill { display: block; height: 100%; width: 0; border-radius: inherit;
+  background: linear-gradient(90deg, #d9622f, #f2b441); transition: width .35s ease; }
+.progress.slow .progress-fill { width: 100% !important; opacity: .55;
+  background: repeating-linear-gradient(-45deg, #b9471f 0 10px, #f2b441 10px 20px);
+  background-size: 28px 28px; animation: progress-stripes 1s linear infinite; }
+@keyframes progress-stripes { to { background-position: 28px 0; } }
+.progress-text { margin-top: 6px; color: var(--muted); font-size: 12px; }
+.analysis-banner + .progress { margin: 6px 16px 0; }
+@media (prefers-reduced-motion: reduce) { .progress-fill { transition: none; }
+  .progress.slow .progress-fill { animation: none; } }
 .batch { margin-top: 26px; padding-top: 18px; border-top: 1px dashed var(--line); }
 .batch h4 { margin: 0 0 6px; font: 700 16px/1.2 Rockwell, "Roboto Slab", Georgia, serif; color: #fff3e2; }
 .batch-list { margin: 10px 0 0; padding-left: 20px; color: var(--muted); font-size: 13px; line-height: 1.7; }
