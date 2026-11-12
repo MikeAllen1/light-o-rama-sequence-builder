@@ -3800,7 +3800,7 @@
     let built = 0;
     let totalSeconds = 0;
     for (let i = 0; i < files.length; i++) {
-      if (currentShowConfig() !== batchConfig || show.token !== batchToken) {
+      if (currentBatchConfig() !== batchConfig || show.token !== batchToken) {
         for (let rest = i; rest < rows.length; rest++) {
           rows[rest].className = "error";
           rows[rest].textContent = files[rest].name + ": not built; show settings changed during the batch";
