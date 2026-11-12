@@ -19,6 +19,7 @@
     </div>
     <div class="toolbar">
       <button id="newShowButton" class="tool-button primary" type="button">New show</button>
+      <button id="yardButton" class="tool-button" type="button" aria-pressed="false" title="Watch the show on a drawing of your yard">Yard view</button>
       <label class="tool-button">
         <span>Open sequence</span>
         <input id="sequenceFile" type="file" accept=".loredit,.xml,application/xml,text/xml">
@@ -183,6 +184,12 @@
         <span id="editStatus" class="edit-status">No edits</span>
         <button id="saveReviewButton" class="tool-button" type="button" disabled title="Save the corrected beats, bars, hits, sections and lyrics as a music review file">Save music review</button>
         <button id="exportButton" class="tool-button primary" type="button" disabled title="Check the edited sequence and download it as a new file">Export edited copy</button>
+      </div>
+
+      <div id="yardPanel" class="yard-panel hidden" aria-label="Yard view">
+        <canvas id="yardCanvas" class="yard-canvas"></canvas>
+        <div class="yard-caption"><span>YARD VIEW</span><span id="yardStatus"></span>
+          <span class="yard-note">Drawn from the preview inside the sequence; S6's visualizer is the reference.</span></div>
       </div>
 
       <div class="timeline-workspace">

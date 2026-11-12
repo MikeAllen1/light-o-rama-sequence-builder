@@ -224,6 +224,21 @@ A style never changes what each kind of prop follows or which rules apply. It is
 
 **Verified:** every style passes every rule on every fictional display. On one song, High energy lights more and flashes more than Classic, and Classic more than Elegant. Elegant has no flashes, no call and response and no sharp chase steps. A style always gives the same show. On the owner's six songs (checked locally), every style passes every rule with no warnings.
 
+### Phase 9d — Yard view
+
+**Status: Built; owner review pending.** Requested by the owner on 2026-11-11 ("I also want the visual preview").
+
+The workspace draws the display from the preview embedded in every S6 sequence and lights each channel at the playhead from its effects:
+- props drawn as lines use their own points
+- box shapes are simplified (arch, tree strands, star, snowflake, circle, rectangle), with rotation
+- channels split each prop in order
+- channel-grid colors are used, and multicolor strings alternate their colors
+- twinkle and shimmer flicker
+
+It follows playback, or a clicked time when there is no audio, and opens automatically for a newly generated show.
+
+**Verified:** a browser test on the demo show draws all 18 props, including the house outline, and lights more channels in the loud middle than at the start. The owner's real sequence and song were rendered locally (not committed), which caught missing-attribute handling that had collapsed line-drawn props to a point.
+
 ### Phase 10 — Polish
 Build reports, docs, Python package distribution, example profiles, and installation workflow. Desktop wrapping and desktop packaging are not part of this phase; they are final delivery work after the browser sequencing and editing workflows are complete.
 

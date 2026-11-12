@@ -19,7 +19,7 @@ Nothing is uploaded anywhere. The program runs on your computer and reads your f
 5. **Requirements (optional):** see below. Skip this the first time.
 6. **Generate:** pick a **style** (below), check the audio file name (it must match the song's name in S6's audio folder) and click **Generate show**.
 7. Click **Show report** and read **Check in the yard**. Click **Plan picture** for the whole show at a glance.
-8. Click **Open in the workspace** to watch the show against the music (press play; the lanes above the tracks show the beats, bars and sections it followed), then **Save sequence**.
+8. Click **Open in the workspace**. The **Yard view** opens above the timeline: press play to watch your yard light up with the song (the lanes above the tracks show the beats, bars and sections it followed). Then **Save sequence**.
 9. Open the saved `.loredit` in the S6 Sequencer and play it.
 
 To try everything without your own files, run `uv run lor-sequence-builder demo "Demo Show"` in the program folder: it writes an invented yard, an invented song and the finished show.
