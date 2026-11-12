@@ -184,14 +184,14 @@ def offer_preview(path: str | Path) -> str:
     page for it. Raises ValueError with plain words when the file cannot be used."""
     source = Path(path)
     if source.suffix.lower() != ".lorprev" or not source.is_file():
-        raise ValueError(f"{source.name} is not an S6 preview (.lorprev) file")
+        raise ValueError(f"{source.name} is not an S5/S6 preview (.lorprev) file")
     if source.stat().st_size > MAX_LORPREV_BYTES:
         raise ValueError(f"{source.name} is larger than a preview can be")
     data = source.read_bytes()
     try:
         text = data.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
-        raise ValueError(f"{source.name} is not a readable S6 preview") from exc
+        raise ValueError(f"{source.name} is not a readable S5/S6 preview") from exc
     with _startup_lock:
         _startup.clear()
         _startup.update(name=source.name, text=text)

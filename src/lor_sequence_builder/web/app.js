@@ -3726,7 +3726,7 @@
       if (show.token !== token) return;
       show.test = test;
       showMessage("testStatus", "Ready: " + test.schedule.length + " steps in 10 seconds. Save the " +
-        "files, copy the sound into S6's audio folder, and play the sequence in S6; the text " +
+        "files, copy the sound into the S5/S6 audio folder, and play the sequence there; the text " +
         "file says what should light when. Watch the test to see it here first.", "good");
       $("watchTest").disabled = false;
       $("saveTest").disabled = false;
@@ -4351,7 +4351,7 @@
     state.dirty = true;
     updateEditControls();
     setBanner("Generated " + result.file_name + ". Review it against the music, then Save " +
-      "sequence to keep it; open it in S6 to fine-tune.", "good");
+      "sequence to keep it; open it in the Sequencer to fine-tune.", "good");
     toggleYard(true);
   }
 

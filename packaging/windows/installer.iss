@@ -45,7 +45,7 @@ RestartApplications=no
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"
-Name: "previewmenu"; Description: "Add ""Build a show with LOR Sequencer"" when right-clicking an S6 preview (.lorprev). S6 stays the program that opens previews."; GroupDescription: "S6 previews:"
+Name: "previewmenu"; Description: "Add ""Build a show with LOR Sequencer"" when right-clicking an S5/S6 preview (.lorprev). The Sequencer stays the program that opens previews."; GroupDescription: "S6 previews:"
 
 [Registry]
 ; Right-click verb on .lorprev files, whatever program opens them (S6 stays the default).

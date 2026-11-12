@@ -77,8 +77,8 @@ def yard_checks(inputs: ReportInputs) -> list[str]:
     display = inputs.display
     used = _used_ids(inputs)
     checks = [
-        (f"In S6, confirm the sequence plays {escape(inputs.music_filename)}: the audio file "
-         "name must match one in S6's audio folder."),
+        (f"In the Sequencer, confirm the sequence plays {escape(inputs.music_filename)}: the "
+         "audio file name must match one in its audio folder."),
     ]
     unknown = sorted(c.name for c in inputs.classifications if c.status == "unknown")
     review = sorted(c.name for c in inputs.classifications if c.status == "needs_review")
@@ -116,7 +116,7 @@ def yard_checks(inputs: ReportInputs) -> list[str]:
         checks.append("Brightness limits from your requirements should look right at night.")
     checks.append("Check from the street that the busiest parts are not too much and the "
                   "quiet parts are not too dark; tell the program what to change with "
-                  "requirements, or fine-tune the sequence in S6.")
+                  "requirements, or fine-tune the sequence in the Sequencer.")
     return checks
 
 
