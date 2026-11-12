@@ -122,6 +122,20 @@ Passing the rules makes a show valid; the quality check asks whether it is good.
 - **Same look over and over:** the same props starting at the same moments three phrases running.
 - **On the music:** how many effects start on a beat, a drum hit or a note of the song. Steps inside a chase or a spin count once, where the motion starts.
 
+- **True to the style:** each built-in style has a profile, and the show is measured against it:
+
+  | | Classic | High energy | Elegant |
+  |---|---|---|---|
+  | A light stays on (beats) | 0.7-1.6 | 0.2-0.9 | 1.8 or more |
+  | Effects that fade | 30-70% | up to 45% | 35% or more |
+  | Yard lit in quiet and middle parts | up to 45% | up to 50% | up to 45% |
+  | Yard lit in the loud parts | up to 75% | up to 75% | up to 75% |
+  | Loud parts vs quiet ones | 1.5x or more | 1.7x or more | 1.3x or more |
+  | Whole yard lit outside the peaks | up to 3 s | up to 3 s | up to 3 s |
+  | Whole-yard accents a minute | 1-6 | 1.5-8 | up to 2.5 |
+
+  Elegant also starts with one group of props and adds more as the song builds, and its rolls and waves leave part of the yard resting. High energy starts smaller and goes bigger in the loud parts, with quicker hits. A style learned from your own sequences is judged by the general checks only.
+
 Like everything else, the check runs on your computer.
 
 Section names (verse, chorus) are guesses from loudness. To name them yourself, use the music review (below).
