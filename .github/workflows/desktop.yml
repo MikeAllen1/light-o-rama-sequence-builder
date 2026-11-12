@@ -2,12 +2,15 @@ name: Desktop app
 
 # Builds the Windows desktop app (PyInstaller + bundled FFmpeg + Inno Setup), checks the
 # built app with its own self-test, and keeps the installer as a downloadable artifact.
-# A tag like v0.2.0 also publishes the installer on a GitHub release.
+# A tag like v0.2.0 also puts the installer on its GitHub release (made here when the
+# tag has none yet).
 
 on:
   push:
     branches: ["master"]
     tags: ["v*"]
+  release:
+    types: [published]
   pull_request:
     branches: ["master"]
   workflow_dispatch:
@@ -110,8 +113,15 @@ jobs:
           name: LOR-Sequencer-Windows-installer
           path: installer
 
-      - name: Create the release
+      - name: Attach the installer to the release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" installer/*.exe --repo "$GITHUB_REPOSITORY" --title "LOR Sequencer $TAG" --notes "Windows installer for LOR Sequencer $TAG. Download LOR-Sequencer-Setup-*.exe and run it; no administrator rights are needed."
+        # A release drafted in the GitHub page gets the installer added; a bare tag gets a
+        # new release.
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$TAG" installer/*.exe --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" installer/*.exe --repo "$GITHUB_REPOSITORY" --title "LOR Sequencer $TAG" --notes "Windows installer for LOR Sequencer $TAG. Download LOR-Sequencer-Setup-*.exe and run it; no administrator rights are needed."
+          fi

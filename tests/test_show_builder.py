@@ -147,6 +147,11 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
             page.locator("#showDisplayFile").set_input_files(str(preview))
             page.locator("#displayStatus.good").wait_for(timeout=20000)
             assert "arches" in page.locator("#displayStatus").inner_text()
+            page.locator("#makeTest").click()
+            page.locator("#testStatus.good").wait_for(timeout=30000)
+            with page.expect_download() as test_files:
+                page.locator("#saveTest").click()
+            assert test_files.value.suggested_filename.endswith("display test.zip")
             page.locator("#showSongFile").set_input_files(str(audio))
             page.locator("#songStatus.good").wait_for(timeout=60000)
             assert "BPM" in page.locator("#songStatus").inner_text()
@@ -161,9 +166,14 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
             assert page.locator('input[name="showStyle"]:checked').get_attribute("value") \
                 == "classic"
             page.locator('input[name="showStyle"][value="elegant"]').check()
+            page.locator("#yardButton").click()  # nothing to play yet: says what to do
+            assert "Generate a show first" in page.locator("#generateStatus").inner_text()
             page.locator("#generateShow").click()
             page.locator("#generateStatus.good").wait_for(timeout=60000)
             assert "Every rule passed" in page.locator("#generateStatus").inner_text()
+            with page.expect_download() as show_file:
+                page.locator("#saveGenerated").click()
+            assert show_file.value.suggested_filename == "beat (generated).loredit"
             page.locator("#reportGenerated").click()
             page.frame_locator("#viewerFrame").get_by_text("Check in the yard").wait_for()
             with page.expect_download() as report_file:
