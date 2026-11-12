@@ -8,9 +8,13 @@ Sequencing one song by hand can eat a whole weekend, and it helps to have an ear
 
 *The invented demo yard, playing the show the program made for it.*
 
-### [Download for Windows](https://github.com/MikeAllen1/light-o-rama-sequence-builder/releases/latest)
+### [⬇ Download for Windows](https://github.com/MikeAllen1/light-o-rama-sequence-builder/releases/latest/download/LOR-Sequencer-Setup.exe)
 
-Free. No administrator rights needed, and everything it needs is included. Running a newer installer later replaces the old one, and the app tells you when there is one. Can't run installers on your PC? Take the **Portable** zip from the same page: unzip it and run `LOR Sequencer.exe`.
+1. Click the link above. It downloads **LOR-Sequencer-Setup.exe**.
+2. Double-click it. If Windows says "Windows protected your PC", click **More info**, then **Run anyway**.
+3. Click through the installer, then open **LOR Sequencer** from the Start menu.
+
+Free. No administrator rights needed, and everything it needs is included. Running a newer installer later replaces the old one, and the app tells you when there is one. On the [releases page](https://github.com/MikeAllen1/light-o-rama-sequence-builder/releases/latest), ignore "Source code": it is for programmers and will not run. Can't run installers on your PC? Download the [portable zip](https://github.com/MikeAllen1/light-o-rama-sequence-builder/releases/latest/download/LOR-Sequencer-Portable.zip), right-click it, choose **Extract All**, and double-click `LOR Sequencer.exe` inside.
 
 ## How it works
 

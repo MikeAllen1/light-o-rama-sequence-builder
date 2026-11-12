@@ -52,4 +52,7 @@ def test_bumping_changes_every_file_and_refuses_going_back(tmp_path: Path) -> No
 def test_notes_list_the_merged_pull_requests() -> None:
     text = _helper().notes("0.2.0", ["Add batch (#73)", "Add diagnostics (#72)"])
     assert text.index("Add diagnostics (#72)") < text.index("Add batch (#73)")
-    assert "LOR-Sequencer-Setup-0.2.0.exe" in text
+    # The notes start with how to install, for people who have never used GitHub.
+    assert text.index("How to install") < text.index("What's new")
+    assert "releases/latest/download/LOR-Sequencer-Setup.exe" in text
+    assert "Source code" in text and "Run anyway" in text
