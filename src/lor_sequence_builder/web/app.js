@@ -1495,7 +1495,8 @@
         if (!data || typeof data !== "object") throw new Error("The music review has no analysis.");
         if (review.lyrics != null) checkLyrics(review.lyrics);
       }
-      if (state.reviewDirty && !window.confirm("Replace the unsaved music review?")) return;
+      const discardUnsavedReview = state.reviewDirty;
+      if (discardUnsavedReview && !window.confirm("Replace the unsaved music review?")) return;
       const analysis = data.analysis;
       const requiredArrays = ["beats", "downbeats", "onsets", "energy",
         "phrase_boundaries", "section_candidates", "hard_stops"];
@@ -1525,7 +1526,15 @@
       state.reviewSelection = null;
       if (review) {
         state.lyrics = review.lyrics != null ? review.lyrics : null;
-        if (review.meter === 3 || review.meter === 4) $("meterSelect").value = String(review.meter);
+        if (review.meter === 3 || review.meter === 4) {
+          const previousMeter = $("meterSelect").value;
+          $("meterSelect").value = String(review.meter);
+          if (previousMeter !== String(review.meter) && show.token && show.audioFile) {
+            chooseSong(show.audioFile);
+          }
+        }
+      } else if (discardUnsavedReview) {
+        state.lyrics = null;
       }
       renderSequenceStats();
       refreshTimeline();
@@ -1612,8 +1621,11 @@
     }
     if (!lines.length) throw new Error(name + ": no LRC time tags or SRT/VTT cues found.");
     lines.sort((a, b) => a.start - b.start);
-    lines.forEach((line, index) => {
-      if (line.end == null) line.end = index + 1 < lines.length ? lines[index + 1].start : line.start + 4;
+    lines.forEach((line) => {
+      if (line.end == null) {
+        const next = lines.find((candidate) => candidate.start > line.start + 0.001);
+        line.end = next ? next.start : Math.min(1801, line.start + 4);
+      }
       line.verified = true;
       line.words = [];
     });
@@ -2500,8 +2512,9 @@
     apply.addEventListener("click", () => {
       const values = {};
       const percent = (id) => {
-        const value = Number($(id).value);
-        if (!Number.isInteger(value) || value < 0 || value > 100) {
+        const raw = $(id).value.trim();
+        const value = Number(raw);
+        if (!raw || !Number.isInteger(value) || value < 0 || value > 100) {
           throw new Error("intensities are whole numbers from 0 to 100");
         }
         return value;
@@ -2515,9 +2528,11 @@
             : { fade: false, level: percent("editIntensity") };
         }
         if (items.length === 1) {
-          values.start = Math.round(Number($("editStart").value) * 100);
-          values.end = Math.round(Number($("editEnd").value) * 100);
-          if (!Number.isFinite(values.start) || !Number.isFinite(values.end)) {
+          const startText = $("editStart").value.trim();
+          const endText = $("editEnd").value.trim();
+          values.start = Math.round(Number(startText) * 100);
+          values.end = Math.round(Number(endText) * 100);
+          if (!startText || !endText || !Number.isFinite(values.start) || !Number.isFinite(values.end)) {
             throw new Error("times must be numbers of seconds");
           }
         }
@@ -2708,6 +2723,26 @@
   }
 
   function applyMusic(label, changes, select) {
+    try {
+      for (const change of changes) {
+        if (state.lyrics && change.owner === state.lyrics && change.key === "lines") {
+          checkLyrics({ schema_version: "lyrics-1.0", source: state.lyrics.source, lines: change.after });
+          continue;
+        }
+        const duration = Number(state.analysis && state.analysis.audio &&
+          state.analysis.audio.duration_seconds);
+        if (change.owner === (state.analysis && state.analysis.analysis) &&
+            Object.values(REVIEW_LANES).some((spec) => spec.key === change.key) &&
+            (!Number.isFinite(duration) || change.after.some((event) =>
+              !Number.isFinite(eventTime(event)) || eventTime(event) < 0 ||
+              eventTime(event) > duration + 1))) {
+          throw new Error("a marker must be within the analyzed song");
+        }
+      }
+    } catch (error) {
+      setBanner("Not changed: " + error.message + ".", "warn");
+      return false;
+    }
     const command = { label, music: changes };
     performMusic(command, "after");
     state.undo.push(command);
@@ -2892,7 +2927,12 @@
         drawMarkers(Number($("markersCanvas").width), state.pxPerSecond);
         return;
       }
-      replacement = Object.assign({}, hit.event, { start: round3(start), end: round3(end) });
+      const words = (hit.event.words || []).filter((word) =>
+        Number(word.end) > start && Number(word.start) < end).map((word) => Object.assign({}, word, {
+        start: round3(Math.max(start, Number(word.start))),
+        end: round3(Math.min(end, Number(word.end)))
+      })).filter((word) => word.end > word.start);
+      replacement = Object.assign({}, hit.event, { start: round3(start), end: round3(end), words });
     } else {
       replacement = movedEvent(hit.event, drag.preview);
     }
@@ -2973,6 +3013,11 @@
           ? words.map((word, index) => Object.assign({}, word, { text: typed[index], verified: true }))
           : [];
       }
+      words = words.filter((word) => Number(word.end) > values.start &&
+        Number(word.start) < values.end).map((word) => Object.assign({}, word, {
+        start: round3(Math.max(values.start, Number(word.start))),
+        end: round3(Math.min(values.end, Number(word.end)))
+      })).filter((word) => word.end > word.start);
       replacement = Object.assign({}, event, { text, start: round3(values.start),
         end: round3(values.end), words, verified: true });
     } else {
@@ -3086,11 +3131,17 @@
     }
     form.appendChild(reviewButton("reviewApply", "Apply", () => {
       if (event.text != null) {
-        editSelected({ text: $("reviewText").value, start: Number($("reviewStart").value),
-          end: Number($("reviewEnd").value) });
+        const startText = $("reviewStart").value.trim();
+        const endText = $("reviewEnd").value.trim();
+        if (!startText || !endText) {
+          setBanner("Not changed: lyric start and end must both be numbers of seconds.", "warn");
+          return;
+        }
+        editSelected({ text: $("reviewText").value, start: Number(startText), end: Number(endText) });
       } else {
-        const time = Number($("reviewTime").value);
-        if (!Number.isFinite(time) || time < 0) {
+        const timeText = $("reviewTime").value.trim();
+        const time = Number(timeText);
+        if (!timeText || !Number.isFinite(time) || time < 0) {
           setBanner("Not changed: the time must be a number of seconds.", "warn");
           return;
         }
@@ -3112,8 +3163,15 @@
         const bar = medianBarSeconds();
         const bars = numberInput("fitBars", Math.max(1, Math.round(bar ? gap / bar : 1)), 1, 64, 1);
         fit.appendChild(field("Bars to " + formatCentiseconds(eventTime(next) * 100), bars));
-        fit.appendChild(reviewButton("fitBarsButton", "Fit bars and beats evenly", () =>
-          fitBetweenBars(event, Number($("fitBars").value))));
+        fit.appendChild(reviewButton("fitBarsButton", "Fit bars and beats evenly", () => {
+          const raw = $("fitBars").value.trim();
+          const count = Number(raw);
+          if (!raw || !Number.isInteger(count) || count < 1 || count > 64) {
+            setBanner("Not changed: enter a whole number of bars from 1 to 64.", "warn");
+            return;
+          }
+          fitBetweenBars(event, count);
+        }));
       } else {
         const hint = document.createElement("div");
         hint.textContent = "Confirm a later bar to fit the bars and beats between them.";
