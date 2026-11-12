@@ -71,8 +71,10 @@ def _ffmpeg() -> Check:
     if path is None:
         return Check("FFmpeg (reads audio)", False, "not found; " + ffmpeg_install_hint())
     try:
+        from lor_sequence_builder.processes import NO_WINDOW
+
         result = subprocess.run([path, "-version"], check=False, capture_output=True,
-                                text=True, timeout=10)
+                                text=True, timeout=10, creationflags=NO_WINDOW)
     except (OSError, subprocess.SubprocessError) as exc:
         return Check("FFmpeg (reads audio)", False, f"found but will not run ({exc}); "
                      + ffmpeg_install_hint())

@@ -5735,8 +5735,9 @@
       const name = document.createElement("strong");
       name.textContent = item.file_name.replace(/ \(generated\)\.loredit$|\.loredit$/i, "");
       const detail = document.createElement("span");
-      detail.textContent = [item.display, item.style, madeWhen(item.made)].filter(Boolean)
-        .join(" · ");
+      detail.textContent = [item.display, item.style_name || item.style,
+        item.version ? "version " + item.version : "an older version",
+        madeWhen(item.made)].filter(Boolean).join(" · ");
       text.append(name, detail);
       const actions = document.createElement("div");
       actions.className = "recent-actions";
