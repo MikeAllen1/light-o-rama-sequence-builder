@@ -223,9 +223,11 @@ def test_background_warmup_is_singleton_and_first_analysis_waits(
     assert audio_analysis._warmup_thread is first_thread
     assert calls == 1
 
-    waiter = threading.Thread(
-        target=lambda: (audio_analysis._wait_for_background_warmup(), finished_waiting.set())
-    )
+    def wait_then_signal() -> None:
+        audio_analysis._wait_for_background_warmup()
+        finished_waiting.set()
+
+    waiter = threading.Thread(target=wait_then_signal)
     waiter.start()
     time.sleep(0.05)
     assert not finished_waiting.is_set()

@@ -161,3 +161,14 @@ def test_the_page_shows_a_bug_reference(server: str,  # noqa: F811
             assert "not with your files" in text and "reference" in text
         finally:
             browser.close()
+
+
+def test_answers_arrive_even_when_the_request_was_not_needed(server: str) -> None:  # noqa: F811
+    # Unread request data used to make the connection reset before the answer arrived.
+    big = b"{" + b" " * 3_000_000 + b"}"
+    for _ in range(3):
+        status, answer = _post(server + "/api/progress?key=abcdefgh12345678", big,
+                               "application/json")
+        assert status == 200 and answer == {"known": False}
+    status, refused = _post(server + "/api/show/audio?token=x", b"x" * 5_000_000, "text/plain")
+    assert status == 415 and refused["error"]

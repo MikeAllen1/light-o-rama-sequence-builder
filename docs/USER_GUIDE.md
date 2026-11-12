@@ -93,6 +93,10 @@ It takes a few minutes per song. Without it, the mouths stay still and the repor
 
 In the workspace, the lanes above the tracks can be corrected by ear: move or add beats, bars, crashes and hits, name the sections (Verse, Chorus, Bridge...), fix lyric words, and fit an even tempo between two bars you confirm. **Save music review** writes a `.review.json`; generating from it (`generate --analysis song.review.json`) uses your corrections and your section names. Lyrics can be loaded from LRC, SRT or VTT files; `uv sync --extra lyrics` adds offline transcription. See [SEQUENCER_UI.md](SEQUENCER_UI.md).
 
+## Keyboard shortcuts
+
+In the workspace: **Space** or **K** play and pause, **J** and **L** go back and forward 5 seconds, **Home** goes to the start, **Y** shows the yard view, and **?** lists them all. Everything else can be reached with **Tab**.
+
 ## Fine-tuning
 
 Fine-tune in the S6 Sequencer: it is the full editor. The workspace's own editing is for quick fixes and for checking a show against the music before you open it in S6.
@@ -117,6 +121,10 @@ When a new version is out, the app says so in the bottom corner. Download the in
 | A chase runs backwards | Check the row's group order and the props' start locations in the preview. |
 | Faces do not sing | Install the vocals add-on (above); the report says when it is missing. |
 
+## Recent shows
+
+Every show New show builds is also kept on this computer, and the start page lists the newest 30 under **Your recent shows**: **Open** shows it in the workspace with the yard view (choose **Open audio** to hear it), **Save** downloads the `.loredit` again, **Report** shows its report, and **Remove** deletes it. They live in `%LOCALAPPDATA%\lor-sequence-builder\shows`.
+
 ## Privacy
 
-Your previews, songs and sequences stay on your computer. Requirements are remembered in your user data folder (`%LOCALAPPDATA%\lor-sequence-builder` on Windows). Two things ever reach the internet. When the program starts, it asks GitHub whether a newer version has been published; that request carries nothing about you or your files. If one is out, a note in the corner links to the installer: **Later** skips that version, and **Stop checking** turns the check off (or set `LOR_NO_UPDATE_CHECK=1`). **Check for updates** at the bottom of the start page asks on demand. The other is requirement text you type in your own words, and only when you have set up a translator key yourself.
+Your previews, songs and sequences stay on your computer. Requirements and recent shows are kept in your user data folder (`%LOCALAPPDATA%\lor-sequence-builder` on Windows). Two things ever reach the internet. When the program starts, it asks GitHub whether a newer version has been published; that request carries nothing about you or your files. If one is out, a note in the corner links to the installer: **Later** skips that version, and **Stop checking** turns the check off (or set `LOR_NO_UPDATE_CHECK=1`). **Check for updates** at the bottom of the start page asks on demand. The other is requirement text you type in your own words, and only when you have set up a translator key yourself.

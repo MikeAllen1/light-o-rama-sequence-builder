@@ -1851,11 +1851,14 @@
       } else {
         data = parseLyricsText(text, file.name, currentMusicDuration());
       }
-      checkLyrics(data);
+      // Check the song length first: a line that starts after the song ends cannot be
+      // clipped into a valid line, and "invalid line" would hide the real problem.
       const duration = currentMusicDuration();
-      if (duration != null && data.lines.some((line) => line.end > duration + 1)) {
+      if (duration != null && Array.isArray(data && data.lines) && data.lines.some((line) =>
+        Number(line && line.start) > duration + 1 || Number(line && line.end) > duration + 1)) {
         throw new Error("These lyrics extend beyond the selected song. Choose the matching lyrics file.");
       }
+      checkLyrics(data);
       if (state.reviewDirty && !window.confirm("Replace the unsaved music review?")) return;
       if (state.lyrics) clearMusicHistory(state.lyrics);
       state.lyrics = data;
@@ -2058,8 +2061,13 @@
       for (const key of keys) {
         const av = a[key];
         const bv = b[key];
-        if (key === "attrs" && av && bv) {
-          if (JSON.stringify(av) !== JSON.stringify(bv)) return false;
+        if (key === "attributes" && av && bv) {
+          // Same native attributes in any order: an effect rebuilt with its own
+          // values is not an edit.
+          const names = Object.keys(av);
+          if (names.length !== Object.keys(bv).length ||
+              names.some((name) => !Object.prototype.hasOwnProperty.call(bv, name) ||
+                String(av[name]) !== String(bv[name]))) return false;
         } else if (av !== bv) {
           return false;
         }
@@ -3570,6 +3578,7 @@
     $("newShow").classList.add("hidden");
     if (state.sequence) $("editor").classList.remove("hidden");
     else $("welcome").classList.remove("hidden");
+    refreshRecent();
   }
 
   function bytesFromBase64(text) {
@@ -4245,6 +4254,7 @@
           "font:12px/1.5 Consolas,monospace;white-space:pre-wrap\">" + escapeHtml(content) + "</pre>"
         : content;
     $("viewerFrame").srcdoc = html;
+    if ($("viewer").classList.contains("hidden")) state.viewerReturn = document.activeElement;
     $("viewer").classList.remove("hidden");
     $("viewerClose").focus();
   }
@@ -4266,6 +4276,20 @@
     $("viewer").classList.add("hidden");
     $("viewerFrame").srcdoc = "";
     state.viewer = null;
+    // Back to where the reader was before the window opened.
+    const back = state.viewerReturn;
+    state.viewerReturn = null;
+    if (back && typeof back.focus === "function" && document.contains(back)) back.focus();
+  }
+
+  // Tab stays inside the open window (Save a copy, Close, the page shown).
+  function trapViewerFocus(event) {
+    if (event.key !== "Tab" || $("viewer").classList.contains("hidden")) return;
+    const stops = [$("viewerSave"), $("viewerClose"), $("viewerFrame")];
+    const index = stops.indexOf(document.activeElement);
+    const next = (index + (event.shiftKey ? -1 : 1) + stops.length) % stops.length;
+    stops[index === -1 ? 0 : next].focus();
+    event.preventDefault();
   }
 
   function stem(name) {
@@ -4485,6 +4509,7 @@
 
   function setupNewShow() {
     $("newShowButton").addEventListener("click", openNewShow);
+    $("watchDemo").addEventListener("click", watchDemo);
     $("welcomeNewShow").addEventListener("click", openNewShow);
     $("closeNewShow").addEventListener("click", closeNewShow);
     const bind = (id, handler) => $(id).addEventListener("change", (event) => {
@@ -4506,10 +4531,12 @@
     });
     $("generateShow").addEventListener("click", generateShow);
     $("makeTest").addEventListener("click", makeDisplayTest);
-    $("batchFiles").addEventListener("change", (event) => {
+    $("batchFiles").addEventListener("change", async (event) => {
       const files = Array.from(event.target.files || []);
+      // Keep the picker's files until they are sent: emptying it first can let the
+      // browser drop them before they are read.
+      await runBatch(files);
       event.target.value = "";
-      runBatch(files);
     });
     $("saveBatch").addEventListener("click", saveBatch);
     $("saveTest").addEventListener("click", saveDisplayTest);
@@ -4539,6 +4566,7 @@
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && !$("viewer").classList.contains("hidden")) closeViewer();
     });
+    document.addEventListener("keydown", trapViewerFocus);
     for (const [value, text] of Object.entries(REQUIREMENT_KINDS)) {
       $("requirementKind").appendChild(option(value, text));
     }
@@ -5242,6 +5270,159 @@
     }
   }
 
+  // Playback from the keyboard, like a video player. Ignored while typing, and Space is
+  // left to a focused button so it still presses that button.
+  const SHORTCUTS = [
+    ["Space or K", "Play or pause"],
+    ["J / L", "Back or forward 5 seconds"],
+    ["Home", "Back to the start"],
+    ["Y", "Show or hide the yard view"],
+    ["Ctrl+Z / Ctrl+Y", "Undo or redo an edit"],
+    ["Arrow keys", "Move the selected effects (Shift: further)"],
+    ["Delete", "Delete the selected effects"],
+    ["Esc", "Clear the selection, or close a window"],
+    ["?", "This list"],
+  ];
+
+  function showShortcuts() {
+    showViewer("Keyboard shortcuts", SHORTCUTS.map(([keys, what]) =>
+      keys.padEnd(18) + what).join("\n"), "LOR Sequencer shortcuts.txt", "text/plain");
+  }
+
+  function handlePlaybackKey(event) {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const target = event.target;
+    if (target && (["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName) ||
+      target.isContentEditable)) return;
+    if (!$("viewer").classList.contains("hidden")) return;
+    const key = event.key;
+    if (key === "?") {
+      showShortcuts();
+      event.preventDefault();
+      return;
+    }
+    if ($("editor").classList.contains("hidden") || !state.sequence) return;
+    const audio = $("audioPlayer");
+    const onButton = target && target.closest && target.closest("button, a, label");
+    if ((key === " " && !onButton) || key === "k" || key === "K") {
+      if (!$("playButton").disabled) $("playButton").click();
+    } else if ((key === "j" || key === "J" || key === "l" || key === "L") && state.audioFile) {
+      const step = key.toLowerCase() === "j" ? -5 : 5;
+      audio.currentTime = Math.max(0, Math.min(audio.duration || 0, audio.currentTime + step));
+      updatePlayhead();
+    } else if (key === "Home" && state.audioFile) {
+      audio.currentTime = 0;
+      updatePlayhead();
+    } else if (key === "y" || key === "Y") {
+      $("yardButton").click();
+    } else {
+      return;
+    }
+    event.preventDefault();
+  }
+
+  // Recent shows: every show New show built is kept on this computer; the start page
+  // lists them to open (with the yard view), save again, read the report or remove.
+  function madeWhen(text) {
+    const made = new Date(text);
+    if (Number.isNaN(made.getTime())) return "";
+    return made.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + ", " +
+      made.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
+
+  async function refreshRecent() {
+    let shows = [];
+    try {
+      shows = (await callEngine("/api/recent", "{}", "application/json")).shows || [];
+    } catch {
+      return;
+    }
+    $("recentShows").classList.toggle("hidden", shows.length === 0);
+    $("recentList").replaceChildren(...shows.map((item) => {
+      const row = document.createElement("li");
+      const text = document.createElement("div");
+      const name = document.createElement("strong");
+      name.textContent = item.file_name.replace(/ \(generated\)\.loredit$|\.loredit$/i, "");
+      const detail = document.createElement("span");
+      detail.textContent = [item.display, item.style, madeWhen(item.made)].filter(Boolean)
+        .join(" · ");
+      text.append(name, detail);
+      const actions = document.createElement("div");
+      actions.className = "recent-actions";
+      const button = (label, title, run) => {
+        const element = document.createElement("button");
+        element.type = "button";
+        element.className = "tool-button";
+        element.textContent = label;
+        element.setAttribute("aria-label", label + ": " + name.textContent);
+        element.title = title;
+        element.addEventListener("click", run);
+        actions.appendChild(element);
+        return element;
+      };
+      button("Open", "Open it in the workspace with the yard view", () => openRecent(item.id));
+      button("Save", "Save the .loredit again", () => saveRecent(item.id));
+      if (item.has_report) button("Report", "Read its show report", () => reportRecent(item.id));
+      const remove = button("Remove", "Remove it from this list and this computer",
+        () => removeRecent(item.id));
+      remove.classList.add("quiet");
+      row.append(text, actions);
+      return row;
+    }));
+  }
+
+  async function loadRecent(id) {
+    try {
+      return await callEngine("/api/recent/open", JSON.stringify({ id }), "application/json");
+    } catch (error) {
+      showMessage("recentStatus", problemText(error), "error");
+      refreshRecent();
+      return null;
+    }
+  }
+
+  async function openRecent(id) {
+    if (state.dirty && !window.confirm("Discard the unexported edits to " +
+      state.sequence.filename + "?")) return;
+    const show = await loadRecent(id);
+    if (!show) return;
+    openSequenceText(show.sequence, show.file_name, false);
+    state.sequence.generated = true;
+    updateEditControls();
+    toggleYard(true);
+    setBanner("Opened " + show.file_name + ". To play it with the music, choose Open audio and " +
+      "pick " + (show.song || "its song") + ".", "good");
+  }
+
+  async function saveRecent(id) {
+    const show = await loadRecent(id);
+    if (show) download(show.sequence, show.file_name, "application/xml");
+  }
+
+  async function reportRecent(id) {
+    const show = await loadRecent(id);
+    if (show && show.summary) {
+      showViewer("Show report", show.summary,
+        show.file_name.replace(/\.loredit$/i, ".report.html"), "text/html");
+    }
+  }
+
+  async function removeRecent(id) {
+    try {
+      await callEngine("/api/recent/remove", JSON.stringify({ id }), "application/json");
+      showMessage("recentStatus", "");
+    } catch (error) {
+      showMessage("recentStatus", problemText(error), "error");
+    }
+    refreshRecent();
+  }
+
+  async function clearRecent() {
+    if (!window.confirm("Remove every recent show from this computer?")) return;
+    await callEngine("/api/recent/clear", "{}", "application/json").catch(() => {});
+    refreshRecent();
+  }
+
   // Started from a preview (right-click "Build a show with LOR Sequencer"): open New
   // show with that display already chosen.
   async function openStartupPreview() {
@@ -5256,6 +5437,33 @@
     } catch (error) {
       setBanner("That preview could not be opened: " + problemText(error), "error");
     }
+  }
+
+  // "Watch a demo show": the built-in invented yard and song, its show built here,
+  // opened in the yard view so a newcomer sees what the program does in one click.
+  async function watchDemo() {
+    if (state.dirty && !window.confirm("Discard the unexported edits to " +
+      state.sequence.filename + "?")) return;
+    const button = $("watchDemo");
+    button.disabled = true;
+    showMessage("demoStatus", "Building a show for the demo yard…");
+    try {
+      const demo = await withProgress("demoStatus", "Building a show for the demo yard",
+        (key) => callEngine("/api/demo?progress=" + key, "{}", "application/json"));
+      openSequenceText(demo.sequence, demo.file_name, false);
+      state.sequence.generated = true;
+      updateEditControls();
+      toggleYard(true);
+      const sound = new File([bytesFromBase64(demo.sound)], demo.sound_name, { type: "audio/wav" });
+      await loadAudio(sound, demo.analysis || undefined);
+      setBanner("The demo: an invented yard and song, with the show the program built for " +
+        "them. Press play to watch. To make your own, choose New show.", "good");
+      showMessage("demoStatus", "");
+      try { await $("audioPlayer").play(); } catch { /* press play instead */ }
+    } catch (error) {
+      showMessage("demoStatus", "The demo could not be built: " + problemText(error), "error");
+    }
+    button.disabled = false;
   }
 
   function setup() {
@@ -5350,7 +5558,14 @@
       updatePlayhead();
     });
     audio.addEventListener("ended", () => $("playButton").textContent = "▶");
-    audio.addEventListener("pause", () => $("playButton").textContent = "▶");
+    audio.addEventListener("pause", () => {
+      $("playButton").textContent = "▶";
+      $("playButton").setAttribute("aria-label", "Play audio (Space)");
+    });
+    audio.addEventListener("play", () => $("playButton").setAttribute("aria-label",
+      "Pause audio (Space)"));
+    document.addEventListener("keydown", handlePlaybackKey);
+    $("showShortcuts").addEventListener("click", showShortcuts);
     audio.addEventListener("timeupdate", updatePlayhead);
     canvasViewport.addEventListener("scroll", syncScroll);
     window.addEventListener("resize", () => {
@@ -5362,7 +5577,9 @@
     setupYard();
     setupHero();
     setupUpdates();
+    $("clearRecent").addEventListener("click", clearRecent);
     setupDiagnostics();
+    refreshRecent();
     openStartupPreview();
   }
 

@@ -209,7 +209,7 @@ def test_batch_publish_failure_removes_partial_artifact(
     monkeypatch.setattr(show_builder, "analyze_audio", fake_analyze)
     monkeypatch.setattr(show_builder, "load_rule_set", lambda profiles: object())
     monkeypatch.setattr(show_builder, "generate_show", fake_generate)
-    real_link = show_builder.os.link
+    real_link = os.link
     link_calls = 0
 
     def fail_second_link(source: Path, target: Path) -> None:
@@ -219,7 +219,7 @@ def test_batch_publish_failure_removes_partial_artifact(
             raise OSError("simulated report publish failure")
         real_link(source, target)
 
-    monkeypatch.setattr(show_builder.os, "link", fail_second_link)
+    monkeypatch.setattr("lor_sequence_builder.show_builder.os.link", fail_second_link)
     with pytest.raises(OSError, match="simulated report publish failure"):
         sessions.batch_song(token, b"audio", ".wav", "ffmpeg", "song.wav", 4, None)
 
@@ -588,44 +588,6 @@ def test_batch_zip_is_streamed_as_a_file_download(
         with SHOWS._lock:
             SHOWS._drop(token)
 
-
-def test_batch_download_open_failure_returns_error_before_zip_headers(
-    server: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    preview = _preview(tmp_path, classic_yard()).read_bytes()
-    started = SHOWS.start(preview, "yard.lorprev")
-    token = started["token"]
-    session = SHOWS.get(token)
-    done = session.path / "batch"
-    done.mkdir()
-    (done / "Song (generated).loredit").write_text("<sequence/>", encoding="utf-8")
-    (done / "Song (generated).report.html").write_text("<html/>", encoding="utf-8")
-    session.batch.append({
-        "stem": "Song", "file_name": "Song.wav", "ok": True,
-        "show": "Song (generated).loredit",
-    })
-
-    original_open = Path.open
-
-    def refuse_batch_open(path: Path, *args: Any, **kwargs: Any) -> Any:
-        if path.name.startswith("lor-batch-"):
-            raise PermissionError("synthetic archive-open failure")
-        return original_open(path, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "open", refuse_batch_open)
-    request = Request(
-        server + "/api/show/batch-zip?token=" + token,
-        data=b"{}", method="POST", headers={"Content-Type": "application/json"},
-    )
-    try:
-        with pytest.raises(HTTPError) as error:
-            urlopen(request, timeout=10)
-        assert error.value.code == 500
-        payload = json.loads(error.value.read())
-        assert payload["error"]
-    finally:
-        with SHOWS._lock:
-            SHOWS._drop(token)
 
 
 

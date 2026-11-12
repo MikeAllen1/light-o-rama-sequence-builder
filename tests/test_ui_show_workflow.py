@@ -182,7 +182,7 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             batch_clear_calls += 1
             if fail_next_batch_clear_abort:
                 fail_next_batch_clear_abort = False
-                getattr(route, "abort")("failed")
+                route.abort("failed")  # type: ignore[attr-defined]
             elif fail_next_batch_clear:
                 fail_next_batch_clear = False
                 respond(route, {"error": "simulated reset failure"}, 500)
@@ -196,7 +196,7 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             batch_song_calls += 1
             if fail_next_batch_song_abort:
                 fail_next_batch_song_abort = False
-                getattr(route, "abort")("failed")
+                route.abort("failed")  # type: ignore[attr-defined]
             else:
                 respond(route, {"ok": True, "duration": 3.0, "parts": 2, "props": 1})
 
@@ -410,6 +410,8 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             assert not page.locator("#meterSelect").is_disabled()
 
             # A stale requirements response means another session revision may be active.
+            # (The form still holds the blank brightness from the check above.)
+            page.locator("#requirementKind").select_option("never_use")
             page.locator("#requirementProps").select_option("role:tree")
             page.locator("#addRequirement").click()
             page.locator("#requirementStatus").filter(

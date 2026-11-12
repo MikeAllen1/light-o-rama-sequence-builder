@@ -190,7 +190,9 @@ def test_effects_can_be_edited_and_exported(workspace: str, tmp_path: Path) -> N
             page.locator("#editApply").click()
             assert "whole numbers from 0 to 100" in banner()
 
-            # Duplicate right after itself, then nudge the copy 10 cs later.
+            # Duplicate right after itself, then nudge the copy 10 cs later. Shortcuts
+            # are ignored while typing in a field, so leave the field first.
+            page.evaluate("document.activeElement && document.activeElement.blur()")
             page.keyboard.press("Control+d")
             assert "Duplicated 1 effect(s)" in banner()
             page.keyboard.press("Shift+ArrowRight")

@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from lor_sequence_builder import recent_shows
 from lor_sequence_builder.audio_analysis import analyze_audio
 from lor_sequence_builder.generate import generate_show
 from lor_sequence_builder.lorprev import read_lorprev
@@ -455,7 +456,11 @@ class ShowSessions:
                     shutil.rmtree(session.generated_dir, ignore_errors=True)
                 session.generated_dir = run
                 plan = show.plan
+                recent_id = _keep_recent(show.sequence_path, show.summary_path,
+                                         show.picture_path, output.name, session.display_name,
+                                         music, style)
                 return {
+                    "recent_id": recent_id,
                     "file_name": output.name,
                     "sequence": show.sequence_path.read_text(encoding="utf-8"),
                     "picture": show.picture_path.read_text(encoding="utf-8"),
@@ -567,6 +572,8 @@ class ShowSessions:
                         for target in published:
                             target.unlink(missing_ok=True)
                         raise
+                    _keep_recent(show.sequence_path, show.summary_path, show.picture_path,
+                                 output.name, session.display_name, name, style)
                     entry.update(ok=True, show=output.name,
                                  parts=len(show.plan.sections),
                                  props=len(show.plan.used_props))
@@ -644,6 +651,16 @@ class ShowSessions:
             else:
                 session.batch.clear()
         return {"cleared": True}
+
+
+def _keep_recent(sequence: Path, summary: Path, picture: Path, file_name: str, display: str,
+                 song: str, style: str | None) -> str | None:
+    """Keep a copy for Recent shows; a full disk only means it is not kept."""
+    try:
+        return recent_shows.keep(sequence, summary, picture, file_name=file_name,
+                                 display=display, song=song, style=style, rules_ok=True)
+    except OSError:
+        return None
 
 
 def _raw(requirement: Requirement) -> dict[str, Any]:

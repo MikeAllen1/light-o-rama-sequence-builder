@@ -153,8 +153,9 @@ def report(browser: str = "", steps: list[str] | None = None,
 
 
 # Every temporary folder the program makes starts with one of these.
-TEMP_PREFIXES = ("lor-new-show-", "lor-audio-", "lor-decode-", "lor-vocals-", "lor-doctor-",
-                 "lor-self-test-", "lor-sequencer-export-", "lor-sequencer-ui-", "lor-batch-")
+TEMP_PREFIXES = ("lor-new-show-", "lor-demo-", "lor-audio-", "lor-decode-", "lor-vocals-",
+                 "lor-doctor-", "lor-self-test-", "lor-sequencer-export-", "lor-sequencer-ui-",
+                 "lor-batch-")
 
 
 def sweep_leftovers(max_age_seconds: float = 24 * 60 * 60, folder: Path | None = None) -> int:

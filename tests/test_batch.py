@@ -32,8 +32,8 @@ def _songs(folder: Path, *names: str) -> list[Path]:
 
 
 def test_the_workspace_builds_a_playlist(
-    server: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:  # noqa: F811
+    server: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,  # noqa: F811
+) -> None:
     created_archives: list[Path] = []
     original_batch_zip = SHOWS.batch_zip
 
@@ -123,8 +123,19 @@ def test_new_show_builds_and_saves_a_playlist(server: str, tmp_path: Path) -> No
             assert page.locator("#batchFiles").is_disabled()
             page.locator("#showDisplayFile").set_input_files(str(preview))
             page.locator("#displayStatus.good").wait_for(timeout=20000)
+            problems: list[str] = []
+            page.on("console", lambda message: problems.append(message.text)
+                    if message.type == "error" else None)
+            page.on("pageerror", lambda error: problems.append(str(error)))
             page.locator("#batchFiles").set_input_files([str(s) for s in songs])
-            page.locator("#batchStatus.good").wait_for(timeout=120000)
+            try:
+                page.locator("#batchStatus.good").wait_for(timeout=120000)
+            except sync_api.TimeoutError as timeout:
+                raise AssertionError(
+                    "The playlist did not finish. Status: "
+                    f"{page.locator('#batchStatus').inner_text()!r}; songs: "
+                    f"{page.locator('#batchList').inner_text()!r}; page errors: {problems}"
+                ) from timeout
             assert "2 of 2 shows built, 0:40 of music in all." in page.locator(
                 "#batchStatus").inner_text()
             assert page.locator("#batchList li.good").count() == 2

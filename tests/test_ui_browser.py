@@ -263,7 +263,8 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
 
                     # Auto-analysis is the clean baseline: confirming and undoing
                     # a candidate marker must not leave a phantom unsaved review.
-                    page.locator("#markersCanvas").click(position={"x": 44, "y": 11})
+                    # The fixture's only downbeat candidate is at 0.00 s.
+                    page.locator("#markersCanvas").click(position={"x": 2, "y": 11})
                     page.locator("#reviewConfirm").click()
                     assert "unsaved music review" in page.locator("#editStatus").inner_text().lower()
                     page.locator("#undoButton").click()
@@ -342,6 +343,8 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                     page.locator("#reviewText").fill("Hello lights revised")
                     page.locator("#reviewApply").click()
                     assert "unsaved music review" in page.locator("#editStatus").inner_text().lower()
+                    # The earlier 70% edit is still unexported; discard it to reload.
+                    page.once("dialog", lambda dialog: dialog.accept())
                     page.locator("#sequenceFile").set_input_files(
                         {
                             "name": "browser-acceptance-reopened.loredit",
@@ -349,9 +352,11 @@ def test_browser_workspace_parses_renders_and_aligns_audio_lanes() -> None:
                             "buffer": _sequence_xml().encode("utf-8"),
                         }
                     )
-                    page.locator("#analysisMessage").filter(
-                        has_text="Loaded 1 native props"
-                    ).wait_for(timeout=10000)
+                    # The duration-mismatch warning replaces the "Loaded" banner, so wait
+                    # for the reload itself: the unexported channel edit is gone.
+                    page.locator("#editStatus").filter(has_not_text="Unexported").wait_for(
+                        timeout=10000
+                    )
                     assert "unsaved music review" in page.locator("#editStatus").inner_text().lower()
                     assert not page.locator("#undoButton").is_disabled()
                     page.locator("#undoButton").click()
