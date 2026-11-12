@@ -1500,6 +1500,11 @@
     setStepEnabled();
 
     // Commit the replacement only after the complete audio decode has succeeded.
+    // Imports started while decoding belong to the old workspace and must not land
+    // after this new audio becomes active.
+    state.analysisRequestId += 1;
+    state.lyricRequestId += 1;
+    state.vocalRequestId += 1;
     const previousUrl = state.audioUrl;
     audio.pause();
     state.audioFile = file;
