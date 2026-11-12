@@ -2,9 +2,18 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
+
+# On Windows, Playwright finds its browsers under %LOCALAPPDATA%. Tests point
+# LOCALAPPDATA at a temporary folder to keep remembered settings private, so pin
+# the browsers' location first, while it still names the real folder.
+if os.name == "nt" and "PLAYWRIGHT_BROWSERS_PATH" not in os.environ and os.environ.get(
+        "LOCALAPPDATA"):
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(Path(os.environ["LOCALAPPDATA"])
+                                                 / "ms-playwright")
 
 
 @pytest.fixture(autouse=True)
