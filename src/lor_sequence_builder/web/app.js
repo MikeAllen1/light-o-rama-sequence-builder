@@ -3676,10 +3676,12 @@
     });
     $("generateShow").addEventListener("click", generateShow);
     $("makeTest").addEventListener("click", makeDisplayTest);
-    $("batchFiles").addEventListener("change", (event) => {
+    $("batchFiles").addEventListener("change", async (event) => {
       const files = Array.from(event.target.files || []);
+      // Keep the picker's files until they are sent: emptying it first can let the
+      // browser drop them before they are read.
+      await runBatch(files);
       event.target.value = "";
-      runBatch(files);
     });
     $("saveBatch").addEventListener("click", saveBatch);
     $("saveTest").addEventListener("click", saveDisplayTest);
