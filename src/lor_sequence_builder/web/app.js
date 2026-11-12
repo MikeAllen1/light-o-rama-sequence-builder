@@ -48,6 +48,7 @@
     reviewBaseline: null,
     animationFrame: 0,
     audioRequestId: 0,
+    analysisRequestId: 0,
     sequenceRequestId: 0,
     vocalRequestId: 0,
     lyricRequestId: 0
@@ -1426,13 +1427,16 @@
 
   async function loadAudio(file, presetAnalysis, reviewAlreadyConfirmed = false) {
     if (!file) return;
-    if (!reviewAlreadyConfirmed && state.reviewDirty &&
-        !window.confirm("Replace the unsaved music review?")) return;
     if (file.size <= 0 || file.size > MAX_AUDIO_BYTES) {
       setBanner("The song file is empty, or larger than the 200 MB the program accepts.", "error");
       return;
     }
+    if (!reviewAlreadyConfirmed && state.reviewDirty &&
+        !window.confirm("Replace the unsaved music review?")) return;
     const requestId = ++state.audioRequestId;
+    state.analysisRequestId += 1;
+    state.lyricRequestId += 1;
+    state.vocalRequestId += 1;
     state.audioFile = file;
     state.audioBuffer = null;
     state.waveformPeaks = null;
@@ -1441,6 +1445,7 @@
     state.lyrics = null;
     state.reviewDirty = false;
     state.reviewLoaded = false;
+    state.reviewSaved = false;
     state.reviewSelection = null;
     captureReviewBaseline();
     if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
@@ -1480,11 +1485,11 @@
 
   async function loadAnalysis(file) {
     if (!file) return;
-    const requestId = ++state.audioRequestId;
+    const requestId = ++state.analysisRequestId;
     try {
       if (file.size > MAX_JSON_BYTES) throw new Error("Analysis JSON exceeds the 5 MiB input limit.");
       const analysisText = await file.text();
-      if (requestId !== state.audioRequestId) return;
+      if (requestId !== state.analysisRequestId) return;
       let data = JSON.parse(analysisText);
       if (!data || typeof data !== "object") throw new Error("Analysis JSON must contain an object.");
       let review = null;
@@ -1495,8 +1500,6 @@
         if (!data || typeof data !== "object") throw new Error("The music review has no analysis.");
         if (review.lyrics != null) checkLyrics(review.lyrics);
       }
-      const discardUnsavedReview = state.reviewDirty;
-      if (discardUnsavedReview && !window.confirm("Replace the unsaved music review?")) return;
       const analysis = data.analysis;
       const requiredArrays = ["beats", "downbeats", "onsets", "energy",
         "phrase_boundaries", "section_candidates", "hard_stops"];
@@ -1520,8 +1523,13 @@
           }
         }
       }
+      const discardUnsavedReview = state.reviewDirty;
+      if (discardUnsavedReview && !window.confirm("Replace the unsaved music review?")) return;
+      state.audioRequestId += 1; // A valid imported analysis supersedes in-flight auto-analysis.
+      if (review) state.lyricRequestId += 1;
       state.analysis = data;
       state.reviewLoaded = Boolean(review);
+      state.reviewSaved = Boolean(review);
       state.reviewDirty = false;
       state.reviewSelection = null;
       if (review) {
@@ -1551,7 +1559,7 @@
         setBanner("Loaded saved analysis. Beat, downbeat, onset, section, and silence markers are labeled as estimates.", "good");
       }
     } catch (error) {
-      if (requestId !== state.audioRequestId) return;
+      if (requestId !== state.analysisRequestId) return;
       setBanner("That analysis file could not be loaded: " + problemText(error) +
         " Choose a .analysis.json or .review.json file made by this program.", "error");
     }
