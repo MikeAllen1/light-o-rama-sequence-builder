@@ -160,8 +160,12 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             assert not page.locator("#watchTest").is_disabled()
             page.locator("#makeTest").click()
             page.locator("#testStatus").filter(has_text="simulated test failure").wait_for()
-            assert page.locator("#watchTest").is_disabled()
-            assert page.locator("#saveTest").is_disabled()
+            assert not page.locator("#watchTest").is_disabled()
+            assert not page.locator("#saveTest").is_disabled()
+            assert "previous display test is still available" in page.locator("#testStatus").inner_text()
+            with page.expect_download() as retained_test:
+                page.locator("#saveTest").click()
+            assert retained_test.value.suggested_filename == "test.zip"
 
             page.locator("#batchFiles").set_input_files([
                 {"name": "one.wav", "mimeType": "audio/wav", "buffer": b"one"},
