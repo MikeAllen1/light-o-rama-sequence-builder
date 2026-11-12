@@ -1452,6 +1452,7 @@
         !window.confirm("Replace the unsaved music review?")) return;
     const requestId = ++state.audioRequestId;
     state.audioDecodePending = true;
+    setStepEnabled();
     state.analysisRequestId += 1;
     state.lyricRequestId += 1;
     state.vocalRequestId += 1;
@@ -1461,6 +1462,7 @@
     } catch (error) {
       if (requestId !== state.audioRequestId) return;
       state.audioDecodePending = false;
+      setStepEnabled();
       setBanner("That song could not be played here: " + problemText(error) +
         (state.audioFile ? " Your previous audio and music review are still loaded." : ""), "error");
       $("audioFile").value = "";
@@ -1471,6 +1473,7 @@
       return;
     }
     state.audioDecodePending = false;
+    setStepEnabled();
 
     // Commit the replacement only after the complete audio decode has succeeded.
     const previousUrl = state.audioUrl;
@@ -3520,8 +3523,9 @@
       show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending;
     $("showSongFile").disabled = !show.token || show.batchRunning || show.generationPending ||
       show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending;
-    $("meterSelect").disabled = show.batchRunning || show.generationPending || show.batchZipPending ||
-      show.displayPending || show.testPending || show.audioPending || show.requirementsPending;
+    $("meterSelect").disabled = state.audioDecodePending || show.batchRunning || show.generationPending ||
+      show.batchZipPending || show.displayPending || show.testPending || show.audioPending ||
+      show.requirementsPending;
     $("showSongLabel").classList.toggle("disabled", !show.token);
     $("addRequirement").disabled = !show.token || show.testPending || show.batchRunning ||
       show.generationPending || show.batchZipPending || show.displayPending || show.requirementsPending;
