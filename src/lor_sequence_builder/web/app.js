@@ -3896,7 +3896,8 @@
         "good");
     } catch (error) {
       if (requestId === show.audioRequestId && token === show.token) {
-        const uncertain = requestSent && (!Number.isInteger(error.status) || error.status >= 500);
+        const uncertain = show.audioUncertain ||
+          (requestSent && (!Number.isInteger(error.status) || error.status >= 500));
         if (uncertain) show.audioUncertain = true;
         const previous = show.audioFile
           ? (uncertain
