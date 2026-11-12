@@ -2511,7 +2511,13 @@
     else if (mod && key === "x") { if (copySelection()) deleteSelection(); }
     else if (mod && key === "v") pasteClipboard();
     else if (!mod && (key === "delete" || key === "backspace")) {
-      if (!deleteReviewSelection()) deleteSelection();
+      if (state.reviewSelection) {
+        if (!deleteReviewSelection()) {
+          setBanner("Not deleted: the selected music-review marker is no longer available.", "warn");
+        }
+      } else {
+        deleteSelection();
+      }
     } else if (!mod && key === "enter" && state.reviewSelection) confirmReviewSelection();
     else if (key === "escape") {
       setSelection([]);
