@@ -3684,6 +3684,7 @@
     $("saveBatch").disabled = !show.batchReady || show.batchRunning || show.batchZipPending ||
       show.generationPending || show.displayPending || show.audioPending || show.requirementsPending ||
       show.testPending;
+    $("closeNewShow").disabled = generatedActionsBlocked() || show.requirementsPending;
     updateGeneratedControls();
   }
 
