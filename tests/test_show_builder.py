@@ -280,6 +280,41 @@ def test_batch_song_rejects_archive_overflow_before_publishing_new_show(
     sessions.close()
 
 
+def test_batch_song_refuses_to_exceed_the_playlist_archive_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    sessions = show_builder.ShowSessions()
+    token = sessions.start(preview, "yard.lorprev")["token"]
+
+    def fake_analyze(audio: Path, report: Path, picture: Path, **kwargs: Any) -> dict[str, Any]:
+        report.write_text("{}", encoding="utf-8")
+        return {"audio": {"duration_seconds": 10.0}}
+
+    def fake_generate(preview_path: Path, output: Path, rule_set: Any, **kwargs: Any) -> Any:
+        output.write_text("<sequence />", encoding="utf-8")
+        summary = output.with_suffix(".report.html")
+        summary.write_text("<html>report</html>", encoding="utf-8")
+        return SimpleNamespace(
+            sequence_path=output,
+            summary_path=summary,
+            plan=SimpleNamespace(sections=(1,), used_props=("Tree",)),
+        )
+
+    monkeypatch.setattr(show_builder, "analyze_audio", fake_analyze)
+    monkeypatch.setattr(show_builder, "load_rule_set", lambda profiles: object())
+    monkeypatch.setattr(show_builder, "generate_show", fake_generate)
+    monkeypatch.setattr(show_builder, "MAX_BATCH_ARCHIVE_BYTES", 10)
+
+    with pytest.raises(show_builder.ShowBuildError, match="exceed the 100 MiB playlist download limit"):
+        sessions.batch_song(token, b"audio", ".wav", "ffmpeg", "large.wav", 4, None)
+
+    session = sessions.get(token)
+    assert session.batch == []
+    assert list((session.path / "batch").iterdir()) == []
+    sessions.close()
+
+
 def test_batch_zip_rejects_oversized_archive_before_allocating_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
