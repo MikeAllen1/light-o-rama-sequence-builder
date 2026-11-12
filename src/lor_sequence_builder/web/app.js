@@ -3711,9 +3711,9 @@
       "closeNewShow"]) {
       const element = $(id);
       if (!element) continue;
-      if ("disabled" in element) element.disabled = locked;
+      if ("disabled" in element) element.disabled = disabled;
       element.querySelectorAll("input, select, textarea, button").forEach((child) => {
-        child.disabled = locked;
+        child.disabled = disabled;
       });
     }
     $("requirementList").querySelectorAll("button").forEach((button) => { button.disabled = disabled; });
@@ -3762,15 +3762,16 @@
       !show.audioPending && !show.requirementsPending && !show.generationPending && !show.batchRunning &&
       !show.batchZipPending && !show.displayPending && !show.testPending &&
       show.analysisMeter === $("meterSelect").value);
-    $("batchFiles").disabled = !show.token || !hasProps || show.batchRunning || show.generationPending ||
-      show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending;
+    $("batchFiles").disabled = !show.token || !hasProps || show.requirementsUncertain || show.batchRunning ||
+      show.generationPending || show.batchZipPending || show.displayPending || show.testPending ||
+      show.audioPending || show.requirementsPending;
     $("batchLabel").classList.toggle("disabled", !show.token || !hasProps || show.batchRunning || show.generationPending ||
       show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending || show.requirementsUncertain);
     setRequirementControlsLocked(show.requirementsPending || show.batchRunning || show.generationPending ||
       show.batchZipPending || show.displayPending || show.testPending);
-    $("saveBatch").disabled = !show.batchReady || show.batchUncertain || show.batchRunning || show.batchZipPending ||
-      show.generationPending || show.displayPending || show.audioPending || show.requirementsPending ||
-      show.testPending;
+    $("saveBatch").disabled = !show.batchReady || show.batchUncertain || show.requirementsUncertain ||
+      show.batchRunning || show.batchZipPending || show.generationPending || show.displayPending ||
+      show.audioPending || show.requirementsPending || show.testPending;
     $("showDisplayFile").disabled = show.displayPending || show.batchRunning || show.batchZipPending ||
       show.generationPending || show.testPending || show.audioPending || show.requirementsPending;
     $("closeNewShow").disabled = state.audioDecodePending || show.audioPending || show.requirementsPending ||
