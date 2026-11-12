@@ -143,6 +143,9 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
         page = browser.new_page(viewport={"width": 1400, "height": 1000})
         try:
             page.goto(server + "/", wait_until="networkidle")
+            # The landing page's yard is drawn and animates.
+            page.locator("#heroYard[data-bar]").wait_for(state="attached", timeout=10000)
+            page.locator('#heroYard:not([data-bar="0"])').wait_for(state="attached", timeout=10000)
             page.locator("#welcomeNewShow").click()
             page.locator("#showDisplayFile").set_input_files(str(preview))
             page.locator("#displayStatus.good").wait_for(timeout=20000)

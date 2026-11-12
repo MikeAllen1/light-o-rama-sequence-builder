@@ -9,7 +9,7 @@
   --text: #e5edf4;
   --muted: #8c9aa8;
   --faint: #637282;
-  --accent: #54b4cf;
+  --accent: #f2b441;
   --accent-2: #9b82e8;
   --green: #6fc5a1;
   --amber: #e5ad62;
@@ -25,14 +25,10 @@ button { color: inherit; }
   height: 66px; display: flex; align-items: center; gap: 22px; padding: 0 20px;
   background: #111820; border-bottom: 1px solid var(--line); position: relative; z-index: 5;
 }
-.brand { display: flex; align-items: center; gap: 11px; min-width: 205px; }
-.brand-mark {
-  width: 34px; height: 34px; display: grid; place-items: center; border-radius: 7px;
-  color: #081319; background: linear-gradient(145deg, #8bd7e5, #3f9bb8);
-  font-weight: 900; font-size: 20px;
-}
-.brand-name { font-size: 12px; letter-spacing: 1.65px; font-weight: 800; }
-.brand-subtitle { margin-top: 3px; color: var(--faint); font-size: 9px; letter-spacing: 1.4px; }
+.brand { display: flex; align-items: center; }
+.brand { min-width: 0; gap: 8px; }
+.brand-mark { width: 40px; height: 24px; flex: none; }
+.brand-name { font: 700 16px/1 Rockwell, "Roboto Slab", Georgia, serif; color: #fff3e2; white-space: nowrap; }
 .toolbar { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; overflow-x: auto; scrollbar-width: thin; }
 .tool-button, .icon-button {
   min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -40,8 +36,8 @@ button { color: inherit; }
   color: #cbd6df; font-size: 11px; font-weight: 650; cursor: pointer; white-space: nowrap;
 }
 .tool-button:hover, .icon-button:hover { border-color: #5b8193; background: #253341; }
-.tool-button.primary { background: #22566a; border-color: #327b91; color: #effbff; }
-.tool-button.primary:hover { background: #2c6a80; }
+.tool-button.primary { background: #b9471f; border-color: #d8622f; color: #fff6ec; }
+.tool-button.primary:hover { background: #cc5426; }
 .tool-button.subtle { background: transparent; border-color: #2d3945; color: #9fadb9; }
 .tool-button.large { min-height: 42px; padding: 0 17px; }
 .tool-button input { display: none; }
@@ -55,25 +51,47 @@ button { color: inherit; }
 }
 .zoom-control { margin-left: auto; }
 .zoom-control input { width: 105px; accent-color: var(--accent); }
-.connection-status {
-  color: #78c8a5; font-size: 9px; letter-spacing: 1.2px; font-weight: 750;
-  border: 1px solid #315a4a; border-radius: 3px; padding: 6px 8px; white-space: nowrap;
-}
+.connection-status { color: #8d8478; font-size: 11px; white-space: nowrap; }
 main { height: calc(100% - 66px); }
-.welcome {
-  max-width: 900px; margin: 0 auto; padding: 12vh 32px 40px;
-}
-.welcome-kicker { color: var(--accent); font-size: 10px; font-weight: 800; letter-spacing: 2.3px; }
-.welcome h1 { margin: 18px 0 16px; font-size: clamp(38px, 5vw, 62px); line-height: 1.04; letter-spacing: -2.6px; }
-.welcome h1 span { color: #79bfd0; }
-.welcome p { max-width: 620px; color: #a3b0bc; font-size: 15px; line-height: 1.7; }
-.welcome-actions { display: flex; gap: 10px; margin-top: 27px; }
-.welcome-note { margin-top: 20px; color: var(--faint); font-size: 11px; line-height: 1.6; }
-.welcome-note code { color: #b9dce4; background: #1a2630; padding: 2px 5px; border-radius: 3px; }
-.capability-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 48px; }
-.capability-strip span {
-  color: #90a0ae; border: 1px solid #2b3946; background: #151e27; border-radius: 3px;
-  padding: 7px 10px; font-size: 10px; letter-spacing: .2px;
+/* Landing page: warm bulb colors, a serif headline, no boxes around everything */
+.welcome { height: 100%; overflow-y: auto; background:
+  radial-gradient(1100px 520px at 78% -8%, rgba(242, 180, 65, .10), transparent 62%), var(--bg); }
+.landing { max-width: 1120px; margin: 0 auto; padding: 56px 32px 72px; }
+.hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); gap: 48px; align-items: center; }
+.hero h1, .landing h2 { font-family: Rockwell, "Roboto Slab", "Zilla Slab", Georgia, serif; font-weight: 700; }
+.hero h1 { margin: 0 0 20px; font-size: clamp(34px, 4.4vw, 56px); line-height: 1.06; letter-spacing: -.5px;
+  color: #fff3e2; }
+.hero-lede { margin: 0; max-width: 520px; color: #c9bfb2; font-size: 16px; line-height: 1.65; }
+.welcome-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 18px; margin-top: 30px; }
+.welcome-actions .tool-button.large { min-height: 46px; padding: 0 24px; font-size: 14px; border-radius: 999px; }
+.hero-or { color: var(--muted); font-size: 13px; }
+.hero-or .link-button { color: #f2c46d; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.hero-or .link-button:hover { color: #ffd98f; }
+.link-button input { display: none; }
+.welcome-note { margin: 22px 0 0; color: #8d8478; font-size: 12px; }
+.hero-yard { margin: 0; }
+.hero-yard canvas { display: block; width: 100%; aspect-ratio: 16 / 10; border-radius: 14px;
+  background: radial-gradient(120% 90% at 50% 0%, #121a2b, #080a10 70%); box-shadow: 0 30px 70px rgba(0, 0, 0, .45); }
+.hero-yard figcaption { margin-top: 10px; color: #7d756b; font-size: 11px; font-style: italic; }
+.steps { list-style: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: 36px;
+  margin: 84px 0 0; padding: 30px 0 0; border-top: 1px solid #2b2722; }
+.steps li { position: relative; padding-left: 52px; }
+.step-number { position: absolute; left: 0; top: -6px; font: 700 40px/1 Rockwell, Georgia, serif; color: #f2b441; }
+.landing h2 { margin: 0 0 8px; font-size: 21px; color: #fff3e2; }
+.steps p, .jobs p { margin: 0; color: #b6ada1; font-size: 14px; line-height: 1.6; }
+.landing code { color: #ffd98f; background: #241e17; padding: 1px 5px; border-radius: 3px; font-size: 12.5px; }
+.jobs { margin-top: 76px; max-width: 760px; }
+.jobs dl { margin: 22px 0 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0 40px; }
+.jobs dl div { display: flex; gap: 12px; align-items: baseline; padding: 11px 0; border-bottom: 1px dashed #3a332b; }
+.jobs dt { min-width: 140px; color: #fff3e2; font-weight: 700; font-size: 14px; }
+.jobs dd { margin: 0; color: #c9bfb2; font-size: 14px; }
+.jobs .jobs-extra { margin-top: 20px; color: #9a9185; }
+.maker-note { margin: 76px 0 0; padding: 0 0 0 22px; border-left: 3px solid #e8453c; max-width: 640px; }
+.maker-note p { margin: 0; font: italic 400 20px/1.5 Georgia, serif; color: #efe3d2; }
+.maker-note footer { margin-top: 10px; color: #8d8478; font-size: 12px; }
+@media (max-width: 860px) {
+  .hero, .steps, .jobs dl { grid-template-columns: 1fr; }
+  .landing { padding: 32px 16px 56px; }
 }
 .hidden { display: none !important; }
 .editor { height: 100%; display: flex; flex-direction: column; min-height: 0; }

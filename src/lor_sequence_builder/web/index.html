@@ -4,18 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#10151c">
-  <title>LOR Sequencing Workspace</title>
+  <title>LOR Sequencer</title>
   <link rel="stylesheet" href="/app.css">
   <script src="/app.js" defer></script>
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <div class="brand-mark">L</div>
-      <div>
-        <div class="brand-name">LOR SEQUENCER</div>
-        <div class="brand-subtitle">MUSIC · TIMELINE · LIGHTING</div>
-      </div>
+      <svg class="brand-mark" viewBox="0 0 40 24" aria-hidden="true">
+        <path d="M2 6 Q20 14 38 6" fill="none" stroke="#5c5146" stroke-width="1.4"/>
+        <ellipse cx="9" cy="14" rx="3.2" ry="4.6" fill="#e8453c"/>
+        <ellipse cx="20" cy="17" rx="3.2" ry="4.6" fill="#f2b441"/>
+        <ellipse cx="31" cy="14" rx="3.2" ry="4.6" fill="#3fae6a"/>
+      </svg>
+      <div class="brand-name">LOR Sequencer</div>
     </div>
     <div class="toolbar">
       <button id="newShowButton" class="tool-button primary" type="button">New show</button>
@@ -56,28 +58,59 @@
       </label>
       <button id="fitButton" class="tool-button subtle" type="button">Fit</button>
     </div>
-    <div id="connectionStatus" class="connection-status">LOCAL WORKSPACE</div>
+    <div id="connectionStatus" class="connection-status">On this computer</div>
   </header>
 
   <main>
     <section id="welcome" class="welcome">
-      <div class="welcome-kicker">BROWSER-FIRST SEQUENCING</div>
-      <h1>See the music.<br><span>Shape the show.</span></h1>
-      <p>Open an actual Light-O-Rama S6 sequence and its audio. The workspace builds its tracks from the sequence's real props, channels, timing grids, and effects.</p>
-      <div class="welcome-actions">
-        <button id="welcomeNewShow" class="tool-button primary large" type="button">Build a new show</button>
-        <label class="tool-button large">
-          <span>Open a .LOREDIT sequence</span>
-          <input id="welcomeSequenceFile" type="file" accept=".loredit,.xml,application/xml,text/xml">
-        </label>
-        <label class="tool-button large">
-          <span>Open matching audio</span>
-          <input id="welcomeAudioFile" type="file" accept="audio/*,.mp3,.mp4,.wav,.flac,.m4a,.ogg,.opus">
-        </label>
-      </div>
-      <div class="welcome-note">Your files stay on this computer. Audio analysis runs through the local Python engine when this workspace is started with <code>lor-sequence-ui</code>.</div>
-      <div class="capability-strip">
-        <span>Generate from your preview</span><span>Native S6 tracks</span><span>Shared timebase</span><span>Real waveform</span><span>Beat analysis</span><span>Effect editing</span>
+      <div class="landing">
+        <div class="hero">
+          <div class="hero-copy">
+            <h1>A show for every song, without the hundred hours.</h1>
+            <p class="hero-lede">Sequencing one song by hand can eat a whole weekend, and it helps to have an ear for music. This does the sequencing for you. Give it your S6 preview and a song, and you get back a show that knows your arches from your snowflakes.</p>
+            <div class="welcome-actions">
+              <button id="welcomeNewShow" class="tool-button primary large" type="button">Build a show</button>
+              <span class="hero-or">or open a
+                <label class="link-button">sequence<input id="welcomeSequenceFile" type="file" accept=".loredit,.xml,application/xml,text/xml"></label>
+                and its
+                <label class="link-button">audio<input id="welcomeAudioFile" type="file" accept="audio/*,.mp3,.mp4,.wav,.flac,.m4a,.ogg,.opus"></label>
+              </span>
+            </div>
+            <p class="welcome-note">Runs on this computer. Your preview and your music never leave it.</p>
+          </div>
+          <figure class="hero-yard">
+            <canvas id="heroYard" aria-label="A drawing of a yard display lighting up to a beat"></canvas>
+            <figcaption>An invented yard, lit the way a show lights yours.</figcaption>
+          </figure>
+        </div>
+
+        <ol class="steps">
+          <li><span class="step-number">1</span><h2>Your preview</h2>
+            <p>The <code>.lorprev</code> you already have. It is the map: every prop, its channels, and where it stands in the yard.</p></li>
+          <li><span class="step-number">2</span><h2>Your song</h2>
+            <p>Any MP3, WAV or M4A. It finds the beats, the bars, the loud parts, the sleigh bells and the cymbal crashes.</p></li>
+          <li><span class="step-number">3</span><h2>Your show</h2>
+            <p>A native S6 <code>.loredit</code>. Play it as it is, or open it in S6 and make it yours.</p></li>
+        </ol>
+
+        <div class="jobs">
+          <h2>Every prop gets a job</h2>
+          <p>So the yard looks planned, not random. Each kind of prop follows one part of the music for the whole song.</p>
+          <dl>
+            <div><dt>Arches</dt><dd>chase on the beat</dd></div>
+            <div><dt>Mini trees</dt><dd>trade beats back and forth</dd></div>
+            <div><dt>Snowflakes</dt><dd>fall on the sleigh bells</dd></div>
+            <div><dt>Mega tree</dt><dd>spins</dd></div>
+            <div><dt>Faces</dt><dd>sing along (with the vocals add-on)</dd></div>
+            <div><dt>Outlines and stars</dt><dd>the steady glow underneath</dd></div>
+          </dl>
+          <p class="jobs-extra">Pick a style (classic, high energy or elegant), add rules like "keep the star on", and run a 10-second display test to check your wiring before the real thing.</p>
+        </div>
+
+        <blockquote class="maker-note">
+          <p>"I built this to make LOR sequences easier for people who don't have the time or the musical ability to create their own."</p>
+          <footer>Mike, who runs a Light-O-Rama display of his own. Free to use, not to sell.</footer>
+        </blockquote>
       </div>
     </section>
 

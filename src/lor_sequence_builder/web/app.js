@@ -3931,6 +3931,151 @@
     window.addEventListener("resize", () => drawYard(yardSeconds()));
   }
 
+  // The landing page's hero: an invented yard lit to a 112 BPM beat, the same way a
+  // generated show lights a real one (arches chase, snowflakes fall, the tree spins).
+  const HERO_BEAT = 60 / 112;
+  const BULB = { red: "232,69,60", green: "63,174,106", gold: "242,180,65", white: "255,236,205",
+    blue: "110,170,255" };
+
+  function heroScene() {
+    const arches = [0.075, 0.185, 0.295].map((cx) => {
+      const bulbs = [];
+      for (let k = 0; k <= 10; k++) {
+        const a = Math.PI * (1 - k / 10);
+        bulbs.push([cx + 0.048 * Math.cos(a), 0.88 - 0.2 * Math.sin(a)]);
+      }
+      return bulbs;
+    });
+    const tree = [];
+    for (let strand = 0; strand < 12; strand++) {
+      const bulbs = [];
+      for (let k = 1; k <= 11; k++) {
+        const along = k / 11;
+        bulbs.push([0.5 + (strand / 11 - 0.5) * 0.2 * along, 0.24 + 0.64 * along]);
+      }
+      tree.push(bulbs);
+    }
+    const minis = [0.385, 0.615].map((cx) => {
+      const bulbs = [];
+      for (let k = 0; k < 8; k++) {
+        const along = k / 7;
+        bulbs.push([cx - 0.026 * along, 0.72 + 0.16 * along], [cx + 0.026 * along, 0.72 + 0.16 * along]);
+      }
+      return bulbs;
+    });
+    const flakes = [];
+    for (const x of [0.09, 0.19, 0.29]) {
+      for (const [row, y] of [0.13, 0.3, 0.47].entries()) flakes.push({ x, y, row });
+    }
+    const house = [];
+    const outline = [[0.7, 0.88], [0.7, 0.52], [0.675, 0.52], [0.835, 0.26], [0.995, 0.52],
+      [0.97, 0.52], [0.97, 0.88]];
+    for (let i = 0; i < outline.length - 1; i++) {
+      const [x1, y1] = outline[i];
+      const [x2, y2] = outline[i + 1];
+      const n = Math.max(2, Math.round(Math.hypot(x2 - x1, y2 - y1) / 0.018));
+      for (let k = 0; k < n; k++) house.push([x1 + (x2 - x1) * k / n, y1 + (y2 - y1) * k / n]);
+    }
+    return { arches, tree, minis, flakes, house };
+  }
+
+  function drawHero(canvas, scene, t) {
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
+    if (!width || !height) return;
+    const ratio = window.devicePixelRatio || 1;
+    if (canvas.width !== Math.round(width * ratio)) {
+      canvas.width = Math.round(width * ratio);
+      canvas.height = Math.round(height * ratio);
+    }
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    const beats = t / HERO_BEAT;
+    const beat = Math.floor(beats);
+    const inBeat = beats - beat;
+    const bar = Math.floor(beat / 4);
+    const flash = beat % 16 === 0 && inBeat < 0.25 ? 1 - inBeat * 4 : 0;
+    const pulse = Math.exp(-inBeat * 5);
+    const unit = width / 400;
+    const bulb = (x, y, color, level, size) => {
+      const v = Math.min(1, Math.max(level, flash * 0.9));
+      ctx.fillStyle = "rgba(" + color + "," + (0.12 + 0.88 * v).toFixed(3) + ")";
+      ctx.shadowColor = "rgba(" + color + "," + v.toFixed(3) + ")";
+      ctx.shadowBlur = 16 * v * unit;
+      ctx.beginPath();
+      ctx.arc(x * width, y * height, size * unit * (0.8 + 0.4 * v), 0, Math.PI * 2);
+      ctx.fill();
+    };
+    ctx.strokeStyle = "rgba(255,236,205,.08)";
+    ctx.beginPath();
+    ctx.moveTo(0, 0.895 * height);
+    ctx.lineTo(width, 0.895 * height);
+    ctx.stroke();
+    // Outlines: the steady base, a little brighter on each bar.
+    const base = 0.55 + 0.35 * Math.exp(-((beats % 4) * 1.5));
+    for (const [x, y] of scene.house) bulb(x, y, BULB.white, base, 1.7);
+    // Arches chase one per beat, left to right.
+    scene.arches.forEach((bulbs, i) => {
+      const level = beat % 3 === i ? 0.35 + 0.65 * pulse : 0.05;
+      for (const [x, y] of bulbs) bulb(x, y, i % 2 ? BULB.green : BULB.red, level, 2.2);
+    });
+    // Mini trees trade beats: outer pair, then inner pair.
+    scene.minis.forEach((bulbs, i) => {
+      const level = (beat % 2 === 0) === (i === 0) ? 0.3 + 0.7 * pulse : 0.06;
+      for (const [x, y] of bulbs) bulb(x, y, BULB.green, level, 2);
+    });
+    // The mega tree spins: a band of strands rotating once a bar.
+    const turn = (beats / 4) % 1;
+    scene.tree.forEach((bulbs, strand) => {
+      const spot = Math.abs(((strand / 12 - turn) % 1 + 1) % 1 - 0.5) * 2;
+      const level = Math.max(0.08, Math.pow(spot, 3));
+      for (const [x, y] of bulbs) bulb(x, y, strand % 2 ? BULB.red : BULB.white, level, 1.8);
+    });
+    bulb(0.5, 0.215, BULB.gold, 0.85 + 0.15 * Math.sin(t * 3), 4.5);
+    // Snowflakes fall: top row, middle, bottom, on the eighth notes, fading as they go.
+    const step = Math.floor(beats * 2);
+    for (const flake of scene.flakes) {
+      const since = ((step - flake.row) % 4 + 4) % 4;
+      const level = since === 0 ? 1 - ((beats * 2) % 1) * 0.5 : since === 1 ? 0.25 : 0.05;
+      const cx = flake.x * width;
+      const cy = flake.y * height;
+      const r = Math.min(width, height) * 0.06;
+      const v = Math.max(level, flash * 0.9);
+      ctx.strokeStyle = "rgba(" + BULB.blue + "," + (0.12 + 0.88 * v).toFixed(3) + ")";
+      ctx.shadowColor = "rgba(" + BULB.blue + "," + v.toFixed(3) + ")";
+      ctx.shadowBlur = 12 * v * unit;
+      ctx.lineWidth = 1.2 * unit;
+      ctx.beginPath();
+      for (let arm = 0; arm < 6; arm++) {
+        const a = arm * Math.PI / 3;
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a));
+      }
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+    canvas.dataset.bar = String(bar);
+  }
+
+  function setupHero() {
+    const canvas = $("heroYard");
+    if (!canvas || !canvas.getContext) return;
+    const scene = heroScene();
+    const still = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const started = performance.now();
+    const frame = (now) => {
+      if (!$("welcome").classList.contains("hidden")) drawHero(canvas, scene, (now - started) / 1000);
+      if (!still) requestAnimationFrame(frame);
+    };
+    if (still) {
+      drawHero(canvas, scene, HERO_BEAT * 1.05);
+      window.addEventListener("resize", () => drawHero(canvas, scene, HERO_BEAT * 1.05));
+    } else {
+      requestAnimationFrame(frame);
+    }
+  }
+
   function setup() {
     const bindFile = (id, handler) => $(id).addEventListener("change", (event) => {
       const file = event.target.files && event.target.files[0];
@@ -4008,6 +4153,7 @@
     setupEditing();
     setupNewShow();
     setupYard();
+    setupHero();
   }
 
   setup();

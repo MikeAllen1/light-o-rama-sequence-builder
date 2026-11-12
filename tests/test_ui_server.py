@@ -37,7 +37,7 @@ def test_browser_workspace_is_packaged_and_served_with_security_headers(
         assert "Content-Security-Policy" in response.headers
         assert "default-src 'self'" in response.headers["Content-Security-Policy"]
         assert "X-Content-Type-Options" in response.headers
-        assert "LOR SEQUENCER" in body
+        assert "LOR Sequencer" in body
     with urlopen(local_server + "/app.js", timeout=3) as response:
         script = response.read().decode("utf-8")
         assert response.status == 200
