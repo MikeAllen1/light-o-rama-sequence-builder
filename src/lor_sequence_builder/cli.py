@@ -236,6 +236,11 @@ def _build_parser() -> argparse.ArgumentParser:
     demo = commands.add_parser(
         "demo", help="build a show for an invented yard and song, to try everything out")
     demo.add_argument("folder", help="new or empty folder for the demo files")
+    test = commands.add_parser(
+        "display-test",
+        help="make a 10-second test that lights every prop in turn, to check the display")
+    test.add_argument("--preview", required=True, help="input .lorprev file (read only)")
+    test.add_argument("--output", required=True, help="new or empty folder for the test files")
     return parser
 
 
@@ -368,6 +373,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"  Show report (open in a browser): {built.summary_path.name}")
             print(f"  Plan picture: {built.picture_path.name}")
             print("Every rule passed." if built.report.ok else "Some rules did not pass.")
+            return 0
+        if options.command == "display-test":
+            from lor_sequence_builder.display_test import build_display_test
+
+            try:
+                made = build_display_test(options.preview, options.output)
+            except FileExistsError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return 2
+            print(f"Display test in {Path(options.output)}:")
+            print(f"  Sequence: {made.sequence_path.name}")
+            print(f"  Sound (copy it into S6's audio folder): {made.sound_path.name}")
+            print(f"  What to watch: {made.notes_path.name}")
             return 0
         if options.command == "analyze-audio":
             report = analyze_audio(

@@ -34,7 +34,7 @@ _MAX_JSON_BYTES = 256 * 1024
 # Shows being built from the browser (preview, song, requirements, generate).
 SHOWS = ShowSessions()
 _SHOW_STEPS = {"/api/show/start", "/api/show/audio", "/api/show/requirements",
-               "/api/show/generate"}
+               "/api/show/generate", "/api/show/test"}
 
 
 def _looks_like_mp3(data: bytes) -> bool:
@@ -194,6 +194,8 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
                             return
                     result = SHOWS.set_requirements(token, body, request_id=request_id)
                     self._send_json(200, result)
+                elif path == "/api/show/test":
+                    self._send_json(200, SHOWS.display_test(token))
                 else:
                     self._send_json(200, SHOWS.generate(token, body))
         except (ShowBuildError, AudioAnalysisError, ValueError, RuntimeError) as exc:

@@ -282,3 +282,4 @@ canvas { display: block; }
   padding: 10px 14px; border-bottom: 1px solid var(--line); }
 .viewer-actions { display: flex; gap: 8px; }
 .viewer-frame { flex: 1; width: 100%; border: 0; background: #fbfcfd; }
+.test-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
