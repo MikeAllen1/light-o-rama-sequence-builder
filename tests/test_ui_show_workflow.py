@@ -229,6 +229,13 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             assert retained_test.value.suggested_filename == "test.zip"
 
             page.locator("#batchFiles").set_input_files([
+                {"name": "duplicate.wav", "mimeType": "audio/wav", "buffer": b"one"},
+                {"name": "DUPLICATE.wav", "mimeType": "audio/wav", "buffer": b"two"},
+            ])
+            page.locator("#batchStatus").filter(has_text="duplicate audio filenames").wait_for()
+            assert page.locator("#batchList").inner_text() == ""
+
+            page.locator("#batchFiles").set_input_files([
                 {"name": "one.wav", "mimeType": "audio/wav", "buffer": b"one"},
             ])
             page.locator("#batchStatus").filter(has_text="Building 1 of 1").wait_for()
