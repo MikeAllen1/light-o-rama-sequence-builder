@@ -128,6 +128,7 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 1440, "height": 1000})
         page.route("**/api/show/start*", lambda route: respond(route, summary))
+        page.route("**/api/show/requirements*", lambda route: respond(route, {"stale": True}))
         audio_calls = 0
 
         def analyze_audio(route: object) -> None:
@@ -405,6 +406,16 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             assert page.locator("#saveBatch").is_disabled()
 
             assert not page.locator("#meterSelect").is_disabled()
+
+            # A stale requirements response means another session revision may be active.
+            page.locator("#addRequirement").click()
+            page.locator("#requirementStatus").filter(
+                has_text="newer requirements revision"
+            ).wait_for()
+            assert page.locator("#generateShow").is_disabled()
+            assert page.locator("#addRequirement").is_disabled()
+            assert not page.locator("#showDisplayFile").is_disabled()
+
             summary["token"] = "display-two"
             summary["props"] = [{"name": "Linked Prop", "role": "tree",
                                  "sequenceable": False, "reason": "linked to another prop"}]
