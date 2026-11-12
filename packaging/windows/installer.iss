@@ -10,7 +10,7 @@
 ; previews (S6 stays their default program), and uninstalls cleanly from Settings > Apps.
 
 #ifndef AppVersion
-  #define AppVersion "0.1.5"
+  #define AppVersion "0.1.6"
 #endif
 #define AppName "LOR Sequencer"
 #define AppExe "LOR Sequencer.exe"
