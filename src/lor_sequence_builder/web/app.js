@@ -3903,8 +3903,11 @@
         "good");
     } catch (error) {
       if (requestId === show.audioRequestId && token === show.token) {
+        const status = error && Number.isInteger(error.status) ? error.status : null;
+        const sessionExpired = status === 422 &&
+          /put away after a long break/i.test(String(error.message || ""));
         const uncertain = show.audioUncertain ||
-          (requestSent && (!Number.isInteger(error.status) || error.status >= 500));
+          (requestSent && (status == null || status >= 500 || sessionExpired));
         if (uncertain) show.audioUncertain = true;
         const previous = show.audioFile
           ? (uncertain
