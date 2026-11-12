@@ -3319,7 +3319,7 @@
     result: null, resultConfig: null, audioRequestId: 0, audioPending: false, analysisMeter: null,
     requirementsPending: false, requirementsRequestId: 0, displayRequestId: 0,
     displayPending: false, testPending: false, batchRunning: false, batchToken: null,
-    batchConfig: null, batchReady: false, generationPending: false };
+    batchConfig: null, batchReady: false, batchZipPending: false, generationPending: false };
 
   function showMessage(id, text, kind) {
     const element = $(id);
@@ -3441,7 +3441,7 @@
 
   function generatedActionsBlocked() {
     return show.audioPending || show.requirementsPending || show.displayPending ||
-      show.generationPending || show.batchRunning || show.testPending;
+      show.generationPending || show.batchRunning || show.batchZipPending || show.testPending;
   }
 
   function updateGeneratedControls() {
@@ -3490,26 +3490,26 @@
     $("watchTest").disabled = !show.test || generatedActionsBlocked();
     $("saveTest").disabled = !show.test;
     $("makeTest").disabled = !show.token || show.batchRunning || show.generationPending ||
-      show.displayPending || show.testPending || show.audioPending || show.requirementsPending;
+      show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending;
     $("showSongFile").disabled = !show.token || show.batchRunning || show.generationPending ||
+      show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending;
+    $("meterSelect").disabled = show.batchRunning || show.generationPending || show.batchZipPending ||
       show.displayPending || show.testPending || show.audioPending || show.requirementsPending;
-    $("meterSelect").disabled = show.batchRunning || show.generationPending || show.displayPending ||
-      show.testPending || show.audioPending || show.requirementsPending;
     $("showSongLabel").classList.toggle("disabled", !show.token);
     $("addRequirement").disabled = !show.token || show.testPending || show.batchRunning ||
-      show.generationPending || show.displayPending || show.requirementsPending;
+      show.generationPending || show.batchZipPending || show.displayPending || show.requirementsPending;
     $("translateRequirements").disabled = !show.token || !show.summary.can_translate || show.testPending ||
-      show.batchRunning || show.generationPending || show.displayPending || show.requirementsPending;
+      show.batchRunning || show.generationPending || show.batchZipPending || show.displayPending || show.requirementsPending;
     $("generateShow").disabled = !(show.token && show.analysis && !show.audioPending &&
       !show.requirementsPending && !show.generationPending && !show.batchRunning &&
       !show.displayPending && !show.testPending && show.analysisMeter === $("meterSelect").value);
     $("batchFiles").disabled = !show.token || show.batchRunning || show.generationPending ||
-      show.displayPending || show.testPending || show.audioPending || show.requirementsPending;
+      show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending;
     $("batchLabel").classList.toggle("disabled", !show.token || show.batchRunning || show.generationPending ||
-      show.displayPending || show.testPending || show.audioPending || show.requirementsPending);
+      show.batchZipPending || show.displayPending || show.testPending || show.audioPending || show.requirementsPending);
     setRequirementControlsLocked(show.requirementsPending || show.batchRunning || show.generationPending ||
-      show.displayPending || show.testPending);
-    $("saveBatch").disabled = !show.batchReady || show.batchRunning ||
+      show.batchZipPending || show.displayPending || show.testPending);
+    $("saveBatch").disabled = !show.batchReady || show.batchRunning || show.batchZipPending ||
       show.requirementsPending || show.displayPending;
     updateGeneratedControls();
   }
@@ -4022,18 +4022,32 @@
 
   async function saveBatch() {
     const token = show.batchToken;
+    if (show.batchZipPending || show.batchRunning || show.generationPending ||
+        show.displayPending || show.audioPending || show.requirementsPending || show.testPending) return;
     if (!show.batchReady || !token || token !== show.token ||
         !show.batchConfig || show.batchConfig !== currentBatchConfig()) {
       $("saveBatch").disabled = true;
       showMessage("batchStatus", "There are no completed shows for the current display. Build the playlist again.", "warn");
       return;
     }
+    show.batchZipPending = true;
+    setShowConfigurationLocked(true);
+    setStepEnabled();
     try {
       const result = await postShow("/api/show/batch-zip?token=" + encodeURIComponent(token),
         "{}", "application/json");
+      if (token !== show.token || !show.batchReady || show.batchConfig !== currentBatchConfig()) {
+        showMessage("batchStatus", "The playlist changed while it was being packaged. Build it again before saving.", "warn");
+        return;
+      }
       download(bytesFromBase64(result.zip), result.zip_name, "application/zip");
+      showMessage("batchStatus", "Saved " + result.count + " completed show(s) in " + result.zip_name + ".", "good");
     } catch (error) {
       showMessage("batchStatus", error.message || String(error), "error");
+    } finally {
+      show.batchZipPending = false;
+      setShowConfigurationLocked(false);
+      setStepEnabled();
     }
   }
 
