@@ -449,3 +449,6 @@ Once per start the workspace asks GitHub for the project's latest published rele
 ## Diagnostics
 
 Refused requests and errors from the page go to `logs/workspace.log` in the user data folder (one line each, home paths shortened to `~`, the user name removed, at most 500 lines a run, rolled over at 512 KB), next to the desktop app's `desktop.log`. The page keeps the last 60 clicks in memory (button names and which file box was used, never file names). **Copy diagnostics** on the start page gathers the version, system, every `doctor` check, those steps and the end of both logs, shows it in the viewer and copies it.
+## Playlists
+
+New show's Generate step builds a show for each of several songs with the session's display, requirements and style: each song is uploaded, analyzed and built on its own request (so a long playlist shows progress and one bad file does not stop the rest), kept in the session, and **Save all shows** downloads them in one zip with their reports and a read-me. The session's own song is untouched. Up to 40 songs a batch; repeated names get "(2)"; faces stay still (no vocal splitting). `generate-batch` does the same for a folder from the command line.

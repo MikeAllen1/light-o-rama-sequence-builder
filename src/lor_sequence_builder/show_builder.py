@@ -68,6 +68,7 @@ from lor_sequence_builder.vocal_separation import (
 MAX_SESSIONS = 4
 SESSION_SECONDS = 2 * 60 * 60
 MAX_REQUIREMENTS = 50
+MAX_BATCH_SONGS = 40
 
 
 class ShowBuildError(ValueError):
@@ -91,6 +92,7 @@ class _Session:
     requirements_revision: int = 0
     generated_dir: Path | None = None
     requirements: tuple[Requirement, ...] = ()
+    batch: list[dict[str, Any]] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     @property
@@ -422,7 +424,7 @@ class ShowSessions:
                     "file_name": output.name,
                     "sequence": show.sequence_path.read_text(encoding="utf-8"),
                     "picture": show.picture_path.read_text(encoding="utf-8"),
-                "summary": show.summary_path.read_text(encoding="utf-8"),
+                    "summary": show.summary_path.read_text(encoding="utf-8"),
                     "report": show.report.format_text(),
                     "rules_ok": show.report.ok,
                     "sections": [{"label": s.label, "level": LEVEL_NAMES[s.level],
@@ -440,6 +442,93 @@ class ShowSessions:
                 if session.generated_dir != run:
                     shutil.rmtree(run, ignore_errors=True)
                 raise
+
+    # -- several songs at once
+
+    def batch_song(self, token: str, payload: bytes, suffix: str, demuxer: str,
+                   file_name: str, beats_per_bar: int, style: str | None) -> dict[str, Any]:
+        """Analyze one song and build its show with the session's display, requirements
+        and the chosen style. The show is kept for :meth:`batch_zip`; the session's own
+        song is untouched. Faces do not sing in batch shows (no vocal splitting)."""
+        if style is not None and style not in STYLES:
+            raise ShowBuildError("Unknown style; choose one of: " + ", ".join(STYLES))
+        with self.locked(token) as session:
+            if len(session.batch) >= MAX_BATCH_SONGS:
+                raise ShowBuildError(f"A batch holds up to {MAX_BATCH_SONGS} songs; save "
+                                     "these and start another")
+            name = Path(file_name).name[:200] or f"song{suffix}"
+            stem = Path(name).stem or "song"
+            taken = {entry["stem"] for entry in session.batch}
+            unique, n = stem, 2
+            while unique in taken:
+                unique, n = f"{stem} ({n})", n + 1
+            done = session.path / "batch"
+            done.mkdir(exist_ok=True)
+            work = session.path / ("batch-work-" + secrets.token_hex(6))
+            work.mkdir()
+            try:
+                audio = work / f"song{suffix}"
+                audio.write_bytes(payload)
+                analysis = work / "song.analysis.json"
+                report = analyze_audio(audio, analysis, work / "song.analysis.svg",
+                                       beats_per_bar=beats_per_bar, input_demuxer=demuxer)
+                profiles: tuple[Path, ...] = ()
+                if session.requirements:
+                    profile = work / "requirements.yaml"
+                    profile.write_text(requirements_profile_text(session.requirements,
+                                                                 "Requirements"),
+                                       encoding="utf-8", newline="\n")
+                    profiles = (profile,)
+                output = work / f"{unique} (generated).loredit"
+                entry: dict[str, Any] = {"stem": unique, "file_name": name,
+                                         "duration": (report.get("audio") or {}).get("duration_seconds")}
+                try:
+                    show = generate_show(session.preview_path, output, load_rule_set(profiles),
+                                         analysis_path=analysis, music_filename=name,
+                                         vocals_path=None, separate=False, style=style)
+                except RulesFailedError as failed:
+                    entry.update(ok=False, problem=failed.report.format_text()[:2000])
+                else:
+                    shutil.copyfile(show.sequence_path, done / output.name)
+                    shutil.copyfile(show.summary_path,
+                                    done / f"{unique} (generated).report.html")
+                    entry.update(ok=True, show=output.name,
+                                 parts=len(show.plan.sections),
+                                 props=len(show.plan.used_props))
+                session.batch.append(entry)
+                return {key: value for key, value in entry.items() if key != "stem"}
+            finally:
+                shutil.rmtree(work, ignore_errors=True)
+
+    def batch_zip(self, token: str) -> dict[str, Any]:
+        """Every show built so far in this batch, with its report, as one zip."""
+        with self.locked(token) as session:
+            done = session.path / "batch"
+            shows = [entry for entry in session.batch if entry.get("ok")]
+            if not shows:
+                raise ShowBuildError("No batch shows have been built yet")
+            bundle = io.BytesIO()
+            with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
+                for entry in shows:
+                    for path in (done / entry["show"],
+                                 done / f"{entry['stem']} (generated).report.html"):
+                        archive.write(path, path.name)
+                lines = ["Shows in this batch", ""]
+                for entry in session.batch:
+                    lines.append(f"{entry['file_name']}: " + (
+                        f"{entry['show']}" if entry.get("ok") else "not built (rules failed)"))
+                lines += ["", "Copy each song into S6's audio folder with the same name, then",
+                          "open its .loredit in the S6 Sequencer."]
+                archive.writestr("Batch - read me.txt", "\r\n".join(lines) + "\r\n")
+            name = _safe_name(session.display_name) + " shows.zip"
+            return {"zip_name": name, "count": len(shows),
+                    "zip": base64.b64encode(bundle.getvalue()).decode("ascii")}
+
+    def batch_clear(self, token: str) -> dict[str, Any]:
+        with self.locked(token) as session:
+            shutil.rmtree(session.path / "batch", ignore_errors=True)
+            session.batch.clear()
+        return {"cleared": True}
 
 
 def _raw(requirement: Requirement) -> dict[str, Any]:

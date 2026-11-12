@@ -236,6 +236,17 @@ def _build_parser() -> argparse.ArgumentParser:
     demo = commands.add_parser(
         "demo", help="build a show for an invented yard and song, to try everything out")
     demo.add_argument("folder", help="new or empty folder for the demo files")
+    batch = commands.add_parser(
+        "generate-batch", help="build a show for every song in a folder (a whole playlist)")
+    batch.add_argument("--preview", required=True, help="required standalone .lorprev file")
+    batch.add_argument("--songs", required=True, help="folder of songs (read only)")
+    batch.add_argument("--output", required=True, help="new or empty folder for the shows")
+    batch.add_argument("--style", choices=sorted(STYLES), default=DEFAULT_STYLE,
+                       help="character of every show: classic (default), energetic, elegant")
+    batch.add_argument("--beats-per-bar", type=int, choices=(3, 4), default=4,
+                       help="4 for most songs, 3 for waltz time (default: 4)")
+    batch.add_argument("--rules", action="append", default=[], help=_RULES_HELP)
+    batch.add_argument("--ignore-saved-requirements", action="store_true", help=_IGNORE_HELP)
     test = commands.add_parser(
         "display-test",
         help="make a 10-second test that lights every prop in turn, to check the display")
@@ -270,6 +281,46 @@ def _check_timeline(
         _write_cli_json_report(report_path, report.to_dict(), RuleProfileError)
         print(f"Report: {report_path}")
     return 0 if report.ok else 1
+
+
+SONG_SUFFIXES = (".mp3", ".m4a", ".wav", ".flac", ".ogg", ".opus", ".aac", ".wma", ".aiff",
+                 ".mp4")
+
+
+def _generate_batch(options: argparse.Namespace) -> int:
+    songs = sorted(path for path in Path(options.songs).iterdir()
+                   if path.is_file() and path.suffix.lower() in SONG_SUFFIXES)
+    if not songs:
+        print(f"error: no songs in {options.songs}", file=sys.stderr)
+        return 2
+    target = Path(options.output)
+    if target.exists() and any(target.iterdir()):
+        print(f"error: choose an empty or new folder for the shows: {target}", file=sys.stderr)
+        return 2
+    target.mkdir(parents=True, exist_ok=True)
+    rule_set = load_rule_set(
+        _profiles(options.preview, options.rules, options.ignore_saved_requirements))
+    failed: list[str] = []
+    for number, song in enumerate(songs, 1):
+        print(f"[{number}/{len(songs)}] {song.name}")
+        try:
+            show = generate_show(options.preview, target / f"{song.stem}.loredit", rule_set,
+                                 audio_path=song, music_filename=song.name,
+                                 beats_per_bar=options.beats_per_bar, separate=False,
+                                 style=options.style)
+        except RulesFailedError as error:
+            failed.append(song.name)
+            print(f"  not built: {error}")
+            continue
+        except (ValueError, OSError) as error:
+            failed.append(song.name)
+            print(f"  not built: {error}")
+            continue
+        print(f"  {show.sequence_path.name}: {len(show.plan.sections)} parts, "
+              f"{len(show.plan.used_props)} props")
+    print(f"{len(songs) - len(failed)} of {len(songs)} shows built in {target}.")
+    print("Copy each song into S6's audio folder with the same name, then open its .loredit.")
+    return 1 if failed else 0
 
 
 def _generate(options: argparse.Namespace) -> int:
@@ -500,6 +551,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _list_rules(options.rules, options.preview)
         if options.command == "generate":
             return _generate(options)
+        if options.command == "generate-batch":
+            return _generate_batch(options)
         if options.command == "lyrics":
             from lor_sequence_builder.lyrics import import_lyrics, transcribe_lyrics, write_lyrics
 

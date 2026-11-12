@@ -35,6 +35,7 @@ You can also:
 
 - **Pick a style:** Classic, High energy (busy and punchy) or Elegant (calm, for ballads).
 - **Set requirements** like "keep the star on all song" or "keep the mega tree dark in the verses". They are remembered for your display.
+- **Do a whole playlist at once:** choose several songs and save all the shows in one go.
 - **Run a 10-second display test** that lights every prop in a fixed order, to check your wiring before the real show.
 - **Read the show report:** what was used, what stayed dark and why, and what to check in the yard.
 
@@ -84,6 +85,7 @@ Everything in the browser also works from the command line:
 ```powershell
 uv run lor-sequence-builder generate --preview display.lorprev --audio song.mp3 --output song.loredit
 uv run lor-sequence-builder generate ... --style energetic   # classic (default), energetic or elegant
+uv run lor-sequence-builder generate-batch --preview display.lorprev --songs Playlist --output Shows
 uv run lor-sequence-builder generate ... --rules examples\requirements\gentle-show.yaml
 uv run lor-sequence-builder requirements display.lorprev   # describe your display's requirements once
 uv run lor-sequence-builder analyze-preview display.lorprev --report display.analysis.json

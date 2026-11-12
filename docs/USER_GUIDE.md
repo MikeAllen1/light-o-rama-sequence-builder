@@ -22,6 +22,10 @@ Nothing is uploaded anywhere. The program runs on your computer and reads your f
 8. Click **Save show** to get the `.loredit` file now, or **Open in the workspace** first.Click **Open in the workspace** (or **Yard view** at the top) to watch it: the yard view opens above the timeline, and play lights your yard with the song (the lanes above the tracks show the beats, bars and sections it followed). **Save sequence** saves it from there.
 9. Open the saved `.loredit` in the S6 Sequencer and play it.
 
+## A whole playlist at once
+
+In New show, after choosing your display (and any requirements and a style), **Choose songs** under **A whole playlist at once** and pick several songs. Each gets its own show, built one after another, with a line saying how it went. **Save all shows** downloads them in one zip with their reports. Each sequence plays its song under the song's own file name, so copy the songs into S6's audio folder as they are. Faces stay still in batch shows; build a song on its own to make them sing. On the command line: `lor-sequence-builder generate-batch --preview display.lorprev --songs "Playlist" --output "Shows"`.
+
 ## Check your wiring first: the 10-second display test
 
 After step 3, **Make 10-second test** builds a short sequence that lights your display in a fixed order, so anything dark or out of place points at wiring, a controller address or the preview:
