@@ -3733,6 +3733,8 @@
   }
 
   async function sendRequirements(raw, text) {
+    if (!show.token || show.requirementsPending || show.batchRunning || show.generationPending ||
+        show.displayPending || show.testPending) return;
     const requestId = ++show.requirementsRequestId;
     show.requirementsPending = true;
     setRequirementControlsLocked(true);
@@ -3744,6 +3746,9 @@
         "application/json");
       if (requestId !== show.requirementsRequestId || result.stale) return;
       show.raw = result.raw;
+      if (text && $("plainRequirements").value.trim() === text.trim()) {
+        $("plainRequirements").value = "";
+      }
       invalidateGeneratedResult();
       if (show.batchReady) {
         show.batchReady = false;
@@ -3789,7 +3794,8 @@
   }
 
   async function addRequirement() {
-    if (show.requirementsPending || show.batchRunning || show.generationPending) return;
+    if (show.requirementsPending || show.batchRunning || show.generationPending ||
+        show.displayPending || show.testPending) return;
     const kind = $("requirementKind").value;
     const chosen = Array.from($("requirementProps").selectedOptions).map((item) => item.value);
     if (!chosen.length) {
