@@ -71,6 +71,7 @@ MAX_SESSIONS = 4
 SESSION_SECONDS = 12 * 60 * 60
 MAX_REQUIREMENTS = 50
 MAX_BATCH_SONGS = 40
+MAX_BATCH_ARCHIVE_BYTES = 100 * 1024 * 1024
 
 
 class ShowBuildError(ValueError):
@@ -302,6 +303,9 @@ class ShowSessions:
     def add_audio(self, token: str, payload: bytes, suffix: str, demuxer: str,
                   file_name: str, beats_per_bar: int,
                   request_id: int | None = None) -> dict[str, Any]:
+        audio_name = Path(file_name).name or f"song{suffix}"
+        if len(audio_name) > 200:
+            raise ShowBuildError("Song file name must be 200 characters or fewer.")
         with self.locked(token) as session:
             revision = session.audio_revision + 1 if request_id is None else request_id
             if revision <= session.audio_revision:
@@ -323,7 +327,7 @@ class ShowSessions:
             old_audio = session.audio_path
             session.audio_path = audio
             session.analysis_path = analysis
-            session.audio_name = Path(file_name).name or audio.name
+            session.audio_name = audio_name
             if old_audio is not None and old_audio.parent != session.path:
                 shutil.rmtree(old_audio.parent, ignore_errors=True)
         return report
@@ -429,8 +433,12 @@ class ShowSessions:
         with self.locked(token) as session:
             if session.analysis_path is None or session.audio_path is None:
                 raise ShowBuildError("Add the song before generating")
-            if not isinstance(music, str) or not music.strip() or len(music) > 260:
+            if music is None or (isinstance(music, str) and not music.strip()):
                 music = session.audio_name
+            elif not isinstance(music, str):
+                raise ShowBuildError("Music file name must be text.")
+            elif len(music) > 260:
+                raise ShowBuildError("Music file name must be 260 characters or fewer.")
             run = session.path / ("run-" + secrets.token_hex(6))
             run.mkdir()
             try:
@@ -512,7 +520,18 @@ class ShowSessions:
             if len(session.batch) >= MAX_BATCH_SONGS:
                 raise ShowBuildError(f"A batch holds up to {MAX_BATCH_SONGS} songs; save "
                                      "these and start another")
-            name = Path(file_name).name[:200] or f"song{suffix}"
+            name = Path(file_name).name or f"song{suffix}"
+            if len(name) > 200:
+                raise ShowBuildError("Song file name must be 200 characters or fewer.")
+            if any(
+                isinstance(entry.get("file_name"), str) and
+                entry["file_name"].casefold() == name.casefold()
+                for entry in session.batch
+            ):
+                raise ShowBuildError(
+                    f"The playlist already contains a song named {name!r}. "
+                    "Rename duplicate audio files before building."
+                )
             stem = file_stem(name)
             taken = {entry["stem"] for entry in session.batch}
             unique, n = stem, 2
@@ -545,11 +564,40 @@ class ShowSessions:
                 except RulesFailedError as failed:
                     entry.update(ok=False, problem=failed.report.format_text()[:2000])
                 else:
+                    existing_artifacts = [
+                        path
+                        for previous in session.batch if previous.get("ok")
+                        for path in (
+                            done / previous["show"],
+                            done / f"{previous['stem']} (generated).report.html",
+                        )
+                    ]
+                    existing_bytes = sum(path.stat().st_size for path in existing_artifacts)
+                    candidate_bytes = (
+                        show.sequence_path.stat().st_size + show.summary_path.stat().st_size
+                    )
+                    if existing_bytes + candidate_bytes > MAX_BATCH_ARCHIVE_BYTES:
+                        raise ShowBuildError(
+                            "Adding this show would exceed the 100 MiB playlist download limit. "
+                            "Save the current playlist, then start another playlist for the remaining songs."
+                        )
+                    # Publish both artifacts without overwriting anything. If the
+                    # report cannot be published after the sequence, remove the
+                    # sequence link so the batch manifest and directory stay in sync.
+                    published: list[Path] = []
+                    try:
+                        sequence_target = done / output.name
+                        report_target = done / f"{unique} (generated).report.html"
+                        os.link(show.sequence_path, sequence_target)
+                        published.append(sequence_target)
+                        os.link(show.summary_path, report_target)
+                        published.append(report_target)
+                    except OSError:
+                        for target in published:
+                            target.unlink(missing_ok=True)
+                        raise
                     _keep_recent(show.sequence_path, show.summary_path, show.picture_path,
                                  output.name, session.display_name, name, style)
-                    shutil.copyfile(show.sequence_path, done / output.name)
-                    shutil.copyfile(show.summary_path,
-                                    done / f"{unique} (generated).report.html")
                     entry.update(ok=True, show=output.name,
                                  parts=len(show.plan.sections),
                                  props=len(show.plan.used_props))
@@ -559,41 +607,77 @@ class ShowSessions:
                 shutil.rmtree(work, ignore_errors=True)
 
     def batch_zip(self, token: str) -> dict[str, Any]:
-        """Every show built so far in this batch, with its report, as one zip."""
+        """Create a disk-backed ZIP of every successfully built show and report."""
         with self.locked(token) as session:
             done = session.path / "batch"
             shows = [entry for entry in session.batch if entry.get("ok")]
             if not shows:
                 raise ShowBuildError("No batch shows have been built yet")
-            bundle = io.BytesIO()
-            with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
-                for entry in shows:
-                    for path in (done / entry["show"],
-                                 done / f"{entry['stem']} (generated).report.html"):
+            artifacts = [
+                path
+                for entry in shows
+                for path in (done / entry["show"],
+                             done / f"{entry['stem']} (generated).report.html")
+            ]
+            total_bytes = sum(path.stat().st_size for path in artifacts)
+            if total_bytes > MAX_BATCH_ARCHIVE_BYTES:
+                raise ShowBuildError(
+                    "This playlist's show files exceed the 100 MiB download limit. "
+                    "Save the playlist in smaller batches."
+                )
+
+            archive_path: Path | None = None
+            try:
+                with tempfile.NamedTemporaryFile(
+                    prefix="lor-batch-", suffix=".zip", delete=False
+                ) as temporary:
+                    archive_path = Path(temporary.name)
+                with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as archive:
+                    for path in artifacts:
                         archive.write(path, path.name)
-                lines = ["Shows in this batch", ""]
-                for entry in session.batch:
-                    lines.append(f"{entry['file_name']}: " + (
-                        f"{entry['show']}" if entry.get("ok") else "not built (rules failed)"))
-                if _sequence_suffix(session.preview_path) == ".lms":
-                    lines += ["", "Copy each song into your S4 audio folder with the same name,",
-                              "then open its .lms in the S4 Sequencer."]
-                else:
-                    lines += ["", "Copy each song into S6's audio folder with the same name, then",
-                              "open its .loredit in the S6 Sequencer."]
-                archive.writestr("Batch - read me.txt", "\r\n".join(lines) + "\r\n")
-            name = _safe_name(session.display_name) + " shows.zip"
-            return {"zip_name": name, "count": len(shows),
-                    "zip": base64.b64encode(bundle.getvalue()).decode("ascii")}
+                    lines = ["Shows in this batch", ""]
+                    for entry in session.batch:
+                        lines.append(f"{entry['file_name']}: " + (
+                            f"{entry['show']}" if entry.get("ok") else "not built (rules failed)"))
+                    if _sequence_suffix(session.preview_path) == ".lms":
+                        lines += ["", "Copy each song into your S4 audio folder with the same name,",
+                                  "then open its .lms in the S4 Sequencer."]
+                    else:
+                        lines += ["", "Copy each song into S6's audio folder with the same name, then",
+                                  "open its .loredit in the S6 Sequencer."]
+                    archive.writestr("Batch - read me.txt", "\r\n".join(lines) + "\r\n")
+                name = _safe_name(session.display_name) + " shows.zip"
+                return {"zip_path": str(archive_path), "zip_name": name, "count": len(shows)}
+            except BaseException:
+                if archive_path is not None:
+                    try:
+                        archive_path.unlink(missing_ok=True)
+                    except OSError as cleanup_error:
+                        from lor_sequence_builder.diagnostics import write_log
+
+                        write_log("server", f"Could not remove incomplete batch archive: {cleanup_error}")
+                raise
 
     def batch_clear(self, token: str) -> dict[str, Any]:
         with self.locked(token) as session:
             done = session.path / "batch"
             if done.exists():
-                # Do not report a successful reset while old batch artifacts remain.
-                # Keep the in-memory manifest intact if the filesystem refuses removal.
-                shutil.rmtree(done)
-            session.batch.clear()
+                # Move the active batch out of the way atomically before deleting it.
+                # A partial rmtree failure must never leave the live manifest pointing
+                # at a half-deleted batch that the user can no longer download.
+                retired = session.path / ("batch-reset-" + secrets.token_hex(6))
+                os.replace(done, retired)
+                session.batch.clear()
+                try:
+                    shutil.rmtree(retired)
+                except OSError as cleanup_error:
+                    # The reset succeeded; only orphan cleanup failed. The session's
+                    # temporary folder will remove this retired directory on expiry.
+                    from lor_sequence_builder.diagnostics import write_log
+
+                    write_log("show", f"Could not remove retired batch directory: {cleanup_error}")
+            else:
+                session.batch.clear()
         return {"cleared": True}
 
 

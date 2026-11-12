@@ -186,7 +186,7 @@
           <div class="style-label">Style</div>
           <div id="styleChoices" class="style-choices" role="radiogroup" aria-label="Show style"></div>
           <label class="edit-field wide"><span>Audio file name S6 should play (as it appears in S6's audio folder)</span>
-            <input id="musicFilename" type="text"></label>
+            <input id="musicFilename" type="text" maxlength="260"></label>
           <div id="musicNote" class="step-note"></div>
           <label class="sing-option hidden"><input id="singFaces" type="checkbox" checked> Sing the faces</label>
           <div id="singNote" class="step-note"></div>
@@ -202,6 +202,7 @@
           <div class="batch">
             <h3>A whole playlist at once</h3>
             <p>Choose several songs and each one gets its own show, with this display, style and requirements. Their sequences play the song under its own file name, and faces stay still in batch shows.</p>
+            <p class="hint">Selecting a new set replaces the current playlist in this session. Download the current ZIP first if you want to keep a copy.</p>
             <div class="generate-actions">
               <label id="batchLabel" class="tool-button disabled"><span>Choose songs</span>
                 <input id="batchFiles" type="file" multiple disabled accept="audio/*,.mp3,.mp4,.wav,.flac,.m4a,.ogg,.opus"></label>

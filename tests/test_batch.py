@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
-import base64
 import io
+import json
 import zipfile
 from pathlib import Path
+from typing import Any
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
 import pytest
 
 from lor_sequence_builder.cli import main
 from lor_sequence_builder.loredit import read_loredit
+from lor_sequence_builder.ui_server import SHOWS
 from tests.display_builders import classic_yard
 from tests.test_audio_analysis import _rhythmic_track
 from tests.test_planner import _preview
@@ -27,32 +31,69 @@ def _songs(folder: Path, *names: str) -> list[Path]:
     return paths
 
 
-def test_the_workspace_builds_a_playlist(server: str, tmp_path: Path) -> None:  # noqa: F811
+def test_the_workspace_builds_a_playlist(
+    server: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,  # noqa: F811
+) -> None:
+    created_archives: list[Path] = []
+    original_batch_zip = SHOWS.batch_zip
+
+    def capture_archive(token: str) -> dict[str, Any]:
+        result = original_batch_zip(token)
+        created_archives.append(Path(result["zip_path"]))
+        return result
+
+    monkeypatch.setattr(SHOWS, "batch_zip", capture_archive)
     status, started = _post(server + "/api/show/start?name=yard.lorprev",
                             _preview(tmp_path, classic_yard()).read_bytes(), "application/xml")
     token = started["token"]
     first, second = _songs(tmp_path / "songs", "Jingle.wav", "Silent.wav")
     results = []
-    for song, name in ((first, "Jingle.wav"), (second, "Silent.wav"), (second, "Jingle.wav")):
+    for song, name in ((first, "Jingle.wav"), (second, "Silent.wav")):
         status, result = _post(f"{server}/api/show/batch?token={token}&name={name}&style=elegant",
                                song.read_bytes(), "application/octet-stream")
         assert status == 200, result
         results.append(result)
     assert all(r["ok"] for r in results)
     assert [r["show"] for r in results] == ["Jingle (generated).loredit",
-                                            "Silent (generated).loredit",
-                                            "Jingle (2) (generated).loredit"]
-    status, saved = _json(f"{server}/api/show/batch-zip?token={token}", {})
-    assert status == 200 and saved["count"] == 3
-    archive = zipfile.ZipFile(io.BytesIO(base64.b64decode(saved["zip"])))
+                                            "Silent (generated).loredit"]
+    # Duplicate names are rejected rather than creating ambiguous audio links.
+    status, duplicate = _post(
+        f"{server}/api/show/batch?token={token}&name=jInGlE.WAV&style=elegant",
+        second.read_bytes(), "application/octet-stream",
+    )
+    assert status == 422
+    assert "duplicate audio files" in duplicate["error"]
+    request = Request(
+        f"{server}/api/show/batch-zip?token={token}",
+        data=b"{}", method="POST", headers={"Content-Type": "application/json"},
+    )
+    with urlopen(request, timeout=10) as response:
+        payload = response.read()
+        assert response.status == 200
+        assert response.headers.get_content_type() == "application/zip"
+        assert response.headers["Content-Disposition"].endswith(
+            "Fictional%20Classic%20Yard%20shows.zip"
+        )
+    archive = zipfile.ZipFile(io.BytesIO(payload))
+    assert len(created_archives) == 1
+    assert not created_archives[0].exists()
     names = set(archive.namelist())
     assert "Silent (generated).report.html" in names and "Batch - read me.txt" in names
+    readme = archive.read("Batch - read me.txt")
+    assert b"\r\n" in readme and b"\\r\\n" not in readme
     sequence = tmp_path / "out.loredit"
     sequence.write_bytes(archive.read("Silent (generated).loredit"))
     assert read_loredit(sequence).root.attrib["musicFilename"] == "Silent.wav"
     status, _ = _json(f"{server}/api/show/batch-clear?token={token}", {})
-    status, empty = _json(f"{server}/api/show/batch-zip?token={token}", {})
-    assert status == 422 and "No batch shows" in empty["error"]
+    assert status == 200
+    empty_request = Request(
+        f"{server}/api/show/batch-zip?token={token}",
+        data=b"{}", method="POST", headers={"Content-Type": "application/json"},
+    )
+    with pytest.raises(HTTPError) as error:
+        urlopen(empty_request, timeout=10)
+    assert error.value.code == 422
+    assert "No batch shows" in json.loads(error.value.read())["error"]
 
 
 def test_the_cli_builds_a_folder_of_songs(tmp_path: Path,

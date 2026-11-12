@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import threading
 import time
+import zipfile
 from collections.abc import Iterator
 from http.server import ThreadingHTTPServer
+from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -16,7 +21,7 @@ import pytest
 
 from lor_sequence_builder import show_builder
 from lor_sequence_builder.loredit import effect_timing_problems, read_loredit
-from lor_sequence_builder.ui_server import SequencerRequestHandler
+from lor_sequence_builder.ui_server import SHOWS, SequencerRequestHandler
 from tests.display_builders import classic_yard
 from tests.test_audio_analysis import _rhythmic_track
 from tests.test_planner import _preview
@@ -87,6 +92,11 @@ def test_a_show_is_built_step_by_step_and_requirements_are_remembered(
                             {"text": "keep the star on"})
     assert status == 422 and "translator" in refused["error"]
 
+    status, refused = _json(f"{server}/api/show/generate?token={token}",
+                            {"music_filename": "x" * 261, "sing": False,
+                             "style": "energetic"})
+    assert status == 422 and "260 characters or fewer" in refused["error"]
+
     status, show = _json(f"{server}/api/show/generate?token={token}",
                          {"music_filename": "Songs\\beat.wav", "sing": True,
                           "style": "energetic"})
@@ -137,6 +147,237 @@ def test_requirement_persistence_failure_does_not_publish_session_state(
     sessions.close()
 
 
+def test_batch_song_rejects_duplicate_audio_names_case_insensitively(
+    tmp_path: Path,
+) -> None:
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    sessions = show_builder.ShowSessions()
+    token = sessions.start(preview, "yard.lorprev")["token"]
+    session = sessions.get(token)
+    session.batch.append({
+        "stem": "song", "file_name": "song.wav", "ok": False,
+    })
+
+    with pytest.raises(show_builder.ShowBuildError, match="already contains a song"):
+        sessions.batch_song(token, b"audio", ".wav", "ffmpeg", "SONG.WAV", 4, None)
+
+    assert len(session.batch) == 1
+    assert not (session.path / "batch").exists()
+    sessions.close()
+
+
+def test_song_upload_rejects_names_that_would_be_truncated(tmp_path: Path) -> None:
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    sessions = show_builder.ShowSessions()
+    token = sessions.start(preview, "yard.lorprev")["token"]
+    long_name = "x" * 201 + ".wav"
+
+    with pytest.raises(show_builder.ShowBuildError, match="200 characters"):
+        sessions.add_audio(token, b"audio", ".wav", "ffmpeg", long_name, 4)
+    with pytest.raises(show_builder.ShowBuildError, match="200 characters"):
+        sessions.batch_song(token, b"audio", ".wav", "ffmpeg", long_name, 4, None)
+
+    session = sessions.get(token)
+    assert session.audio_path is None
+    assert session.analysis_path is None
+    assert session.audio_revision == 0
+    assert session.batch == []
+    sessions.close()
+
+
+def test_batch_publish_failure_removes_partial_artifact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    sessions = show_builder.ShowSessions()
+    token = sessions.start(preview, "yard.lorprev")["token"]
+
+    def fake_analyze(audio: Path, report: Path, picture: Path, **kwargs: Any) -> dict[str, Any]:
+        report.write_text("{}", encoding="utf-8")
+        return {"audio": {"duration_seconds": 10.0}}
+
+    def fake_generate(preview_path: Path, output: Path, rule_set: Any, **kwargs: Any) -> Any:
+        output.write_text("<sequence />", encoding="utf-8")
+        summary = output.with_suffix(".report.html")
+        summary.write_text("<html>report</html>", encoding="utf-8")
+        return SimpleNamespace(
+            sequence_path=output,
+            summary_path=summary,
+            plan=SimpleNamespace(sections=(1, 2), used_props=("Tree",)),
+        )
+
+    monkeypatch.setattr(show_builder, "analyze_audio", fake_analyze)
+    monkeypatch.setattr(show_builder, "load_rule_set", lambda profiles: object())
+    monkeypatch.setattr(show_builder, "generate_show", fake_generate)
+    real_link = os.link
+    link_calls = 0
+
+    def fail_second_link(source: Path, target: Path) -> None:
+        nonlocal link_calls
+        link_calls += 1
+        if link_calls == 2:
+            raise OSError("simulated report publish failure")
+        real_link(source, target)
+
+    monkeypatch.setattr("lor_sequence_builder.show_builder.os.link", fail_second_link)
+    with pytest.raises(OSError, match="simulated report publish failure"):
+        sessions.batch_song(token, b"audio", ".wav", "ffmpeg", "song.wav", 4, None)
+
+    session = sessions.get(token)
+    assert session.batch == []
+    assert list((session.path / "batch").iterdir()) == []
+    sessions.close()
+
+
+def test_batch_song_rejects_archive_overflow_before_publishing_new_show(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    sessions = show_builder.ShowSessions()
+    token = sessions.start(preview, "yard.lorprev")["token"]
+    session = sessions.get(token)
+    done = session.path / "batch"
+    done.mkdir()
+    existing_show = done / "Existing (generated).loredit"
+    existing_report = done / "Existing (generated).report.html"
+    existing_show.write_bytes(b"x" * 80)
+    existing_report.write_bytes(b"")
+    session.batch.append({
+        "ok": True, "stem": "Existing", "file_name": "existing.wav",
+        "show": existing_show.name,
+    })
+
+    def fake_analyze(audio: Path, report: Path, picture: Path, **kwargs: Any) -> dict[str, Any]:
+        report.write_text("{}", encoding="utf-8")
+        return {"audio": {"duration_seconds": 10.0}}
+
+    def fake_generate(preview_path: Path, output: Path, rule_set: Any, **kwargs: Any) -> Any:
+        output.write_bytes(b"y" * 30)
+        summary = output.with_suffix(".report.html")
+        summary.write_bytes(b"z" * 10)
+        return SimpleNamespace(
+            sequence_path=output,
+            summary_path=summary,
+            plan=SimpleNamespace(sections=(1,), used_props=("Tree",)),
+        )
+
+    monkeypatch.setattr(show_builder, "MAX_BATCH_ARCHIVE_BYTES", 100)
+    monkeypatch.setattr(show_builder, "analyze_audio", fake_analyze)
+    monkeypatch.setattr(show_builder, "load_rule_set", lambda profiles: object())
+    monkeypatch.setattr(show_builder, "generate_show", fake_generate)
+
+    with pytest.raises(show_builder.ShowBuildError, match="100 MiB playlist download limit"):
+        sessions.batch_song(token, b"audio", ".wav", "ffmpeg", "new.wav", 4, None)
+
+    assert session.batch == [{
+        "ok": True, "stem": "Existing", "file_name": "existing.wav",
+        "show": existing_show.name,
+    }]
+    assert existing_show.read_bytes() == b"x" * 80
+    assert existing_report.is_file()
+    assert not (done / "New (generated).loredit").exists()
+    assert not (done / "New (generated).report.html").exists()
+    sessions.close()
+
+
+def test_batch_song_refuses_to_exceed_the_playlist_archive_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    sessions = show_builder.ShowSessions()
+    token = sessions.start(preview, "yard.lorprev")["token"]
+
+    def fake_analyze(audio: Path, report: Path, picture: Path, **kwargs: Any) -> dict[str, Any]:
+        report.write_text("{}", encoding="utf-8")
+        return {"audio": {"duration_seconds": 10.0}}
+
+    def fake_generate(preview_path: Path, output: Path, rule_set: Any, **kwargs: Any) -> Any:
+        output.write_text("<sequence />", encoding="utf-8")
+        summary = output.with_suffix(".report.html")
+        summary.write_text("<html>report</html>", encoding="utf-8")
+        return SimpleNamespace(
+            sequence_path=output,
+            summary_path=summary,
+            plan=SimpleNamespace(sections=(1,), used_props=("Tree",)),
+        )
+
+    monkeypatch.setattr(show_builder, "analyze_audio", fake_analyze)
+    monkeypatch.setattr(show_builder, "load_rule_set", lambda profiles: object())
+    monkeypatch.setattr(show_builder, "generate_show", fake_generate)
+    monkeypatch.setattr(show_builder, "MAX_BATCH_ARCHIVE_BYTES", 10)
+
+    with pytest.raises(show_builder.ShowBuildError, match="exceed the 100 MiB playlist download limit"):
+        sessions.batch_song(token, b"audio", ".wav", "ffmpeg", "large.wav", 4, None)
+
+    session = sessions.get(token)
+    assert session.batch == []
+    assert list((session.path / "batch").iterdir()) == []
+    sessions.close()
+
+
+def test_batch_zip_rejects_oversized_archive_before_allocating_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    sessions = show_builder.ShowSessions()
+    token = sessions.start(preview, "yard.lorprev")["token"]
+    session = sessions.get(token)
+    done = session.path / "batch"
+    done.mkdir()
+    (done / "large.loredit").write_bytes(b"x" * 8)
+    (done / "large (generated).report.html").write_bytes(b"y" * 8)
+    session.batch.append({
+        "ok": True, "show": "large.loredit", "stem": "large", "file_name": "large.wav",
+    })
+    monkeypatch.setattr(show_builder, "MAX_BATCH_ARCHIVE_BYTES", 10)
+
+    with pytest.raises(show_builder.ShowBuildError, match="100 MiB download limit"):
+        sessions.batch_zip(token)
+
+    sessions.close()
+
+
+def test_batch_download_open_failure_returns_error_before_zip_headers(
+    server: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    token = SHOWS.start(preview, "yard.lorprev")["token"]
+    session = SHOWS.get(token)
+    done = session.path / "batch"
+    done.mkdir()
+    (done / "Song (generated).loredit").write_text("<sequence/>", encoding="utf-8")
+    (done / "Song (generated).report.html").write_text("<html/>", encoding="utf-8")
+    session.batch.append({
+        "ok": True, "stem": "Song", "file_name": "Song.wav",
+        "show": "Song (generated).loredit",
+    })
+
+    original_open = Path.open
+    archive_paths: list[Path] = []
+
+    def refuse_batch_open(path: Path, *args: Any, **kwargs: Any) -> Any:
+        if path.name.startswith("lor-batch-"):
+            archive_paths.append(path)
+            raise PermissionError("synthetic archive-open failure")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", refuse_batch_open)
+    request = Request(
+        server + "/api/show/batch-zip?token=" + token,
+        data=b"{}", method="POST", headers={"Content-Type": "application/json"},
+    )
+    try:
+        with pytest.raises(HTTPError) as error:
+            urlopen(request, timeout=10)
+        assert error.value.code == 500
+        assert json.loads(error.value.read())["error"]
+        assert len(archive_paths) == 1
+        assert not archive_paths[0].exists()
+    finally:
+        with SHOWS._lock:
+            SHOWS._drop(token)
+
+
 def test_batch_clear_failure_keeps_the_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     preview = _preview(tmp_path, classic_yard()).read_bytes()
     sessions = show_builder.ShowSessions()
@@ -148,16 +389,47 @@ def test_batch_clear_failure_keeps_the_manifest(tmp_path: Path, monkeypatch: pyt
     (done / "old-show.loredit").write_text("old", encoding="utf-8")
     session.batch.append({"ok": True, "show": "old-show.loredit"})
 
-    def fail_remove(path: Path, *args: Any, **kwargs: Any) -> None:
-        raise OSError("file is locked")
+    def fail_rename(source: Path, destination: Path) -> None:
+        raise OSError("directory is locked")
 
     with monkeypatch.context() as patch:
-        patch.setattr("lor_sequence_builder.show_builder.shutil.rmtree", fail_remove)
-        with pytest.raises(OSError, match="file is locked"):
+        patch.setattr(os, "replace", fail_rename)
+        with pytest.raises(OSError, match="directory is locked"):
             sessions.batch_clear(token)
 
     assert session.batch == [{"ok": True, "show": "old-show.loredit"}]
     assert (done / "old-show.loredit").is_file()
+    sessions.close()
+
+
+def test_partial_retired_batch_cleanup_cannot_damage_the_active_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    sessions = show_builder.ShowSessions()
+    started = sessions.start(preview, "yard.lorprev")
+    token = started["token"]
+    session = sessions.get(token)
+    done = session.path / "batch"
+    done.mkdir()
+    old_show = done / "old-show.loredit"
+    old_show.write_text("old", encoding="utf-8")
+    session.batch.append({"ok": True, "show": old_show.name})
+
+    def partially_remove(path: Path, *args: Any, **kwargs: Any) -> None:
+        # Simulate Windows deleting some artifacts before a locked file stops rmtree.
+        next(path.iterdir()).unlink()
+        raise OSError("one retired file is locked")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(shutil, "rmtree", partially_remove)
+        assert sessions.batch_clear(token) == {"cleared": True}
+
+    assert session.batch == []
+    assert not done.exists()
+    retired = list(session.path.glob("batch-reset-*"))
+    assert len(retired) == 1
+    assert retired[0].is_dir()
     sessions.close()
 
 
@@ -260,6 +532,68 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
     document = read_loredit(target)
     assert document.root.attrib["musicFilename"] == "beat.wav"
     assert effect_timing_problems(document) == []
+
+
+def test_batch_zip_is_streamed_as_a_file_download(
+    server: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Windows can refuse to delete a file briefly after it has been streamed.
+    # That cleanup failure must not turn the successful download into an HTTP 500.
+    path_type = type(tmp_path)
+    original_unlink = path_type.unlink
+    failed_cleanup: list[Path] = []
+
+    def refuse_batch_cleanup(path: Path, *args: Any, **kwargs: Any) -> None:
+        if path.name.startswith("lor-batch-"):
+            failed_cleanup.append(path)
+            raise PermissionError("synthetic file-in-use failure")
+        original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(path_type, "unlink", refuse_batch_cleanup)
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    started = SHOWS.start(preview, "yard.lorprev")
+    token = started["token"]
+    session = SHOWS.get(token)
+    done = session.path / "batch"
+    done.mkdir()
+    (done / "Song (generated).loredit").write_text("<sequence/>", encoding="utf-8")
+    (done / "Song (generated).report.html").write_text("<html/>", encoding="utf-8")
+    session.batch.append({
+        "stem": "Song", "file_name": "Song.wav", "ok": True,
+        "show": "Song (generated).loredit",
+    })
+    try:
+        request = Request(
+            server + "/api/show/batch-zip?token=" + token,
+            data=b"{}", method="POST", headers={"Content-Type": "application/json"},
+        )
+        with urlopen(request, timeout=10) as response:
+            payload = response.read()
+            assert response.status == 200
+            assert response.headers.get_content_type() == "application/zip"
+            assert "Fictional%20Classic%20Yard%20shows.zip" in response.headers["Content-Disposition"]
+        archive = BytesIO(payload)
+        assert zipfile.is_zipfile(archive)
+        archive.seek(0)
+        with zipfile.ZipFile(archive) as zipped:
+            assert set(zipped.namelist()) == {
+                "Song (generated).loredit",
+                "Song (generated).report.html",
+                "Batch - read me.txt",
+            }
+        # The server removes the archive after the last byte is sent, so the client can
+        # finish reading first; give the handler thread a moment to reach its cleanup.
+        deadline = time.monotonic() + 10
+        while not failed_cleanup and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert len(failed_cleanup) == 1
+        assert failed_cleanup[0].is_file()
+        original_unlink(failed_cleanup[0], missing_ok=True)
+    finally:
+        with SHOWS._lock:
+            SHOWS._drop(token)
+
+
 
 
 def test_session_expiration_is_enforced_when_a_token_is_used(tmp_path: Path) -> None:
