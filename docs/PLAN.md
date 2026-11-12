@@ -474,3 +474,7 @@ Every problem ends in plain words that say what to do, and bugs leave a trail in
 ## Progress
 
 Anything that takes more than a moment shows a bar, what the program is doing now and the time so far, under its status line: reading and analyzing a song (in New show, playlists and the workspace), generating a show, and making the display test. The engine reports real stages ("Reading the song", "Finding the beats", "Finding the bars and the parts of the song", "Planning the show", "Checking the rules and writing the sequence", "Writing the show report"); the page asks a few times a second under a random key it sent with the request. Splitting out the vocals, which takes minutes, shows a moving striped bar and says it takes a few minutes and is still working. A playlist's bar covers the whole playlist ("Song 2 of 5: Finding the beats…"). Jobs that finish within half a second never show a bar. The bar never moves backwards.
+
+## Opening previews from File Explorer
+
+The installer offers (checked by default) a right-click **Build a show with LOR Sequencer** on `.lorprev` files and lists the app under **Open with**, without changing the default program: S6 keeps opening previews on a double-click. Both run the app with `--preview PATH` (also on `lor-sequence-ui`), which hands the preview to the page once; New show opens with that display chosen. Only `.lorprev` files of a sensible size are accepted, and a file that cannot be used says why. Uninstalling removes the entries.
