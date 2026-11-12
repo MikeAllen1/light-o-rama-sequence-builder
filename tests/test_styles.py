@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import itertools
+from collections import defaultdict
 from typing import Any
 
 import pytest
 
-from lor_sequence_builder.planner import Plan, plan_show
+from lor_sequence_builder.planner import Plan, PlannedSection, plan_show
 from lor_sequence_builder.rules import check_choreography, display_from_preview, load_rule_set
 from lor_sequence_builder.style import STYLES, get_style
-from tests.display_builders import ALL_DISPLAYS, classic_yard
+from tests.display_builders import ALL_DISPLAYS, classic_yard, family_yard
 from tests.test_planner import SONG_FORM, synthetic_analysis
 
 
@@ -44,23 +46,74 @@ def test_every_style_passes_every_rule_on_every_display(builder: Any, style: str
     assert f"Style: {STYLES[style].name}." in plan.notes
 
 
+def _placements(plan: Plan) -> set[tuple[str, int, int, int]]:
+    return {(e.prop_id, e.channel_index, e.start_centisecond, e.end_centisecond)
+            for e in plan.choreography.effects}
+
+
+@pytest.mark.parametrize("builder", [classic_yard, family_yard], ids=lambda b: b.__name__)
+def test_styles_are_different_shows(builder: Any) -> None:
+    """Two styles that share more than a fifth of their exact effect placements are the
+    same show with a different finish; each style must choose its own motion."""
+    plans = {key: _plan(builder, key) for key in STYLES}
+    for a, b in itertools.combinations(STYLES, 2):
+        one, other = _placements(plans[a]), _placements(plans[b])
+        shared = len(one & other) / min(len(one), len(other))
+        assert shared < 0.2, f"{a} and {b} share {shared:.0%} of their placements"
+
+
 def test_styles_have_their_own_character() -> None:
-    classic, energetic, elegant = (_plan(classic_yard, s)
+    classic, energetic, elegant = (_plan(family_yard, s)
                                    for s in ("classic", "energetic", "elegant"))
-    assert _lit(energetic) > _lit(classic) > _lit(elegant)
+    # High energy is the busiest, elegant the calmest.
+    assert (len(energetic.choreography.effects) > len(classic.choreography.effects)
+            > len(elegant.choreography.effects))
 
     def flashes(plan: Plan) -> int:
         return sum(1 for kind, _ in plan.moments if kind in {"crash", "return"})
 
     assert flashes(energetic) > flashes(classic) > 0 == flashes(elegant)
     assert not any(kind == "call_and_response" for kind, _ in elegant.moments)
-    # Elegant fades: its chases never cut off sharply.
-    chased = {pid for m in elegant.choreography.movements if m.kind == "chase"
-              for pid in m.prop_ids}
-    assert chased and all(e.kind != "on" for e in elegant.choreography.effects
-                          if e.prop_id in chased and e.movement_id is not None)
+    # Each enters a louder part its own way.
+    assert any(kind == "drop" for kind, _ in energetic.moments)
+    assert not any(kind == "drop" for kind, _ in classic.moments + elegant.moments)
+    # Elegant never moves on the half beat: nothing it lights is shorter than half a beat.
+    lengths = [e.end_centisecond - e.start_centisecond for e in elegant.choreography.effects]
+    assert sorted(lengths)[len(lengths) // 10] >= 25
     # The same style twice is the same show.
-    assert _plan(classic_yard, "energetic").choreography == energetic.choreography
+    assert _plan(family_yard, "energetic").choreography == energetic.choreography
+
+
+@pytest.mark.parametrize("style", sorted(STYLES))
+def test_look_alike_props_never_share_a_timeline(style: str) -> None:
+    plan = _plan(family_yard, style)
+    display = display_from_preview(family_yard().element())
+    timelines: dict[str, list[tuple[int, int]]] = defaultdict(list)
+    for e in plan.choreography.effects:
+        timelines[e.prop_id].append((e.start_centisecond, e.end_centisecond))
+    by_role: dict[str, list[str]] = defaultdict(list)
+    for pid, prop in display.props.items():
+        by_role[prop.role].append(pid)
+    for pids in by_role.values():
+        for a, b in itertools.combinations(pids, 2):
+            if timelines[a]:
+                assert timelines[a] != timelines[b], (
+                    f"{display.props[a].name} and {display.props[b].name} move in lockstep")
+
+
+@pytest.mark.parametrize("style", ["classic", "energetic"])
+def test_the_show_grows_to_its_last_chorus(style: str) -> None:
+    plan = _plan(family_yard, style)
+    choruses = [s for s in plan.sections if s.label == "chorus"]
+
+    def lit_share(section: PlannedSection) -> float:
+        span = section.end_centisecond - section.start_centisecond
+        lit = sum(max(0, min(e.end_centisecond, section.end_centisecond)
+                      - max(e.start_centisecond, section.start_centisecond))
+                  for e in plan.choreography.effects)
+        return lit / span
+
+    assert lit_share(choruses[-1]) > 1.1 * lit_share(choruses[0])
 
 
 def test_an_unknown_style_is_refused() -> None:
