@@ -147,6 +147,25 @@ def test_requirement_persistence_failure_does_not_publish_session_state(
     sessions.close()
 
 
+def test_batch_song_rejects_duplicate_audio_names_case_insensitively(
+    tmp_path: Path,
+) -> None:
+    preview = _preview(tmp_path, classic_yard()).read_bytes()
+    sessions = show_builder.ShowSessions()
+    token = sessions.start(preview, "yard.lorprev")["token"]
+    session = sessions.get(token)
+    session.batch.append({
+        "stem": "song", "file_name": "song.wav", "ok": False,
+    })
+
+    with pytest.raises(show_builder.ShowBuildError, match="already contains a song"):
+        sessions.batch_song(token, b"audio", ".wav", "ffmpeg", "SONG.WAV", 4, None)
+
+    assert len(session.batch) == 1
+    assert not (session.path / "batch").exists()
+    sessions.close()
+
+
 def test_song_upload_rejects_names_that_would_be_truncated(tmp_path: Path) -> None:
     preview = _preview(tmp_path, classic_yard()).read_bytes()
     sessions = show_builder.ShowSessions()
