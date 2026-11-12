@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import threading
 import time
 from collections.abc import Iterator
@@ -152,7 +153,7 @@ def test_batch_clear_failure_keeps_the_manifest(tmp_path: Path, monkeypatch: pyt
         raise OSError("file is locked")
 
     with monkeypatch.context() as patch:
-        patch.setattr(show_builder.shutil, "rmtree", fail_remove)
+        patch.setattr(shutil, "rmtree", fail_remove)
         with pytest.raises(OSError, match="file is locked"):
             sessions.batch_clear(token)
 
