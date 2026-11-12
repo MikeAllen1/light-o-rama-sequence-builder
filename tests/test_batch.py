@@ -74,7 +74,7 @@ def test_the_workspace_builds_a_playlist(
     names = set(archive.namelist())
     assert "Silent (generated).report.html" in names and "Batch - read me.txt" in names
     readme = archive.read("Batch - read me.txt")
-    assert b"\\r\\n" in readme and b"\\\\r\\\\n" not in readme
+    assert b"\r\n" in readme and b"\\r\\n" not in readme
     sequence = tmp_path / "out.loredit"
     sequence.write_bytes(archive.read("Silent (generated).loredit"))
     assert read_loredit(sequence).root.attrib["musicFilename"] == "Silent.wav"
