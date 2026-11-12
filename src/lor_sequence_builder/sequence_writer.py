@@ -21,6 +21,7 @@ from pathlib import Path
 
 from lor_sequence_builder.artifacts import write_new_text_atomically
 from lor_sequence_builder.choreography import Choreography, ChoreographyError, Effect
+from lor_sequence_builder.lms import LmsDocument, LmsEffect, LmsError, build_lms, write_lms
 from lor_sequence_builder.loredit import LoreditError, read_loredit, write_loredit
 from lor_sequence_builder.lorprev import read_lorprev
 from lor_sequence_builder.new_sequence import (
@@ -32,7 +33,8 @@ from lor_sequence_builder.pulse import preview_element
 from lor_sequence_builder.rules import RuleReport, RuleSet, check_choreography
 from lor_sequence_builder.timeline import ExcludedProp
 
-__all__ = ["NewSequenceError", "build_from_timeline", "build_new_sequence"]
+__all__ = ["NewSequenceError", "build_from_timeline", "build_lms_from_timeline",
+           "build_new_sequence"]
 
 _SETTINGS = {"on": "INTENSITY", "fade": "INTENSITY", "twinkle": "TWINKLE", "shimmer": "SHIMMER"}
 
@@ -302,3 +304,78 @@ def build_from_timeline(
             f"Could not publish the build report; the sequence was removed: {exc}"
         ) from exc
     return WriteResult(output, report_output, len(ordered), report, built.excluded_props)
+
+
+def build_lms_from_timeline(
+    preview_path: str | Path,
+    template: LmsDocument,
+    prop_channels: dict[str, int],
+    choreography: Choreography,
+    rule_set: RuleSet,
+    music_filename: str,
+    output_path: str | Path,
+    report_path: str | Path,
+    excluded_props: tuple[ExcludedProp, ...] = (),
+) -> WriteResult:
+    """Write an S4 ``.lms`` from a Timeline, only if it passes the rules.
+
+    ``preview_path`` is the preview made from ``template`` (see ``lms.display_from_lms``)
+    and ``prop_channels`` maps each of its props to the template channel it came from.
+    """
+    output = Path(output_path)
+    report_output = Path(report_path)
+    if output.suffix.lower() != ".lms":
+        raise SequenceWriteError("An S4 sequence must use the .lms extension")
+    if report_output.suffix.lower() != ".json":
+        raise SequenceWriteError("Rule report must use the .json extension")
+    if output.exists():
+        raise SequenceWriteError(f"Sequence output already exists; refusing to overwrite: {output}")
+    if template.source_path is not None and output.resolve() == template.source_path.resolve():
+        raise SequenceWriteError("Refusing to overwrite the source .lms")
+    preview = preview_element(read_lorprev(preview_path))
+    try:
+        report = check_choreography(preview, choreography, rule_set)
+    except ChoreographyError as exc:
+        raise SequenceWriteError(f"Invalid choreography data: {exc}") from exc
+    if not report.ok:
+        _write_build_report(
+            report_output, report, output, status="failed", sequence_written=False,
+            failure_stage="rules", error=f"{len(report.errors)} rule error(s)",
+        )
+        raise RulesFailedError(report, report_output)
+
+    effects: list[LmsEffect] = []
+    for effect in choreography.effects:
+        saved_index = prop_channels.get(effect.prop_id)
+        # Each S4 channel is a one-channel prop; anything else would be a guess.
+        if saved_index is None or effect.channel_index != 0:
+            message = (f"Effect on prop {effect.prop_id!r} channel {effect.channel_index} "
+                       "has no S4 channel")
+            _write_build_report(
+                report_output, report, output, status="failed", sequence_written=False,
+                failure_stage="channel_mapping", error=message, excluded_props=excluded_props,
+            )
+            raise SequenceWriteError(message)
+        end_intensity = effect.end_intensity if effect.kind == "fade" else effect.start_intensity
+        effects.append(LmsEffect(saved_index, effect.kind, effect.start_centisecond,
+                                 effect.end_centisecond, effect.start_intensity, end_intensity))
+    sections = sorted({s.start_centisecond for s in choreography.sections})
+    try:
+        content = build_lms(template, effects, choreography.duration_centiseconds,
+                            music_filename, sections)
+        write_lms(output, content)
+    except LmsError as exc:
+        _write_build_report(
+            report_output, report, output, status="failed", sequence_written=False,
+            failure_stage="sequence_write", error=str(exc), excluded_props=excluded_props,
+        )
+        raise SequenceWriteError(f"Could not write the S4 sequence: {exc}") from exc
+    try:
+        _write_build_report(
+            report_output, report, output, status="success", sequence_written=True,
+            excluded_props=excluded_props,
+        )
+    except SequenceWriteError:
+        output.unlink(missing_ok=True)
+        raise
+    return WriteResult(output, report_output, len(effects), report, excluded_props)

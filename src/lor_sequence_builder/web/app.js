@@ -131,9 +131,11 @@
     const doc = new DOMParser().parseFromString(text, "application/xml");
     if (doc.querySelector("parsererror")) throw new Error("The selected file is not well-formed XML.");
     const root = doc.documentElement;
-    if (!root || root.localName !== "sequence") throw new Error("Expected a native S6 sequence root element.");
-    if (root.getAttribute("saveFileVersion") !== "15") {
-      throw new Error("Only reviewed S6 LOREDIT saveFileVersion 15 files are supported.");
+    if (!root || root.localName !== "sequence") throw new Error("Expected a Light-O-Rama sequence root element.");
+    const version = root.getAttribute("saveFileVersion");
+    if (version !== "15" && !(version === "14" && root.querySelector(":scope > channels"))) {
+      throw new Error("Only S5/S6 .loredit (saveFileVersion 15) and S4 .lms (saveFileVersion 14) " +
+        "sequences are supported.");
     }
     let count = 0;
     const stack = [{ node: root, depth: 1 }];
@@ -147,7 +149,108 @@
     return doc;
   }
 
+  // S4 (.lms): a flat list of channels, each with its own unit and circuit, and
+  // channel groups by savedIndex. Each channel becomes a one-channel prop; effect
+  // types ("intensity") are shown as the S6 settings ("INTENSITY") and written back
+  // as S4 types on export.
+  function isLmsDocument(doc) {
+    const root = doc.documentElement;
+    return root.getAttribute("saveFileVersion") === "14" &&
+      Boolean(root.querySelector(":scope > channels")) &&
+      !root.querySelector(":scope > SequenceProps");
+  }
+
+  function parseLmsSequence(doc, filename) {
+    const root = doc.documentElement;
+    const channelsRoot = root.querySelector(":scope > channels");
+    let durationCs = 0;
+    for (const node of root.querySelectorAll(":scope > channels > channel, :scope > tracks > track")) {
+      durationCs = Math.max(durationCs,
+        Number(node.getAttribute("centiseconds") || node.getAttribute("totalCentiseconds")) || 0);
+    }
+    if (!Number.isSafeInteger(durationCs) || durationCs <= 0 || durationCs > 2160000) {
+      throw new Error("Sequence duration is missing or outside the supported range.");
+    }
+    const props = [];
+    const propByIndex = new Map();
+    let effectCount = 0;
+    const effectTypes = {};
+    for (const node of channelsRoot.children) {
+      if (node.localName !== "channel") continue;
+      const index = node.getAttribute("savedIndex") || String(props.length);
+      const name = node.getAttribute("name") || "Channel " + index;
+      const channel = { row: "0", col: "0", color: node.getAttribute("color") || "0",
+        effects: [], node, edited: false };
+      for (const effectNode of node.children) {
+        if (effectNode.localName !== "effect") continue;
+        const start = Number(effectNode.getAttribute("startCentisecond"));
+        const end = Number(effectNode.getAttribute("endCentisecond"));
+        if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) ||
+            start < 0 || end <= start || end > durationCs + 100) {
+          throw new Error("Invalid effect timing found on channel " + name + ".");
+        }
+        const attributes = {};
+        for (const attr of effectNode.attributes) {
+          if (attr.name === "type") attributes.settings = attr.value.toUpperCase();
+          else attributes[attr.name] = attr.value;
+        }
+        const type = attributes.settings || "UNKNOWN";
+        effectTypes[type] = (effectTypes[type] || 0) + 1;
+        channel.effects.push({ start, end, type, attributes });
+        effectCount += 1;
+      }
+      const prop = { id: "lms-" + index, name, channels: [channel] };
+      propByIndex.set(index, prop);
+      props.push(prop);
+    }
+    if (!props.length) throw new Error("Sequence contains no channels.");
+    const groupNodes = new Map();
+    for (const node of channelsRoot.children) {
+      if (node.localName === "channelGroupList") groupNodes.set(node.getAttribute("savedIndex"), node);
+    }
+    const flatten = (index, seen) => {
+      if (propByIndex.has(index)) return [propByIndex.get(index).id];
+      const node = groupNodes.get(index);
+      if (!node || seen.has(index)) return [];
+      const next = new Set(seen).add(index);
+      return Array.from(node.querySelectorAll("channelGroup"))
+        .flatMap((member) => flatten(member.getAttribute("savedIndex"), next));
+    };
+    const groups = [];
+    const membership = new Map();
+    for (const [index, node] of groupNodes) {
+      const memberIds = Array.from(new Set(flatten(index, new Set())));
+      if (!memberIds.length) continue;
+      const group = { id: "lms-group-" + index, name: node.getAttribute("name") || "(unnamed group)",
+        arrangement: "S4 channel group", memberIds };
+      for (const id of memberIds) if (!membership.has(id)) membership.set(id, group.id);
+      groups.push(group);
+    }
+    const timingGrids = [];
+    for (const grid of root.querySelectorAll(":scope > timingGrids > timingGrid")) {
+      const name = grid.getAttribute("name") || "Timing grid " + grid.getAttribute("saveID");
+      if (grid.getAttribute("type") === "fixed") {
+        timingGrids.push({ name, kind: "fixed", spacing: Number(grid.getAttribute("spacing")) || 0,
+          marks: [] });
+      } else {
+        const marks = Array.from(grid.children).filter((mark) => mark.localName === "timing")
+          .map((mark) => Number(mark.getAttribute("centisecond")))
+          .filter((cs) => Number.isSafeInteger(cs) && cs >= 0 && cs <= durationCs);
+        timingGrids.push({ name, kind: "free", marks });
+      }
+    }
+    return {
+      doc, yard: null, filename, format: "lms",
+      name: root.getAttribute("musicTitle") || filename,
+      artist: root.getAttribute("musicArtist") || "",
+      audioName: root.getAttribute("musicFilename") || "",
+      durationCs, durationSeconds: durationCs / 100, props, groups, membership, timingGrids,
+      effectCount, effectTypes, channelCount: props.length
+    };
+  }
+
   function parseSequence(doc, filename) {
+    if (isLmsDocument(doc)) return parseLmsSequence(doc, filename);
     const root = doc.documentElement;
     const durationCs = Number(root.getAttribute("totalCentiseconds"));
     if (!Number.isSafeInteger(durationCs) || durationCs <= 0 || durationCs > 2160000) {
@@ -1296,7 +1399,7 @@
     } catch (error) {
       if (requestId !== state.sequenceRequestId) return;
       setBanner("That sequence could not be opened: " + problemText(error) +
-        " Choose a .loredit file saved by S6.", "error");
+        " Choose a .loredit saved by S5 or S6, or an .lms saved by S4.", "error");
     }
   }
 
@@ -2803,9 +2906,15 @@
     const inner = indent + "  ";
     const others = Array.from(node.children).filter((child) => child.localName !== "effect");
     node.replaceChildren();
+    const lms = state.sequence && state.sequence.format === "lms";
     const children = channel.effects.map((effect) => {
       const element = doc.createElementNS(null, "effect");
+      if (lms) {
+        // Back to S4: "type" first, lower case, and no S6 "settings".
+        element.setAttribute("type", String(effect.attributes.settings || "INTENSITY").toLowerCase());
+      }
       for (const key of Object.keys(effect.attributes)) {
+        if (lms && key === "settings") continue;
         const value = key === "startCentisecond" ? String(effect.start)
           : key === "endCentisecond" ? String(effect.end) : effect.attributes[key];
         element.setAttribute(key, value);
@@ -2870,8 +2979,9 @@
       }
     }
     // A show generated here is saved under its own name; an opened file gets "(edited)".
+    const extension = sequence.format === "lms" ? ".lms" : ".loredit";
     const name = sequence.generated ? sequence.filename
-      : sequence.filename.replace(/\.(loredit|xml)$/i, "") + " (edited).loredit";
+      : sequence.filename.replace(/\.(loredit|lms|xml)$/i, "") + " (edited)" + extension;
     const url = URL.createObjectURL(new Blob([text], { type: "application/xml" }));
     const link = document.createElement("a");
     link.href = url;
@@ -3798,7 +3908,11 @@
     setStepEnabled();
     showMessage("displayStatus", "Reading " + file.name + "…");
     try {
-      if (file.size > 20 * 1024 * 1024) throw new Error("A preview must be 20 MiB or smaller.");
+      const s4 = /\.lms$/i.test(file.name);
+      if (file.size > (s4 ? 50 : 20) * 1024 * 1024) {
+        throw new Error(s4 ? "An S4 sequence must be 50 MiB or smaller."
+          : "A preview must be 20 MiB or smaller.");
+      }
       const summary = await postShow("/api/show/start?name=" + encodeURIComponent(file.name),
         await file.text(), "application/xml");
       if (requestId !== show.displayRequestId) return;

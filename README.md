@@ -42,7 +42,8 @@ You can also:
 ## Good to know
 
 - **It runs on your computer.** Your preview and your music never leave it. The only thing it asks the internet is whether a newer version is out, and you can turn that off.
-- **You need Light-O-Rama S6** to play the shows. Standard LOR props (channel per color, multi-segment) are sequenced; pixel (RGB) and DMX props are listed in the report but not sequenced yet.
+- **S4, S5 and S6 all work.** With S5 or S6, choose your `.lorprev`; you get a `.loredit`. With S4 (no previews), choose one of your own S4 sequences (`.lms`) as the display: each channel becomes a prop, and you get a new `.lms` with the same channels. See [docs/S4_FORMAT.md](docs/S4_FORMAT.md).
+- **You need Light-O-Rama S4, S5 or S6** to play the shows. Standard LOR props (channel per color, multi-segment) are sequenced; pixel (RGB) and DMX props are listed in the report but not sequenced yet.
 - **Better previews make better shows.** Giving props a real S6 shape (Arch, Tree, Snowflake) and grouping rows helps. The [user guide](docs/USER_GUIDE.md) has tips and fixes for common problems.
 - **Free to use, not to sell.** See [License](#license).
 - Not affiliated with or endorsed by Light-O-Rama, Inc. "Light-O-Rama" and "S6" are theirs.
