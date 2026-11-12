@@ -1585,6 +1585,7 @@
           analyzedName.toLowerCase() !== state.audioFile.name.toLowerCase() &&
           !window.confirm("This analysis was made from " + analyzedName + ", but the selected audio is " +
             state.audioFile.name + ". They may be different recordings. Load this analysis anyway?")) {
+        setBanner("Kept the current analysis; the selected analysis file name did not match the song.", "warn");
         return;
       }
       const requiredArrays = ["beats", "downbeats", "onsets", "energy",
