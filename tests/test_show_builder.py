@@ -90,6 +90,11 @@ def test_a_show_is_built_step_by_step_and_requirements_are_remembered(
                             {"text": "keep the star on"})
     assert status == 422 and "translator" in refused["error"]
 
+    status, refused = _json(f"{server}/api/show/generate?token={token}",
+                            {"music_filename": "x" * 261, "sing": False,
+                             "style": "energetic"})
+    assert status == 422 and "260 characters or fewer" in refused["error"]
+
     status, show = _json(f"{server}/api/show/generate?token={token}",
                          {"music_filename": "Songs\\beat.wav", "sing": True,
                           "style": "energetic"})
