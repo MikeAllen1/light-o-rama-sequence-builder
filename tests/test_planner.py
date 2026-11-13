@@ -763,3 +763,26 @@ def test_strong_hits_off_the_beat_get_stabs() -> None:
     assert counts["classic"] >= len(starts) // 2
     assert counts["energetic"] >= len(starts) // 2
     assert counts["elegant"] == 0
+
+
+def test_classic_ripples_sometimes_mirror_out_from_the_middle() -> None:
+    """In some phrases a Classic ripple starts in the middle of a family and runs out
+    to both sides at once: props mirrored across the middle share a step."""
+    from lor_sequence_builder.planner import _mirror_ranks, _Planner  # noqa: F401
+    display = display_from_preview(classic_yard().element())
+
+    class Stub:
+        pass
+
+    stub = Stub()
+    stub.display = display  # type: ignore[attr-defined]
+    xs = {pid: (p.center or (0.0, 0.0))[0] for pid, p in display.props.items()}
+    family = sorted(xs, key=xs.get)[:5]  # type: ignore[arg-type]
+    ranks = _mirror_ranks(stub, family)  # type: ignore[arg-type]
+    middle = (min(xs[p] for p in family) + max(xs[p] for p in family)) / 2
+    nearest = min(family, key=lambda p: abs(xs[p] - middle))
+    assert ranks[family.index(nearest)] == 0
+    assert ranks[0] == max(ranks) or ranks[-1] == max(ranks)
+    # Steps never go down as props get further from the middle.
+    by_distance = sorted(zip(family, ranks, strict=True), key=lambda pr: abs(xs[pr[0]] - middle))
+    assert [r for _, r in by_distance] == sorted(r for _, r in by_distance)

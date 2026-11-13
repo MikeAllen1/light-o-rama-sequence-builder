@@ -125,6 +125,7 @@ REQUIREMENT_TYPES: dict[str, tuple[dict[str, _Param], dict[str, _Param]]] = {
     ),
     "light_whole": ({}, {}),
     "anchor_channels": ({"channels": _CHANNELS}, {"min": _Param(int, 0, 100)}),
+    "light_on_words": ({"words": _NAMES}, {}),
 }
 _SHARED_REQUIREMENT_FIELDS = {"id", "type", "props", "severity", "note"}
 SELECTOR_KEYS = ("all", "role", "names", "group")
