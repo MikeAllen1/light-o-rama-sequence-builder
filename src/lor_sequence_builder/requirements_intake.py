@@ -178,6 +178,10 @@ def _tool_schema() -> dict[str, Any]:
                             },
                             "colors": {"type": "array", "items": {"type": "string"}},
                             "max": {"type": "integer", "minimum": 0, "maximum": 100},
+                            "channels": {"type": "array",
+                                         "items": {"type": "integer", "minimum": 1}},
+                            "min": {"type": "integer", "minimum": 0, "maximum": 100},
+                            "words": {"type": "array", "items": {"type": "string"}},
                             "during": {"type": "array", "items": {"type": "string"}},
                             "sections": {"type": "array", "items": {"type": "string"}},
                             "direction": {"type": "string", "enum": list(MOVEMENT_DIRECTIONS)},
@@ -211,6 +215,11 @@ Requirement types:
 - move_direction: chases (or `movement`: fill, fall) across these props run in `direction`.
 - light_whole: every channel of each prop shows the same light (for example two-color \
 arches that must never light one side alone).
+- light_on_words: props light when the song sings any of `words` (for example orange \
+trees on "fire"); needs the song's lyrics or a word file.
+- anchor_channels: the listed `channels` (numbers, 1 = first) of each prop stay at `min` \
+percent or more (default 30) whenever the rest of the prop is lit, and are never lit \
+alone (for example a mega tree's star channel).
 
 Choose props with exactly one of: {"all": true}, {"role": ...}, {"group": ...}, or \
 {"names": [...]}. Use only names, roles and groups that appear in the display below, \

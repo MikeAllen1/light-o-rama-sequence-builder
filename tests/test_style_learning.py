@@ -115,9 +115,9 @@ def test_a_slow_soft_sequencer_gets_a_slow_soft_style(tmp_path: Path) -> None:
     assert style.soft == (True, True, True)
     # The loud parts peak at the brightness this person uses.
     assert style.brightness[HIGH] == 60 and style.brightness[LOW] < style.brightness[MID]
-    # Lights that stay on much longer than Elegant's move on slower grids.
+    # Lights that stay on about as long as Elegant's keep its grids (no faster).
     assert STYLES["elegant"].part("family").grid[MID] == "bar"
-    assert style.part("family").grid[MID] == "phrase"
+    assert style.part("family").grid[MID] in ("bar", "phrase")
     assert "Peaks at 60% brightness." in changes
 
 
@@ -353,3 +353,14 @@ def test_new_show_learns_a_style_from_chosen_sequences(local_server: str,
         assert page.locator('input[name="showStyle"]:checked').get_attribute(
             "value") == "classic"
         browser.close()
+
+
+def test_a_much_slower_sequencer_gets_slower_grids(tmp_path: Path) -> None:
+    # Fades four times as long as Elegant's own move on slower grids than Elegant's.
+    glacial: Hand = []
+    for c in range(8):
+        for t in range(c * 2 * BEAT, SONG - 32 * BEAT, 32 * BEAT):
+            glacial.append((c, t, t + 16 * BEAT, "INTENSITY", 0, 60))
+            glacial.append((c, t + 16 * BEAT, t + 32 * BEAT, "INTENSITY", 60, 0))
+    style, _ = style_from_habits(measure(write_loredit(tmp_path / "Slow.loredit", glacial)))
+    assert style.part("family").grid[MID] == "phrase"

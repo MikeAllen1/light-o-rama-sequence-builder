@@ -272,6 +272,28 @@ def vocals_from_words(data: dict[str, Any], singer: str | None = None,
     }
 
 
+def lyrics_from_words(path: str | Path) -> dict[str, Any] | None:
+    """Timed lyrics (every singer's words) from a WhisperX word file, so the words can
+    cue props; None for anything else."""
+    try:
+        source = Path(path)
+        if source.suffix.lower() != ".json" or source.stat().st_size > MAX_VOCALS_JSON_BYTES:
+            return None
+        data = json.loads(source.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError):
+        return None
+    if not is_word_file(data):
+        return None
+    try:
+        words = _words_of(data)
+    except VocalAnalysisError:
+        return None
+    if not words:
+        return None
+    return {"lines": [{"start": words[0]["start"],
+                       "words": [{"start": w["start"], "text": w["word"]} for w in words]}]}
+
+
 def load_vocals(path: str | Path, singer: str | None = None) -> dict[str, Any]:
     """A vocal analysis JSON, or a WhisperX word file (sung by ``singer``, by default
     the one with the most words)."""

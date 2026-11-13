@@ -55,6 +55,8 @@ class RuleSpec:
 
 
 _NAMES = _Param(list)
+# A list of channel numbers (1 = the first channel).
+_CHANNELS = _Param(tuple, 1, 512)
 RULE_SPECS: dict[str, RuleSpec] = {
     spec.rule_id: spec
     for spec in (
@@ -122,6 +124,8 @@ REQUIREMENT_TYPES: dict[str, tuple[dict[str, _Param], dict[str, _Param]]] = {
         {"movement": _Param(str)},
     ),
     "light_whole": ({}, {}),
+    "anchor_channels": ({"channels": _CHANNELS}, {"min": _Param(int, 0, 100)}),
+    "light_on_words": ({"words": _NAMES}, {}),
 }
 _SHARED_REQUIREMENT_FIELDS = {"id", "type", "props", "severity", "note"}
 SELECTOR_KEYS = ("all", "role", "names", "group")
@@ -241,6 +245,14 @@ def _parse_yaml(text: str, source: str) -> Any:
 
 
 def _check(value: Any, param: _Param, where: str) -> Any:
+    if param.kind is tuple:
+        if not isinstance(value, list) or not value or not all(
+            isinstance(item, int) and not isinstance(item, bool)
+            and (param.minimum is None or item >= param.minimum)
+            and (param.maximum is None or item <= param.maximum) for item in value
+        ):
+            raise RuleProfileError(f"{where} must be a list of channel numbers (1 or more)")
+        return sorted(set(value))
     if param.kind is list:
         if not isinstance(value, list) or not all(
             isinstance(item, str) and item.strip() for item in value
