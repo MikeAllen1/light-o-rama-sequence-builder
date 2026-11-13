@@ -2,7 +2,7 @@
 
 ## Product boundary
 
-The sequencing workspace is browser-based during development. It runs from a local Python loopback server and is not a desktop application. Do not introduce Electron, Tauri, or another desktop wrapper until the final delivery stage.
+The sequencing workspace runs from a local Python loopback server. `lor-sequence-ui` opens it in a browser; the Windows desktop app opens the same workspace in its own window. Sequencing logic stays in the workspace and the Python engine, never in the desktop layer.
 
 ## First release
 
@@ -130,10 +130,10 @@ The browser parser rejects DTD/entity declarations and enforces the 50 MiB, 100,
 - Section candidates are not labeled as verse or chorus.
 - The vocal-region and syllable lanes come from loudness and onsets on vocals-only audio; they are not word timing. Word timing comes from the lyrics track: imported LRC/SRT/VTT, or the optional offline transcription add-on (`uv sync --extra lyrics`, then `lor-sequence-builder lyrics --audio vocals.wav --output song.lyrics.json`), which marks every line and word unverified.
 - Crash candidates and the out-of-sync check are heuristics. On the owner's four finished reference shows (checked locally, not committed), 82 to 98% of strong moments had a big lighting change within 40 ms and 2 to 9% were flagged as near misses.
-- The current UI can import a saved `vocals-1.0` report; automatic vocal separation is handled by the separate Phase 8 work.
+- The workspace can import a saved `vocals-1.0` report; New show splits the vocals itself (Phase 8) when the vocals add-on is installed.
 
 ## Follow-on work
 
 1. Musical editing: vocal phrase markers, meter changes within a song, and word-level lyric retiming.
 2. Professional workflow: reusable layouts, track visibility/mute, keyboard shortcuts, event inspector, and performance work on larger displays.
-3. Final delivery: desktop wrapper and packaging only after the browser sequencing and editing workflows are complete.
+3. Code signing for the Windows installer.

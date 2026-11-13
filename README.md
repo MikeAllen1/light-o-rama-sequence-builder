@@ -20,7 +20,9 @@ Free. No administrator rights needed, and everything it needs is included. Runni
 
 1. **Your display.** Choose the S5/S6 `.lorprev` you already have, or with S4, any of your `.lms` sequences. It is the map: every prop, its channels, and where it stands in the yard.
 2. **Your song.** Any MP3, WAV or M4A. The program finds the beats, the bars, the loud parts, the sleigh bells and the cymbal crashes.
-3. **Your show.** Pick a style and click **Generate show**. Watch it play on a drawing of your yard, then save it (`.loredit` for S5/S6, `.lms` for S4) and open it in the Light-O-Rama Sequencer. Play it as it is, or fine-tune it there.
+3. **Your show.** Pick a style and click **Generate show**, or **Make all three styles** to compare them. A score card says how it did. Watch it play on a drawing of your yard, then save it (`.loredit` for S5/S6, `.lms` for S4) and open it in the Light-O-Rama Sequencer. Play it as it is, or fine-tune it there.
+
+Next time, your display and style are already chosen: pick a song and generate.
 
 ## What your show does
 
@@ -33,13 +35,13 @@ Every kind of prop gets one job for the whole song, so the yard looks planned ra
 - **Singing faces** sing along (with the optional vocals add-on).
 - **Outlines and stars** are the steady glow underneath.
 
-Quiet parts of the song use a few props; loud parts use more. A chorus that comes back looks like it did the first time, the phrase before a big part builds up, and the crashes flash the whole yard.
+Quiet parts of the song use a few props; loud parts use more, and the whole yard is saved for the biggest moments. The song's strongest hits light a chunk of the yard, on the beat or between, so beat-heavy songs land their accents. A chorus that comes back looks like it did the first time, the phrase before a big part builds up, the crashes flash the yard, and the yard goes dark for a beat just before the last big chorus. Classic and Elegant end by twinkling out.
 
 You can also:
 
 - **Pick a style:** Classic, High energy (busy and punchy) or Elegant (calm, for ballads), or **learn your own** from a few sequences you made by hand. Every show also gets a quality check.
 - **New prop this year?** Add it to the sequences you already have; everything else in them stays exactly as it was.
-- **Set requirements** like "keep the star on all song" or "keep the mega tree dark in the verses". They are remembered for your display.
+- **Set requirements** like "keep the star on all song", "keep the mega tree dark in the verses", "keep the tree's star lit with the tree" or "light the fire props when 'fire' is sung". They are remembered for your display.
 - **Do a whole playlist at once:** choose several songs and save all the shows in one go.
 - **Run a 10-second display test** that lights every prop in a fixed order, to check your wiring before the real show.
 - **Read the show report:** what was used, what stayed dark and why, and what to check in the yard.
@@ -114,7 +116,7 @@ uv sync --locked
 uv run lor-sequence-builder --help
 ```
 
-Python 3.12 or newer and `uv` are required; FFmpeg must be on PATH. The workflow is: `analyze-preview` reads the `.lorprev` and reports what each prop is, with evidence; correct anything wrong in the S6 Preview Editor itself (shape type, grouping, start location, name); `generate` creates the native `.loredit`, a Timeline JSON file and the reports. See [docs/PLAN.md](docs/PLAN.md) for the phase order and handoff log, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for system boundaries and data contracts.
+Python 3.12 or newer and `uv` are required; FFmpeg must be on PATH. The workflow is: `analyze-preview` reads the `.lorprev` and reports what each prop is, with evidence; correct anything wrong in the S6 Preview Editor itself (shape type, grouping, start location, name); `generate` creates the native `.loredit`, a Timeline JSON file and the reports. See [docs/ROADMAP.md](docs/ROADMAP.md) for where the project stands, [docs/PLAN.md](docs/PLAN.md) for the phase plan and progress log, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for system boundaries and data contracts.
 
 ## Command reference
 
@@ -160,7 +162,7 @@ The server binds only to `127.0.0.1`. Open an S5/S6 `.loredit` (v15) or S4 `.lms
 
 The workspace supports synchronized navigation, playback, musical marker visualization, track expansion/collapse, and effect editing: select, move, trim, create, delete, duplicate, undo/redo, snapping to musical events, one-click retiming of out-of-sync hits, and a checked export to a new file. A music review corrects beats, bars, crashes, hits, section names and lyrics, fits a tempo map between confirmed bars, and saves a review file that `generate --analysis` accepts (see docs/SEQUENCER_UI.md). Optional saved audio-analysis JSON and `vocals-1.0` JSON can be loaded. Vocal regions and syllable candidates are heuristic; the current vocal format does not recognize words or provide lyrics.
 
-This is a browser application, not a desktop wrapper. Do not install Electron, Tauri, or another desktop framework during the sequencing-workspace phases.
+The Windows app opens this same workspace in its own window.
 
 ## Build a show
 
@@ -219,7 +221,7 @@ uv run lor-sequence-builder build-from-timeline --preview .\display.lorprev --ti
 
 See [docs/RULES.md](docs/RULES.md) for every rule, the profile format, and the Timeline format.
 
-## Phase 4 audio analysis
+## Audio analysis
 
 Install FFmpeg and ensure `ffmpeg` is available on PATH. FFmpeg decodes any supported audio format to mono 22.05 kHz signed 16-bit PCM; librosa then analyzes the decoded samples (it never opens files itself). The command writes a versioned JSON report plus an SVG diagnostic plot:
 
@@ -266,7 +268,8 @@ The command writes a deterministic, versioned Timeline JSON and a new `.loredit`
 The CI workflow pins the development tools and runs:
 
 ```powershell
-uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 --with types-PyYAML==6.0.12.20260906 python -m pytest
+uv run --no-sync --with playwright==1.56.0 python -m playwright install chromium
+uv run --no-sync --with pytest==9.2.0 --with playwright==1.56.0 --with axe-playwright-python==0.1.8 python -m pytest
 uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 --with types-PyYAML==6.0.12.20260906 ruff check .
 uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 --with types-PyYAML==6.0.12.20260906 mypy --strict src tests
 uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --with pip-audit==2.10.1 --with types-defusedxml==0.7.0.20260504 --with types-PyYAML==6.0.12.20260906 --with setuptools==84.1.0 pip-audit --skip-editable
@@ -277,8 +280,10 @@ uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --
 ```text
 src/lor_sequence_builder/  Python package, CLI, and browser workspace assets
 tests/                     Unit tests and synthetic fixtures
-docs/                      Architecture, format evidence, and phased plan
-.github/workflows/         CI and CodeQL workflows
+docs/                      User guide, architecture, format evidence, plan, roadmap, release notes
+packaging/                 Windows desktop app build (PyInstaller, Inno Setup installer)
+examples/requirements/     Ready-made requirement profiles
+.github/workflows/         Tests, CodeQL, and the Windows desktop build and release
 SECURITY.md                Security policy
 CONTRIBUTING.md            Contribution rules and phase workflow
 LICENSE                    MIT with the Commons Clause (free to use, not to sell)
@@ -286,12 +291,12 @@ LICENSE                    MIT with the Commons Clause (free to use, not to sell
 
 ## Scope and safety
 
-- The `.lorprev` preview will be mandatory for both analysis and generation.
+- A display is required for every show: an S5/S6 `.lorprev` preview, or an S4 `.lms` sequence.
 - Props, channels, and controller identities must come from the preview; never invent or silently reassign them.
-- V1 does not support pixel/RGB props. Unsupported props must be reported, not faked or silently omitted.
+- Pixel (RGB) and DMX props are not sequenced yet. Unsupported props must be reported, not faked or silently omitted.
 - Source audio, previews, and sequence files are read-only. Generated output must be a new file.
 - Never commit original or sanitized show files, private previews, copyrighted audio, local machine paths, or secrets. Tests use fictional, hand-authored or runtime-generated synthetic fixtures only.
-- No desktop wrapper or packaging yet; desktop delivery is deferred until the final stage. The browser workspace is local-only. Controller upload and live hardware playback remain out of scope. The browser workspace edits a copy in memory and exports a new file; it never changes the source sequence.
+- The workspace (in the browser or the Windows app) is local-only. Controller upload and live hardware playback remain out of scope. The browser workspace edits a copy in memory and exports a new file; it never changes the source sequence.
 
 This is an independent project and is not affiliated with or endorsed by Light-O-Rama.
 
