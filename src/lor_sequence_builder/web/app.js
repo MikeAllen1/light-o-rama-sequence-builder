@@ -3728,7 +3728,8 @@
     analysisMeter: null, requirementsPending: false, requirementsUncertain: false, requirementsRequestId: 0, displayRequestId: 0,
     displayPending: false, testPending: false, batchRunning: false, batchToken: null,
     batchConfig: null, batchReady: false, batchUncertain: false, batchZipPending: false,
-    generationPending: false };
+    generationPending: false, styleResults: null, keepStyleResults: false, lastStyle: null,
+    remembered: null };
 
   function showMessage(id, text, kind) {
     const element = $(id);
@@ -3746,6 +3747,30 @@
     $("welcome").classList.add("hidden");
     $("editor").classList.add("hidden");
     $("newShow").classList.remove("hidden");
+    useRememberedDisplay();
+  }
+
+  // The display and style used last time come back by themselves, so a returning
+  // user picks a song and generates. Choosing another preview replaces them.
+  async function useRememberedDisplay() {
+    if (show.token || show.displayPending || show.remembered === false) return;
+    let kept;
+    try {
+      kept = await postShow("/api/show/last", "{}", "application/json");
+    } catch {
+      return;
+    }
+    show.lastStyle = kept && kept.style || null;
+    if (!kept || !kept.file_name || show.token || show.displayPending) return;
+    show.remembered = true;
+    await chooseDisplay({ name: kept.file_name, size: 0 }, true);
+  }
+
+  function rememberStyle() {
+    const style = chosenStyle();
+    if (!style) return;
+    show.lastStyle = style;
+    postShow("/api/show/last-style", JSON.stringify({ style }), "application/json").catch(() => {});
   }
 
   // Leave the workspace for the start page (the demo and the display test open here
@@ -3909,10 +3934,16 @@
     show.resultConfig = null;
     updateGeneratedControls();
     $("showNotes").replaceChildren();
+    renderScore(null);
+    if (!show.keepStyleResults) {
+      show.styleResults = null;
+      renderStyleResults();
+    }
   }
 
   function setShowConfigurationLocked(locked) {
     for (const id of ["showDisplayFile", "showSongFile", "requirementKind", "requirementProps",
+      "requirementSearch", "requirementPicker", "generateAll",
       "requirementSections", "requirementMax", "addRequirement", "translateRequirements",
       "plainRequirements", "musicFilename", "singFaces", "meterSelect", "styleChoices",
       "learnStyleFiles", "learnStyleName", "closeNewShow"]) {
@@ -3929,6 +3960,7 @@
   function setRequirementControlsLocked(locked) {
     const disabled = locked || show.requirementsUncertain;
     for (const id of ["requirementKind", "requirementProps", "requirementSections",
+      "requirementSearch", "requirementPicker",
       "requirementMax", "addRequirement", "translateRequirements", "plainRequirements"]) {
       const element = $(id);
       if (!element) continue;
@@ -3970,6 +4002,7 @@
       !show.audioPending && !show.requirementsPending && !show.generationPending && !show.batchRunning &&
       !show.batchZipPending && !show.displayPending && !show.testPending &&
       show.analysisMeter === $("meterSelect").value);
+    $("generateAll").disabled = $("generateShow").disabled || builtInStyles().length < 2;
     $("batchFiles").disabled = !show.token || !hasProps || show.requirementsUncertain || show.batchRunning ||
       show.generationPending || show.batchZipPending || show.displayPending || show.testPending ||
       show.audioPending || show.requirementsPending;
@@ -3987,7 +4020,7 @@
     updateGeneratedControls();
   }
 
-  async function chooseDisplay(file) {
+  async function chooseDisplay(file, remembered) {
     if (!file || show.batchRunning || show.batchZipPending || show.generationPending ||
         show.displayPending || show.testPending || show.requirementsPending) return;
     const requestId = ++show.displayRequestId;
@@ -3996,13 +4029,19 @@
     setStepEnabled();
     showMessage("displayStatus", "Reading " + file.name + "…");
     try {
-      const s4 = /\.lms$/i.test(file.name);
-      if (file.size > (s4 ? 50 : 20) * 1024 * 1024) {
-        throw new Error(s4 ? "An S4 sequence must be 50 MiB or smaller."
-          : "A preview must be 20 MiB or smaller.");
+      let summary;
+      if (remembered) {
+        // The display used last time, kept on this computer.
+        summary = await postShow("/api/show/last-start", "{}", "application/json");
+      } else {
+        const s4 = /\.lms$/i.test(file.name);
+        if (file.size > (s4 ? 50 : 20) * 1024 * 1024) {
+          throw new Error(s4 ? "An S4 sequence must be 50 MiB or smaller."
+            : "A preview must be 20 MiB or smaller.");
+        }
+        summary = await postShow("/api/show/start?name=" + encodeURIComponent(file.name),
+          await file.text(), "application/xml");
       }
-      const summary = await postShow("/api/show/start?name=" + encodeURIComponent(file.name),
-        await file.text(), "application/xml");
       if (requestId !== show.displayRequestId) return;
       show.token = summary.token;
       show.summary = summary;
@@ -4036,11 +4075,14 @@
       checkMusicName();
       const kinds = summary.kinds.map((kind) => kind.count + " " + kind.label).join(", ");
       const skipped = summary.props.filter((prop) => !prop.sequenceable);
-      showMessage("displayStatus", summary.display + ": " + (kinds || "nothing it can sequence") +
+      showMessage("displayStatus", (remembered ? "Your display from last time. " : "") +
+        summary.display + ": " + (kinds || "nothing it can sequence") +
         "." + (skipped.length ? " Not sequenced: " + skipped.map((prop) => prop.name +
           (prop.reason ? " (" + prop.reason + ")" : "")).join("; ") + "." : ""), "good");
       fillRequirementForm();
-      fillStyles(summary.styles || [], summary.default_style);
+      const styles = summary.styles || [];
+      fillStyles(styles, styles.some((item) => item.key === show.lastStyle)
+        ? show.lastStyle : summary.default_style);
       renderRequirements(summary.requirements, []);
       $("singFaces").checked = Boolean(summary.faces && summary.can_separate_vocals);
       $("singFaces").closest("label").classList.toggle("hidden", !summary.faces);
@@ -4409,6 +4451,7 @@
     for (const prop of summary.props.filter((item) => item.sequenceable)) {
       props.appendChild(option("name:" + prop.name, prop.name));
     }
+    fillPropPicker();
     const sections = $("requirementSections");
     sections.replaceChildren();
     for (const name of SECTION_NAMES) {
@@ -4420,6 +4463,47 @@
       sections.appendChild(label);
     }
     syncRequirementForm();
+  }
+
+  // Props for a requirement: checkboxes with a search box, instead of a Ctrl-click list.
+  function fillPropPicker() {
+    const picker = $("requirementPicker");
+    picker.replaceChildren();
+    for (const item of Array.from($("requirementProps").options)) {
+      const label = document.createElement("label");
+      label.className = "prop-pick";
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.value = item.value;
+      const text = document.createElement("span");
+      text.textContent = item.textContent;
+      label.append(box, text);
+      picker.appendChild(label);
+    }
+    $("requirementSearch").value = "";
+  }
+
+  function filterPropPicker() {
+    const needle = $("requirementSearch").value.trim().toLowerCase();
+    for (const label of $("requirementPicker").querySelectorAll(".prop-pick")) {
+      const box = label.querySelector("input");
+      label.classList.toggle("hidden", Boolean(needle) && !box.checked &&
+        !label.textContent.toLowerCase().includes(needle));
+    }
+  }
+
+  function chosenProps() {
+    const picked = Array.from($("requirementPicker").querySelectorAll("input:checked"))
+      .map((box) => box.value);
+    const listed = Array.from($("requirementProps").selectedOptions).map((item) => item.value);
+    return Array.from(new Set([...picked, ...listed]));
+  }
+
+  function clearPropPicker() {
+    $("requirementPicker").querySelectorAll("input:checked").forEach((box) => { box.checked = false; });
+    Array.from($("requirementProps").options).forEach((item) => { item.selected = false; });
+    $("requirementSearch").value = "";
+    filterPropPicker();
   }
 
   function syncRequirementForm() {
@@ -4528,7 +4612,7 @@
     if (show.requirementsPending || show.batchRunning || show.batchZipPending ||
         show.generationPending || show.displayPending || show.testPending) return;
     const kind = $("requirementKind").value;
-    const chosen = Array.from($("requirementProps").selectedOptions).map((item) => item.value);
+    const chosen = chosenProps();
     if (!chosen.length) {
       showMessage("requirementStatus", "Choose which props it is about.", "warn");
       return;
@@ -4580,7 +4664,9 @@
       return;
     }
     if (added.some((item) => item == null)) return;
+    const before = (show.raw || []).length;
     await sendRequirements(show.raw.concat(added));
+    if ((show.raw || []).length > before) clearPropPicker();
   }
 
   async function generateShow() {
@@ -4630,6 +4716,7 @@
         $("saveGenerated").disabled = false;
         $("pictureGenerated").disabled = false;
       $("reportGenerated").disabled = false;
+        renderScore(result);
       }
     } catch (error) {
       if (!previousResultIsCurrent || config !== currentShowConfig()) invalidateGeneratedResult();
@@ -4640,6 +4727,144 @@
       show.generationPending = false;
       setShowConfigurationLocked(false);
       setStepEnabled();
+    }
+  }
+
+  // How the show came out, at a glance: the score, the rules, how much of the yard is
+  // lit and anything worth a look, in plain words.
+  function renderScore(result) {
+    const card = $("scoreCard");
+    card.replaceChildren();
+    const quality = result && result.quality;
+    card.classList.toggle("hidden", !quality);
+    if (!quality) return;
+    const head = document.createElement("div");
+    head.className = "score-head";
+    const score = document.createElement("strong");
+    score.className = "score-number" + (quality.score >= 95 ? " good" : quality.score >= 80 ? "" : " warn");
+    score.textContent = quality.score + "/100";
+    const facts = document.createElement("span");
+    const measures = quality.measures || {};
+    const bits = ["Every rule passed"];
+    if (measures.average_lit != null) bits.push(Math.round(measures.average_lit * 100) + "% of the yard lit on average");
+    if (measures.loud_to_quiet != null) bits.push("loud parts " + measures.loud_to_quiet.toFixed(1) + "\u00d7 the quiet ones");
+    if (measures.on_music != null) bits.push(Math.round(measures.on_music * 100) + "% of changes on the music");
+    facts.textContent = bits.join(" \u00b7 ");
+    head.append(score, facts);
+    card.appendChild(head);
+    const notes = (quality.findings || []).filter((item) => item.status !== "good");
+    const list = document.createElement("ul");
+    for (const item of notes) {
+      const line = document.createElement("li");
+      line.className = item.status === "fixed" ? "fixed" : "note";
+      line.textContent = (item.status === "fixed" ? "Fixed: " : "Worth a look: ") + item.message;
+      list.appendChild(line);
+    }
+    if (!notes.length) {
+      const line = document.createElement("li");
+      line.className = "fixed";
+      line.textContent = "Nothing to fix.";
+      list.appendChild(line);
+    }
+    card.appendChild(list);
+  }
+
+  function builtInStyles() {
+    const keys = Array.from(document.querySelectorAll('input[name="showStyle"]')).map((box) => box.value);
+    return ["classic", "energetic", "elegant"].filter((key) => keys.includes(key));
+  }
+
+  function styleName(key) {
+    const box = document.querySelector('input[name="showStyle"][value="' + CSS.escape(key) + '"]');
+    const name = box && box.parentElement.querySelector("strong");
+    return name ? name.textContent : key;
+  }
+
+  function pickStyle(key) {
+    const box = document.querySelector('input[name="showStyle"][value="' + CSS.escape(key) + '"]');
+    if (box) box.checked = true;
+  }
+
+  // The same show in each built-in style, made one after another to compare.
+  async function generateAllStyles() {
+    if ($("generateAll").disabled) return;
+    const keys = builtInStyles();
+    const original = chosenStyle();
+    show.keepStyleResults = true;
+    show.styleResults = {};
+    renderStyleResults();
+    try {
+      for (const [index, key] of keys.entries()) {
+        pickStyle(key);
+        showMessage("generateStatus", "Making " + styleName(key) + " (" + (index + 1) + " of " +
+          keys.length + ")…");
+        await generateShow();
+        if (!resultIsCurrent()) break;
+        show.styleResults[key] = { result: show.result, config: show.resultConfig };
+        renderStyleResults();
+      }
+    } finally {
+      show.keepStyleResults = false;
+      const back = show.styleResults[original] ? original : Object.keys(show.styleResults)[0];
+      if (back) useStyleResult(back);
+      else if (original) pickStyle(original);
+      setStepEnabled();
+    }
+    const made = Object.keys(show.styleResults || {}).length;
+    if (made === keys.length) {
+      showMessage("generateStatus", "Made the show in all " + made + " styles. Pick one below to " +
+        "open, save or see its report, or save each one.", "good");
+    }
+  }
+
+  function useStyleResult(key) {
+    const entry = show.styleResults && show.styleResults[key];
+    if (!entry) return;
+    pickStyle(key);
+    rememberStyle();
+    show.result = entry.result;
+    show.resultConfig = entry.config;
+    updateGeneratedControls();
+    renderScore(entry.result);
+    $("showNotes").replaceChildren(...(entry.result.notes || []).map((note) => {
+      const item = document.createElement("li");
+      item.textContent = note;
+      return item;
+    }));
+    renderStyleResults();
+  }
+
+  function renderStyleResults() {
+    const box = $("styleResults");
+    box.replaceChildren();
+    const entries = Object.entries(show.styleResults || {});
+    box.classList.toggle("hidden", !entries.length);
+    for (const [key, entry] of entries) {
+      const row = document.createElement("div");
+      row.className = "style-result" + (key === chosenStyle() ? " current" : "");
+      const name = document.createElement("strong");
+      name.textContent = styleName(key);
+      const score = document.createElement("span");
+      const quality = entry.result.quality;
+      score.textContent = quality ? quality.score + "/100" : "made";
+      const use = document.createElement("button");
+      use.type = "button";
+      use.className = "tool-button subtle";
+      use.textContent = key === chosenStyle() ? "Showing" : "Show this one";
+      use.disabled = key === chosenStyle();
+      use.addEventListener("click", () => useStyleResult(key));
+      const save = document.createElement("button");
+      save.type = "button";
+      save.className = "tool-button";
+      save.textContent = "Save";
+      save.setAttribute("aria-label", "Save the " + styleName(key) + " show");
+      save.addEventListener("click", () => {
+        if (generatedActionsBlocked()) return;
+        const fileName = entry.result.file_name.replace(/\(generated\)/, "(" + styleName(key) + ")");
+        download(entry.result.sequence, fileName, "application/xml");
+      });
+      row.append(name, score, use, save);
+      box.appendChild(row);
     }
   }
 
@@ -4984,6 +5209,8 @@
       sendRequirements(show.raw, text);
     });
     $("generateShow").addEventListener("click", generateShow);
+    $("generateAll").addEventListener("click", generateAllStyles);
+    $("requirementSearch").addEventListener("input", filterPropPicker);
     $("makeTest").addEventListener("click", makeDisplayTest);
     $("batchFiles").addEventListener("change", async (event) => {
       const files = Array.from(event.target.files || []);
@@ -5004,6 +5231,14 @@
       learnStyle(files).finally(() => { event.target.value = ""; });
     });
     $("styleChoices").addEventListener("change", () => {
+      rememberStyle();
+      const made = show.styleResults && show.styleResults[chosenStyle()];
+      if (made && made.config === currentShowConfig()) {
+        // Already made in this style by "Make all three styles".
+        useStyleResult(chosenStyle());
+        showMessage("generateStatus", "Showing the " + styleName(chosenStyle()) + " show.", "good");
+        return;
+      }
       invalidateGeneratedResult();
       if (show.batchReady) {
         show.batchReady = false;
