@@ -727,13 +727,26 @@ def _piece(effect: Effect, start: int, end: int) -> Effect:
 
 
 def _punch(canvas: _Canvas, prop_id: str, channel: int, start: int, end: int,
-           color: str | None) -> bool:
+           color: str | None, dip: int = 0) -> bool:
     """Flash over whatever this channel is doing, cutting a gap for it.
 
-    Steps of a chase or fill are never cut: a movement must finish as planned.
+    Steps of a chase or fill are never cut: a movement must finish as planned. With
+    ``dip``, a channel lit just before goes dark for that long first, so the flash
+    reads as a hit even on a light that was already on.
     """
     key = (prop_id, channel)
     current = canvas.effects[key]
+    if dip and any(e.start_centisecond < start <= e.end_centisecond
+                   and e.movement_id is None for e in current):
+        start_cut = max(0, start - dip)
+        if not any(e.movement_id is not None and e.start_centisecond < start
+                   and start_cut < e.end_centisecond for e in current):
+            current = [p for e in current for p in (
+                [e] if e.end_centisecond <= start_cut or e.start_centisecond >= start else
+                ([_piece(e, e.start_centisecond, start_cut)]
+                 if e.start_centisecond < start_cut else [])
+                + ([_piece(e, start, e.end_centisecond)] if start < e.end_centisecond else []))]
+            canvas.effects[key] = current
     overlapping = [e for e in current
                    if e.start_centisecond < end and start < e.end_centisecond]
     if any(e.movement_id is not None for e in overlapping):
@@ -1670,6 +1683,76 @@ def _lyric_cues(analysis: dict[str, Any], display: Display, usable: set[str],
     return cues
 
 
+# ---------------------------------------------------------------- stabs
+
+# Strong hits closer together than this are one stab.
+STAB_SPACING = 15
+# A stab this close to a flash already planned is left to the flash.
+STAB_CLEAR = 8
+# A light already on goes dark this long before a stab, so the stab reads.
+STAB_DIP = 6
+
+
+def _strong_onsets(analysis: dict[str, Any], top_share: float) -> list[tuple[int, float]]:
+    """The song's strongest onsets (the top ``top_share`` by strength), with their
+    strength as a share of the strongest."""
+    found = [(_cs(float(o["time"])), float(o["strength"]))
+             for o in analysis.get("analysis", {}).get("onsets", [])
+             if isinstance(o, dict) and isinstance(o.get("time"), int | float)
+             and isinstance(o.get("strength"), int | float)]
+    if not found or top_share <= 0:
+        return []
+    ranked = sorted(strength for _, strength in found)
+    cut = ranked[min(len(ranked) - 1, int(len(ranked) * (1 - top_share)))]
+    top = ranked[-1] or 1.0
+    return sorted((t, strength / top) for t, strength in found if strength >= cut)
+
+
+def _stabs(planner: _Planner, analysis: dict[str, Any], windows: list[_Window],
+           sections: list[Any], groups: list[_Group],
+           active_in: Callable[[_Window], set[str]], taken: set[int], beat: int) -> list[int]:
+    """Light a share of the yard on each of the song's strongest hits, a different set
+    of groups each time; the very strongest light more, quiet parts less."""
+    style = planner.style
+    share, top_share, length = style.stabs
+    if share <= 0 or not groups:
+        return []
+    stabbed: list[int] = []
+    turn = 0
+    for time, strength in _strong_onsets(analysis, top_share):
+        home = next((w for w in windows if w.start + 5 <= time < w.end - 5), None)
+        if home is None:
+            continue
+        if stabbed and time - stabbed[-1] < STAB_SPACING:
+            continue
+        if any(abs(time - t) <= STAB_CLEAR for t in taken):
+            continue
+        here = active_in(home)
+        live = [g for g in groups if any(p in here for p in g.props)]
+        if not live:
+            continue
+        # Quieter parts answer with less of the yard.
+        level = sections[home.section_index].level
+        want = min(1.0, share * (1.5 if strength >= 0.6 else 1.0)
+                   * {LOW: 0.5, MID: 0.7}.get(level, 1.0))
+        total = sum(len(g.props) for g in live)
+        chosen: list[str] = []
+        for k in range(len(live)):
+            if len(chosen) >= want * total:
+                break
+            chosen.extend(p for p in live[(turn + k) % len(live)].props if p in here)
+        turn += max(1, len(live) // 3)
+        stop = min(home.end, time + min(length, max(8, beat // 2)))
+        hit = 0
+        for pid in chosen:
+            for channel in planner.channels(pid, home.section_index):
+                hit += _punch(planner.canvas, pid, channel, time, stop,
+                              planner.color(pid, channel), dip=STAB_DIP)
+        if hit:
+            stabbed.append(time)
+    return stabbed
+
+
 # ---------------------------------------------------------------- the finale
 
 # The closing hits: strong onsets this share of the song's strongest, at least this
@@ -2564,6 +2647,13 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
                 flashed += _punch(canvas, pid, channel, time, stop, planner.color(pid, channel))
         if flashed:
             moments.append((kind, time))
+    # Stabs: the song's strongest hits, on the beat or between, light a chunk of the
+    # yard, taking turns group by group, so the lights play the song's accents and
+    # not only its pulse.
+    stabbed = _stabs(planner, analysis, windows, sections, groups, active_in,
+                     {t for _, t in moments} | {t for _, t, _ in flashes}, beat)
+    if stabbed:
+        moments.append(("stabs", stabbed[0]))
     # Lyric cues: a prop the singer names lights on the word.
     for time, props in _lyric_cues(analysis, display, usable - held, music.duration):
         if final_hits and time >= final_hits[0]:
@@ -2599,7 +2689,8 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
     filled = _fill_dead_air(planner, canvas, music, windows, calm, usable, quiet)
     if filled:
         moments.extend(("calm_base", a) for a, _ in filled)
-    _on_one_grid(canvas, _sixteenths(music, sections), singing)
+    # The grid is the sixteenth notes plus the stabs, which keep the song's own timing.
+    _on_one_grid(canvas, sorted(set(_sixteenths(music, sections)) | set(stabbed)), singing)
 
     if moments:
         counts: dict[str, int] = defaultdict(int)
