@@ -116,13 +116,19 @@ def test_reads_channels_addresses_and_groups(tmp_path: Path) -> None:
     assert document.total_centiseconds == 1000
 
 
+@pytest.mark.parametrize("version", ["9", "13", "15", "20"])
+def test_any_save_file_version_reads(version: str) -> None:
+    document = parse_lms(s4_sequence(version=version))
+    assert len(document.channels) == 7
+    assert document.save_file_version == version
+
+
 @pytest.mark.parametrize(("content", "message"), [
     (b"", "empty"),
     (b"<sequence saveFileVersion='14'/>", "no channels"),
     (b"<lights/>", "not a Light-O-Rama sequence"),
     (b"<!DOCTYPE x [<!ENTITY a 'b'>]><sequence saveFileVersion='14'/>", "not a readable"),
     (b"<sequence saveFileVersion='15'><PreviewClass/></sequence>", "S5/S6"),
-    (b"<sequence saveFileVersion='9'><channels/></sequence>", "saveFileVersion"),
 ])
 def test_rejects_unsafe_or_unsupported_files(content: bytes, message: str) -> None:
     with pytest.raises(LmsError, match=message):
