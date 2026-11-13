@@ -49,7 +49,7 @@ from lor_sequence_builder.formation import Formation, formation
 from lor_sequence_builder.quality import DEAD_SHARE, DEAD_SPAN, QualityReport, lit_share
 from lor_sequence_builder.quality import check as check_quality
 from lor_sequence_builder.rules import RuleSet, select_props
-from lor_sequence_builder.rules.engine import Display, DisplayProp
+from lor_sequence_builder.rules.engine import ANCHOR_FLOOR, Display, DisplayProp
 from lor_sequence_builder.style import Style, get_style
 
 LOW, MID, HIGH = 0, 1, 2
@@ -549,6 +549,9 @@ class _Constraints:
     # Props that only follow another prop (whole circuits shared), by the prop they
     # follow.
     followers: dict[str, str] = field(default_factory=dict)
+    # Channels that stay at least this bright while the rest of their prop is lit and
+    # go dark with it (a mega tree's star), by prop.
+    anchors: dict[str, tuple[list[int], int]] = field(default_factory=dict)
 
 
 def _words(name: str) -> set[str]:
@@ -613,6 +616,11 @@ def _constraints(display: Display, rule_set: RuleSet, vocals_known: bool) -> _Co
                 if len(whole) > 1:
                     c.channels[pid] = whole[:1]
                     c.copies[(pid, whole[0])].extend((pid, ch) for ch in whole[1:])
+            if req.type == "anchor_channels":
+                count = prop.channel_count
+                chosen_channels = [c - 1 for c in req.params["channels"] if c - 1 < count]
+                if chosen_channels and len(chosen_channels) < count:
+                    c.anchors[pid] = (chosen_channels, int(req.params.get("min", ANCHOR_FLOOR)))
         if req.type == "move_direction":
             c.directions.append((set(chosen), req.params.get("movement", "chase"),
                                  req.params["direction"]))
@@ -724,6 +732,52 @@ def _piece(effect: Effect, start: int, end: int) -> Effect:
     kind = "on" if effect.kind == "fade" and first == last else effect.kind
     return Effect(effect.prop_id, effect.channel_index, start, end, kind, first, last,
                   effect.color, effect.movement_id)
+
+
+def _merge_spans(spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    merged: list[tuple[int, int]] = []
+    for a, b in sorted(spans):
+        if merged and a <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], b))
+        else:
+            merged.append((a, b))
+    return merged
+
+
+def _anchor(canvas: _Canvas, pid: str, count: int, anchors: list[int], floor: int) -> None:
+    """Anchor channels light only while the rest of the prop is lit, and then at
+    ``floor`` or more: a mega tree's star never shows alone, and never drops out of a
+    tree that is moving."""
+    rest = [e for c in range(count) if c not in anchors
+            for e in canvas.effects.get((pid, c), [])]
+
+    def shown(e: Effect) -> tuple[int, int]:
+        # A fade to or from dark shows nothing for its last (or first) moments.
+        span = e.end_centisecond - e.start_centisecond
+        a, b = e.start_centisecond, e.end_centisecond
+        if e.kind == "fade" and e.end_intensity == 0 and e.start_intensity > 0:
+            b -= max(1, span // (2 * e.start_intensity))
+        if e.kind == "fade" and e.start_intensity == 0 and e.end_intensity > 0:
+            a += max(1, span // (2 * e.end_intensity))
+        return a, b
+
+    lit = _merge_spans([s for e in rest if max(e.start_intensity, e.end_intensity) > 0
+                        for s in [shown(e)] if s[0] < s[1]])
+    for channel in anchors:
+        key = (pid, channel)
+        own = canvas.effects.get(key, [])
+        kept: list[Effect] = []
+        for a, b in lit:
+            marks = sorted({a, b} | {t for e in own for t in (e.start_centisecond, e.end_centisecond)
+                              if a < t < b})
+            for x, y in itertools.pairwise(marks):
+                mine = next((e for e in own if e.start_centisecond <= x
+                             and y <= e.end_centisecond), None)
+                first = max(_at(mine, x) if mine else 0, floor)
+                last = max(_at(mine, y) if mine else 0, floor)
+                kept.append(Effect(pid, channel, x, y, "on" if first == last else "fade",
+                                   first, last, mine.color if mine else None, None))
+        canvas.effects[key] = sorted(kept, key=lambda e: e.start_centisecond)
 
 
 def _punch(canvas: _Canvas, prop_id: str, channel: int, start: int, end: int,
@@ -1046,6 +1100,29 @@ class _Planner:
     def steady(self, pid: str, window: _Window, intensity: int, kind: str = "on") -> None:
         self.light(pid, window.section_index, window.start, window.end, kind, intensity)
 
+    def base(self, pid: str, window: _Window, intensity: int) -> None:
+        """A base that stays lit but never sits still: each bar hits brighter on the
+        downbeat, decays back over a beat, and holds."""
+        top = min(100, intensity + 40)
+        bars = [t for t in window.downbeats if window.start <= t < window.end - 10]
+        cursor = window.start
+        si = window.section_index
+        for k, t in enumerate(bars):
+            if t > cursor:
+                self.light(pid, si, cursor, t, "on", intensity)
+            end = bars[k + 1] if k + 1 < len(bars) else window.end
+            beat = next((b for b in window.beats if b > t), end) - t
+            flash = min(end, t + max(5, beat // 4))
+            settle = min(end, t + max(10, beat))
+            self.light(pid, si, t, flash, "on", top)
+            if settle > flash:
+                self.light(pid, si, flash, settle, "fade", top, intensity)
+            if end > settle:
+                self.light(pid, si, settle, end, "on", intensity)
+            cursor = end
+        if cursor < window.end:
+            self.light(pid, si, cursor, window.end, "on", intensity)
+
     def fall(self, members: list[str], section_index: int, start: int, intensity: int,
              limit: int, motion: tuple[str, str] = ("fall", "top_to_bottom")) -> bool:
         """Light a line of props one after another (a column from the top down, or a
@@ -1345,7 +1422,10 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
                 planner.steady(pid, window, intensity, "twinkle")
         elif prop.role == "star":
             motion, _ = style.part("star").at(level, variant)
-            planner.steady(pid, window, 100, "twinkle" if motion == "twinkle" else "on")
+            if motion == "base":
+                planner.base(pid, window, 60)
+            else:
+                planner.steady(pid, window, 100, "twinkle" if motion == "twinkle" else "on")
         elif prop.role == "singing_face":
             if level >= MID:
                 planner.steady(pid, window, 100)
@@ -1372,7 +1452,7 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
         intensity = gentle if role != "unknown" else max(30, gentle - 10)
         if motion == "base":
             for pid in members:
-                planner.steady(pid, window, {LOW: 30, MID: 50, HIGH: 70}[level])
+                planner.base(pid, window, {LOW: 30, MID: 50, HIGH: 70}[level])
         elif motion == "twinkle":
             for pid in members:
                 planner.steady(pid, window, {LOW: 40, MID: 60, HIGH: 80}[level], "twinkle")
@@ -1728,7 +1808,8 @@ def _stabs(planner: _Planner, analysis: dict[str, Any], windows: list[_Window],
         if any(abs(time - t) <= STAB_CLEAR for t in taken):
             continue
         here = active_in(home)
-        live = [g for g in groups if any(p in here for p in g.props)]
+        # Snowflakes only ever fall, top first, so they sit stabs out.
+        live = [g for g in groups if g.role != "snowflake" and any(p in here for p in g.props)]
         if not live:
             continue
         # Quieter parts answer with less of the yard.
@@ -2712,6 +2793,8 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
         notes.append("Arrangement: " + "; ".join(
             f"{counts[kind]} {names[kind]}" for kind in names if counts[kind]) + ".")
 
+    for pid, (anchors, floor) in constraints.anchors.items():
+        _anchor(canvas, pid, display.props[pid].channel_count, anchors, floor)
     for source, targets in constraints.copies.items():
         for pid, channel in targets:
             canvas.effects[(pid, channel)] = [

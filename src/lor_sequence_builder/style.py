@@ -35,7 +35,7 @@ GRIDS = ("phrase", "bar", "half_bar", "beat", "half", "sixteenth", "kick", "snar
 #   mega tree: rotate, spiral, fill_up, breathe, twinkle
 #   families of loose look-alikes (decorations, homemade trees): trade, breathe, pulse
 #   outlines: base, breathe, trade, pulse, twinkle
-#   star: hold, twinkle
+#   star: hold, base, twinkle
 MOTIONS = {
     "arch_row": ("chase", "bounce", "fill", "wave", "alternate"),
     "row": ("chase", "bounce", "fill", "wave", "alternate"),
@@ -43,7 +43,7 @@ MOTIONS = {
     "mega_tree": ("rotate", "spiral", "fill_up", "breathe", "twinkle"),
     "family": ("trade", "breathe", "pulse"),
     "outline": ("base", "breathe", "trade", "pulse", "twinkle"),
-    "star": ("hold", "twinkle"),
+    "star": ("hold", "base", "twinkle"),
 }
 
 # A motion at one level: one choice, or alternatives for repeats.
@@ -185,7 +185,7 @@ STYLES: dict[str, Style] = {
                          ("phrase", "phrase", "bar")),
             outline_row=Part(("alternate", "chase", ("chase", "bounce")),
                              ("half_bar", "kick", "kick")),
-            star=Part(("hold", "hold", "twinkle"), ("phrase", "phrase", "phrase")),
+            star=Part(("twinkle", "base", "twinkle"), ("phrase", "phrase", "phrase")),
         ),
         phrase_bars=4, entry="flash", arc=1, vary_repeats=True,
         spin_width=2, fall=(12, 20, 25),

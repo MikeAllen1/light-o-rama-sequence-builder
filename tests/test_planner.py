@@ -374,8 +374,10 @@ def test_back_to_back_holds_become_one_effect() -> None:
                     if e.prop_id == ids["Upper Roof"] and e.channel_index == 0),
                    key=lambda e: e.start_centisecond)
     assert holds
-    # Several phrases hold the roof at the same level; S6 gets one long effect, not many.
-    assert any(e.end_centisecond - e.start_centisecond > 800 for e in holds)
+    # The roof is a moving base: it hits each bar and settles, never sitting still for
+    # 4 seconds; and holds at the same level back to back are one effect, not many.
+    assert not any(e.kind == "on" and e.end_centisecond - e.start_centisecond >= 400
+                   for e in holds)
     for a, b in itertools.pairwise(holds):
         assert not (a.end_centisecond == b.start_centisecond and a.kind == b.kind == "on"
                     and a.start_intensity == b.start_intensity)
@@ -738,3 +740,26 @@ def test_the_closing_hits_light_left_then_right_then_everything() -> None:
     edge = max(finals, key=lambda p: abs(xs[p]))
     assert finals[middle] > finals[edge]
 
+
+
+def test_strong_hits_off_the_beat_get_stabs() -> None:
+    """The song's strongest onsets light part of the yard right on the hit, even
+    between beats, in styles that stab; Elegant does not."""
+    analysis = synthetic_analysis(duration=48.0)
+    beats = [b["time"] for b in analysis["analysis"]["beats"]]
+    # Hits a third of the way between beats (off the sixteenth grid), loud.
+    hits = [round(a + (b - a) / 3, 3) for a, b in itertools.pairwise(beats)][8:40:2]
+    onsets = analysis["analysis"].setdefault("onsets", [])
+    onsets.extend({"time": t, "strength": 30.0, "confidence": 1.0} for t in hits)
+    starts = {round(t * 100) for t in hits}
+    preview = classic_yard().element()
+    display = display_from_preview(preview)
+    rules = load_rule_set()
+    counts = {}
+    for key in ("classic", "energetic", "elegant"):
+        plan = plan_show(analysis, display, rules, style=get_style(key))
+        assert check_choreography(preview, plan.choreography, rules).ok
+        counts[key] = len(starts & {e.start_centisecond for e in plan.choreography.effects})
+    assert counts["classic"] >= len(starts) // 2
+    assert counts["energetic"] >= len(starts) // 2
+    assert counts["elegant"] == 0
