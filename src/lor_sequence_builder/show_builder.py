@@ -101,6 +101,8 @@ class _Session:
     generated_dir: Path | None = None
     # A WhisperX word file for the singing faces, when the user gave one.
     words_path: Path | None = None
+    # The song's vocals, split out once and reused for every style generated from it.
+    vocals_path: Path | None = None
     requirements: tuple[Requirement, ...] = ()
     batch: list[dict[str, Any]] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
@@ -330,6 +332,9 @@ class ShowSessions:
             session.audio_path = audio
             # A word file belongs to one song.
             session.words_path = None
+            if session.vocals_path is not None:
+                session.vocals_path.unlink(missing_ok=True)
+            session.vocals_path = None
             session.analysis_path = analysis
             session.audio_name = audio_name
             if old_audio is not None and old_audio.parent != session.path:
@@ -491,8 +496,14 @@ class ShowSessions:
                 if display_has_mouths(session.display, rule_set):
                     if sing and session.words_path is not None:
                         vocals = session.words_path
+                    elif sing and session.vocals_path is not None and \
+                            session.vocals_path.is_file():
+                        vocals = session.vocals_path
                     elif sing and separation_available():
-                        vocals = separate_vocals(session.audio_path, run / "vocals.wav")
+                        kept = session.path / f"vocals-{session.audio_revision}.wav"
+                        kept.unlink(missing_ok=True)
+                        vocals = separate_vocals(session.audio_path, kept)
+                        session.vocals_path = vocals
                     elif sing:
                         note = ("Singing faces need the vocals add-on (uv sync --extra vocals); "
                                 "the mouths stay still in this show.")
@@ -542,6 +553,8 @@ class ShowSessions:
                               *([show.vocals_note] if show.vocals_note and not note else [])],
                     "moments": [{"kind": k, "centisecond": t} for k, t in plan.moments],
                     "requirements": [describe_requirement(r) for r in session.requirements],
+                    "quality": None if plan.quality is None else plan.quality.to_dict(),
+                    "style": style,
                 }
             except BaseException:
                 if session.generated_dir != run:

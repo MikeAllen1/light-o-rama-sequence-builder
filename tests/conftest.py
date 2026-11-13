@@ -34,3 +34,10 @@ def _private_recent_shows(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
     monkeypatch.setattr("lor_sequence_builder.recent_shows.recent_folder",
                         lambda: tmp_path / "recent-shows")
 
+
+
+@pytest.fixture(autouse=True)
+def _private_last_display(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The remembered display goes to the test's own folder, never the user's."""
+    monkeypatch.setattr("lor_sequence_builder.last_display.last_folder",
+                        lambda: tmp_path / "last-display")

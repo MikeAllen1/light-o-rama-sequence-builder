@@ -22,7 +22,7 @@ import pytest
 from lor_sequence_builder import show_builder
 from lor_sequence_builder.loredit import effect_timing_problems, read_loredit
 from lor_sequence_builder.ui_server import SHOWS, SequencerRequestHandler
-from tests.display_builders import classic_yard
+from tests.display_builders import classic_yard, line_drawn_yard
 from tests.test_audio_analysis import _rhythmic_track
 from tests.test_planner import _preview
 
@@ -482,6 +482,8 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
             assert "BPM" in page.locator("#songStatus").inner_text()
             assert page.locator("#musicFilename").input_value() == "beat.wav"
             assert "S6 will look for beat.wav" in page.locator("#musicNote").inner_text()
+            # The audio file name is filled in from the song, under Advanced.
+            page.locator("#advancedOptions summary").click()
             page.locator("#musicFilename").fill("Beat.mp3")
             assert "your song file is beat.wav" in page.locator("#musicNote.warn").inner_text()
             page.locator("#musicFilename").fill("beat.mp3")
@@ -489,7 +491,7 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
             page.locator("#musicFilename").fill("beat.wav")
 
             page.locator("#requirementKind").select_option("never_use")
-            page.locator("#requirementProps").select_option("name:Mini Tree 1")
+            page.locator('#requirementPicker input[value="name:Mini Tree 1"]').check()
             page.locator("#addRequirement").click()
             page.locator("#requirementList li").first.wait_for()
             assert "Mini Tree 1" in page.locator("#requirementList").inner_text()
@@ -765,3 +767,92 @@ def test_an_unknown_style_is_refused_by_the_server(server: str, tmp_path: Path) 
     status, refused = _json(f"{server}/api/show/generate?token={started['token']}",
                             {"style": "disco"})
     assert status == 422 and "Unknown style" in refused["error"]
+
+
+def test_new_show_makes_all_three_styles_scores_them_and_remembers_the_display(
+        server: str, tmp_path: Path) -> None:
+    playwright_api = pytest.importorskip("playwright.sync_api")
+    preview = _preview(tmp_path, classic_yard())
+    audio = tmp_path / "beat.wav"
+    _rhythmic_track(audio, duration=16.0)
+    with playwright_api.sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1400, "height": 1000})
+        try:
+            page.goto(server + "/", wait_until="networkidle")
+            page.locator("#welcomeNewShow").click()
+            page.locator("#showDisplayFile").set_input_files(str(preview))
+            page.locator("#displayStatus.good").wait_for(timeout=20000)
+            # Props for a requirement are checkboxes with a search box.
+            page.locator("#requirementSearch").fill("mini tree 1")
+            visible = page.locator("#requirementPicker .prop-pick:not(.hidden)")
+            assert visible.count() >= 1
+            assert all("mini tree 1" in t.lower() for t in visible.all_inner_texts())
+            page.locator("#requirementSearch").fill("")
+            # Lip-sync and the song sit together in step 2.
+            assert page.locator("li.show-step").nth(1).locator("#wordsFile").count() == 1
+            page.locator("#showSongFile").set_input_files(str(audio))
+            page.locator("#songStatus.good").wait_for(timeout=60000)
+            # The audio file name comes from the song and waits under Advanced.
+            assert page.locator("#musicFilename").is_hidden()
+            assert page.locator("#musicFilename").input_value() == "beat.wav"
+
+            page.locator('input[name="showStyle"][value="energetic"]').check()
+            page.locator("#generateAll").click()
+            page.locator("#generateStatus.good").filter(has_text="all 3 styles").wait_for(
+                timeout=180000)
+            rows = page.locator("#styleResults .style-result")
+            assert rows.count() == 3
+            assert "/100" in page.locator("#scoreCard").inner_text()
+            assert "Every rule passed" in page.locator("#scoreCard").inner_text()
+            # It comes back on the style that was chosen, ready to save.
+            assert page.locator('input[name="showStyle"]:checked').get_attribute("value") \
+                == "energetic"
+            assert not page.locator("#saveGenerated").is_disabled()
+            rows.filter(has_text="Classic").get_by_role("button", name="Show this one").click()
+            assert page.locator('input[name="showStyle"]:checked').get_attribute("value") \
+                == "classic"
+            assert not page.locator("#saveGenerated").is_disabled()
+            with page.expect_download() as saved:
+                rows.filter(has_text="Elegant").get_by_role("button", name="Save").click()
+            assert saved.value.suggested_filename == "beat (Elegant).loredit"
+
+            # Next time, New show starts with the same display and style.
+            page.goto(server + "/", wait_until="networkidle")
+            page.locator("#welcomeNewShow").click()
+            page.locator("#displayStatus.good").filter(has_text="from last time").wait_for(
+                timeout=20000)
+            assert page.locator('input[name="showStyle"]:checked').get_attribute("value") \
+                == "classic"
+            assert not page.locator("#showSongFile").is_disabled()
+        finally:
+            browser.close()
+
+
+def test_vocals_are_split_once_for_every_style_of_the_same_song(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    preview = _preview(tmp_path, line_drawn_yard()).read_bytes()
+    song = tmp_path / "beat.wav"
+    _rhythmic_track(song, duration=12.0)
+    splits: list[Path] = []
+
+    def fake_split(audio: Path, output: Path) -> Path:
+        splits.append(Path(output))
+        shutil.copyfile(audio, output)
+        return Path(output)
+
+    monkeypatch.setattr(show_builder, "separation_available", lambda: True)
+    monkeypatch.setattr(show_builder, "separate_vocals", fake_split)
+    sessions = show_builder.ShowSessions()
+    token = sessions.start(preview, "yard.lorprev")["token"]
+    sessions.add_audio(token, song.read_bytes(), ".wav", "wav", "beat.wav", 4)
+    for style in ("classic", "energetic", "elegant"):
+        result = sessions.generate(token, {"sing": True, "style": style})
+        assert result["rules_ok"] and result["quality"]["score"] > 0
+        assert result["style"] == style
+    assert len(splits) == 1
+    # A new song is split again.
+    sessions.add_audio(token, song.read_bytes(), ".wav", "wav", "beat2.wav", 4)
+    sessions.generate(token, {"sing": True, "style": "classic"})
+    assert len(splits) == 2
+    sessions.close()

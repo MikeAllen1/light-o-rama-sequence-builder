@@ -282,7 +282,7 @@ canvas { display: block; }
 .step-note { font-size: 12px; color: var(--faint); margin-top: 4px; }
 .step-note.warn { color: var(--amber); }
 .tool-button.disabled { opacity: .45; pointer-events: none; }
-.requirement-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+.requirement-form { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; }
 .requirement-form select[multiple] { width: 240px; height: auto; padding: 4px; }
 .requirement-form .edit-field select:not([multiple]) { width: 190px; }
 .section-picks { display: grid; grid-template-columns: repeat(5, auto); gap: 4px 12px; font-size: 11px; color: var(--muted); }
@@ -364,3 +364,40 @@ canvas { display: block; }
 .add-props .hint { font-size: 12px; color: var(--muted); }
 .words-row { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin-top: 8px; }
 .words-row .edit-field { max-width: 220px; }
+/* New show: props as searchable checkboxes */
+.prop-picker-field { display: flex; flex-direction: column; gap: 4px; }
+.prop-picker-field input[type="search"] {
+  width: 260px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--panel-2); color: var(--text); font-size: 12px;
+}
+.prop-picker {
+  width: 260px; max-height: 168px; overflow-y: auto; padding: 4px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--panel);
+}
+.prop-pick { display: flex; align-items: center; gap: 6px; padding: 3px 4px; font-size: 12px; border-radius: 4px; cursor: pointer; }
+.prop-pick:hover { background: var(--panel-3); }
+.prop-pick input { accent-color: var(--accent); margin: 0; }
+.prop-pick.hidden { display: none; }
+/* New show: rarely needed settings */
+.advanced-options { margin: 10px 0 4px; font-size: 12px; color: var(--muted); }
+.advanced-options summary { cursor: pointer; width: max-content; }
+.advanced-options[open] summary { margin-bottom: 8px; }
+/* New show: how the show came out */
+.score-card {
+  margin-top: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel); max-width: 760px;
+}
+.score-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.score-number { font-size: 22px; color: var(--amber); }
+.score-number.good { color: var(--green); }
+.score-number.warn { color: var(--red); }
+.score-card ul { margin: 6px 0 0; padding-left: 18px; font-size: 12px; }
+.score-card li.note { color: var(--amber); }
+.score-card li.fixed { color: var(--muted); }
+/* New show: the same show in each style */
+.style-results { margin-top: 10px; display: grid; gap: 6px; max-width: 520px; }
+.style-result {
+  display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 10px;
+  padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px;
+}
+.style-result.current { border-color: var(--accent); }
