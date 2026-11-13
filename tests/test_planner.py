@@ -786,3 +786,20 @@ def test_classic_ripples_sometimes_mirror_out_from_the_middle() -> None:
     # Steps never go down as props get further from the middle.
     by_distance = sorted(zip(family, ranks, strict=True), key=lambda pr: abs(xs[pr[0]] - middle))
     assert [r for _, r in by_distance] == sorted(r for _, r in by_distance)
+
+
+def test_stepped_waves_walk_across_the_channels() -> None:
+    """A stepped bed never fades and never lights every channel brightly at once: the
+    bright step walks across the prop's channels half a beat at a time."""
+    from lor_sequence_builder.planner import _Canvas, _waves, _Window
+    beats = tuple(range(0, 1650, 50))
+    window = _Window(0, 0, 1600, beats, beats[::4], False)
+    canvas = _Canvas({"tree": 100})
+    for channel in range(4):
+        _waves(canvas, "tree", channel, 0, 1600, window, 60, None, stepped=True)
+    effects = [e for c in range(4) for e in canvas.effects[("tree", c)]]
+    assert effects and all(e.kind == "on" for e in effects)
+    for t in range(0, 1600, 25):
+        bright = [c for c in range(4) for e in canvas.effects[("tree", c)]
+                  if e.start_centisecond <= t < e.end_centisecond and e.start_intensity == 60]
+        assert len(bright) == 1
