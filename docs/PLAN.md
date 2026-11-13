@@ -1,12 +1,12 @@
 # Implementation Plan
 
-**Status:** Phases 0 through 6b are complete. Phase 7 (planner v1) and Phase 8 (vocals) are merged with their owner playback gates pending. Phases 11A and 11B (browser workspace, editing, and music review) are merged; the owner's visual acceptance on real sequences is pending. Phase 9 (planner v2) is in progress. Browser new-show creation and review-data validation are merged; owner visual acceptance remains pending.
-**Current phase:** Phase 9 — Planner v2 (motifs, call and response, signature moments, dynamics), alongside the owner-authorized browser new-show workflow.
-**Delivery boundary:** The browser is the development interface. Desktop packaging remains deferred until the final stage.
+**Status (2026-11-13):** Every phase is built, merged and shipped in the Windows app (v0.1.10), and every phase issue is closed. Phases 0 through 6b, 10, 11A and 11B and the final desktop delivery are complete. Phases 7, 8 and 9 are in use on the owner's display; their formal owner sign-off is not yet recorded. See [ROADMAP.md](ROADMAP.md) for what is still open.
+**Current work:** tuning shows against the owner's own sequences and professional (WOW Lights) sequences, and published sequencing advice.
+**Delivery:** The Windows desktop app wraps the same browser workspace; the browser workspace (`lor-sequence-ui`) still runs on its own from the source folder.
 
 ## Product objective and fixed requirements
 
-Build a display-independent Python engine and CLI that accept audio plus a required Light-O-Rama .lorprev preview and produce a new native S6 .loredit sequence. Add a browser-based sequencing workspace that opens real S6 sequences and matching audio on a shared, musically aligned timeline. The browser workspace is the development interface; desktop packaging is deferred until the final stage. Timeline JSON remains the single source of truth for generated choreography.
+Build a display-independent Python engine and CLI that accept audio plus a required Light-O-Rama .lorprev preview and produce a new native S6 .loredit sequence. Add a browser-based sequencing workspace that opens real S6 sequences and matching audio on a shared, musically aligned timeline. The Windows desktop app wraps the same workspace. Timeline JSON remains the single source of truth for generated choreography.
 
 - Preview is mandatory for analyze and generate. Missing, unreadable, malformed, unsupported-version, or zero-prop previews fail clearly.
 - Props, controllers, and channels must originate from the preview. Never invent or silently reassign them.
@@ -16,7 +16,7 @@ Build a display-independent Python engine and CLI that accept audio plus a requi
 - The preview is the only display input (owner decision, 2026-11-11). There is no separate prop map: the tool reads the preview the way a person would, and corrections are made in the S6 Preview Editor.
 - Rules are configuration; invalid Timelines fail with readable rule, prop/channel, and timestamp details.
 - Never modify/overwrite inputs. Output is a new file.
-- The browser workspace supports native effect editing, music review, checked export to a new file, and guided new-show creation. Desktop wrappers and packaging are deferred to the final stage. Controller upload and live hardware playback remain out of scope.
+- The browser workspace supports native effect editing, music review, checked export to a new file, and guided new-show creation. The Windows desktop app and installer wrap it. Controller upload and live hardware playback remain out of scope.
 - Python 3.12, uv + committed lockfile, Pydantic, Typer, pytest, Ruff, strict mypy.
 - XML via defusedxml; YAML safe_load; FFmpeg argument list, never shell=True; input size/type/duration limits.
 - No secrets in code; .env gitignored; pin dependencies and run pip-audit.
@@ -145,7 +145,7 @@ Owner request (2026-11-11): an optional step before building where a person can 
 **Not verified:** a live call to the translation service. It needs the owner's API key and is optional.
 
 ### Phase 7 — Planner v1
-**Status: Merged to master in PR #39; owner playback gate pending.**
+**Status: Shipped; formal owner sign-off not yet recorded.** Merged in PR #39. The owner has generated and played shows of their own songs in S6 since 2026-11-11, and the reviews below shaped Phases 9 and later.
 
 Build section-aware choreography with basic effects.
 
@@ -157,12 +157,12 @@ Build section-aware choreography with basic effects.
 
 **Owner check (2026-11-11), owner's display:** the owner played generated versions of their own songs: "They do work. I'm not sure they're "good" but they work and seem to be on beat" (one song checked). Feedback: too much is on; in the intro several beats get no reaction at all; a tambourine gets no lights. The owner most wants the planner to learn focus and handoffs. Changes in response: in each phrase only a few groups lead (two in quiet and mid sections, three in loud ones) while the rest rest against a dim base of outlines and star, and the lead passes left to right across the yard phrase by phrase; the mega tree keeps playing through mid and loud sections; the finale uses everything; every lead answers every beat even in quiet sections (the intro build-in that held props still was removed); the analysis now detects high-pitched hits (tambourine, sleigh bells, hi-hats) as `high_hits`, and where they come at least every other beat a sparkle group (snowflakes, else decorations) flashes on them.
 
-**Owner gate (pending):** generate a real song on the owner's display, open and play it in S6, and confirm it looks intentional rather than random or beat-flashing.
+**Owner gate (sign-off not yet recorded):** generate a real song on the owner's display, open and play it in S6, and confirm it looks intentional rather than random or beat-flashing.
 
 **Done when:** Real song produces a Timeline and sequence passing rules; owner opens and plays it in LOR and confirms it looks intentional, not random or merely beat-flashing; effects feel integrated into the arrangement. Mandatory human gate.
 
 ### Phase 8 — Vocals
-**Status: Built; owner playback gate pending.** Owner decisions (2026-11-11): accept a vocals-only file and offer built-in separation as an optional add-on; faces are built from separate props per part.
+**Status: Shipped; owner playback of singing faces on real vocals not yet recorded.** Owner decisions (2026-11-11): accept a vocals-only file and offer built-in separation as an optional add-on; faces are built from separate props per part.
 
 **Delivered:** `vocals.py` finds vocal regions (voice clearly present against the track's own loud level, breaths bridged, blips dropped) and syllables (onsets that follow a dip in the voice and reach a real note level, each held until the voice falls to half its peak) in a vocals-only track, and writes `<song>.vocals.json`. `vocal_separation.py` wraps the optional `audio-separator` add-on (`uv sync --extra vocals`) with the UVR MDX-Net vocal model (67 MB, cached in the user's cache folder) on the CPU. `generate` takes `--vocals` (audio, or a saved vocals JSON) or, when the display has face mouths and the add-on is installed, separates the vocals itself (`--no-vocals` skips). The planner sings each face built from separate props: parts are recognized by name (outline; mouth closed, half, open, O; eyes open, eyes closed; other parts), the outline and other parts hold through each vocal region, the eyes blink every 3 seconds, mouth shapes follow syllables by strength with the closed mouth between, exactly one mouth at a time, and faces rest outside vocal regions. The Timeline carries the vocal regions, so the mouth rules apply instead of reporting not applicable.
 
@@ -188,7 +188,7 @@ Build motifs, call-and-response, signature moments, and richer dynamics.
 
 **Done when:** Two different songs produce noticeably different shows; fixed inputs/config produce deterministic planning; owner confirms arrangements are distinct and coherent.
 
-**Status: Built; owner gate pending.**
+**Status: Shipped; formal owner sign-off not yet recorded.** Tuned through several rounds of owner review since (see the progress log).
 
 **Delivered:** the planner now arranges a show like a song.
 - **Motifs:** a part that comes back repeats its first look: the same groups lead in the same order, with the same colors, chase directions and beat footing. A name from the music review is trusted; a guessed label only counts when both parts are at least two phrases long and within 25% of each other's length. The last return of a loud part lifts with one more lead group.
@@ -207,7 +207,7 @@ Build motifs, call-and-response, signature moments, and richer dynamics.
 
 ### Phase 9c — Show styles
 
-**Status: Built; owner review pending.** Requested by the owner on 2026-11-11 after comparing similar products ("pick a style").
+**Status: Shipped.** Requested by the owner on 2026-11-11 after comparing similar products ("pick a style").
 
 `style.py` defines three styles: Classic (the previous behaviour, unchanged), High energy and Elegant. Each sets:
 - lead groups per energy level
@@ -226,7 +226,7 @@ A style never changes what each kind of prop follows or which rules apply. It is
 
 ### Phase 9d — Yard view
 
-**Status: Built; owner review pending.** Requested by the owner on 2026-11-11 ("I also want the visual preview").
+**Status: Shipped.** Requested by the owner on 2026-11-11 ("I also want the visual preview").
 
 The workspace draws the display from the preview embedded in every S6 sequence and lights each channel at the playhead from its effects:
 - props drawn as lines use their own points
@@ -240,11 +240,11 @@ It follows playback, or a clicked time when there is no audio, and opens automat
 **Verified:** a browser test on the demo show draws all 18 props, including the house outline, and lights more channels in the loud middle than at the start. The owner's real sequence and song were rendered locally (not committed), which caught missing-attribute handling that had collapsed line-drawn props to a point.
 
 ### Phase 10 — Polish
-Build reports, docs, Python package distribution, example profiles, and installation workflow. Desktop wrapping and desktop packaging are not part of this phase; they are final delivery work after the browser sequencing and editing workflows are complete.
+Build reports, docs, Python package distribution, example profiles, and installation workflow. Desktop packaging was delivered separately (Final delivery).
 
 **Done when:** A new user can install and run by following README; reports cover generated/used/unused props, unsupported items, rules compliance, and physical-test needs; examples are included; CI is green.
 
-**Status: Built (Issue #60); owner install check pending.**
+**Status: Complete (Issue #60).** The owner installs and uses the app.
 
 **Delivered:**
 - **Show report:** every generated show gets `<show>.report.html`, one page with no scripts or outside links. It covers:
@@ -269,9 +269,7 @@ Build reports, docs, Python package distribution, example profiles, and installa
 
 ### Phase 11A — Browser-first sequencing workspace
 
-**Status: In progress. Owner-authorized on 2026-11-11.**  
-**Issue:** #47 — Browser-first professional sequencing workspace  
-**Branch:** `ui/browser-sequencer-foundation`
+**Status: Complete (Issue #47, closed 2026-11-13).** Owner-authorized on 2026-11-11.
 
 Build the sequencing workspace in the browser using the existing Python engine. This is not a desktop application phase.
 
@@ -287,13 +285,15 @@ Build the sequencing workspace in the browser using the existing Python engine. 
 
 **Acceptance:** the four owner-provided reference sequences and their corresponding audio open correctly; prop/channel/effect/timing-grid counts and sequence duration match the source; waveform comes from actual audio samples; all musical and lighting lanes remain aligned through zoom/scroll; large sequences remain responsive; tests and CI pass.
 
-**Desktop boundary:** no Electron, Tauri, installer, or desktop wrapper work during Phase 11A. Desktop packaging is reserved for the final delivery stage.
+**Acceptance run (2026-11-13), on master after v0.1.10:** four real sequences, each with its song: three of the owner's (49 props, 81 channels; 33,250, 24,930 and 68,382 effects) and one WOW Lights sequence (36 props, 63 channels, 16,597 effects). Props, channels, effects, length and every native timing grid (one to six per file) matched the source; the waveform came from the audio; the analysis lanes stayed aligned through zoom; the 68k-effect sequence loaded in about 1 s; no page errors; no file changed.
+
+**Desktop boundary (at the time):** no desktop wrapper in Phase 11A; the desktop app came in Final delivery.
 
 ### Final delivery — Desktop wrapper and packaging
 
 This is the final product-delivery stage, not a prerequisite for sequencing development.
 
-**Status: Built; owner install check pending.** The owner asked on 2026-11-11 to get this into a desktop app.
+**Status: Complete.** The owner asked on 2026-11-11 to get this into a desktop app, and has installed and used it since v0.1.7. Releases are published from a `v*` tag or a published GitHub release. Code signing is still open (it needs the owner's Azure Trusted Signing account).
 
 - **`desktop.py`:** bundled FFmpeg first on the search path, the workspace server on a free loopback port, a native window through pywebview (WebView2 on Windows) with downloads allowed, and the default browser as a fallback. Clean shutdown. A windowed app logs to a file. `--self-test` checks an installed copy without a window.
 - **Reports and plan pictures** open in an in-app viewer (a sandboxed frame with no scripts, and a **Save a copy** button) instead of a new browser tab, so they work the same in the window and in a browser.
@@ -304,7 +304,7 @@ This is the final product-delivery stage, not a prerequisite for sequencing deve
 **Verified:** desktop tests cover the self-test passing and failing with the reason, the bundled FFmpeg path, the browser fallback, windowed logging and the packaging files. The browser test uses the in-app viewer. A local PyInstaller build on Linux, run with no FFmpeg and no Python on the search path, passed its self-test using its own bundled FFmpeg (the demo show took 9.7 s). The Windows build is proven in CI.
 
 
-Build the desktop wrapper, installer, and platform-specific packaging only after the browser-based sequencing workspace, musical analysis workflow, and editing/export capabilities are complete and accepted. Reuse the browser workspace and existing Python engine; do not fork the sequencing logic into a separate desktop implementation.
+The desktop app reuses the browser workspace and existing Python engine; do not fork the sequencing logic into a separate desktop implementation.
 
 **Done when:** the accepted browser sequencing workflow runs as a packaged desktop application, source and generated files remain protected by the same validation rules, installers are reproducible, and owner verification confirms the complete workflow on the target desktop environment.
 
@@ -329,8 +329,16 @@ See [GITHUB_WORKFLOW.md](GITHUB_WORKFLOW.md) for branch, PR, review, merge, and 
 
 ## Current progress log
 
-### Current implementation handoff — 2026-11-11
-This is the authoritative current-state summary; older entries below are chronological implementation history.
+### Current state — 2026-11-13
+This is the authoritative current-state summary; older entries below are chronological history.
+
+- **Released:** v0.1.10 (Windows installer and portable zip). Every phase issue is closed.
+- **Complete:** Phases 0–6b, 10, 11A, 11B and the desktop app.
+- **Shipped, sign-off not yet recorded:** Phases 7, 8 and 9. The owner has generated and played shows of their own songs in S6 throughout.
+- **Since Phase 9 (v0.1.8–v0.1.10):** shows follow the song's strongest hits; Classic was tuned against the owner's 20 hand-made sequences and compared with WOW Lights sequences; a "keep channels lit with the rest" requirement (the mega tree star); a "light when these words are sung" requirement; New show remembers the display and style, makes all three styles at once, shows a score card, and shows the styles before a display is loaded; a twinkle-out finish (Classic, Elegant) and a dark beat before the climax (Classic), from published sequencing advice. Release notes are in [docs/releases](releases/).
+- **Open:** owner sign-off for Phases 7–9; code signing; vocal-guided beats stay experimental.
+
+### Handoff — 2026-11-11 (historical)
 
 - **Phase 0–4b:** complete. Phase 4 rework was accepted in PR #17; the scratch-built sequence writer was completed and S6-checked in PR #23.
 - **Phase 5:** complete and owner-accepted; PR #29 merged.

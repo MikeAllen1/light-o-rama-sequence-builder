@@ -1,6 +1,6 @@
 # User guide
 
-This guide is for someone with a Light-O-Rama S6 display who wants a show for a song, without programming. Installation is in the [README quick start](../README.md#quick-start-windows-no-programming).
+This guide is for someone with a Light-O-Rama S6 display who wants a show for a song, without programming. Installation is at the top of the [README](../README.md).
 
 ## What you need
 
@@ -13,14 +13,14 @@ Nothing is uploaded anywhere. The program runs on your computer and reads your f
 
 ## Your first show
 
-1. Double-click **Start LOR Sequencer**. Your browser opens the workspace.
+1. Open **LOR Sequencer** from the Start menu. (Running from the source folder instead? Double-click **Start LOR Sequencer**; your browser opens the workspace.)
 2. Click **New show**. (Or right-click your preview in File Explorer and choose **Build a show with LOR Sequencer**: the app opens with that display already chosen. The installer offers this; S6 stays the program that opens previews.)
-3. **Your display:** choose the `.lorprev` (S5/S6) or one of your `.lms` sequences (S4). The panel says what it found, for example "7 arches, 14 snowflakes, 1 mega tree", and lists any prop it cannot sequence, with the reason (pixel and DMX props, or props that follow another prop).
-4. **The song:** choose the audio file. It is analyzed for beats, bars, sections, high-pitched hits (tambourine, sleigh bells) and cymbal crashes. A three-minute song takes a few seconds to half a minute.
-5. **Requirements (optional):** see below. Skip this the first time.
-6. **Generate:** pick a **style** (below), check the audio file name (it must match the song's name in the Sequencer's audio folder) and click **Generate show**.
-7. Click **Show report** and read **Check in the yard**. Click **Plan picture** for the whole show at a glance.
-8. Click **Save show** to get the `.loredit` file now, or **Open in the workspace** first.Click **Open in the workspace** (or **Yard view** at the top) to watch it: the yard view opens above the timeline, and play lights your yard with the song (the lanes above the tracks show the beats, bars and sections it followed). **Save sequence** saves it from there.
+3. **1 · Your display:** choose the `.lorprev` (S5/S6) or one of your `.lms` sequences (S4). The panel says what it found, for example "7 arches, 14 snowflakes, 1 mega tree", and lists any prop it cannot sequence, with the reason (pixel and DMX props, or props that follow another prop). Next time, New show starts with this display already chosen, and with the style you used.
+4. **2 · The song:** choose the audio file. It is analyzed for beats, bars, sections, strong hits, high-pitched hits (tambourine, sleigh bells) and cymbal crashes. A three-minute song takes a few seconds to half a minute. If your display has singing faces, **Sing the faces** is here too (see *Singing faces*).
+5. **3 · Requirements (optional):** see below. Skip this the first time.
+6. **4 · Generate:** pick a **style** (below) and click **Generate show**, or **Make all three styles** to build Classic, High energy and Elegant side by side, each with its own **Show this one** and **Save** buttons. The audio file name S6 will play fills in from the song; change it under **Advanced** if your audio folder names it differently.
+7. A **score card** appears: the quality score, whether every rule passed, how much of the yard is lit, and anything worth a look. **Show report** has the details and a **Check in the yard** list; **Plan picture** shows the whole show at a glance.
+8. Click **Open in the workspace** (or **Yard view** at the top) to watch it: the yard view opens above the timeline, and play lights your yard with the song (the lanes above the tracks show the beats, bars and sections it followed). **Save show** (or **Save sequence** in the workspace) saves the `.loredit`.
 9. Open the saved `.loredit` (S5/S6) or `.lms` (S4) in the Sequencer and play it.
 
 ## A new prop this year
@@ -68,15 +68,17 @@ To try everything without your own files, run `uv run lor-sequence-builder demo 
 - The song is split into parts (intro, verse, chorus, bridge, outro...) by loudness, and each part gets an energy level. Quiet parts use a few props; loud parts use more and brighter; the last part can use everything.
 - Each kind of prop has one job for the whole song, so you can tell what it is following: arches chase on the beat, mini trees trade beats, snowflakes fall (on the high-pitched hits when there are enough of them), a mega tree spins, decorations pulse, outlines and stars are the steady base.
 - Groups take turns leading, handing off across the yard. A part that comes back (a second chorus) repeats its look; mid-energy parts trade bars left and right; the phrase before a louder part builds up; crashes flash the display.
+- The song's strongest hits, on the beat or between, light a chunk of the yard, taking turns group by group, so the lights play the song's accents and not only its pulse.
+- Props that are not leading stay softly lit and move with the beat, so the yard never looks switched off in the middle of a song; where the song itself goes quiet, the yard goes dark.
 - Motion follows how your props are laid out in the preview: rows chase from one end to the other, stacked snowflakes fall top to bottom, little clusters ripple.
 
 ### Styles
 
 The same song and display can be arranged with a different character. A style decides what each kind of prop does and what it moves on (a whole phrase, a bar, every other beat, the beat, or the half beat), so the three styles are genuinely different shows, not one show with different brightness:
 
-- **Classic** (default): arches chase on the beat and bounce back in the big parts, decorations take turns, the mega tree spins, a flash opens each louder part.
+- **Classic** (default): arches chase on the beat and bounce back in the big parts, decorations take turns, the star beats along, the mega tree spins over a softly lit tree, a flash opens each louder part, the yard goes dark for one beat (all but the star) just before the last big chorus, and the show twinkles out at the end.
 - **High energy:** motion on the half beat, bouncing chases, outlines that pulse with the beat, a mega tree that fills bar by bar, sharp hits, and a dark beat before each big part so it lands harder. For fast, loud songs.
-- **Elegant:** motion on bars and phrases instead of beats. Arches fill and wave, decorations breathe one after another, the mega tree breathes and turns slowly, louder parts swell in, softer brightness, no flashes. For ballads.
+- **Elegant:** motion on bars and phrases instead of beats. Arches fill and wave, decorations breathe one after another, the mega tree breathes and turns slowly, louder parts swell in, softer brightness, no flashes. The show twinkles out at the end. For ballads.
 
 In every style, look-alike props (two reindeer, three pillars, a row of snowmen) never do exactly the same thing at the same time; they take turns, ripple or breathe one after another. The show grows as the song goes, so the last chorus is the fullest; Classic and High energy move a returning chorus or verse a new way, while Elegant repeats it. When a song ends on a few big hits, the left side lights on the first, the right on the next and the whole display on the last, then it fades out from the edges inward. Section changes are moved onto four-bar phrase lines unless you marked them yourself in a music review.
 
@@ -126,8 +128,8 @@ Passing the rules makes a show valid; the quality check asks whether it is good.
 
   | | Classic | High energy | Elegant |
   |---|---|---|---|
-  | A light stays on (beats) | 0.7-1.6 | 0.2-0.9 | 1.8 or more |
-  | Effects that fade | 30-70% | up to 45% | 35% or more |
+  | A light stays on (beats) | 0.25-2.5 | 0.2-0.9 | 1.2-8 |
+  | Effects that fade | 15-85% | up to 50% | 35% or more |
   | Yard lit in quiet and middle parts | up to 45% | up to 50% | up to 45% |
   | Yard lit in the loud parts | up to 75% | up to 75% | up to 75% |
   | Loud parts vs quiet ones | 1.5x or more | 1.7x or more | 1.3x or more |
@@ -157,6 +159,8 @@ Requirements are things the show must do on your display. In **New show**, choos
 - **Never use:** a prop that is broken or not up this year.
 - **Keep dark during:** for example keep the mega tree dark in the verses.
 - **Limit brightness to:** for example the mega tree at 60%.
+- **Keep channels lit with the rest:** for example the star on top of the mega tree, so it lights with the tree and never on its own.
+- **Light when these words are sung:** for example "fire" lights the homemade trees. Needs timed words (a word file or lyrics).
 
 They are remembered for that display, so the next show starts with them. On the command line, `lor-sequence-builder requirements display.lorprev` asks the same questions, and [examples/requirements](../examples/requirements/README.md) has ready-made profiles to use with `--rules`. With an Anthropic API key set (`ANTHROPIC_API_KEY`), requirements can also be typed in your own words.
 
@@ -169,6 +173,8 @@ uv sync --extra vocals
 ```
 
 It takes a few minutes per song. Without it, the mouths stay still and the report says so.
+
+In New show, step 2 has the face options: **Sing the faces** turns singing on, and **Word timings for lip-sync** takes a WhisperX word file (`.json`) for the song; when it has more than one singer, **Who the faces sing** picks the voice. With a word file, mouths follow the words, and props the singer names light on the word (see also the *Light when these words are sung* requirement). The vocals are split once per song, however many styles you make.
 
 ## Music review and lyrics
 
