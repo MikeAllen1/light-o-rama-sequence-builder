@@ -734,6 +734,10 @@ def _piece(effect: Effect, start: int, end: int) -> Effect:
                   effect.color, effect.movement_id)
 
 
+# The rest of a prop counts as lit for its anchor channels from this brightness.
+ANCHOR_DIM = 5
+
+
 def _merge_spans(spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
     merged: list[tuple[int, int]] = []
     for a, b in sorted(spans):
@@ -752,16 +756,19 @@ def _anchor(canvas: _Canvas, pid: str, count: int, anchors: list[int], floor: in
             for e in canvas.effects.get((pid, c), [])]
 
     def shown(e: Effect) -> tuple[int, int]:
-        # A fade to or from dark shows nothing for its last (or first) moments.
+        # A fade to or from dark shows next to nothing for its last (or first)
+        # moments: the anchor follows only while the rest is at ANCHOR_DIM or more.
         span = e.end_centisecond - e.start_centisecond
         a, b = e.start_centisecond, e.end_centisecond
-        if e.kind == "fade" and e.end_intensity == 0 and e.start_intensity > 0:
-            b -= max(1, span // (2 * e.start_intensity))
-        if e.kind == "fade" and e.start_intensity == 0 and e.end_intensity > 0:
-            a += max(1, span // (2 * e.end_intensity))
+        if e.kind == "fade" and e.end_intensity < ANCHOR_DIM <= e.start_intensity:
+            b -= -(-span * (ANCHOR_DIM - e.end_intensity)
+                   // (e.start_intensity - e.end_intensity))
+        if e.kind == "fade" and e.start_intensity < ANCHOR_DIM <= e.end_intensity:
+            a += -(-span * (ANCHOR_DIM - e.start_intensity)
+                   // (e.end_intensity - e.start_intensity))
         return a, b
 
-    lit = _merge_spans([s for e in rest if max(e.start_intensity, e.end_intensity) > 0
+    lit = _merge_spans([s for e in rest if max(e.start_intensity, e.end_intensity) >= ANCHOR_DIM
                         for s in [shown(e)] if s[0] < s[1]])
     for channel in anchors:
         key = (pid, channel)
@@ -781,7 +788,7 @@ def _anchor(canvas: _Canvas, pid: str, count: int, anchors: list[int], floor: in
 
 
 def _punch(canvas: _Canvas, prop_id: str, channel: int, start: int, end: int,
-           color: str | None, dip: int = 0) -> bool:
+           color: str | None, dip: int = 0, fade: bool = True) -> bool:
     """Flash over whatever this channel is doing, cutting a gap for it.
 
     Steps of a chase or fill are never cut: a movement must finish as planned. With
@@ -814,7 +821,8 @@ def _punch(canvas: _Canvas, prop_id: str, channel: int, start: int, end: int,
             kept.append(_piece(e, e.start_centisecond, start))
         if end < e.end_centisecond:
             kept.append(_piece(e, end, e.end_centisecond))
-    kept.append(Effect(prop_id, channel, start, end, "fade", cap, 0, color, None))
+    kept.append(Effect(prop_id, channel, start, end, "fade", cap, 0, color, None) if fade
+                else Effect(prop_id, channel, start, end, "on", cap, cap, color, None))
     canvas.effects[key] = sorted(kept, key=lambda e: e.start_centisecond)
     return True
 
@@ -1828,7 +1836,8 @@ def _stabs(planner: _Planner, analysis: dict[str, Any], windows: list[_Window],
         for pid in chosen:
             for channel in planner.channels(pid, home.section_index):
                 hit += _punch(planner.canvas, pid, channel, time, stop,
-                              planner.color(pid, channel), dip=STAB_DIP)
+                              planner.color(pid, channel), dip=STAB_DIP,
+                              fade=style.stab_fade)
         if hit:
             stabbed.append(time)
     return stabbed
@@ -2144,7 +2153,7 @@ def _music_marks(analysis: dict[str, Any], music: _Music,
 # Props that hit together on the beat and decay to a glow, and props that sparkle.
 PULSE_ROLES = frozenset({"outline", "decor", "unknown", "mini_tree", "icicles",
                          "singing_face"})
-BED_ROLES = frozenset({"arch", "snowflake", "mega_tree", "star"})
+BED_ROLES = frozenset({"arch", "mega_tree", "star"})
 # Where the song is this quiet (share of its loudest), the glow goes dark: a quiet
 # break reads as a blackout, not a dim yard.
 GLOW_QUIET = 0.2
@@ -2190,6 +2199,8 @@ def _glow(planner: _Planner, canvas: _Canvas, window: _Window, props: list[str],
     hit, hold = spec
     beats = list(window.beats)
     level = planner.sections[window.section_index].level
+    bars = [y - x for x, y in itertools.pairwise(window.downbeats)]
+    bar = sorted(bars)[len(bars) // 2] if bars else 200
     for pid in props:
         role = planner.display.props[pid].role
         for channel in planner.channels(pid, window.section_index):
@@ -2207,8 +2218,13 @@ def _glow(planner: _Planner, canvas: _Canvas, window: _Window, props: list[str],
                         canvas.put(pid, channel, a, b, "fade", max(1, level_a), level_b, color)
                     continue
                 if role in BED_ROLES:
-                    canvas.put(pid, channel, a, b, "shimmer" if level == HIGH else "twinkle",
-                               hold, color=color)
+                    # In the fuller parts, featured props rest on a texture through a
+                    # long held stretch: a twinkle, a shimmer in loud parts. Short gaps
+                    # between their moves, and quiet parts, stay dark, so the moves
+                    # still read and the song still builds.
+                    if level >= planner.style.beds_from and b - a >= 2 * bar:
+                        canvas.put(pid, channel, a, b,
+                                   "shimmer" if level == HIGH else "twinkle", hold, color=color)
                     continue
                 if hit <= hold or role not in PULSE_ROLES:
                     # A glow with no hit breathes gently, swelling once a bar.
@@ -2661,7 +2677,7 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
         elif window is last_window and not final_hits and section.level < HIGH:
             ramp = (spec[1], 0)
         props = sorted(p for p in active_in(window) - held
-                       if display.props[p].role in PULSE_ROLES)
+                       if display.props[p].role in PULSE_ROLES | BED_ROLES)
         _glow(planner, canvas, window, props, spec, dark, ramp)
 
     # Build-ups: the last phrase before a louder part rises from half brightness.
