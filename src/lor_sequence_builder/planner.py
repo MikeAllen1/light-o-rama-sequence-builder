@@ -49,7 +49,7 @@ from lor_sequence_builder.formation import Formation, formation
 from lor_sequence_builder.quality import DEAD_SHARE, DEAD_SPAN, QualityReport, lit_share
 from lor_sequence_builder.quality import check as check_quality
 from lor_sequence_builder.rules import RuleSet, select_props
-from lor_sequence_builder.rules.engine import Display, DisplayProp
+from lor_sequence_builder.rules.engine import ANCHOR_FLOOR, Display, DisplayProp
 from lor_sequence_builder.style import Style, get_style
 
 LOW, MID, HIGH = 0, 1, 2
@@ -549,6 +549,11 @@ class _Constraints:
     # Props that only follow another prop (whole circuits shared), by the prop they
     # follow.
     followers: dict[str, str] = field(default_factory=dict)
+    # Channels that stay at least this bright while the rest of their prop is lit and
+    # go dark with it (a mega tree's star), by prop.
+    anchors: dict[str, tuple[list[int], int]] = field(default_factory=dict)
+    # Words that light props when sung, from the owner's own cue list.
+    word_cues: dict[str, set[str]] = field(default_factory=lambda: defaultdict(set))
 
 
 def _words(name: str) -> set[str]:
@@ -613,6 +618,15 @@ def _constraints(display: Display, rule_set: RuleSet, vocals_known: bool) -> _Co
                 if len(whole) > 1:
                     c.channels[pid] = whole[:1]
                     c.copies[(pid, whole[0])].extend((pid, ch) for ch in whole[1:])
+            if req.type == "light_on_words":
+                for word in req.params["words"]:
+                    for token in re.findall(r"[a-z0-9']+", word.lower()):
+                        c.word_cues[token].add(pid)
+            if req.type == "anchor_channels":
+                count = prop.channel_count
+                chosen_channels = [c - 1 for c in req.params["channels"] if c - 1 < count]
+                if chosen_channels and len(chosen_channels) < count:
+                    c.anchors[pid] = (chosen_channels, int(req.params.get("min", ANCHOR_FLOOR)))
         if req.type == "move_direction":
             c.directions.append((set(chosen), req.params.get("movement", "chase"),
                                  req.params["direction"]))
@@ -726,14 +740,97 @@ def _piece(effect: Effect, start: int, end: int) -> Effect:
                   effect.color, effect.movement_id)
 
 
+# The rest of a prop counts as lit for its anchor channels from this brightness.
+ANCHOR_DIM = 1
+
+
+def _effect_kinds(effects: tuple[Effect, ...], movements: list[Movement]) -> str:
+    """What the show is made of, in the three kinds the owner sorts effects into:
+    native LOR effects, moves built from them, and anything the controllers cannot
+    show (always none: every effect is one a dimmable channel plays)."""
+    kinds: dict[str, int] = defaultdict(int)
+    for e in effects:
+        kinds[{"on": "intensity", "fade": "fade"}.get(e.kind, e.kind)] += 1
+    native = ", ".join(f"{count} {kind}" for kind, count in sorted(kinds.items()))
+    moves: dict[str, int] = defaultdict(int)
+    for m in movements:
+        moves[m.kind] += 1
+    built = ", ".join(f"{count} {kind}{'s' if count != 1 else ''}"
+                      for kind, count in sorted(moves.items())) or "none"
+    return (f"Effects: native LOR effects ({native}); moves built from them ({built}); "
+            "nothing the controllers cannot show.")
+
+
+def _merge_spans(spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    merged: list[tuple[int, int]] = []
+    for a, b in sorted(spans):
+        if merged and a <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], b))
+        else:
+            merged.append((a, b))
+    return merged
+
+
+def _anchor(canvas: _Canvas, pid: str, count: int, anchors: list[int], floor: int) -> None:
+    """Anchor channels light only while the rest of the prop is lit, and then at
+    ``floor`` or more: a mega tree's star never shows alone, and never drops out of a
+    tree that is moving."""
+    rest = [e for c in range(count) if c not in anchors
+            for e in canvas.effects.get((pid, c), [])]
+
+    def shown(e: Effect) -> tuple[int, int]:
+        # A fade to or from dark shows next to nothing for its last (or first)
+        # moments: the anchor follows only while the rest is at ANCHOR_DIM or more.
+        span = e.end_centisecond - e.start_centisecond
+        a, b = e.start_centisecond, e.end_centisecond
+        if e.kind == "fade" and e.end_intensity < ANCHOR_DIM <= e.start_intensity:
+            b -= -(-span * (ANCHOR_DIM - e.end_intensity)
+                   // (e.start_intensity - e.end_intensity))
+        if e.kind == "fade" and e.start_intensity < ANCHOR_DIM <= e.end_intensity:
+            a += -(-span * (ANCHOR_DIM - e.start_intensity)
+                   // (e.end_intensity - e.start_intensity))
+        return a, b
+
+    lit = _merge_spans([s for e in rest if max(e.start_intensity, e.end_intensity) >= ANCHOR_DIM
+                        for s in [shown(e)] if s[0] < s[1]])
+    for channel in anchors:
+        key = (pid, channel)
+        own = canvas.effects.get(key, [])
+        kept: list[Effect] = []
+        for a, b in lit:
+            marks = sorted({a, b} | {t for e in own for t in (e.start_centisecond, e.end_centisecond)
+                              if a < t < b})
+            for x, y in itertools.pairwise(marks):
+                mine = next((e for e in own if e.start_centisecond <= x
+                             and y <= e.end_centisecond), None)
+                first = max(_at(mine, x) if mine else 0, floor)
+                last = max(_at(mine, y) if mine else 0, floor)
+                kept.append(Effect(pid, channel, x, y, "on" if first == last else "fade",
+                                   first, last, mine.color if mine else None, None))
+        canvas.effects[key] = sorted(kept, key=lambda e: e.start_centisecond)
+
+
 def _punch(canvas: _Canvas, prop_id: str, channel: int, start: int, end: int,
-           color: str | None) -> bool:
+           color: str | None, dip: int = 0, fade: bool = True) -> bool:
     """Flash over whatever this channel is doing, cutting a gap for it.
 
-    Steps of a chase or fill are never cut: a movement must finish as planned.
+    Steps of a chase or fill are never cut: a movement must finish as planned. With
+    ``dip``, a channel lit just before goes dark for that long first, so the flash
+    reads as a hit even on a light that was already on.
     """
     key = (prop_id, channel)
     current = canvas.effects[key]
+    if dip and any(e.start_centisecond < start <= e.end_centisecond
+                   and e.movement_id is None for e in current):
+        start_cut = max(0, start - dip)
+        if not any(e.movement_id is not None and e.start_centisecond < start
+                   and start_cut < e.end_centisecond for e in current):
+            current = [p for e in current for p in (
+                [e] if e.end_centisecond <= start_cut or e.start_centisecond >= start else
+                ([_piece(e, e.start_centisecond, start_cut)]
+                 if e.start_centisecond < start_cut else [])
+                + ([_piece(e, start, e.end_centisecond)] if start < e.end_centisecond else []))]
+            canvas.effects[key] = current
     overlapping = [e for e in current
                    if e.start_centisecond < end and start < e.end_centisecond]
     if any(e.movement_id is not None for e in overlapping):
@@ -747,7 +844,8 @@ def _punch(canvas: _Canvas, prop_id: str, channel: int, start: int, end: int,
             kept.append(_piece(e, e.start_centisecond, start))
         if end < e.end_centisecond:
             kept.append(_piece(e, end, e.end_centisecond))
-    kept.append(Effect(prop_id, channel, start, end, "fade", cap, 0, color, None))
+    kept.append(Effect(prop_id, channel, start, end, "fade", cap, 0, color, None) if fade
+                else Effect(prop_id, channel, start, end, "on", cap, cap, color, None))
     canvas.effects[key] = sorted(kept, key=lambda e: e.start_centisecond)
     return True
 
@@ -1032,6 +1130,29 @@ class _Planner:
 
     def steady(self, pid: str, window: _Window, intensity: int, kind: str = "on") -> None:
         self.light(pid, window.section_index, window.start, window.end, kind, intensity)
+
+    def base(self, pid: str, window: _Window, intensity: int) -> None:
+        """A base that stays lit but never sits still: each bar hits brighter on the
+        downbeat, decays back over a beat, and holds."""
+        top = min(100, intensity + 40)
+        bars = [t for t in window.downbeats if window.start <= t < window.end - 10]
+        cursor = window.start
+        si = window.section_index
+        for k, t in enumerate(bars):
+            if t > cursor:
+                self.light(pid, si, cursor, t, "on", intensity)
+            end = bars[k + 1] if k + 1 < len(bars) else window.end
+            beat = next((b for b in window.beats if b > t), end) - t
+            flash = min(end, t + max(5, beat // 4))
+            settle = min(end, t + max(10, beat))
+            self.light(pid, si, t, flash, "on", top)
+            if settle > flash:
+                self.light(pid, si, flash, settle, "fade", top, intensity)
+            if end > settle:
+                self.light(pid, si, settle, end, "on", intensity)
+            cursor = end
+        if cursor < window.end:
+            self.light(pid, si, cursor, window.end, "on", intensity)
 
     def fall(self, members: list[str], section_index: int, start: int, intensity: int,
              limit: int, motion: tuple[str, str] = ("fall", "top_to_bottom")) -> bool:
@@ -1332,7 +1453,10 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
                 planner.steady(pid, window, intensity, "twinkle")
         elif prop.role == "star":
             motion, _ = style.part("star").at(level, variant)
-            planner.steady(pid, window, 100, "twinkle" if motion == "twinkle" else "on")
+            if motion == "base":
+                planner.base(pid, window, 60)
+            else:
+                planner.steady(pid, window, 100, "twinkle" if motion == "twinkle" else "on")
         elif prop.role == "singing_face":
             if level >= MID:
                 planner.steady(pid, window, 100)
@@ -1359,7 +1483,7 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
         intensity = gentle if role != "unknown" else max(30, gentle - 10)
         if motion == "base":
             for pid in members:
-                planner.steady(pid, window, {LOW: 30, MID: 50, HIGH: 70}[level])
+                planner.base(pid, window, {LOW: 30, MID: 50, HIGH: 70}[level])
         elif motion == "twinkle":
             for pid in members:
                 planner.steady(pid, window, {LOW: 40, MID: 60, HIGH: 80}[level], "twinkle")
@@ -1373,7 +1497,9 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
             # hit, so no two of them ever share a timeline.
             gaps = [y - x for x, y in itertools.pairwise(window.beats)]
             sixteenth = max(5, (sorted(gaps)[len(gaps) // 2] if gaps else 50) // 4)
-            for i, pid in enumerate(members):
+            ranks = (_mirror_ranks(planner, members) if style.mirror and flip
+                     else list(range(len(members))))
+            for i, pid in zip(ranks, members, strict=True):
                 shifted = [(min(b - 5, a + (i % 4) * sixteenth), b) for a, b in spans]
                 if i < 4:
                     planner.hits(pid, window, shifted, intensity)
@@ -1389,6 +1515,29 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
             times = list(window.beats[(-window.offset) % step::step])
         planner.falls(window, columns, times, gentle, reverse=flip, motion=snow.movement,
                       bursts=bursts)
+
+
+def _snow_bed(planner: _Planner, window: _Window, here: set[str],
+              dark: list[tuple[int, int]]) -> None:
+    """While the snowflakes are not leading, they keep falling gently in the
+    background, one column after another on the style's beat."""
+    every = planner.style.snow_every
+    columns = [[p for p in line if p in here] for line in planner.snow.lines]
+    columns = [c for c in columns if c]
+    if every <= 0 or not columns or len(window.beats) < 2:
+        return
+    level = planner.sections[window.section_index].level
+    if level < min(planner.style.beds_from, MID):
+        return
+    gaps = [y - x for x, y in itertools.pairwise(window.beats)]
+    step = max(10, round(every * sorted(gaps)[len(gaps) // 2]))
+    # Below the style's bed level the snow falls at half the pace.
+    if level < planner.style.beds_from:
+        step *= 2
+    times = [t for t in range(window.beats[0], window.end - 10, step)
+             if not any(a <= t < b for a, b in dark)]
+    intensity = max(30, planner.style.brightness[level] * 7 // 10)
+    planner.falls(window, columns, times, intensity, motion=planner.snow.movement)
 
 
 def _multi_segment(planner: _Planner, pid: str) -> bool:
@@ -1496,9 +1645,12 @@ def _sparkle(planner: _Planner, window: _Window, props: list[str], hits: list[in
     if columns or bursts:
         # One fall per hit, but never closer together than a column takes to start
         # falling, so each fall reads.
+        gaps = [y - x for x, y in itertools.pairwise(window.beats)]
+        beat = sorted(gaps)[len(gaps) // 2] if gaps else 50
+        spacing = max(SPARKLE_SPACING, round(planner.style.sparkle_every * beat))
         spaced: list[int] = []
         for hit in hits:
-            if not spaced or hit - spaced[-1] >= SPARKLE_SPACING:
+            if not spaced or hit - spaced[-1] >= spacing:
                 spaced.append(hit)
         level = planner.sections[window.section_index].level
         planner.falls(window, columns, spaced, {LOW: 60, MID: 85, HIGH: 100}[level],
@@ -1624,7 +1776,8 @@ def _forms(word: str) -> set[str]:
 
 
 def _lyric_cues(analysis: dict[str, Any], display: Display, usable: set[str],
-                duration: int) -> list[tuple[int, list[str]]]:
+                duration: int, extra: dict[str, set[str]] | None = None
+                ) -> list[tuple[int, list[str]]]:
     """When a sung word names props ("tree", "star", or a word of a prop's own name),
     the time of the word and the props it names."""
     lyrics = analysis.get("lyrics")
@@ -1641,6 +1794,9 @@ def _lyric_cues(analysis: dict[str, Any], display: Display, usable: set[str],
         for word, roles in _ROLE_WORDS.items():
             if prop.role in roles:
                 names[word].add(pid)
+    for word, chosen in (extra or {}).items():
+        for form in _forms(word):
+            names[form].update(p for p in chosen if p in usable)
     spoken: list[tuple[int, str]] = []
     for line in lines:
         if not isinstance(line, dict) or not isinstance(line.get("start"), int | float):
@@ -1665,6 +1821,78 @@ def _lyric_cues(analysis: dict[str, Any], display: Display, usable: set[str],
                 last[p] = time
             cues.append((time, props))
     return cues
+
+
+# ---------------------------------------------------------------- stabs
+
+# Strong hits closer together than this are one stab.
+STAB_SPACING = 15
+# A stab this close to a flash already planned is left to the flash.
+STAB_CLEAR = 8
+# A light already on goes dark this long before a stab, so the stab reads.
+STAB_DIP = 6
+
+
+def _strong_onsets(analysis: dict[str, Any], top_share: float) -> list[tuple[int, float]]:
+    """The song's strongest onsets (the top ``top_share`` by strength), with their
+    strength as a share of the strongest."""
+    found = [(_cs(float(o["time"])), float(o["strength"]))
+             for o in analysis.get("analysis", {}).get("onsets", [])
+             if isinstance(o, dict) and isinstance(o.get("time"), int | float)
+             and isinstance(o.get("strength"), int | float)]
+    if not found or top_share <= 0:
+        return []
+    ranked = sorted(strength for _, strength in found)
+    cut = ranked[min(len(ranked) - 1, int(len(ranked) * (1 - top_share)))]
+    top = ranked[-1] or 1.0
+    return sorted((t, strength / top) for t, strength in found if strength >= cut)
+
+
+def _stabs(planner: _Planner, analysis: dict[str, Any], windows: list[_Window],
+           sections: list[Any], groups: list[_Group],
+           active_in: Callable[[_Window], set[str]], taken: set[int], beat: int) -> list[int]:
+    """Light a share of the yard on each of the song's strongest hits, a different set
+    of groups each time; the very strongest light more, quiet parts less."""
+    style = planner.style
+    share, top_share, length = style.stabs
+    if share <= 0 or not groups:
+        return []
+    stabbed: list[int] = []
+    turn = 0
+    for time, strength in _strong_onsets(analysis, top_share):
+        home = next((w for w in windows if w.start + 5 <= time < w.end - 5), None)
+        if home is None:
+            continue
+        if stabbed and time - stabbed[-1] < STAB_SPACING:
+            continue
+        if any(abs(time - t) <= STAB_CLEAR for t in taken):
+            continue
+        here = active_in(home)
+        # Snowflakes only ever fall, top first, so they sit stabs out.
+        live = [g for g in groups if g.role != "snowflake" and any(p in here for p in g.props)]
+        if not live:
+            continue
+        # Quieter parts answer with less of the yard.
+        level = sections[home.section_index].level
+        want = min(1.0, share * (1.5 if strength >= 0.6 else 1.0)
+                   * {LOW: 0.5, MID: 0.7}.get(level, 1.0))
+        total = sum(len(g.props) for g in live)
+        chosen: list[str] = []
+        for k in range(len(live)):
+            if len(chosen) >= want * total:
+                break
+            chosen.extend(p for p in live[(turn + k) % len(live)].props if p in here)
+        turn += max(1, len(live) // 3)
+        stop = min(home.end, time + min(length, max(8, beat // 2)))
+        hit = 0
+        for pid in chosen:
+            for channel in planner.channels(pid, home.section_index):
+                hit += _punch(planner.canvas, pid, channel, time, stop,
+                              planner.color(pid, channel), dip=STAB_DIP,
+                              fade=style.stab_fade)
+        if hit:
+            stabbed.append(time)
+    return stabbed
 
 
 # ---------------------------------------------------------------- the finale
@@ -1935,7 +2163,12 @@ def _joined(effects: list[Effect]) -> list[Effect]:
 # ---------------------------------------------------------------- quality
 
 # Moments that light the whole yard at once.
+# A chorus at the same loudness as a verse takes the other look.
+CHORUS_LABELS = frozenset({"chorus", "refrain", "hook"})
+VERSE_LABELS = frozenset({"verse", "pre-chorus"})
 ACCENT_MOMENTS = frozenset({"crash", "return", "lift"})
+# Swells into louder parts are at least this far apart (centiseconds).
+SWELL_SPACING = 2500
 
 # The song counts as quiet where it is this share of its loudest or less.
 QUIET_ENERGY = 0.08
@@ -1977,7 +2210,7 @@ def _music_marks(analysis: dict[str, Any], music: _Music,
 # Props that hit together on the beat and decay to a glow, and props that sparkle.
 PULSE_ROLES = frozenset({"outline", "decor", "unknown", "mini_tree", "icicles",
                          "singing_face"})
-BED_ROLES = frozenset({"arch", "snowflake", "mega_tree", "star"})
+BED_ROLES = frozenset({"arch", "mega_tree", "star"})
 # Where the song is this quiet (share of its loudest), the glow goes dark: a quiet
 # break reads as a blackout, not a dim yard.
 GLOW_QUIET = 0.2
@@ -2023,6 +2256,8 @@ def _glow(planner: _Planner, canvas: _Canvas, window: _Window, props: list[str],
     hit, hold = spec
     beats = list(window.beats)
     level = planner.sections[window.section_index].level
+    bars = [y - x for x, y in itertools.pairwise(window.downbeats)]
+    bar = sorted(bars)[len(bars) // 2] if bars else 200
     for pid in props:
         role = planner.display.props[pid].role
         for channel in planner.channels(pid, window.section_index):
@@ -2040,8 +2275,22 @@ def _glow(planner: _Planner, canvas: _Canvas, window: _Window, props: list[str],
                         canvas.put(pid, channel, a, b, "fade", max(1, level_a), level_b, color)
                     continue
                 if role in BED_ROLES:
-                    canvas.put(pid, channel, a, b, "shimmer" if level == HIGH else "twinkle",
-                               hold, color=color)
+                    # In the fuller parts, featured props rest on a texture through a
+                    # long held stretch: a twinkle, a shimmer in loud parts. Short gaps
+                    # between their moves, and quiet parts, stay dark, so the moves
+                    # still read and the song still builds.
+                    if level >= planner.style.beds_from and b - a >= 2 * bar:
+                        count = planner.display.props[pid].channel_count
+                        outer = role == "mega_tree" and count >= 4 and not (
+                            count // 4 <= channel < count - count // 4)
+                        if outer:
+                            # A mega tree's outer channels carry low waves that
+                            # decay each bar, under the center's texture.
+                            _waves(canvas, pid, channel, a, b, window, hold, color)
+                        else:
+                            canvas.put(pid, channel, a, b,
+                                       "shimmer" if level == HIGH else "twinkle", hold,
+                                       color=color)
                     continue
                 if hit <= hold or role not in PULSE_ROLES:
                     # A glow with no hit breathes gently, swelling once a bar.
@@ -2059,10 +2308,14 @@ def _glow(planner: _Planner, canvas: _Canvas, window: _Window, props: list[str],
                     if cursor < b:
                         canvas.put(pid, channel, cursor, b, "on", hold, color=color)
                     continue
-                # Hit on each beat (each half beat in loud parts), decay to the glow by
-                # the next.
-                pulses = beats if level < HIGH else sorted(
+                # Hit on each beat (each half beat in loud parts, for styles that drive
+                # that hard), decay to the glow by the next.
+                pulses = beats if level < HIGH or not planner.style.glow_half_beats else sorted(
                     {*beats, *((x + y) // 2 for x, y in itertools.pairwise(beats))})
+                if planner.style.glow_every > 1:
+                    # A calmer glow hits every other beat, counted from the bar.
+                    pulses = [t for t in pulses
+                              if _beat_in_bar(window, t) % planner.style.glow_every == 0]
                 marks = [t for t in pulses if a <= t < b - 10]
                 cursor = a
                 for k, t in enumerate(marks):
@@ -2079,6 +2332,44 @@ def _glow(planner: _Planner, canvas: _Canvas, window: _Window, props: list[str],
                 if cursor < b:
                     canvas.put(pid, channel, cursor, b, "on", hold, color=color)
 
+
+
+# Props this close to the same distance from the middle of their family are a
+# mirrored pair.
+MIRROR_TOLERANCE = 0.08
+
+
+def _mirror_ranks(planner: _Planner, members: list[str]) -> list[int]:
+    """Each member's step in a ripple that starts in the middle of the family and runs
+    out to both sides at once: props mirrored across the middle share a step."""
+    xs = {pid: (planner.display.props[pid].center or (0.0, 0.0))[0] for pid in members}
+    middle = (min(xs.values()) + max(xs.values())) / 2 if xs else 0.0
+    order = sorted(members, key=lambda pid: (abs(xs[pid] - middle), xs[pid]))
+    ranks: dict[str, int] = {}
+    rank, tier = -1, None
+    for pid in order:
+        distance = abs(xs[pid] - middle)
+        if tier is None or distance - tier > MIRROR_TOLERANCE:
+            rank += 1
+            tier = distance
+        ranks[pid] = rank
+    return [ranks[pid] for pid in members]
+
+
+def _beat_in_bar(window: _Window, time: int) -> int:
+    """How many beats into its bar a time falls (0 on the downbeat)."""
+    bar = max((d for d in window.downbeats if d <= time), default=window.beats[0])
+    return sum(1 for x in window.beats if bar <= x < time)
+
+
+def _waves(canvas: _Canvas, pid: str, channel: int, a: int, b: int, window: _Window,
+           level: int, color: str | None) -> None:
+    """Low waves: from each downbeat the channel decays from ``level`` to a third of
+    it by the next."""
+    marks = [a] + [t for t in window.downbeats if a + 20 <= t < b - 20] + [b]
+    low = max(1, level // 3)
+    for x, y in itertools.pairwise(marks):
+        canvas.put(pid, channel, x, y, "fade", level, low, color)
 
 
 def _free_gaps(canvas: _Canvas, key: tuple[str, int], start: int,
@@ -2327,6 +2618,7 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
     # How many times this part has come round before: styles that vary repeats move
     # differently each time.
     occurrence: dict[int, int] = {}
+    verse_levels = {s.level for s in sections if s.label.lower() in VERSE_LABELS}
     seen_key: dict[tuple[str, int], int] = defaultdict(int)
 
     def active_in(window: _Window) -> set[str]:
@@ -2353,6 +2645,10 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
             planner.turns = {}
             key = keys[si]
             occurrence[si] = seen_key[key] if style.vary_repeats else 0
+            # A chorus as loud as a verse takes the other look, so the two read
+            # differently (where the style offers a choice at that loudness).
+            if label in CHORUS_LABELS and section.level in verse_levels:
+                occurrence[si] += 1
             seen_key[key] += 1
             if key in motif_turn and label not in ONE_OFF_LABELS and _same_part(
                     sections[motif_first[key]], section, music):
@@ -2361,7 +2657,7 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
                 section_first[si] = motif_first[key]
                 section_extra[si] = 1 if section.level == HIGH and last_of[key] == si else 0
                 moments.append(("repeat", section.start_centisecond))
-                if occurrence[si]:
+                if seen_key[key] > 1 and style.vary_repeats:
                     moments.append(("variation", section.start_centisecond))
             else:
                 section_turn[si] = turn
@@ -2390,7 +2686,10 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
                           label == "finale", None, section_extra[si], style.leads)
         start = window.start
         if style.entry == "swell":
-            if window.accent:
+            # A swell into a louder part, but not one after another: a song that
+            # changes parts often swells into the ones at least SWELL_SPACING apart.
+            last = max((t for kind, t in moments if kind == "lift"), default=None)
+            if window.accent and (last is None or window.start - last >= SWELL_SPACING):
                 swells.append(window)
                 moments.append(("lift", window.start))
         else:
@@ -2494,8 +2793,9 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
         elif window is last_window and not final_hits and section.level < HIGH:
             ramp = (spec[1], 0)
         props = sorted(p for p in active_in(window) - held
-                       if display.props[p].role in PULSE_ROLES)
+                       if display.props[p].role in PULSE_ROLES | BED_ROLES)
         _glow(planner, canvas, window, props, spec, dark, ramp)
+        _snow_bed(planner, window, active_in(window) - held, dark)
 
     # Build-ups: the last phrase before a louder part rises from half brightness.
     for index, section in enumerate(sections[:-1]):
@@ -2561,8 +2861,16 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
                 flashed += _punch(canvas, pid, channel, time, stop, planner.color(pid, channel))
         if flashed:
             moments.append((kind, time))
+    # Stabs: the song's strongest hits, on the beat or between, light a chunk of the
+    # yard, taking turns group by group, so the lights play the song's accents and
+    # not only its pulse.
+    stabbed = _stabs(planner, analysis, windows, sections, groups, active_in,
+                     {t for _, t in moments} | {t for _, t, _ in flashes}, beat)
+    if stabbed:
+        moments.append(("stabs", stabbed[0]))
     # Lyric cues: a prop the singer names lights on the word.
-    for time, props in _lyric_cues(analysis, display, usable - held, music.duration):
+    for time, props in _lyric_cues(analysis, display, usable - held, music.duration,
+                                   constraints.word_cues):
         if final_hits and time >= final_hits[0]:
             continue
         heard = next((w for w in windows if w.start <= time < w.end), None)
@@ -2596,7 +2904,8 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
     filled = _fill_dead_air(planner, canvas, music, windows, calm, usable, quiet)
     if filled:
         moments.extend(("calm_base", a) for a, _ in filled)
-    _on_one_grid(canvas, _sixteenths(music, sections), singing)
+    # The grid is the sixteenth notes plus the stabs, which keep the song's own timing.
+    _on_one_grid(canvas, sorted(set(_sixteenths(music, sections)) | set(stabbed)), singing)
 
     if moments:
         counts: dict[str, int] = defaultdict(int)
@@ -2618,6 +2927,8 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
         notes.append("Arrangement: " + "; ".join(
             f"{counts[kind]} {names[kind]}" for kind in names if counts[kind]) + ".")
 
+    for pid, (anchors, floor) in constraints.anchors.items():
+        _anchor(canvas, pid, display.props[pid].channel_count, anchors, floor)
     for source, targets in constraints.copies.items():
         for pid, channel in targets:
             canvas.effects[(pid, channel)] = [
@@ -2629,6 +2940,7 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
         key=lambda e: (e.start_centisecond, e.prop_id, e.channel_index),
     ))
     used = {e.prop_id for e in effects}
+    notes.append(_effect_kinds(effects, canvas.movements))
     for pid in sorted(usable - used, key=lambda p: display.props[p].name):
         notes.append(f"{display.props[pid].name} had no part in this song's plan.")
     for pid, leader in sorted(constraints.followers.items(),

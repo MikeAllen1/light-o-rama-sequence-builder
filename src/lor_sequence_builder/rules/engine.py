@@ -754,6 +754,10 @@ def _face_outline_with_mouth(ctx: _Context) -> str | None:
     return None
 
 
+# Anchor channels stay at least this bright while the rest of their prop is lit.
+ANCHOR_FLOOR = 30
+
+
 def _channel_light(ctx: _Context) -> dict[tuple[str, int], list[Effect]]:
     by: dict[tuple[str, int], list[Effect]] = defaultdict(list)
     for e in ctx.valid_effects():
@@ -1103,6 +1107,41 @@ def _light_whole(ctx: _Context, req: Requirement, props: list[str]) -> str | Non
     return None
 
 
+def _anchor_channels(ctx: _Context, req: Requirement, props: list[str]) -> str | None:
+    light = _channel_light(ctx)
+    floor = int(req.params.get("min", ANCHOR_FLOOR))
+    checked = False
+    for pid in props:
+        count = ctx.display.props[pid].channel_count
+        anchors = [c - 1 for c in req.params["channels"] if c - 1 < count]
+        others = [c for c in range(count) if c not in anchors]
+        if not anchors or not others:
+            continue
+        checked = True
+        marks = sorted({t for c in range(count) for e in light.get((pid, c), [])
+                        for t in (e.start_centisecond, e.end_centisecond - 1,
+                                  (e.start_centisecond + e.end_centisecond) // 2)})
+        for anchor in anchors:
+            for t in marks:
+                rest = max(_level_at(light.get((pid, c), []), t) for c in others)
+                level = _level_at(light.get((pid, anchor), []), t)
+                if level > 2 and rest == 0:
+                    ctx.add(f"Channel {anchor + 1} is lit while the rest of the prop is dark",
+                            prop_id=pid, channel_index=anchor, centisecond=t)
+                    break
+                # A light at a few percent (the last moment of a fade-out) is not lit.
+                if rest > 10 and level < floor - 2:
+                    ctx.add(f"Channel {anchor + 1} is below {floor}% while the prop is lit",
+                            prop_id=pid, channel_index=anchor, centisecond=t)
+                    break
+    return None if checked else "none of these props has those channels and others besides"
+
+
+def _light_on_words(ctx: _Context, req: Requirement, props: list[str]) -> str | None:
+    # A wish, not a limit: the planner lights these props when the words are sung.
+    return "followed when the show is planned, wherever the song's lyrics sing these words"
+
+
 def _move_direction(ctx: _Context, req: Requirement, props: list[str]) -> str | None:
     kind = req.params.get("movement", "chase")
     chosen = set(props)
@@ -1128,6 +1167,8 @@ _REQUIREMENTS: dict[str, Callable[[_Context, Requirement, list[str]], str | None
     "quiet_during": _quiet_during,
     "move_direction": _move_direction,
     "light_whole": _light_whole,
+    "anchor_channels": _anchor_channels,
+    "light_on_words": _light_on_words,
 }
 
 
@@ -1142,6 +1183,13 @@ def describe_requirement(req: Requirement) -> str:
         "move_direction": f"{req.params.get('movement', 'chase')} "
                           f"{str(req.params.get('direction', '')).replace('_', ' ')}",
         "light_whole": "light whole (every channel the same, never one side alone)",
+        "light_on_words": "light when the words "
+                          + ", ".join(repr(w) for w in req.params.get("words", []))
+                          + " are sung",
+        "anchor_channels": "keep channel(s) "
+                           + ", ".join(str(c) for c in req.params.get("channels", []))
+                           + f" at {req.params.get('min', ANCHOR_FLOOR)}% or more while the "
+                           "prop is lit, and never lit alone",
     }[req.type]
     chosen = req.props.describe()
     title = f"{chosen[:1].upper()}{chosen[1:]} {words}"

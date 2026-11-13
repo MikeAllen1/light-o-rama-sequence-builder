@@ -44,7 +44,7 @@ from lor_sequence_builder.show_report import ReportInputs, render_report
 from lor_sequence_builder.style import Style, get_style
 from lor_sequence_builder.timeline import ExcludedProp
 from lor_sequence_builder.vocal_separation import separate_vocals, separation_available
-from lor_sequence_builder.vocals import analyze_vocals, load_vocals
+from lor_sequence_builder.vocals import analyze_vocals, load_vocals, lyrics_from_words
 
 
 @dataclass(frozen=True, slots=True)
@@ -228,6 +228,10 @@ def _generate(
         written_vocals = paths["vocals"]
     elif vocals_path is not None:
         vocals = load_vocals(vocals_path, singer)
+        words = lyrics_from_words(vocals_path) if lyrics is None else None
+        if words is not None:
+            # The word file's lyrics also cue the props the words name.
+            analysis = {**analysis, "lyrics": words}
     elif wants_vocals:
         vocals_note = (
             "Face mouths stay still: pass a vocals-only file with --vocals, or install "
