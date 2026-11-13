@@ -166,7 +166,7 @@ The Phase 1 human verification gate was completed: the owner opened the writer-g
 
 The reader/writer implementation:
 
-- Accepts only `saveFileVersion="15"`; other versions fail clearly.
+- Accepts any `saveFileVersion` (the structure decides how a file is read) and keeps it unchanged when writing. New sequences are written as version 15.
 - Parses XML with `defusedxml`, explicitly forbidding DTDs, entities, and external references.
 - Preserves the XML tree opaquely, including sections and attributes it does not interpret.
 - Validates sequence-prop IDs against embedded preview prop IDs on both read and write.

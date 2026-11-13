@@ -18,7 +18,6 @@ from typing import Any
 from defusedxml import ElementTree as SafeET
 from defusedxml.common import DefusedXmlException
 
-SUPPORTED_SAVE_FILE_VERSION = "15"
 MAX_LOREDIT_BYTES = 50 * 1024 * 1024
 MAX_LOREDIT_ELEMENTS = 100_000
 MAX_LOREDIT_DEPTH = 256
@@ -26,10 +25,6 @@ MAX_LOREDIT_DEPTH = 256
 
 class LoreditError(ValueError):
     """Base error for invalid or unsupported LOREDIT documents."""
-
-
-class UnsupportedLoreditVersionError(LoreditError):
-    """Raised when a sequence uses an unverified save-file version."""
 
 
 @dataclass(slots=True)
@@ -104,12 +99,8 @@ def read_loredit(path: str | Path) -> LoreditDocument:
         raise LoreditError("LOREDIT XML has no document element")
     if root.tag != "sequence":
         raise LoreditError("LOREDIT root element must be <sequence>")
-    version = root.attrib.get("saveFileVersion")
-    if version != SUPPORTED_SAVE_FILE_VERSION:
-        raise UnsupportedLoreditVersionError(
-            f"Unsupported LOREDIT saveFileVersion {version!r}; "
-            f"verified version is {SUPPORTED_SAVE_FILE_VERSION}"
-        )
+    # Any saveFileVersion is accepted: the file's structure decides whether it can be
+    # read, never its version number.
     document = LoreditDocument(root=root, source_path=source)
     _ = document.total_centiseconds
     if root.find("SequenceProps") is None:
@@ -251,10 +242,6 @@ def write_loredit(document: LoreditDocument, output_path: str | Path) -> Path:
     output = Path(output_path)
     if document.root.tag != "sequence":
         raise LoreditError("Cannot write a document whose root is not <sequence>")
-    if document.save_file_version != SUPPORTED_SAVE_FILE_VERSION:
-        raise UnsupportedLoreditVersionError(
-            f"Cannot write unverified saveFileVersion {document.save_file_version!r}"
-        )
     _ = document.total_centiseconds
     if document.root.find("SequenceProps") is None:
         raise LoreditError("LOREDIT is missing the SequenceProps section")

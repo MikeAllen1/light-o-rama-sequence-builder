@@ -1,4 +1,4 @@
-"""Light-O-Rama S4 musical sequences (``.lms``, saveFileVersion 14).
+"""Light-O-Rama S4 musical sequences (``.lms``; any saveFileVersion, usually 14).
 
 S4 has no display preview: a sequence is a flat list of channels, each carrying its
 own controller address (``unit``/``circuit``, and ``network`` when it is not the
@@ -31,7 +31,6 @@ from defusedxml.common import DefusedXmlException
 
 from lor_sequence_builder.artifacts import write_new_bytes_atomically
 
-SUPPORTED_LMS_SAVE_FILE_VERSIONS = frozenset({"14"})
 MAX_LMS_BYTES = 50 * 1024 * 1024
 MAX_LMS_DEPTH = 64
 MAX_LMS_ELEMENTS = 2_000_000
@@ -183,12 +182,10 @@ def parse_lms(content: bytes, name: str = "The .lms file",
     root = _parse(content, name)
     if root.tag != "sequence":
         raise LmsError(f"{name} is not a Light-O-Rama sequence")
-    version = root.get("saveFileVersion")
-    if version not in SUPPORTED_LMS_SAVE_FILE_VERSIONS:
-        if root.find("PreviewClass") is not None or root.find("SequenceProps") is not None:
-            raise LmsError(f"{name} is an S5/S6 sequence; open it as a .loredit")
-        raise LmsError(f"{name} uses saveFileVersion {version!r}; this program reads S4 "
-                       "sequences (saveFileVersion 14)")
+    # Any saveFileVersion is accepted; an S4 sequence is told apart from an S5/S6 one
+    # by its structure (a flat channel list, no SequenceProps).
+    if root.find("PreviewClass") is not None or root.find("SequenceProps") is not None:
+        raise LmsError(f"{name} is an S5/S6 sequence; open it as a .loredit")
     container = root.find("channels")
     if container is None:
         raise LmsError(f"{name} has no channels")

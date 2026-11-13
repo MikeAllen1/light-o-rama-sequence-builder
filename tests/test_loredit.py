@@ -8,7 +8,6 @@ import pytest
 
 from lor_sequence_builder.loredit import (
     LoreditError,
-    UnsupportedLoreditVersionError,
     read_loredit,
     semantic_xml,
     write_loredit,
@@ -85,15 +84,19 @@ def test_writer_revalidates_document_before_creating_output(
     assert not list(tmp_path.glob("*.tmp"))
 
 
-def test_unsupported_version_fails_clearly(tmp_path: Path) -> None:
-    source = tmp_path / "future.loredit"
+@pytest.mark.parametrize("version", ["999", "16", "12", None])
+def test_any_save_file_version_reads_and_writes(tmp_path: Path, version: str | None) -> None:
+    attribute = "" if version is None else f' saveFileVersion="{version}"'
+    source = tmp_path / "any.loredit"
     source.write_text(
-        '<sequence saveFileVersion="999" totalCentiseconds="1">'
-        "<SequenceProps/><TimingGrids/></sequence>",
+        f'<sequence{attribute} totalCentiseconds="1">'
+        '<PreviewClass id="p"/><SequenceProps/><TimingGrids/></sequence>',
         encoding="utf-8",
     )
-    with pytest.raises(UnsupportedLoreditVersionError, match="verified version is 15"):
-        read_loredit(source)
+    document = read_loredit(source)
+    assert document.save_file_version == (version or "")
+    copy = write_loredit(document, tmp_path / "copy.loredit")
+    assert read_loredit(copy).save_file_version == (version or "")
 
 
 @pytest.mark.parametrize(
