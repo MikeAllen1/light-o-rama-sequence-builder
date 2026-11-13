@@ -2,9 +2,9 @@
 
 **Status:** Architecture and confirmed design decisions only. Current implementation phase, review state, and next approved work are maintained in [PLAN.md](PLAN.md); do not infer project phase status from this document.  
 **Project:** Light-O-Rama Sequence Builder  
-**Current interfaces:** Python CLI and browser-based local sequencing workspace for sequence editing, music review, and show creation; desktop packaging is deferred to the final stage  
+**Current interfaces:** Python CLI and browser-based local sequencing workspace for sequence editing, music review, and show creation; a Windows desktop app (`desktop.py`, pywebview) that wraps the same workspace  
 **Target output:** Native Light-O-Rama S6 `.loredit` sequence  
-**Required display input:** Light-O-Rama `.lorprev` preview
+**Required display input:** Light-O-Rama `.lorprev` preview (S5/S6), or an S4 `.lms` sequence used as the display
 
 ## 1. Purpose and scope
 
@@ -24,7 +24,7 @@ The original audio, preview, and any reference sequence are read-only inputs. Ou
 - The current committed preview fixture is `tests/fixtures/synthetic_display.lorprev`, a small hand-authored fictional XML example. Larger sequence and preview test inputs are generated at test time with fictional identifiers, names, addresses, and geometry.
 - The repository's current fixture policy is synthetic-only. Historical owner-derived and sanitized show material was removed from the current tree in PR #15; do not restore it. Format claims must be supported by documented observations, synthetic regression coverage, and owner-run S6 verification without retaining private source files.
 - RGB/pixel support is a declared V1 limitation, not something to fake or infer. If a preview contains a channel/prop type the current writer cannot safely represent, the tool must report it and must not silently drop it or claim full support.
-- The sequencing workspace is browser-based during development and runs through a loopback-only local server. Do not introduce a desktop framework or package a desktop app until the final delivery stage. The browser workspace supports native effect editing, music review, checked export to a new file, and a guided new-show workflow. It remains a local browser application, not a desktop wrapper. Controller upload and live hardware playback remain out of scope.
+- The sequencing workspace runs through a loopback-only local server. The Windows desktop app opens the same workspace in a native window (pywebview, WebView2) and falls back to the default browser; no sequencing logic lives in the desktop layer. The workspace supports native effect editing, music review, checked export to a new file, and a guided new-show workflow. Controller upload and live hardware playback remain out of scope.
 
 ## 3. Design principles
 
@@ -239,8 +239,8 @@ The browser workspace is a presentation and interaction layer over the existing 
 - When launched through `lor-sequence-ui`, audio bytes are posted to a loopback-only endpoint and passed to the existing `analyze_audio` function. Uploads are bounded, held only in a temporary directory, and deleted after analysis. The endpoint is not exposed on a network interface and does not forward audio to a remote service.
 - The UI displays native sequence timing grids separately from estimated beat/downbeat/onset/section/silence events returned by the analyzer. Confidence and method remain available; section candidates are not mislabeled as verse or chorus.
 - Optional `vocals-1.0` reports can be displayed as heuristic vocal regions and syllable candidates. That format does not contain recognized words or lyric timestamps.
-- The first workspace release is read-only. Selection, navigation, playback, track collapse, and effect inspection do not mutate the LOREDIT. Editing and safe export require a later, separately tested phase.
-- Desktop wrapping and installation are final-stage work. The browser workspace remains the development interface until the sequencing and editing workflow is complete.
+- The source LOREDIT is never mutated. Edits happen on a copy in memory and are exported, after the rules check, to a new file (Phase 11B).
+- The desktop app reuses the workspace and engine unchanged; `packaging/` builds it with PyInstaller and an Inno Setup per-user installer.
 
 
 ## 6. Domain models and artifact contracts
@@ -361,7 +361,6 @@ Errors should identify the stage, input, and corrective action without dumping s
 
 ## 13. Explicitly out of scope for V1
 
-- Desktop application wrapper, installer, and desktop packaging before final delivery.
 - Uploading sequences to controllers.
 - Live playback/control.
 - Editing existing sequence files in the initial read-only browser workspace; browser-based editing is a later phase.
@@ -398,7 +397,7 @@ The delivery order is:
 9. Planner v2 (motifs, call-and-response, signature moments, dynamics).
 10. Polish, reporting, documentation, and Python package distribution.
 11A. Browser-first sequencing workspace, followed by browser editing and musical-alignment phases.
-Final. Desktop wrapper and packaging, only after the browser sequencing and editing workflows are complete.
+Final. Desktop wrapper and packaging (delivered: Windows installer and portable zip).
 
 Every phase is one GitHub Issue, one branch, and one PR. The issue is the acceptance contract. The PR must contain only work for that phase. A phase is complete only after its tests and CI pass, required human verification is recorded, the PR is merged, and the owner approves the next phase. Keep the progress log in `docs/PLAN.md` current so a fresh session can resume without relying on chat history.
 
