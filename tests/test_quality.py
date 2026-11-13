@@ -144,8 +144,11 @@ def test_dark_stretches_get_a_calm_base(monkeypatch: pytest.MonkeyPatch) -> None
     assert plan.quality is not None
     assert status(plan.quality, "dead_air") == "fixed"
     assert any(kind == "calm_base" for kind, _ in plan.moments)
+    # (The calm base holds for beats at a time; a stepped glow's short holds after
+    # its hits are not part of it.)
     calm = [e for e in plan.choreography.effects
-            if e.start_intensity == planner_module.CALM_LEVEL]
+            if e.start_intensity == planner_module.CALM_LEVEL
+            and e.end_centisecond - e.start_centisecond >= 100]
     assert calm
     beats = {round(b["time"] * 100) for b in analysis["analysis"]["beats"]}
     assert all(e.start_centisecond in beats for e in calm)

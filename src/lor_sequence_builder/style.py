@@ -140,6 +140,18 @@ class Style:
     glow_half_beats: bool = False
     # The glow hits on every Nth beat (2: beats one and three).
     glow_every: int = 1
+    # With glow_every, kinds of props take turns on the glow's beats.
+    glow_trade: bool = False
+    # A stepped glow: after each hit the prop holds flat for this many beats and then
+    # goes dark until the next (0: it decays to the glow and stays lit).
+    glow_gate: float = 0
+    # Featured props rest on a twinkle between moves (False: low waves instead,
+    # with only the mega tree's center shimmering in loud parts).
+    bed_twinkle: bool = True
+    # Hard hits on every span are chopped to half the span (rhythm, not holds).
+    chop: bool = False
+    # Beds fill gaps of at least this many bars between a featured prop's moves.
+    bed_bars: float = 2
     # Snowflakes falling on high-pitched hits fall at most once per this many beats
     # (0: as often as each fall can be seen).
     sparkle_every: float = 0
@@ -182,7 +194,7 @@ STYLES: dict[str, Style] = {
         "on the beat and bounce back in the big parts, decorations take turns, and a "
         "flash opens each louder part.",
         leads=(2, 2, 3), chase_hold=(1, 1, 2),
-        soft=(True, False, True), brightness=(60, 90, 100),
+        soft=(True, False, False), brightness=(60, 90, 100),
         flashes=True, crash_spacing=400, flash_length=60, sparkle_density=0.5,
         build_from=0.5, call_and_response=True, fall_every=(0, 2, 1),
         parts=_parts(
@@ -202,11 +214,12 @@ STYLES: dict[str, Style] = {
         ),
         phrase_bars=4, entry="flash", arc=1, vary_repeats=True,
         spin_width=2, fall=(12, 35, 45),
-        glow=((0, 30), (85, 40), (100, 60)), stabs=(0.3, 0.4, 30), snow_every=1,
-        glow_every=2, mirror=True,
+        glow=((0, 20), (85, 40), (100, 60)), stabs=(0.18, 0.4, 30), snow_every=2,
+        glow_every=2, glow_trade=True, glow_gate=1.0, bed_twinkle=False, bed_bars=1, chop=True,
+        mirror=True,
         # Traditional and festive: balanced fades and cuts, moderate speed, clear
         # difference between verse and chorus, a flash to open the big parts.
-        profile=Profile(hold_beats=(0.4, 2.5), fade_share=(0.3, 0.85), calm_lit=0.45,
+        profile=Profile(hold_beats=(0.25, 2.5), fade_share=(0.2, 0.85), calm_lit=0.45,
                         peak_lit=0.75, loud_to_quiet=1.5, full_outside_peaks=3.0,
                         accents_per_minute=(1.0, 6.0)),
     ),
@@ -236,7 +249,7 @@ STYLES: dict[str, Style] = {
         ),
         phrase_bars=4, entry="drop", arc=2, vary_repeats=True,
         spin_width=1, fall=(7, 10, 14),
-        glow=((50, 10), (70, 15), (100, 50)), glow_half_beats=True,
+        glow=(None, (60, 10), (100, 55)), glow_half_beats=True,
         stabs=(0.5, 0.45, 25), stab_fade=False, beds_from=2, snow_every=0.5,
         # Dynamic and aggressive: quick hits, strong contrast between quiet and loud,
         # frequent accents, but never so much light that the contrast is lost.
