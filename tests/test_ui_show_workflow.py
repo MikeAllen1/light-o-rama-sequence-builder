@@ -78,7 +78,7 @@ def test_uncertain_requirement_update_requires_display_resync(workspace_url: str
         page.locator("#displayStatus").filter(has_text="Requirement Resync Yard").wait_for()
 
         page.locator("#requirementKind").select_option("never_use")
-        page.locator("#requirementProps").select_option("name:Tree")
+        page.locator('#requirementPicker input[value="name:Tree"]').check()
         page.locator("#addRequirement").click()
         page.locator("#requirementStatus").filter(
             has_text="Re-select the display to resync"
@@ -231,7 +231,7 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
 
             # An empty brightness field must not be interpreted as 0%.
             page.locator("#requirementKind").select_option("max_intensity")
-            page.locator("#requirementProps").select_option("role:tree")
+            page.locator('#requirementPicker input[value="role:tree"]').check()
             page.locator("#requirementMax").fill("")
             page.locator("#addRequirement").click()
             assert "steps of 5" in page.locator("#requirementStatus").inner_text()
@@ -412,7 +412,7 @@ def test_new_show_actions_never_offer_stale_results_or_playlists(
             # A stale requirements response means another session revision may be active.
             # (The form still holds the blank brightness from the check above.)
             page.locator("#requirementKind").select_option("never_use")
-            page.locator("#requirementProps").select_option("role:tree")
+            page.locator('#requirementPicker input[value="role:tree"]').check()
             page.locator("#addRequirement").click()
             page.locator("#requirementStatus").filter(
                 has_text="newer requirements revision"

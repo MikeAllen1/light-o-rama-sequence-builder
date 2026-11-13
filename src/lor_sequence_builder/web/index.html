@@ -190,14 +190,25 @@
           <label id="showSongLabel" class="tool-button primary disabled"><span>Choose song</span>
             <input id="showSongFile" type="file" disabled accept="audio/*,.mp3,.mp4,.wav,.flac,.m4a,.ogg,.opus"></label>
           <div id="songStatus" class="step-status" role="status" aria-live="polite"></div>
+          <label class="sing-option hidden"><input id="singFaces" type="checkbox" checked> Sing the faces</label>
+          <div id="wordsRow" class="words-row hidden">
+            <label id="wordsLabel" class="tool-button subtle" title="A WhisperX result (.json) with the time of every word: the face opens its mouth on each sung syllable, and stays closed between lines. Choose the song first."><span>Word timings for lip-sync (WhisperX .json)</span>
+              <input id="wordsFile" type="file" accept=".json,application/json"></label>
+            <label id="singerLabel" class="edit-field hidden"><span>Who the faces sing</span><select id="singerSelect"></select></label>
+          </div>
+          <div id="singNote" class="step-note"></div>
         </li>
         <li class="show-step">
           <h2><span class="step-number">3</span>Requirements <span class="optional">optional</span></h2>
           <p>Anything the show must do on your display. They are remembered for this display.</p>
           <div class="requirement-form">
             <label class="edit-field"><span>Requirement</span><select id="requirementKind"></select></label>
-            <label class="edit-field"><span>Props (Ctrl-click for several)</span>
-              <select id="requirementProps" multiple size="5"></select></label>
+            <div class="edit-field prop-picker-field">
+              <label for="requirementSearch"><span>Props</span></label>
+              <input id="requirementSearch" type="search" placeholder="Find a prop" autocomplete="off">
+              <div id="requirementPicker" class="prop-picker" role="group" aria-label="Props this requirement is about"></div>
+              <select id="requirementProps" class="hidden" multiple size="5" aria-hidden="true" tabindex="-1"></select>
+            </div>
             <div id="requirementSections" class="section-picks hidden"></div>
             <label class="edit-field hidden"><span>Brightness %</span>
               <input id="requirementMax" type="number" min="0" max="100" step="5" value="60"></label>
@@ -227,24 +238,23 @@
               <input id="learnStyleFiles" type="file" accept=".loredit,.lms" multiple></label>
           </div>
           <div id="learnStatus" class="step-status" role="status" aria-live="polite"></div>
-          <label class="edit-field wide"><span>Audio file name the Sequencer should play (as it appears in its audio folder)</span>
-            <input id="musicFilename" type="text" maxlength="260"></label>
+          <details id="advancedOptions" class="advanced-options">
+            <summary>Advanced</summary>
+            <label class="edit-field wide"><span>Audio file name the Sequencer should play (as it appears in its audio folder)</span>
+              <input id="musicFilename" type="text" maxlength="260"></label>
+          </details>
           <div id="musicNote" class="step-note"></div>
-          <label class="sing-option hidden"><input id="singFaces" type="checkbox" checked> Sing the faces</label>
-          <div id="wordsRow" class="words-row hidden">
-            <label id="wordsLabel" class="tool-button subtle" title="A WhisperX result (.json) with the time of every word: the face opens its mouth on each sung syllable, and stays closed between lines. Choose the song first."><span>Word timings for lip-sync (WhisperX .json)</span>
-              <input id="wordsFile" type="file" accept=".json,application/json"></label>
-            <label id="singerLabel" class="edit-field hidden"><span>Who the faces sing</span><select id="singerSelect"></select></label>
-          </div>
-          <div id="singNote" class="step-note"></div>
           <div class="generate-actions">
             <button id="generateShow" class="tool-button primary" type="button" disabled>Generate show</button>
+            <button id="generateAll" class="tool-button" type="button" disabled title="Make the show in Classic, High energy and Elegant, to compare them">Make all three styles</button>
             <button id="saveGenerated" class="tool-button" type="button" disabled>Save show</button>
             <button id="openGenerated" class="tool-button" type="button" disabled>Open in the workspace</button>
             <button id="reportGenerated" class="tool-button subtle" type="button" disabled>Show report</button>
             <button id="pictureGenerated" class="tool-button subtle" type="button" disabled>Plan picture</button>
           </div>
           <div id="generateStatus" class="step-status" role="status" aria-live="polite"></div>
+          <div id="scoreCard" class="score-card hidden" aria-live="polite"></div>
+          <div id="styleResults" class="style-results hidden" aria-label="The show in each style"></div>
           <ul id="showNotes" class="show-notes"></ul>
           <div class="batch">
             <h3>A whole playlist at once</h3>
