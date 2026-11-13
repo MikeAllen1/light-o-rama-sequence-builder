@@ -43,7 +43,7 @@ MOTIONS = {
     "mega_tree": ("rotate", "spiral", "fill_up", "breathe", "twinkle"),
     "family": ("trade", "breathe", "pulse"),
     "outline": ("base", "breathe", "trade", "pulse", "twinkle"),
-    "star": ("hold", "base", "twinkle"),
+    "star": ("hold", "base", "pulse", "twinkle"),
 }
 
 # A motion at one level: one choice, or alternatives for repeats.
@@ -148,6 +148,9 @@ class Style:
     # Featured props rest on a twinkle between moves (False: low waves instead,
     # with only the mega tree's center shimmering in loud parts).
     bed_twinkle: bool = True
+    # In mid and loud parts the mega tree's unlit channels sit at this level, so its
+    # spins move over a lit tree (0: they go dark).
+    tree_base: int = 0
     # Hard hits on every span are chopped to half the span (rhythm, not holds).
     chop: bool = False
     # Beds fill gaps of at least this many bars between a featured prop's moves.
@@ -210,16 +213,17 @@ STYLES: dict[str, Style] = {
                          ("phrase", "phrase", "bar")),
             outline_row=Part(("alternate", "chase", ("chase", "bounce")),
                              ("half_bar", "kick", "kick")),
-            star=Part(("twinkle", "base", "twinkle"), ("phrase", "phrase", "phrase")),
+            star=Part(("pulse", "pulse", "twinkle"), ("phrase", "phrase", "phrase")),
         ),
         phrase_bars=4, entry="flash", arc=1, vary_repeats=True,
         spin_width=2, fall=(12, 35, 45),
         glow=((0, 20), (85, 40), (100, 60)), stabs=(0.18, 0.4, 30), snow_every=2,
         glow_every=2, glow_trade=True, glow_gate=1.0, bed_twinkle=False, bed_bars=1, chop=True,
+        tree_base=25,
         mirror=True,
         # Traditional and festive: balanced fades and cuts, moderate speed, clear
         # difference between verse and chorus, a flash to open the big parts.
-        profile=Profile(hold_beats=(0.25, 2.5), fade_share=(0.2, 0.85), calm_lit=0.45,
+        profile=Profile(hold_beats=(0.25, 2.5), fade_share=(0.15, 0.85), calm_lit=0.45,
                         peak_lit=0.75, loud_to_quiet=1.5, full_outside_peaks=3.0,
                         accents_per_minute=(1.0, 6.0)),
     ),

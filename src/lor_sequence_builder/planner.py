@@ -1459,6 +1459,12 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
             motion, _ = style.part("star").at(level, variant)
             if motion == "base":
                 planner.base(pid, window, 60)
+            elif motion == "pulse":
+                # The star beats on one and three, lit for most of each half bar.
+                spans = _spans(window, planner.marks(window, "half_bar"))
+                for a, b in spans:
+                    planner.light(pid, window.section_index, a, a + max(10, (b - a) * 3 // 5),
+                                  "on", 100)
             else:
                 planner.steady(pid, window, 100, "twinkle" if motion == "twinkle" else "on")
         elif prop.role == "singing_face":
@@ -1542,6 +1548,25 @@ def _snow_bed(planner: _Planner, window: _Window, here: set[str],
              if not any(a <= t < b for a, b in dark)]
     intensity = max(30, planner.style.brightness[level] * 7 // 10)
     planner.falls(window, columns, times, intensity, motion=planner.snow.movement)
+
+
+def _tree_base(planner: _Planner, canvas: _Canvas, window: _Window, here: set[str],
+               dark: list[tuple[int, int]]) -> None:
+    """In the style's fuller parts the mega tree never goes fully dark between its
+    spins: every channel not lit sits on a low base, so the spin moves over a lit
+    tree."""
+    level = planner.style.tree_base
+    if not level or planner.sections[window.section_index].level < MID:
+        return
+    for pid in sorted(here):
+        if planner.display.props[pid].role != "mega_tree":
+            continue
+        for channel in planner.channels(pid, window.section_index):
+            for a, b in _minus(_free_gaps(canvas, (pid, channel), window.start, window.end),
+                               dark):
+                if b - a >= 10:
+                    canvas.put(pid, channel, a, b, "on", level,
+                               color=planner.color(pid, channel))
 
 
 def _multi_segment(planner: _Planner, pid: str) -> bool:
@@ -2264,7 +2289,7 @@ def _glow(planner: _Planner, canvas: _Canvas, window: _Window, props: list[str],
     bar = sorted(bars)[len(bars) // 2] if bars else 200
     beat_gaps = [y - x for x, y in itertools.pairwise(beats)]
     beat_gap = sorted(beat_gaps)[len(beat_gaps) // 2] if beat_gaps else 50
-    for pid in props:
+    for index, pid in enumerate(props):
         role = planner.display.props[pid].role
         for channel in planner.channels(pid, window.section_index):
             key = (pid, channel)
@@ -2297,7 +2322,7 @@ def _glow(planner: _Planner, canvas: _Canvas, window: _Window, props: list[str],
                             # decay each bar, under the center's texture (and, in
                             # styles without a twinkle bed, every channel does).
                             _waves(canvas, pid, channel, a, b, window, hold, color,
-                                   stepped=not planner.style.bed_twinkle)
+                                   stepped=not planner.style.bed_twinkle, shift=index)
                         else:
                             canvas.put(pid, channel, a, b,
                                        "shimmer" if level == HIGH else "twinkle", hold,
@@ -2345,9 +2370,17 @@ def _glow(planner: _Planner, canvas: _Canvas, window: _Window, props: list[str],
                     # Icicles hang lit: they decay to the glow even in a stepped style.
                     gate = planner.style.glow_gate if role != "icicles" else 0
                     if gate:
+                        # The hold is chopped into sixteenths, lit and dark in turn, so
+                        # the glow keeps the beat's pulse instead of sitting flat.
                         stop = min(end, t + round(gate * beat_gap))
-                        if stop > flash:
-                            canvas.put(pid, channel, flash, stop, "on", hold, color=color)
+                        step = max(5, beat_gap // 4)
+                        # Neighbouring props chop in opposite sixteenths, so a
+                        # family flickers across instead of jumping as one.
+                        # (Mini trees hold through it.)
+                        for k, x in enumerate(range(flash, stop, step)):
+                            if role == "mini_tree" or (k + index) % 2 == 1:
+                                canvas.put(pid, channel, x, min(stop, x + step), "on", hold,
+                                           color=color)
                     elif end > flash:
                         canvas.put(pid, channel, flash, end, "fade", max(hold + 1, hit * 4 // 5),
                                    hold, color)
@@ -2391,19 +2424,20 @@ def _beat_in_bar(window: _Window, time: int) -> int:
 
 
 def _waves(canvas: _Canvas, pid: str, channel: int, a: int, b: int, window: _Window,
-           level: int, color: str | None, stepped: bool = False) -> None:
+           level: int, color: str | None, stepped: bool = False, shift: int = 0) -> None:
     """Low waves: from each downbeat the channel decays from ``level`` to a third of
     it by the next. ``stepped`` waves step instead of fading, the bright step
-    walking across the prop's channels half a beat at a time."""
+    walking across the prop's channels a sixteenth at a time."""
     low = max(1, level // 3)
     if stepped:
         # One channel after another takes the bright step, beat by beat, so the
         # prop's channels walk slowly instead of all stepping together.
-        halves = [t for x, y in itertools.pairwise(window.beats) for t in (x, (x + y) // 2)]
-        marks = [a] + [t for t in halves if a + 10 <= t < b - 10] + [b]
+        quarters = [t for x, y in itertools.pairwise(window.beats)
+                    for t in (x, x + (y - x) // 4, (x + y) // 2, x + 3 * (y - x) // 4)]
+        marks = [a] + [t for t in quarters if a + 5 <= t < b - 5] + [b]
         every = max(2, window.beats_per_bar)
         for k, (x, y) in enumerate(itertools.pairwise(marks)):
-            bright = (window.offset + k + channel) % every == 0
+            bright = (window.offset + k + channel + shift) % every == 0
             canvas.put(pid, channel, x, y, "on", level if bright else low, color=color)
         return
     marks = [a] + [t for t in window.downbeats if a + 20 <= t < b - 20] + [b]
@@ -2835,6 +2869,7 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
                        if display.props[p].role in PULSE_ROLES | BED_ROLES)
         _glow(planner, canvas, window, props, spec, dark, ramp)
         _snow_bed(planner, window, active_in(window) - held, dark)
+        _tree_base(planner, canvas, window, active_in(window) - held, dark)
 
     # Build-ups: the last phrase before a louder part rises from half brightness.
     for index, section in enumerate(sections[:-1]):
