@@ -49,7 +49,8 @@ You can also:
 ## Good to know
 
 - **It runs on your computer.** Your preview and your music never leave it. The only thing it asks the internet is whether a newer version is out, and you can turn that off.
-- **S4, S5 and S6 all work.** With S5 or S6, choose your `.lorprev`; you get a `.loredit`. With S4 (no previews), choose one of your own S4 sequences (`.lms`) as the display: each channel becomes a prop, and you get a new `.lms` with the same channels. See [docs/S4_FORMAT.md](docs/S4_FORMAT.md).
+- **Windows, macOS and Linux.** Windows has the download above. On macOS and Linux there is no app to download yet: run it from the source folder ([below](#macos-and-linux)), and it opens in your browser. Light-O-Rama itself runs on Windows, so copy the shows to your show computer.
+- **S4, S5 and S6 all work, whatever version saved the file.** With S5 or S6, choose your `.lorprev`; you get a `.loredit`. With S4 (no previews), choose one of your own S4 sequences (`.lms`) as the display: each channel becomes a prop, and you get a new `.lms` with the same channels. See [docs/S4_FORMAT.md](docs/S4_FORMAT.md).
 - **You need Light-O-Rama S4, S5 or S6** to play the shows. Standard LOR props (channel per color, multi-segment) are sequenced; pixel (RGB) and DMX props are listed in the report but not sequenced yet.
 - **Better previews make better shows.** Giving props a real S6 shape (Arch, Tree, Snowflake) and grouping rows helps. The [user guide](docs/USER_GUIDE.md) has tips and fixes for common problems.
 - **Free to use, not to sell.** See [License](#license).
@@ -72,7 +73,16 @@ You can also:
 4. **Start it:** double-click **Start LOR Sequencer** in that folder. The first start takes a few minutes to set up; after that it opens in your browser in seconds. Keep the black window open while you use it.
 5. **Build a show:** click **New show**, choose your display's S5/S6 preview (`.lorprev`) or, with S4, one of your sequences (`.lms`), choose the song, pick a style (Classic, High energy or Elegant), and click **Generate show**. Watch it in the **Yard view** with the song, open the **Show report**, then **Save show** and open the `.loredit` in the S6 Sequencer.
 
-On macOS or Linux, install uv and FFmpeg the same way for your system and run `start-lor-sequencer.sh`.
+### macOS and Linux
+
+There is no macOS or Linux app to download yet; the program runs from the source folder and opens in your browser. Everything works except the right-click "Build a show" entry and the app window, which are Windows only. Linux is tested on every change; macOS runs the same way but is not tested automatically.
+
+1. **Install uv:** `curl -LsSf https://astral.sh/uv/install.sh | sh`
+2. **Install FFmpeg:** `brew install ffmpeg` (macOS) or `sudo apt install ffmpeg` (Debian, Ubuntu; other distributions have an `ffmpeg` package too).
+3. **Get the program:** **Code → Download ZIP** on GitHub and unzip it, or `git clone` it.
+4. **Start it:** run `./start-lor-sequencer.sh` in that folder (`sh start-lor-sequencer.sh` if it is not executable). The first start takes a few minutes to set up; then the workspace opens at `http://127.0.0.1:8765/`. Keep the terminal open while you use it.
+
+Save the shows and copy them, with the songs, to the Windows computer that runs Light-O-Rama.
 
 **Not sure it is set up right?** In the program folder run `uv run lor-sequence-builder doctor`: it checks everything and says how to fix what is missing. `uv run lor-sequence-builder demo "Demo Show"` builds a complete show for an invented yard and song, without any of your files.
 
