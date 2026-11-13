@@ -123,3 +123,41 @@ def test_the_rules_catch_each_wiring_mistake(tmp_path: Path) -> None:
 
 def test_displays_without_shared_circuits_are_unchanged() -> None:
     assert display_from_preview(classic_yard().element()).shared_outlets() == []
+
+
+@pytest.mark.parametrize("style", sorted(STYLES))
+def test_anchor_channels_stay_with_the_tree(tmp_path: Path, style: str) -> None:
+    """A tree's star channel is never lit alone and, with its last channel, stays at
+    30% or more while the rest of the tree is lit; the roof on that circuit follows."""
+    display = wired_yard()
+    element = display.element()
+    path = tmp_path / "anchor.yaml"
+    path.write_text("schema_version: rules-1.0\nrequirements:\n  - type: anchor_channels\n"
+                    "    props: {names: [Mega Tree]}\n    channels: [4, 16]\n    min: 30\n",
+                    encoding="utf-8")
+    rules = load_rule_set((path,))
+    plan = plan_show(synthetic_analysis(), display_from_preview(element), rules,
+                     style=get_style(style))
+    assert check_choreography(element, plan.choreography, rules).ok
+    tree, roof = display.prop_id("Mega Tree"), display.prop_id("Roof Line")
+    rest = [_light(plan, tree, c) for c in range(16) if c not in (3, 15)]
+    star, last = _light(plan, tree, 3), _light(plan, tree, 15)
+    assert _light(plan, roof, 0) == last
+    lit = [max(levels) for levels in zip(*rest, strict=True)]
+    assert any(level > 0 for level in lit)
+    for t, level in enumerate(lit):
+        # (A fade from dark reads 0 here a little longer than it does on the yard.)
+        if max(lit[max(0, t - 4):t + 5]) == 0:
+            assert star[t] == 0 and last[t] == 0
+        elif level > 10:
+            assert star[t] >= 28 and last[t] >= 28
+
+
+def test_anchor_channels_need_channel_numbers(tmp_path: Path) -> None:
+    from lor_sequence_builder.rules.profile import RuleProfileError
+    path = tmp_path / "bad.yaml"
+    path.write_text("schema_version: rules-1.0\nrequirements:\n  - type: anchor_channels\n"
+                    "    props: {names: [Mega Tree]}\n    channels: [star]\n",
+                    encoding="utf-8")
+    with pytest.raises(RuleProfileError, match="channel numbers"):
+        load_rule_set((path,))

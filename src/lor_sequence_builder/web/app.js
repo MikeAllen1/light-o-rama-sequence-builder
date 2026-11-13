@@ -3718,7 +3718,8 @@
     never_use: "Never use",
     quiet_during: "Keep dark during",
     max_intensity: "Limit brightness to",
-    light_whole: "Light whole (every channel together, never one side alone)"
+    light_whole: "Light whole (every channel together, never one side alone)",
+    anchor_channels: "Keep channels lit with the rest (never alone)"
   };
 
   const show = { token: null, summary: null, audioFile: null, analysis: null, raw: [],
@@ -4424,6 +4425,8 @@
     const kind = $("requirementKind").value;
     $("requirementSections").classList.toggle("hidden", kind !== "quiet_during");
     $("requirementMax").closest("label").classList.toggle("hidden", kind !== "max_intensity");
+    $("requirementChannels").closest("label").classList.toggle("hidden", kind !== "anchor_channels");
+    $("requirementFloor").closest("label").classList.toggle("hidden", kind !== "anchor_channels");
   }
 
   function selectorFrom(value) {
@@ -4543,6 +4546,21 @@
           return null;
         }
         item.max = maximum;
+      }
+      if (kind === "anchor_channels") {
+        const channels = $("requirementChannels").value.split(/[\s,]+/).filter(Boolean)
+          .map(Number);
+        const floor = Number($("requirementFloor").value.trim());
+        if (!channels.length || channels.some((c) => !Number.isInteger(c) || c < 1)) {
+          showMessage("requirementStatus", "List the channel numbers, for example 4, 16.", "warn");
+          return null;
+        }
+        if (!Number.isInteger(floor) || floor < 0 || floor > 100) {
+          showMessage("requirementStatus", "Choose a brightness from 0 to 100.", "warn");
+          return null;
+        }
+        item.channels = channels;
+        item.min = floor;
       }
       return item;
     });
