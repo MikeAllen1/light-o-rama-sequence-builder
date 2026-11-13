@@ -172,6 +172,12 @@ class Style:
     # From this loudness level (0 quiet, 1 mid, 2 loud) arches and the mega tree rest
     # on a twinkle or shimmer through long gaps between their moves.
     beds_from: int = 1
+    # The show ends twinkling out: as the last notes ring, props twinkle down in this
+    # many steps instead of a plain fade, the edges of the yard first (0: a fade).
+    twinkle_finish: int = 0
+    # A beat of darkness just before the song's biggest part, so it lands (styles
+    # whose every louder part opens on a dark beat need no extra one).
+    peak_breath: bool = False
 
     def part(self, kind: str) -> Part:
         return self.parts[kind]
@@ -220,7 +226,7 @@ STYLES: dict[str, Style] = {
         glow=((0, 20), (85, 40), (100, 60)), stabs=(0.18, 0.4, 30), snow_every=2,
         glow_every=2, glow_trade=True, glow_gate=1.0, bed_twinkle=False, bed_bars=1, chop=True,
         tree_base=25,
-        mirror=True,
+        mirror=True, twinkle_finish=4, peak_breath=True,
         # Traditional and festive: balanced fades and cuts, moderate speed, clear
         # difference between verse and chorus, a flash to open the big parts.
         profile=Profile(hold_beats=(0.25, 2.5), fade_share=(0.15, 0.85), calm_lit=0.45,
@@ -285,7 +291,7 @@ STYLES: dict[str, Style] = {
         ),
         phrase_bars=8, entry="swell", arc=1, vary_repeats=False,
         spin_width=3, fall=(22, 60, 80),
-        glow=(None, (0, 20), (0, 35)), sparkle_every=4, snow_every=2,
+        glow=(None, (0, 20), (0, 35)), sparkle_every=4, snow_every=2, twinkle_finish=3,
         # Cinematic and refined: long lights and fades, few props at once, the whole
         # yard saved for the peaks, and almost no flashing.
         profile=Profile(hold_beats=(1.2, 8.0), fade_share=(0.35, 1.0), calm_lit=0.45,
