@@ -3758,12 +3758,27 @@
     try {
       kept = await postShow("/api/show/last", "{}", "application/json");
     } catch {
-      return;
+      kept = null;
     }
     show.lastStyle = kept && kept.style || null;
+    await showStylesUpFront();
     if (!kept || !kept.file_name || show.token || show.displayPending) return;
     show.remembered = true;
     await chooseDisplay({ name: kept.file_name, size: 0 }, true);
+  }
+
+  // The styles show from the start, so the choice is visible before a display or song.
+  async function showStylesUpFront() {
+    if ($("styleChoices").querySelector('input[name="showStyle"]')) return;
+    try {
+      const listed = await postShow("/api/show/styles", "{}", "application/json");
+      if ($("styleChoices").querySelector('input[name="showStyle"]')) return;
+      const styles = listed.styles || [];
+      fillStyles(styles, styles.some((item) => item.key === show.lastStyle)
+        ? show.lastStyle : listed.default_style);
+    } catch {
+      // The styles come with the display instead.
+    }
   }
 
   function rememberStyle() {
