@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qs, quote, urlsplit
 
-from lor_sequence_builder import __version__, progress, recent_shows
+from lor_sequence_builder import __version__, last_display, progress, recent_shows
 from lor_sequence_builder.add_props import AddPropsError, AddSessions
 from lor_sequence_builder.audio_analysis import (
     INPUT_DEMUXERS,
@@ -42,9 +42,18 @@ _MAX_JSON_BYTES = 256 * 1024
 SHOWS = ShowSessions()
 MAX_WORDS_BYTES = 5 * 1024 * 1024
 ADDS = AddSessions()
-_SHOW_STEPS = {"/api/show/start", "/api/show/audio", "/api/show/requirements",
+_SHOW_STEPS = {"/api/show/start", "/api/show/last", "/api/show/last-start",
+               "/api/show/last-style", "/api/show/audio", "/api/show/requirements",
                "/api/show/generate", "/api/show/test", "/api/show/batch",
                "/api/show/batch-zip", "/api/show/batch-clear", "/api/show/words"}
+
+
+def _remember_display(payload: bytes, file_name: str, display_name: str) -> None:
+    """Keep the display for the next New show; a full disk only means it is not kept."""
+    try:
+        last_display.remember_display(payload, file_name, display_name)
+    except OSError:
+        pass
 
 
 def _looks_like_mp3(data: bytes) -> bool:
@@ -464,7 +473,32 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
                 payload = self._read_body("application/xml", limit, "Display")
                 if payload is None:
                     return
-                self._send_json(200, SHOWS.start(payload, name))
+                summary = SHOWS.start(payload, name)
+                _remember_display(payload, name, str(summary.get("display") or name))
+                self._send_json(200, summary)
+            elif path == "/api/show/last":
+                self._send_json(200, last_display.describe())
+            elif path == "/api/show/last-start":
+                kept = last_display.load_display()
+                if kept is None:
+                    self._send_json(404, {"error": "No display is remembered yet."})
+                    return
+                kept_display, kept_name = kept
+                self._send_json(200, SHOWS.start(kept_display, kept_name))
+            elif path == "/api/show/last-style":
+                style_body = self._read_body("application/json", 4096, "Style")
+                if style_body is None:
+                    return
+                try:
+                    choice = json.loads(style_body).get("style")
+                except (ValueError, AttributeError):
+                    choice = None
+                if isinstance(choice, str):
+                    try:
+                        last_display.remember_style(choice)
+                    except OSError:
+                        pass
+                self._send_json(200, {"ok": True})
             elif path == "/api/show/words":
                 payload = self._read_body("application/json", MAX_WORDS_BYTES, "Word file")
                 if payload is None:
