@@ -354,7 +354,7 @@ def test_each_kind_of_prop_keeps_its_part_through_the_song() -> None:
     assert loud > 1.2 * quiet
 
 
-def test_the_intro_starts_focused_and_the_song_ends_with_a_fade() -> None:
+def test_the_intro_starts_focused_and_the_song_twinkles_out() -> None:
     display = roofline_house()
     analysis = synthetic_analysis(duration=60.0, sections=((0.0, 0.1), (24.0, 0.9)))
     plan, report = _plan(display, analysis)
@@ -363,8 +363,39 @@ def test_the_intro_starts_focused_and_the_song_ends_with_a_fade() -> None:
     first_phrase = {props[e.prop_id].role for e in plan.choreography.effects
                     if e.start_centisecond < 800}
     assert len(first_phrase - {"star", "outline"}) <= 2
+    # Classic ends twinkling out: each prop's last light steps down to dark.
     ending = [e for e in plan.choreography.effects if e.end_centisecond == 6000]
-    assert ending and all(e.kind == "fade" and e.end_intensity == 0 for e in ending)
+    assert ending and all(e.kind == "twinkle" for e in ending)
+    for pid in {e.prop_id for e in ending}:
+        steps = sorted((e for e in plan.choreography.effects
+                        if e.prop_id == pid and e.kind == "twinkle"
+                        and e.start_centisecond >= 5500), key=lambda e: e.start_centisecond)
+        levels = [e.start_intensity for e in steps if e.channel_index == steps[0].channel_index]
+        assert len(levels) >= 2 and levels == sorted(levels, reverse=True)
+    # High energy cuts its finish with a plain fade.
+    energetic = plan_show(analysis, display_from_preview(display.element()), load_rule_set(),
+                          style=get_style("energetic"))
+    last = [e for e in energetic.choreography.effects if e.end_centisecond == 6000]
+    assert last and not any(e.kind == "twinkle" for e in last)
+
+
+def test_the_last_loud_stretch_opens_out_of_a_dark_beat() -> None:
+    display = roofline_house()
+    analysis = synthetic_analysis(duration=60.0, sections=((0.0, 0.1), (24.0, 0.3),
+                                                           (40.0, 0.9)))
+    rules = load_rule_set()
+    preview = display.element()
+    props = display_from_preview(preview).props
+    shows = {name: plan_show(analysis, display_from_preview(preview), rules,
+                             style=get_style(name)) for name in ("classic", "elegant")}
+    assert check_choreography(preview, shows["classic"].choreography, rules).ok
+    # The beat before the climax (40 s) is dark except for the star.
+    lit = {props[e.prop_id].role for e in shows["classic"].choreography.effects
+           if e.start_centisecond < 4000 and e.end_centisecond > 3950 and e.start_intensity > 0}
+    assert lit <= {"star"}
+    assert any("biggest part" in note for note in shows["classic"].notes)
+    # Elegant swells into it instead.
+    assert not any("biggest part" in note for note in shows["elegant"].notes)
 
 
 def test_back_to_back_holds_become_one_effect() -> None:
@@ -576,8 +607,10 @@ def test_high_pitched_hits_make_snowflakes_fall_down_their_columns() -> None:
     # Each snowflake holds, then fades out: no bare on-off pops.
     flake_ids = {pid for column in columns for pid in column}
     flakes = [e for e in plan.choreography.effects if e.prop_id in flake_ids]
-    assert {e.kind for e in flakes} == {"on", "fade"}
-    assert all(e.end_intensity == 0 for e in flakes if e.kind == "fade")
+    # (The very end twinkles out.)
+    falling = [e for e in flakes if e.end_centisecond < 2800]
+    assert {e.kind for e in falling} == {"on", "fade"}
+    assert all(e.end_intensity == 0 for e in falling if e.kind == "fade")
 
 
 def test_arches_are_one_row_even_when_another_prop_is_drawn_over_one() -> None:

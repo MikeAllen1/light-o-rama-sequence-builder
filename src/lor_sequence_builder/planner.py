@@ -1963,6 +1963,27 @@ def _final_hits(analysis: dict[str, Any], music: _Music) -> list[int]:
     return hits
 
 
+# A twinkle finish steps down from this share of the starting brightness to this one;
+# each step lasts at least TWINKLE_STEP_MIN.
+TWINKLE_FROM = 0.8
+TWINKLE_TO = 0.15
+TWINKLE_STEP_MIN = 40
+
+
+def _fade_out(planner: _Planner, pid: str, section_index: int, start: int, end: int,
+              intensity: int = 100) -> None:
+    """The last light on a prop: a fade, or with a twinkle finish, a twinkle that
+    steps down to dark (singing faces always fade, so a mouth never sparkles)."""
+    steps = min(planner.style.twinkle_finish, (end - start) // TWINKLE_STEP_MIN)
+    if steps < 2 or planner.display.props[pid].role == "singing_face":
+        planner.light(pid, section_index, start, end, "fade", intensity, 0)
+        return
+    edges = [start + round(i * (end - start) / steps) for i in range(steps + 1)]
+    for i, (a, b) in enumerate(itertools.pairwise(edges)):
+        share = TWINKLE_FROM + (TWINKLE_TO - TWINKLE_FROM) * i / (steps - 1)
+        planner.light(pid, section_index, a, b, "twinkle", max(5, round(intensity * share)))
+
+
 def _finale(planner: _Planner, hits: list[int], props: list[str], keep: set[str]) -> None:
     """Stage the closing hits across the yard: the left side lights on the first, the
     right on the next, the whole display on the last; then it fades out from the
@@ -2002,7 +2023,7 @@ def _finale(planner: _Planner, hits: list[int], props: list[str], keep: set[str]
         # middle of the yard last, at the very end.
         fade_end = end - round(edge * (end - last - hold) * 0.5)
         planner.light(pid, 0, last, last + hold, "on", 100)
-        planner.light(pid, 0, last + hold, max(last + hold + 10, fade_end), "fade", 100, 0)
+        _fade_out(planner, pid, 0, last + hold, max(last + hold + 10, fade_end))
 
 
 # ---------------------------------------------------------------- singing faces
@@ -2775,6 +2796,10 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
         closing: int | None = None
         if window is last_window and si == len(sections) - 1 and not final_hits:
             final_bar = max((d for d in window.downbeats if d > start), default=None)
+            if style.twinkle_finish and (final_bar is None or end - final_bar < 150):
+                # A twinkle finish needs room: the song's last full bar twinkles out.
+                final_bar = max((d for d in window.downbeats if start <= d <= end - 150),
+                                default=start if end - start >= 150 else None)
             if final_bar is not None and end - final_bar >= 100:
                 # A long ringing tail after the last bar keeps playing until the
                 # last few seconds, so the whole display is not on for long.
@@ -2845,7 +2870,7 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
                 # the edges.
                 edge = (abs(xs[pid] - middle) - nearest) / reach
                 fade_end = window.end - round(edge * (window.end - closing) * 0.4)
-                planner.light(pid, si, closing, max(closing + 10, fade_end), "fade", 100, 0)
+                _fade_out(planner, pid, si, closing, max(closing + 10, fade_end))
 
     held = set(keep_spans) | singing
     # The glow: props that are not leading stay lit and move by brightness, hitting
@@ -2959,6 +2984,22 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
                 cued += _punch(canvas, pid, channel, time, stop, planner.color(pid, channel))
         if cued:
             moments.append(("lyric_cue", time))
+    # The song's last loud stretch (its climax) opens out of a beat of darkness, so
+    # the whole yard landing on it hits harder.
+    peak_index = max((i for i, sec in enumerate(sections) if sec.level == HIGH), default=None)
+    while peak_index and sections[peak_index - 1].level == HIGH:
+        # Where the last loud stretch begins, not a split inside it.
+        peak_index -= 1
+    if style.peak_breath and peak_index is not None and peak_index > 0:
+        opening = next((w for w in windows if w.section_index == peak_index
+                        and w.start == sections[peak_index].start_centisecond), None)
+        before = [b for b in music.beats if opening is not None and b < opening.start]
+        if (opening is not None and opening not in drops and len(before) >= 2
+                and not any(a <= before[-1] < b for a, b in music.stops)):
+            # Everything goes dark but the star (and a face that is singing).
+            stars = {p for p in base if display.props[p].role == "star"}
+            _darken(canvas, before[-1], opening.start, keep=held | stars)
+            moments.append(("breath", before[-1]))
     if final_hits and last_window is not None:
         _finale(planner, final_hits, sorted(active_in(last_window)), held)
         moments.append(("finale_hits", final_hits[0]))
@@ -2988,6 +3029,7 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
         names = {"repeat": "repeated part(s) reuse their first look",
                  "lift": "louder part(s) open with an accent",
                  "drop": "dark beat(s) before a louder part",
+                 "breath": "a dark beat before the song's biggest part",
                  "variation": "returning part(s) move a new way",
                  "finale_hits": "closing hits staged across the yard",
                  "departure": "unexpected chord(s) carried by the showpiece",
