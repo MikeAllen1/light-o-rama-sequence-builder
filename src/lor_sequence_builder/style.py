@@ -144,6 +144,11 @@ class Style:
     # Stabs on the song's strongest hits: (share of the yard, share of onsets that
     # count as strong, longest flash in centiseconds). A share of 0 turns them off.
     stabs: tuple[float, float, int] = (0.0, 0.0, 0)
+    # Stabs fade out (True) or cut off sharply.
+    stab_fade: bool = True
+    # From this loudness level (0 quiet, 1 mid, 2 loud) arches and the mega tree rest
+    # on a twinkle or shimmer through long gaps between their moves.
+    beds_from: int = 1
 
     def part(self, kind: str) -> Part:
         return self.parts[kind]
@@ -223,7 +228,7 @@ STYLES: dict[str, Style] = {
         phrase_bars=4, entry="drop", arc=2, vary_repeats=True,
         spin_width=1, fall=(7, 10, 14),
         glow=((70, 20), (100, 30), (100, 35)), glow_half_beats=True,
-        stabs=(0.5, 0.45, 25),
+        stabs=(0.5, 0.45, 25), stab_fade=False, beds_from=2,
         # Dynamic and aggressive: quick hits, strong contrast between quiet and loud,
         # frequent accents, but never so much light that the contrast is lost.
         profile=Profile(hold_beats=(0.2, 0.9), fade_share=(0.0, 0.5), calm_lit=0.5,

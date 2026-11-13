@@ -311,9 +311,9 @@ def measure_bytes(content: bytes, file_name: str) -> Habits:
 # What each built-in style's own shows measure (on the test yards; see
 # tests/test_style_learning.py, which checks these stay true).
 SIGNATURES: dict[str, dict[str, float]] = {
-    "classic": {"hold_beats": 0.63, "fade_share": 0.71, "lit_share": 0.30, "brightness": 84},
-    "energetic": {"hold_beats": 0.5, "fade_share": 0.42, "lit_share": 0.35, "brightness": 100},
-    "elegant": {"hold_beats": 1.75, "fade_share": 0.66, "lit_share": 0.35, "brightness": 77},
+    "classic": {"hold_beats": 0.87, "fade_share": 0.61, "lit_share": 0.62, "brightness": 80},
+    "energetic": {"hold_beats": 0.5, "fade_share": 0.45, "lit_share": 0.44, "brightness": 100},
+    "elegant": {"hold_beats": 3.0, "fade_share": 0.67, "lit_share": 0.74, "brightness": 55},
 }
 
 # Most of the yard lighting at once on this share of start moments is a flash habit.
