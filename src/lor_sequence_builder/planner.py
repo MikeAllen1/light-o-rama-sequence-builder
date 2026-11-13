@@ -741,7 +741,7 @@ def _piece(effect: Effect, start: int, end: int) -> Effect:
 
 
 # The rest of a prop counts as lit for its anchor channels from this brightness.
-ANCHOR_DIM = 5
+ANCHOR_DIM = 1
 
 
 def _effect_kinds(effects: tuple[Effect, ...], movements: list[Movement]) -> str:
