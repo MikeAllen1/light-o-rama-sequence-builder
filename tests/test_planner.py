@@ -28,6 +28,7 @@ from tests.display_builders import (
     ALL_DISPLAYS,
     DisplayBuilder,
     classic_yard,
+    family_yard,
     line_drawn_yard,
     roofline_house,
 )
@@ -803,3 +804,17 @@ def test_stepped_waves_walk_across_the_channels() -> None:
         bright = [c for c in range(4) for e in canvas.effects[("tree", c)]
                   if e.start_centisecond <= t < e.end_centisecond and e.start_intensity == 60]
         assert len(bright) == 1
+
+
+def test_classic_star_pulses_and_tree_spins_over_a_lit_base() -> None:
+    """Classic's star beats instead of staying on, and in mid and loud parts the mega
+    tree's unlit channels sit on a low base under its spins."""
+    display = display_from_preview(family_yard().element())
+    plan = plan_show(synthetic_analysis(), display, load_rule_set(),
+                     style=get_style("classic"))
+    names = {pid: p.name for pid, p in display.props.items()}
+    star = [e for e in plan.choreography.effects if names[e.prop_id] == "Star"]
+    lit = sum(e.end_centisecond - e.start_centisecond for e in star)
+    assert star and lit < 0.9 * plan.choreography.duration_centiseconds
+    tree = [e for e in plan.choreography.effects if names[e.prop_id] == "Mega Tree"]
+    assert any(e.start_intensity == 25 and e.end_intensity == 25 for e in tree)
