@@ -250,3 +250,41 @@ def test_drums_chords_and_lyrics_never_break_a_rule(seed: int) -> None:
                              load_rule_set(), style=get_style(style))
             report = check_choreography(display.element(), plan.choreography, load_rule_set())
             assert report.ok, f"{builder.__name__} {style}: {report.format_text()}"
+
+
+def test_the_owner_can_name_words_that_light_props(tmp_path: Path) -> None:
+    """A light_on_words requirement lights the chosen props when the words are sung,
+    even when the words do not name them (fire lights the homemade trees)."""
+    rules_file = tmp_path / "cues.yaml"
+    rules_file.write_text(
+        "schema_version: rules-1.0\nrequirements:\n  - type: light_on_words\n"
+        "    props: {names: [Homemade Tree 1, Homemade Tree 2]}\n    words: [fire]\n",
+        encoding="utf-8")
+    rules = load_rule_set((rules_file,))
+    analysis = _song_with()
+    analysis["lyrics"] = _lyrics((20.25, "Build the fire"), (36.75, "warm by the fire"))
+    display = family_yard()
+    plan = plan_show(analysis, display_from_preview(display.element()), rules,
+                     style=leads_only("classic"))
+    assert check_choreography(display.element(), plan.choreography, rules).ok
+    names = _names()
+    cues = [t for kind, t in plan.moments if kind == "lyric_cue"]
+    assert cues == [2025, 3675]
+    for time in cues:
+        lit = {names[e.prop_id] for e in plan.choreography.effects
+               if e.start_centisecond == time and e.kind == "fade" and e.end_intensity == 0}
+        assert {"Homemade Tree 1", "Homemade Tree 2"} <= lit
+    assert any(n.startswith("Effects: native LOR effects") for n in plan.notes)
+
+
+def test_a_word_file_brings_its_lyrics_for_cues(tmp_path: Path) -> None:
+    from lor_sequence_builder.vocals import lyrics_from_words
+    words = tmp_path / "words.json"
+    words.write_text(json.dumps({"segments": [{"speaker": "SPEAKER_00", "words": [
+        {"word": "Build", "start": 20.25, "end": 20.5},
+        {"word": "the", "start": 20.5, "end": 20.6},
+        {"word": "fire", "start": 20.6, "end": 21.0}]}]}), encoding="utf-8")
+    lyrics = lyrics_from_words(words)
+    assert lyrics is not None
+    assert [w["text"] for w in lyrics["lines"][0]["words"]] == ["Build", "the", "fire"]
+    assert lyrics_from_words(tmp_path / "missing.json") is None

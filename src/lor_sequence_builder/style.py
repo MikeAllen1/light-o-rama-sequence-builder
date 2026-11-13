@@ -149,6 +149,9 @@ class Style:
     # Snowflakes not leading keep falling in the background, a column every this many
     # beats (0: they rest instead).
     snow_every: float = 0
+    # Ripples through a family sometimes start in the middle and run out to both
+    # sides at once, mirrored.
+    mirror: bool = False
     # Stabs fade out (True) or cut off sharply.
     stab_fade: bool = True
     # From this loudness level (0 quiet, 1 mid, 2 loud) arches and the mega tree rest
@@ -198,8 +201,9 @@ STYLES: dict[str, Style] = {
             star=Part(("twinkle", "base", "twinkle"), ("phrase", "phrase", "phrase")),
         ),
         phrase_bars=4, entry="flash", arc=1, vary_repeats=True,
-        spin_width=2, fall=(12, 20, 25),
-        glow=((0, 30), (85, 40), (100, 60)), stabs=(0.3, 0.4, 30), snow_every=1, glow_every=2,
+        spin_width=2, fall=(12, 35, 45),
+        glow=((0, 30), (85, 40), (100, 60)), stabs=(0.3, 0.4, 30), snow_every=1,
+        glow_every=2, mirror=True,
         # Traditional and festive: balanced fades and cuts, moderate speed, clear
         # difference between verse and chorus, a flash to open the big parts.
         profile=Profile(hold_beats=(0.4, 2.5), fade_share=(0.3, 0.85), calm_lit=0.45,
@@ -232,7 +236,7 @@ STYLES: dict[str, Style] = {
         ),
         phrase_bars=4, entry="drop", arc=2, vary_repeats=True,
         spin_width=1, fall=(7, 10, 14),
-        glow=((70, 20), (100, 30), (100, 35)), glow_half_beats=True,
+        glow=((50, 10), (70, 15), (100, 50)), glow_half_beats=True,
         stabs=(0.5, 0.45, 25), stab_fade=False, beds_from=2, snow_every=0.5,
         # Dynamic and aggressive: quick hits, strong contrast between quiet and loud,
         # frequent accents, but never so much light that the contrast is lost.
@@ -263,7 +267,7 @@ STYLES: dict[str, Style] = {
             star=Part(("twinkle", "twinkle", "twinkle"), ("phrase", "phrase", "phrase")),
         ),
         phrase_bars=8, entry="swell", arc=1, vary_repeats=False,
-        spin_width=3, fall=(22, 40, 60),
+        spin_width=3, fall=(22, 60, 80),
         glow=(None, (0, 20), (0, 35)), sparkle_every=4, snow_every=2,
         # Cinematic and refined: long lights and fades, few props at once, the whole
         # yard saved for the peaks, and almost no flashing.

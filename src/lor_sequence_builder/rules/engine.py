@@ -1137,6 +1137,11 @@ def _anchor_channels(ctx: _Context, req: Requirement, props: list[str]) -> str |
     return None if checked else "none of these props has those channels and others besides"
 
 
+def _light_on_words(ctx: _Context, req: Requirement, props: list[str]) -> str | None:
+    # A wish, not a limit: the planner lights these props when the words are sung.
+    return "followed when the show is planned, wherever the song's lyrics sing these words"
+
+
 def _move_direction(ctx: _Context, req: Requirement, props: list[str]) -> str | None:
     kind = req.params.get("movement", "chase")
     chosen = set(props)
@@ -1163,6 +1168,7 @@ _REQUIREMENTS: dict[str, Callable[[_Context, Requirement, list[str]], str | None
     "move_direction": _move_direction,
     "light_whole": _light_whole,
     "anchor_channels": _anchor_channels,
+    "light_on_words": _light_on_words,
 }
 
 
@@ -1177,6 +1183,9 @@ def describe_requirement(req: Requirement) -> str:
         "move_direction": f"{req.params.get('movement', 'chase')} "
                           f"{str(req.params.get('direction', '')).replace('_', ' ')}",
         "light_whole": "light whole (every channel the same, never one side alone)",
+        "light_on_words": "light when the words "
+                          + ", ".join(repr(w) for w in req.params.get("words", []))
+                          + " are sung",
         "anchor_channels": "keep channel(s) "
                            + ", ".join(str(c) for c in req.params.get("channels", []))
                            + f" at {req.params.get('min', ANCHOR_FLOOR)}% or more while the "

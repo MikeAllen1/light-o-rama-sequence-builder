@@ -3719,7 +3719,8 @@
     quiet_during: "Keep dark during",
     max_intensity: "Limit brightness to",
     light_whole: "Light whole (every channel together, never one side alone)",
-    anchor_channels: "Keep channels lit with the rest (never alone)"
+    anchor_channels: "Keep channels lit with the rest (never alone)",
+    light_on_words: "Light when these words are sung"
   };
 
   const show = { token: null, summary: null, audioFile: null, analysis: null, raw: [],
@@ -4427,6 +4428,7 @@
     $("requirementMax").closest("label").classList.toggle("hidden", kind !== "max_intensity");
     $("requirementChannels").closest("label").classList.toggle("hidden", kind !== "anchor_channels");
     $("requirementFloor").closest("label").classList.toggle("hidden", kind !== "anchor_channels");
+    $("requirementWords").closest("label").classList.toggle("hidden", kind !== "light_on_words");
   }
 
   function selectorFrom(value) {
@@ -4561,6 +4563,15 @@
         }
         item.channels = channels;
         item.min = floor;
+      }
+      if (kind === "light_on_words") {
+        const words = $("requirementWords").value.split(",").map((w) => w.trim())
+          .filter(Boolean);
+        if (!words.length) {
+          showMessage("requirementStatus", "List the words, for example fire, star.", "warn");
+          return null;
+        }
+        item.words = words;
       }
       return item;
     });
