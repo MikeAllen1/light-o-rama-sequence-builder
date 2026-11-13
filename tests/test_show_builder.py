@@ -856,3 +856,21 @@ def test_vocals_are_split_once_for_every_style_of_the_same_song(
     sessions.generate(token, {"sing": True, "style": "classic"})
     assert len(splits) == 2
     sessions.close()
+
+
+def test_new_show_lists_the_styles_before_a_display_is_chosen(server: str) -> None:
+    playwright_api = pytest.importorskip("playwright.sync_api")
+    with playwright_api.sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page()
+        try:
+            page.goto(server + "/", wait_until="networkidle")
+            page.locator("#welcomeNewShow").click()
+            styles = page.locator('#styleChoices input[name="showStyle"]')
+            styles.first.wait_for(timeout=10000)
+            assert {styles.nth(i).get_attribute("value") for i in range(styles.count())} >= {
+                "classic", "energetic", "elegant"}
+            assert page.locator('#styleChoices input[name="showStyle"]:checked').count() == 1
+            assert page.locator("#generateShow").is_disabled()
+        finally:
+            browser.close()
