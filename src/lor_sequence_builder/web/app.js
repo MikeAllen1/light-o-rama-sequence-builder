@@ -132,10 +132,10 @@
     if (doc.querySelector("parsererror")) throw new Error("The selected file is not well-formed XML.");
     const root = doc.documentElement;
     if (!root || root.localName !== "sequence") throw new Error("Expected a Light-O-Rama sequence root element.");
-    const version = root.getAttribute("saveFileVersion");
-    if (version !== "15" && !(version === "14" && root.querySelector(":scope > channels"))) {
-      throw new Error("Only S5/S6 .loredit (saveFileVersion 15) and S4 .lms (saveFileVersion 14) " +
-        "sequences are supported.");
+    // Any saveFileVersion opens: the structure decides (SequenceProps for S5/S6, a
+    // flat channel list for S4).
+    if (!root.querySelector(":scope > SequenceProps") && !root.querySelector(":scope > channels")) {
+      throw new Error("This sequence has neither S5/S6 props nor S4 channels to show.");
     }
     let count = 0;
     const stack = [{ node: root, depth: 1 }];
@@ -155,8 +155,7 @@
   // as S4 types on export.
   function isLmsDocument(doc) {
     const root = doc.documentElement;
-    return root.getAttribute("saveFileVersion") === "14" &&
-      Boolean(root.querySelector(":scope > channels")) &&
+    return Boolean(root.querySelector(":scope > channels")) &&
       !root.querySelector(":scope > SequenceProps");
   }
 

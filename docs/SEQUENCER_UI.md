@@ -6,7 +6,7 @@ The sequencing workspace runs from a local Python loopback server. `lor-sequence
 
 ## First release
 
-The workspace opens a native S6 v15 `.loredit` and its matching audio, then renders:
+The workspace opens a native S5/S6 `.loredit` (or S4 `.lms`), whatever its save-file version, and its matching audio, then renders:
 
 - Native prop and channel tracks from `SequenceProps`.
 - Group hierarchy from embedded `PreviewClass/PropGroup/member` data.
@@ -121,7 +121,7 @@ The browser can also create a show from a `.lorprev` preview, selected audio, an
 
 Structured requirements are validated locally and remembered in the user's local application cache. If plain-English requirement translation is configured, only that text and the required preview-derived context are sent to the configured Anthropic API; audio files are not sent. Generation and rule checking remain local. A failed rule check returns its report to the browser rather than presenting an unusable sequence as a successful result.
 
-The browser parser rejects DTD/entity declarations and enforces the 50 MiB, 100,000-element, and 256-level bounds used by the sequence reader. Only S6 v15 sequences are supported.
+The browser parser rejects DTD/entity declarations and enforces the 50 MiB, 100,000-element, and 256-level bounds used by the sequence reader. Any save-file version opens: S5/S6 sequences are recognized by their `SequenceProps`, S4 sequences by their flat channel list.
 
 ## Analysis limitations
 

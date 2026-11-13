@@ -108,7 +108,7 @@ Current internal stage models use frozen dataclasses with explicit validation. U
 
 **Outputs:** `RawDisplayModel` and `RawPropModel[]`.
 
-**Known preview references:** the hand-authored fictional fixture at `tests/fixtures/synthetic_display.lorprev` and additional runtime-generated synthetic previews. Tests exercise structural parsing, including groups and members, without requiring owner/customer display exports in the repository. The LOREDIT `saveFileVersion` is a real format version and remains gated; `PreviewClass/@Revision` is an edit counter recorded as optional metadata, not a format gate.
+**Known preview references:** the hand-authored fictional fixture at `tests/fixtures/synthetic_display.lorprev` and additional runtime-generated synthetic previews. Tests exercise structural parsing, including groups and members, without requiring owner/customer display exports in the repository. The LOREDIT `saveFileVersion` is recorded and preserved but never gates reading or writing: the structure decides; `PreviewClass/@Revision` is an edit counter recorded as optional metadata, not a format gate.
 
 **Controller/channel interpretation:** Each LOR prop `ChannelGrid` row exposes network, Unit ID, and the circuit value present in that row; each DMX row exposes universe and channel. These are address fields, not a complete interpretation of every field or channel-range behavior. Remaining row fields are retained verbatim and are not yet semantically interpreted. The parser retains the complete original value and source locator. `Undetermined` is a recognized unassigned device type. Later phases must not infer channel counts, ranges, color semantics, or controller capabilities from unparsed fields.
 
@@ -370,7 +370,6 @@ Errors should identify the stage, input, and corrective action without dumping s
 ## 14. Open technical questions to resolve during fixture-led phases
 
 These are implementation questions, not permission to guess:
-- Which S6 application versions and LOREDIT `saveFileVersion` values will be officially supported?
 - Which exact `.loredit` elements/attributes are required for each supported channel/effect type?
 - How are timing grids, event boundaries, effect settings, and sequence references represented across supported versions?
 - Which preview properties encode physical segment order and orientation reliably beyond `StartLocation`?
