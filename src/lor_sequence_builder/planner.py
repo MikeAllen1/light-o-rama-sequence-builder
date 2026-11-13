@@ -1492,6 +1492,24 @@ def _look(planner: _Planner, window: _Window, rows: list[_Row], singles: list[st
                       bursts=bursts)
 
 
+def _snow_bed(planner: _Planner, window: _Window, here: set[str],
+              dark: list[tuple[int, int]]) -> None:
+    """While the snowflakes are not leading, they keep falling gently in the
+    background, one column after another on the style's beat."""
+    every = planner.style.snow_every
+    columns = [[p for p in line if p in here] for line in planner.snow.lines]
+    columns = [c for c in columns if c]
+    if every <= 0 or not columns or len(window.beats) < 2:
+        return
+    level = planner.sections[window.section_index].level
+    gaps = [y - x for x, y in itertools.pairwise(window.beats)]
+    step = max(10, round(every * sorted(gaps)[len(gaps) // 2]))
+    times = [t for t in range(window.beats[0], window.end - 10, step)
+             if not any(a <= t < b for a, b in dark)]
+    intensity = max(30, planner.style.brightness[level] * 7 // 10)
+    planner.falls(window, columns, times, intensity, motion=planner.snow.movement)
+
+
 def _multi_segment(planner: _Planner, pid: str) -> bool:
     prop = planner.display.props[pid]
     return (len(planner.constraints.channels[pid]) >= 2
@@ -2223,8 +2241,17 @@ def _glow(planner: _Planner, canvas: _Canvas, window: _Window, props: list[str],
                     # between their moves, and quiet parts, stay dark, so the moves
                     # still read and the song still builds.
                     if level >= planner.style.beds_from and b - a >= 2 * bar:
-                        canvas.put(pid, channel, a, b,
-                                   "shimmer" if level == HIGH else "twinkle", hold, color=color)
+                        count = planner.display.props[pid].channel_count
+                        outer = role == "mega_tree" and count >= 4 and not (
+                            count // 4 <= channel < count - count // 4)
+                        if outer:
+                            # A mega tree's outer channels carry low waves that
+                            # decay each bar, under the center's texture.
+                            _waves(canvas, pid, channel, a, b, window, hold, color)
+                        else:
+                            canvas.put(pid, channel, a, b,
+                                       "shimmer" if level == HIGH else "twinkle", hold,
+                                       color=color)
                     continue
                 if hit <= hold or role not in PULSE_ROLES:
                     # A glow with no hit breathes gently, swelling once a bar.
@@ -2246,6 +2273,10 @@ def _glow(planner: _Planner, canvas: _Canvas, window: _Window, props: list[str],
                 # that hard), decay to the glow by the next.
                 pulses = beats if level < HIGH or not planner.style.glow_half_beats else sorted(
                     {*beats, *((x + y) // 2 for x, y in itertools.pairwise(beats))})
+                if planner.style.glow_every > 1:
+                    # A calmer glow hits every other beat, counted from the bar.
+                    pulses = [t for t in pulses
+                              if _beat_in_bar(window, t) % planner.style.glow_every == 0]
                 marks = [t for t in pulses if a <= t < b - 10]
                 cursor = a
                 for k, t in enumerate(marks):
@@ -2262,6 +2293,22 @@ def _glow(planner: _Planner, canvas: _Canvas, window: _Window, props: list[str],
                 if cursor < b:
                     canvas.put(pid, channel, cursor, b, "on", hold, color=color)
 
+
+
+def _beat_in_bar(window: _Window, time: int) -> int:
+    """How many beats into its bar a time falls (0 on the downbeat)."""
+    bar = max((d for d in window.downbeats if d <= time), default=window.beats[0])
+    return sum(1 for x in window.beats if bar <= x < time)
+
+
+def _waves(canvas: _Canvas, pid: str, channel: int, a: int, b: int, window: _Window,
+           level: int, color: str | None) -> None:
+    """Low waves: from each downbeat the channel decays from ``level`` to a third of
+    it by the next."""
+    marks = [a] + [t for t in window.downbeats if a + 20 <= t < b - 20] + [b]
+    low = max(1, level // 3)
+    for x, y in itertools.pairwise(marks):
+        canvas.put(pid, channel, x, y, "fade", level, low, color)
 
 
 def _free_gaps(canvas: _Canvas, key: tuple[str, int], start: int,
@@ -2679,6 +2726,7 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
         props = sorted(p for p in active_in(window) - held
                        if display.props[p].role in PULSE_ROLES | BED_ROLES)
         _glow(planner, canvas, window, props, spec, dark, ramp)
+        _snow_bed(planner, window, active_in(window) - held, dark)
 
     # Build-ups: the last phrase before a louder part rises from half brightness.
     for index, section in enumerate(sections[:-1]):
