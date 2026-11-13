@@ -42,7 +42,7 @@ _MAX_JSON_BYTES = 256 * 1024
 SHOWS = ShowSessions()
 MAX_WORDS_BYTES = 5 * 1024 * 1024
 ADDS = AddSessions()
-_SHOW_STEPS = {"/api/show/start", "/api/show/last", "/api/show/last-start",
+_SHOW_STEPS = {"/api/show/start", "/api/show/styles", "/api/show/last", "/api/show/last-start",
                "/api/show/last-style", "/api/show/audio", "/api/show/requirements",
                "/api/show/generate", "/api/show/test", "/api/show/batch",
                "/api/show/batch-zip", "/api/show/batch-clear", "/api/show/words"}
@@ -476,6 +476,12 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
                 summary = SHOWS.start(payload, name)
                 _remember_display(payload, name, str(summary.get("display") or name))
                 self._send_json(200, summary)
+            elif path == "/api/show/styles":
+                # The styles to choose from, before any display is chosen.
+                from lor_sequence_builder.show_builder import all_styles
+                from lor_sequence_builder.style import DEFAULT_STYLE
+
+                self._send_json(200, {"styles": all_styles(), "default_style": DEFAULT_STYLE})
             elif path == "/api/show/last":
                 self._send_json(200, last_display.describe())
             elif path == "/api/show/last-start":
