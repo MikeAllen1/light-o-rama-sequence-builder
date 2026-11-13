@@ -94,9 +94,9 @@ def check_edited_sequence(payload: bytes, original_payload: bytes | None = None)
 
 
 def _is_s4(payload: bytes) -> bool:
-    """An S4 sequence: version 14 with a flat channel list instead of SequenceProps."""
-    head = payload[:4096]
-    return b'saveFileVersion="14"' in head and b"<SequenceProps" not in payload
+    """An S4 sequence: no S5/S6 props or preview (a flat channel list instead),
+    whatever its saveFileVersion."""
+    return b"<SequenceProps" not in payload and b"<PreviewClass" not in payload
 
 
 def _lms_channel_identity(document: LmsDocument) -> list[tuple[object, ...]]:
