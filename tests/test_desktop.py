@@ -83,3 +83,44 @@ def test_the_packaging_files_fit_together() -> None:
     assert (reserved, kind) == (0, 1) and count == 4
     workflow = (ROOT / ".github" / "workflows" / "desktop.yml").read_text(encoding="utf-8")
     assert "--self-test" in workflow and "FFMPEG_SHA256" in workflow
+    # Linux (AppImage) and macOS (.app) builds are self-tested and published too.
+    for job in ("linux-app:", "macos-app:", "needs: [windows-app, linux-app, macos-app]"):
+        assert job in workflow
+    assert "FFMPEG_LINUX_SHA256" in workflow and "FFMPEG_MAC_COMMIT" in workflow
+    assert "BUNDLE(" in spec and "lor-sequencer.icns" in spec
+    icns = (ROOT / "packaging" / "macos" / "lor-sequencer.icns").read_bytes()
+    assert icns[:4] == b"icns" and struct.unpack(">I", icns[4:8])[0] == len(icns)
+    png = (ROOT / "packaging" / "linux" / "lor-sequencer.png").read_bytes()
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+    for script in ("linux/AppRun", "linux/build_appimage.sh", "macos/build_ffmpeg.sh"):
+        assert os.access(ROOT / "packaging" / script, os.X_OK) or os.name == "nt"
+    desktop_entry = (ROOT / "packaging" / "linux" / "lor-sequencer.desktop").read_text()
+    assert "Icon=lor-sequencer" in desktop_entry and "Exec=" in desktop_entry
+
+
+def test_in_the_browser_it_stops_once_the_page_is_closed(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    from lor_sequence_builder import ui_server
+
+    quiet = iter([10.0, 600.0, 2000.0])
+    monkeypatch.setattr(ui_server, "seconds_since_last_request", lambda: next(quiet))
+    naps: list[float] = []
+    monkeypatch.setattr("time.sleep", naps.append)
+    desktop.wait_until_idle(limit=900, poll=30)
+    assert naps == [30, 30]
+
+
+def test_every_request_counts_as_the_page_being_open() -> None:
+    from urllib.request import Request, urlopen
+
+    from lor_sequence_builder import ui_server
+
+    server, url = desktop.start_server()
+    try:
+        ui_server._last_request[0] -= 5000
+        assert ui_server.seconds_since_last_request() > 4000
+        with urlopen(Request(url, method="HEAD"), timeout=10):
+            pass
+        assert ui_server.seconds_since_last_request() < 60
+    finally:
+        desktop.stop_server(server)

@@ -1,7 +1,9 @@
-"""Draw the app icon (packaging/windows/lor-sequencer.ico) with no image library.
+"""Draw the app icon with no image library.
 
-A rounded teal square with a white "L" and three small lights, at 256, 48, 32 and
-16 pixels, each stored as a PNG inside one Windows icon file.
+A rounded teal square with a white "L" and three small lights. Writes the Windows
+icon (packaging/windows/lor-sequencer.ico: 256, 48, 32 and 16 pixels), the macOS
+icon (packaging/macos/lor-sequencer.icns: 128, 256 and 512 pixels) and the Linux
+icon (packaging/linux/lor-sequencer.png: 256 pixels); each image is a PNG.
 Run: python packaging/make_icon.py
 """
 
@@ -64,7 +66,23 @@ def build_icon(path: Path) -> None:
     path.write_bytes(struct.pack("<HHH", 0, 1, len(sizes)) + directory + b"".join(images))
 
 
+def build_icns(path: Path) -> None:
+    """A macOS icon: PNG images under their ICNS type codes."""
+    entries = b""
+    for kind, size in ((b"ic07", 128), (b"ic08", 256), (b"ic09", 512)):
+        image = _png(size)
+        entries += kind + struct.pack(">I", 8 + len(image)) + image
+    path.write_bytes(b"icns" + struct.pack(">I", 8 + len(entries)) + entries)
+
+
 if __name__ == "__main__":
-    target = Path(__file__).resolve().parent / "windows" / "lor-sequencer.ico"
-    build_icon(target)
-    print(f"Wrote {target}")
+    here = Path(__file__).resolve().parent
+    targets = (here / "windows" / "lor-sequencer.ico", here / "macos" / "lor-sequencer.icns",
+               here / "linux" / "lor-sequencer.png")
+    for target in targets:
+        target.parent.mkdir(exist_ok=True)
+    build_icon(targets[0])
+    build_icns(targets[1])
+    targets[2].write_bytes(_png(256))
+    for target in targets:
+        print(f"Wrote {target}")

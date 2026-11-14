@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=LOR Sequencer
+Comment=Build Light-O-Rama shows from a song and your display
+Exec=lor-sequencer %f
+Icon=lor-sequencer
+Terminal=false
+Categories=AudioVideo;Utility;

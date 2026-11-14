@@ -23,6 +23,7 @@ def _release(tag: str = "v0.2.0", **extra: Any) -> dict[str, Any]:
 @pytest.fixture(autouse=True)
 def _checking(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LOR_NO_UPDATE_CHECK", raising=False)
+    monkeypatch.setattr(update_check, "PLATFORM", "win32")
 
 
 def test_versions_parse_and_compare() -> None:
@@ -39,6 +40,17 @@ def test_a_newer_release_is_reported_with_its_installer() -> None:
     assert result["newer"] and result["latest"] == "0.2.0"
     assert result["installer"] == INSTALLER
     assert result["page"] == f"{RELEASES_PAGE}/tag/v0.2.0"
+
+
+@pytest.mark.parametrize(("platform", "name"), [
+    ("win32", "LOR-Sequencer-Setup.exe"), ("darwin", "LOR-Sequencer-macOS.zip"),
+    ("linux", "LOR-Sequencer-x86_64.AppImage")])
+def test_each_computer_is_offered_its_own_download(platform: str, name: str) -> None:
+    base = "https://github.com/MikeAllen1/light-o-rama-sequence-builder/releases/download/v0.2.0/"
+    names = ["LOR-Sequencer-Portable.zip", "LOR-Sequencer-Setup.exe", "LOR-Sequencer-macOS.zip",
+             "LOR-Sequencer-x86_64.AppImage"]
+    release = _release(assets=[{"browser_download_url": base + n} for n in names])
+    assert update_check._installer_url(release, platform) == base + name
 
 
 @pytest.mark.parametrize("tag", ["v0.1.0", "v0.0.9"])

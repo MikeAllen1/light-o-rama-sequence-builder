@@ -13,7 +13,7 @@ Nothing is uploaded anywhere. The program runs on your computer and reads your f
 
 ## Your first show
 
-1. Open **LOR Sequencer** from the Start menu. (Running from the source folder instead? Double-click **Start LOR Sequencer**; your browser opens the workspace.)
+1. Open **LOR Sequencer**: from the Start menu on Windows, Applications on a Mac, or the AppImage on Linux (it opens in your browser). (Running from the source folder instead? Double-click **Start LOR Sequencer**; your browser opens the workspace.)
 2. Click **New show**. (Or right-click your preview in File Explorer and choose **Build a show with LOR Sequencer**: the app opens with that display already chosen. The installer offers this; S6 stays the program that opens previews.)
 3. **1 · Your display:** choose the `.lorprev` (S5/S6) or one of your `.lms` sequences (S4). The panel says what it found, for example "7 arches, 14 snowflakes, 1 mega tree", and lists any prop it cannot sequence, with the reason (pixel and DMX props, or props that follow another prop). Next time, New show starts with this display already chosen, and with the style you used.
 4. **2 · The song:** choose the audio file. It is analyzed for beats, bars, sections, strong hits, high-pitched hits (tambourine, sleigh bells) and cymbal crashes. A three-minute song takes a few seconds to half a minute. If your display has singing faces, **Sing the faces** is here too (see *Singing faces*).
@@ -190,13 +190,13 @@ Fine-tune in the S6 Sequencer: it is the full editor. The workspace's own editin
 
 ## Updating
 
-When a new version is out, the app says so in the bottom corner. Download the installer and run it over the copy you have: it closes the app, replaces it and keeps your settings.
+When a new version is out, the app says so in the bottom corner and links to the download for your computer. On Windows, run the new installer over the copy you have: it closes the app, replaces it and keeps your settings. On a Mac, drag the new app into Applications and replace the old one. On Linux, replace the AppImage. Settings are kept either way.
 
 ## Troubleshooting
 
 | Problem | What to do |
 | --- | --- |
-| A button does nothing, or something looks wrong | Click **Copy diagnostics** at the bottom of the start page and paste it into your message or GitHub issue. It has the version, the system checks, your last clicks and recent errors. Home folder paths are shortened, but error lines can name files you chose, so read it over first. The log itself is in `%LOCALAPPDATA%\lor-sequence-builder\logs`. |
+| A button does nothing, or something looks wrong | Click **Copy diagnostics** at the bottom of the start page and paste it into your message or GitHub issue. It has the version, the system checks, your last clicks and recent errors. Home folder paths are shortened, but error lines can name files you chose, so read it over first. The log itself is in `%LOCALAPPDATA%\lor-sequence-builder\logs` on Windows, `~/.cache/lor-sequence-builder/logs` on macOS and Linux. |
 | Something is not set up | Run `uv run lor-sequence-builder doctor` in the program folder. It checks Python, the libraries, FFmpeg, audio decoding, the workspace files and the data folders, and says how to fix each problem. |
 | "FFmpeg is required" | Install it: `winget install --id Gyan.FFmpeg -e` on Windows, `brew install ffmpeg` on macOS, `sudo apt install ffmpeg` on Debian or Ubuntu. Open a new window afterwards. |
 | "uv" is not recognized | Install uv (README quick start, step 1), then open a new window. |
@@ -214,7 +214,7 @@ Every show New show builds is also kept on this computer, and the start page lis
 
 ## Privacy
 
-Your previews, songs and sequences stay on your computer. Requirements and recent shows are kept in your user data folder (`%LOCALAPPDATA%\lor-sequence-builder` on Windows). Two things ever reach the internet. When the program starts, it asks GitHub whether a newer version has been published; that request carries nothing about you or your files. If one is out, a note in the corner links to the installer: **Later** skips that version, and **Stop checking** turns the check off (or set `LOR_NO_UPDATE_CHECK=1`). **Check for updates** at the bottom of the start page asks on demand. The other is requirement text you type in your own words, and only when you have set up a translator key yourself.
+Your previews, songs and sequences stay on your computer. Requirements and recent shows are kept in your user data folder (`%LOCALAPPDATA%\lor-sequence-builder` on Windows, `~/.cache/lor-sequence-builder` on macOS and Linux). Two things ever reach the internet. When the program starts, it asks GitHub whether a newer version has been published; that request carries nothing about you or your files. If one is out, a note in the corner links to the installer: **Later** skips that version, and **Stop checking** turns the check off (or set `LOR_NO_UPDATE_CHECK=1`). **Check for updates** at the bottom of the start page asks on demand. The other is requirement text you type in your own words, and only when you have set up a translator key yourself.
 
 ## The More menu
 
