@@ -5819,7 +5819,7 @@
       $("updateText").textContent = "LOR Sequencer " + result.latest + " is out (you have " +
         result.current + ").";
       $("updateLink").href = result.installer || result.page;
-      $("updateLink").textContent = result.installer ? "Download the installer" : "See what's new";
+      $("updateLink").textContent = result.installer ? "Download the new version" : "See what's new";
       $("updateBar").dataset.latest = result.latest;
       $("updateBar").classList.remove("hidden");
     } else if (manual) {
@@ -6296,6 +6296,11 @@
     setupDiagnostics();
     refreshRecent();
     openStartupPreview();
+    // Check in every minute, so an app running in the browser (macOS and Linux without
+    // a window of its own) knows to stop once every tab showing it is closed.
+    setInterval(() => {
+      fetch("./", { method: "HEAD", cache: "no-store" }).catch(() => {});
+    }, 60000);
   }
 
   setup();

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Start LOR Sequencer from inside its AppImage.
+HERE="$(dirname "$(readlink -f "$0")")"
+exec "$HERE/usr/lib/lor-sequencer/LOR Sequencer" "$@"
