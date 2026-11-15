@@ -24,6 +24,7 @@ This roadmap follows the phase order and acceptance gates in [PLAN.md](PLAN.md).
 - **Owner sign-off** for Phases 7, 8 and 9 (above).
 - **Code signing** for the Windows installer, so Windows stops warning about it. It needs the owner's Azure Trusted Signing account.
 - **Vocal-guided beats** (swing and rubato songs) stay experimental and off by default until they help on real songs.
-- Out of scope: pixel (RGB) and DMX props, controller upload, and live hardware playback.
+- RGB floods and other non-pixel RGB props are sequenced in color (from evidence in the owner's own S6 file). Pixel props need an S6 sequence with pixel props before they can be added.
+- Out of scope: DMX props, controller upload, and live hardware playback.
 
 A phase is complete only when its issue acceptance criteria, automated checks, required owner verification, PR merge, and explicit approval are all satisfied. See [PLAN.md](PLAN.md) for the full scope and progress log.

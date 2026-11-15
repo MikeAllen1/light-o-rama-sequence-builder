@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
 
+from lor_sequence_builder.rgb import from_argb
 from lor_sequence_builder.style import HIGH, LOW, MID, STYLES, Part, Style, _parts
 
 SCHEMA = "lor-style-1.0"
@@ -101,14 +102,18 @@ def _int(value: str | None) -> int | None:
         return None
 
 
+def _brightness(value: int | None) -> int | None:
+    return from_argb(value)[1] if value is not None and value < 0 else value
+
+
 def _effect(channel: str, element: ET.Element, settings: str) -> Lit | None:
     start = _int(element.get("startCentisecond"))
     end = _int(element.get("endCentisecond"))
     if start is None or end is None or end <= start or start < 0:
         return None
-    level = _int(element.get("intensity"))
-    first = _int(element.get("startIntensity"))
-    last = _int(element.get("endIntensity"))
+    # An RGB channel stores colors as negative ARGB numbers: read their brightness.
+    level, first, last = (_brightness(_int(element.get(name)))
+                          for name in ("intensity", "startIntensity", "endIntensity"))
     peak = max(v for v in (level, first, last, 0) if v is not None)
     if peak <= 0:
         return None
