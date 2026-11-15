@@ -3936,7 +3936,18 @@
       show.batchZipPending || show.testPending;
   }
 
+  // Show the toolbar controls only once they can do something.
+  function syncToolbar() {
+    const workspace = !$("editor").classList.contains("hidden") && Boolean(state.sequence);
+    const generated = !$("newShow").classList.contains("hidden") && resultIsCurrent();
+    document.body.classList.toggle("workspace-open", workspace);
+    // The meter also steers the song analysis in New show.
+    document.body.classList.toggle("new-show-open", !$("newShow").classList.contains("hidden"));
+    document.body.classList.toggle("show-ready", workspace || generated);
+  }
+
   function updateGeneratedControls() {
+    syncToolbar();
     const ready = !generatedActionsBlocked() && resultIsCurrent();
     for (const id of ["openGenerated", "saveGenerated", "pictureGenerated", "reportGenerated"]) {
       $(id).disabled = !ready;
@@ -6296,6 +6307,12 @@
     setupDiagnostics();
     refreshRecent();
     openStartupPreview();
+    // The editor and New show panels come and go from many places; follow them.
+    const toolbarWatch = new MutationObserver(syncToolbar);
+    for (const id of ["editor", "newShow"]) {
+      toolbarWatch.observe($(id), { attributes: true, attributeFilter: ["class"] });
+    }
+    syncToolbar();
     // Check in every minute, so an app running in the browser (macOS and Linux without
     // a window of its own) knows to stop once every tab showing it is closed.
     setInterval(() => {

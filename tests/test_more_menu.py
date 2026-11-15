@@ -28,22 +28,22 @@ def test_more_menu_explains_and_enables_its_files(workspace: str) -> None:  # no
         try:
             page.goto(workspace, wait_until="networkidle")
             menu = page.locator("#moreMenu")
+            # Nothing is open yet: the menu stays out of the way until it can be used.
+            assert page.locator("#moreButton").is_hidden()
+            page.locator("#sequenceFile").set_input_files(
+                {"name": "menu-test.loredit", "mimeType": "text/xml",
+                 "buffer": sequence_text().encode("utf-8")})
+            page.locator("#editor").wait_for(state="visible")
             assert menu.is_hidden()
             page.locator("#moreButton").click()
             assert menu.is_visible()
             assert page.locator("#moreButton").get_attribute("aria-expanded") == "true"
-            # Nothing is open yet: both wait, and say what to open first.
-            assert _state(page, "analysisFile") == (True, "Open a sequence first.")
+            # The singing timing waits for the song, and says so.
             assert _state(page, "vocalsFile")[0]
             assert "Open the song" in _state(page, "vocalsFile")[1]
             page.keyboard.press("Escape")
             assert menu.is_hidden()
             assert page.evaluate("document.activeElement.id") == "moreButton"
-
-            page.locator("#sequenceFile").set_input_files(
-                {"name": "menu-test.loredit", "mimeType": "text/xml",
-                 "buffer": sequence_text().encode("utf-8")})
-            page.locator("#editor").wait_for(state="visible")
             disabled, tip = _state(page, "analysisFile")
             assert not disabled and ".review.json" in tip
             assert _state(page, "vocalsFile")[0]  # still needs the song or its timing
