@@ -28,6 +28,7 @@ import json
 import os
 import secrets
 import shutil
+import sys
 import tempfile
 import threading
 import time
@@ -505,8 +506,11 @@ class ShowSessions:
                         vocals = separate_vocals(session.audio_path, kept)
                         session.vocals_path = vocals
                     elif sing:
-                        note = ("Singing faces need the vocals add-on (uv sync --extra vocals); "
-                                "the mouths stay still in this show.")
+                        note = ("Singing faces need word timings for the song (step 2) or the "
+                                "vocals add-on" + (", which only the version run from the "
+                                "source folder can install" if getattr(sys, "frozen", False)
+                                else " (uv sync --extra vocals)")
+                                + "; the mouths stay still in this show.")
                 stem = file_stem(session.audio_name, "show")
                 output = run / f"{stem} (generated){_sequence_suffix(session.preview_path)}"
                 try:

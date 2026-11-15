@@ -27,7 +27,7 @@ Both include everything they need, FFmpeg too. Light-O-Rama itself runs on Windo
 ## How it works
 
 1. **Your display.** Choose the S5/S6 `.lorprev` you already have, or with S4, any of your `.lms` sequences. It is the map: every prop, its channels, and where it stands in the yard.
-2. **Your song.** Any MP3, WAV or M4A. The program finds the beats, the bars, the loud parts, the sleigh bells and the cymbal crashes.
+2. **Your song.** MP3, M4A, WAV, FLAC, OGG, WMA or AIFF. The program finds the beats, the bars, the loud parts, the sleigh bells and the cymbal crashes.
 3. **Your show.** Pick a style and click **Generate show**, or **Make all three styles** to compare them. A score card says how it did. Watch it play on a drawing of your yard, then save it (`.loredit` for S5/S6, `.lms` for S4) and open it in the Light-O-Rama Sequencer. Play it as it is, or fine-tune it there.
 
 Next time, your display and style are already chosen: pick a song and generate.
@@ -56,7 +56,7 @@ You can also:
 
 ## Good to know
 
-- **It runs on your computer.** Your preview and your music never leave it. The only thing it asks the internet is whether a newer version is out, and you can turn that off.
+- **It runs on your computer.** Your preview and your music never leave it. It only goes online to ask whether a newer version is out (you can turn that off) and, if you install the optional vocals or lyrics add-ons, to download their speech models once.
 - **Windows, macOS and Linux.** Each has its own download above. The right-click "Build a show" entry on a preview is Windows only. Light-O-Rama itself runs on Windows, so make shows anywhere and copy them to your show computer.
 - **S4, S5 and S6 all work, whatever version saved the file.** With S5 or S6, choose your `.lorprev`; you get a `.loredit`. With S4 (no previews), choose one of your own S4 sequences (`.lms`) as the display: each channel becomes a prop, and you get a new `.lms` with the same channels. See [docs/S4_FORMAT.md](docs/S4_FORMAT.md).
 - **You need Light-O-Rama S4, S5 or S6** to play the shows. Standard LOR props (channel per color, multi-segment) are sequenced, and so are RGB floods and other non-pixel RGB props, in color. Pixel and DMX props are listed in the report but not sequenced yet.
@@ -101,7 +101,7 @@ The [user guide](docs/USER_GUIDE.md) walks through a first show, requirements, s
 - `<song> (generated).loredit` (S5/S6) or `.lms` (S4): the native sequence. Open it in the Sequencer to play it or fine-tune it.
 - **Show report** (`.report.html`): what was used and left dark and why, props it cannot sequence (pixel, DMX), your requirements, every rule, the song's parts and big moments, and a checklist for the yard.
 - **Plan picture** (`.plan.svg`): the whole show at a glance.
-- **10-second display test**: before a full show, light every prop in a fixed order to check the wiring (`display-test`, or **Make 10-second test** in New show).
+- **10-second display test**: before a full show, light every prop in a fixed order to check the wiring (`display-test`, or **10-second display test** in New show).
 - Details for the curious: the plan, the timeline and the rule results as JSON.
 
 ## Command line
@@ -180,7 +180,7 @@ The server binds only to `127.0.0.1`. Open an S5/S6 `.loredit` or S4 `.lms` (any
 
 The workspace supports synchronized navigation, playback, musical marker visualization, track expansion/collapse, and effect editing: select, move, trim, create, delete, duplicate, undo/redo, snapping to musical events, one-click retiming of out-of-sync hits, and a checked export to a new file. A music review corrects beats, bars, crashes, hits, section names and lyrics, fits a tempo map between confirmed bars, and saves a review file that `generate --analysis` accepts (see docs/SEQUENCER_UI.md). Optional saved audio-analysis JSON and `vocals-1.0` JSON can be loaded. Vocal regions and syllable candidates are heuristic; the current vocal format does not recognize words or provide lyrics.
 
-The Windows app opens this same workspace in its own window.
+The Windows and Mac apps open this same workspace in their own window; the Linux app opens it in your browser.
 
 ## Build a show
 
@@ -273,7 +273,7 @@ uv run lor-sequence-builder pulse --preview .\display.lorprev --bpm 120 --durati
 
 The older template mode (`--template`, a native S6 sequence whose embedded preview matches the standalone preview exactly) still works but is deprecated. The rules below apply to it.
 
-The verified Phase 3 boundary is `DeviceType=LOR` with `TraditionalType=Single Color`, `Multicolor_string_1_ch`, or `Channel_per_color`. The standalone preview and embedded template must have identical prop subtrees (all attributes and nested data, including geometry and master-prop references) and identical `PropGroup` membership/layout. Numeric geometry and group coordinates allow only a 1e-6 tolerance. Preview edit revisions are ignored, since they only count saves.
+The verified Phase 3 boundary is `DeviceType=LOR` with `TraditionalType=Single Color`, `Multicolor_string_1_ch`, or `Channel_per_color` (since 0.1.12 also non-pixel RGB props, `StringType=DumbRGB`, as one channel; see [docs/S6_FORMAT.md](docs/S6_FORMAT.md)). The standalone preview and embedded template must have identical prop subtrees (all attributes and nested data, including geometry and master-prop references) and identical `PropGroup` membership/layout. Numeric geometry and group coordinates allow only a 1e-6 tolerance. Preview edit revisions are ignored, since they only count saves.
 
 Physical mapping is deliberately strict. Each LOR `ChannelGrid` entry must have a complete network/Unit ID/circuit address, and the number of entries must equal the native `SeqProp/channel` count. Entry order is mapped to native channel coordinates using observed S6 v15 patterns: `Single Color` and `Multicolor_string_1_ch` use row 0 and sequential columns; `Channel_per_color` uses row 0, column 0, and sequential color coordinates. These addresses are included in each Timeline channel reference. A prop with no native `SeqProp`, incomplete address, count mismatch, or unverified native coordinates is explicitly listed as excluded with a reason; no mapping is invented. Legacy `DeviceType=AC` and `DC` values remain parseable for preview compatibility but are explicitly excluded from Phase 3 because their native mapping is not verified. Unsupported prop types are also listed in the Timeline.
 
@@ -299,9 +299,9 @@ uv run --no-sync --with pytest==9.2.0 --with ruff==0.17.4 --with mypy==1.18.2 --
 src/lor_sequence_builder/  Python package, CLI, and browser workspace assets
 tests/                     Unit tests and synthetic fixtures
 docs/                      User guide, architecture, format evidence, plan, roadmap, release notes
-packaging/                 Windows desktop app build (PyInstaller, Inno Setup installer)
+packaging/                 Desktop app builds: Windows (PyInstaller, Inno Setup), macOS (.app), Linux (AppImage)
 examples/requirements/     Ready-made requirement profiles
-.github/workflows/         Tests, CodeQL, and the Windows desktop build and release
+.github/workflows/         Tests, CodeQL, and the desktop builds and releases
 SECURITY.md                Security policy
 CONTRIBUTING.md            Contribution rules and phase workflow
 LICENSE                    MIT with the Commons Clause (free to use, not to sell)
@@ -314,10 +314,12 @@ LICENSE                    MIT with the Commons Clause (free to use, not to sell
 - Non-pixel RGB props (S6 "DumbRGB", such as RGB floods) are sequenced in color; pixel and DMX props are not yet. Unsupported props must be reported, not faked or silently omitted.
 - Source audio, previews, and sequence files are read-only. Generated output must be a new file.
 - Never commit original or sanitized show files, private previews, copyrighted audio, local machine paths, or secrets. Tests use fictional, hand-authored or runtime-generated synthetic fixtures only.
-- The workspace (in the browser or the Windows app) is local-only. Controller upload and live hardware playback remain out of scope. The browser workspace edits a copy in memory and exports a new file; it never changes the source sequence.
+- The workspace (in the browser or the desktop app) is local-only. Controller upload and live hardware playback remain out of scope. The browser workspace edits a copy in memory and exports a new file; it never changes the source sequence.
 
 This is an independent project and is not affiliated with or endorsed by Light-O-Rama.
 
 ## License
 
-Free to use, copy, change and share, for your own display or anyone else's. The one thing you may not do is sell it: no selling the program, a copy of it, or a paid service that is mostly this program (for example, charging people for shows it generates). The terms are the MIT license with the Commons Clause; see [LICENSE](LICENSE). Bundled parts keep their own licenses (FFmpeg in the Windows app is LGPL).
+Free to use, copy, change and share, for your own display or anyone else's. The one thing you may not do is sell it: no selling the program or a copy of it, and no paid product or service whose value comes mostly from this program (for example, charging people to make shows with it). The terms are the MIT license with the Commons Clause; see [LICENSE](LICENSE). This is a plain-language summary; the LICENSE file is what counts.
+
+The desktop apps bundle Python, the libraries the program runs on, and FFmpeg (LGPL). Each keeps its own license: `THIRD-PARTY-NOTICES.txt` and `FFmpeg-LICENSE.txt` come with every app.
