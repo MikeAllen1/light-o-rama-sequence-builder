@@ -76,6 +76,7 @@ To try everything without your own files, run `uv run lor-sequence-builder demo 
 
 The same song and display can be arranged with a different character. A style decides what each kind of prop does and what it moves on (a whole phrase, a bar, every other beat, the beat, or the half beat), so the three styles are genuinely different shows, not one show with different brightness:
 
+- **RGB props** (floods and other RGB lights that show one color at a time) light in color: each part of the song takes the next color of the style's palette, neighbouring RGB props alternate between two colors, and twinkles sparkle white. Classic uses red, green, white and gold; High energy red, blue, green, magenta, white and cyan; Elegant ice blue, white, purple and warm white. The **Only these colors** requirement limits them (for example, blue and ice blue). Pixel props are not sequenced yet.
 - **Classic** (default): arches chase on the beat and bounce back in the big parts, decorations take turns, the star beats along, the mega tree spins over a softly lit tree, a flash opens each louder part, the yard goes dark for one beat (all but the star) just before the last big chorus, and the show twinkles out at the end.
 - **High energy:** motion on the half beat, bouncing chases, outlines that pulse with the beat, a mega tree that fills bar by bar, sharp hits, and a dark beat before each big part so it lands harder. For fast, loud songs.
 - **Elegant:** motion on bars and phrases instead of beats. Arches fill and wave, decorations breathe one after another, the mega tree breathes and turns slowly, louder parts swell in, softer brightness, no flashes. The show twinkles out at the end. For ballads.
@@ -160,6 +161,7 @@ Requirements are things the show must do on your display. In **New show**, choos
 - **Keep dark during:** for example keep the mega tree dark in the verses.
 - **Limit brightness to:** for example the mega tree at 60%.
 - **Keep channels lit with the rest:** for example the star on top of the mega tree, so it lights with the tree and never on its own.
+- **Only these colors:** for example blue and white on the RGB floods, or only the red channels of a red-and-green prop.
 - **Light when these words are sung:** for example "fire" lights the homemade trees. Needs timed words (a word file or lyrics).
 
 They are remembered for that display, so the next show starts with them. On the command line, `lor-sequence-builder requirements display.lorprev` asks the same questions, and [examples/requirements](../examples/requirements/README.md) has ready-made profiles to use with `--rules`. With an Anthropic API key set (`ANTHROPIC_API_KEY`), requirements can also be typed in your own words.

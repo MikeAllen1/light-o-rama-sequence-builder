@@ -9,9 +9,11 @@ established by comparing native sequences (see docs/S6_FORMAT.md):
 - One ``channel`` per ``ChannelGrid`` entry. ``Single Color`` and
   ``Multicolor_string_1_ch`` use row 0 and sequential columns;
   ``Channel_per_color`` uses row 0, column 0, and sequential colors.
+- An RGB prop (``StringType="DumbRGB"``: red, green and blue circuits) has ONE
+  channel (row 0, column 0, color 0) whose effects carry ARGB colors (see rgb.py).
 - A fixed set of top-level sections in a fixed order, and a 0.05 s fixed grid.
 
-Props whose channel layout has not been verified (pixel/RGB, DMX, legacy AC/DC,
+Props whose channel layout has not been verified (pixel RGB, DMX, legacy AC/DC,
 unassigned) are excluded and reported, never silently dropped.
 """
 
@@ -27,6 +29,7 @@ from pathlib import PurePosixPath, PureWindowsPath
 from lor_sequence_builder.channel_mapping import (
     COLOR_LAYOUT_TYPES,
     channel_layout_problem,
+    native_channel_count,
     parse_channel_grid,
 )
 from lor_sequence_builder.loredit import LoreditDocument
@@ -85,9 +88,10 @@ class NewSequence:
 
 def _channel_count(prop: ET.Element) -> int:
     try:
-        return len(parse_channel_grid(prop.attrib.get("ChannelGrid")))
+        count = len(parse_channel_grid(prop.attrib.get("ChannelGrid")))
     except ValueError as exc:
         raise NewSequenceError(str(exc)) from exc
+    return native_channel_count(prop.attrib) if count else 0
 
 
 
