@@ -29,6 +29,7 @@ def test_new_show_with_an_s4_display_makes_an_s4_show(
     token = started["token"]
     try:
         assert started["display"] == "My Yard"
+        assert started["s4"] is True  # the app hides the S5/S6 display test
         names = {prop["name"] for prop in started["props"]}
         assert {"Arch 1", "Mini Tree 2", "Roof Line"} <= names
         song = tmp_path / "Song.wav"

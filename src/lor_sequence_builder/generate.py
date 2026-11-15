@@ -234,8 +234,9 @@ def _generate(
             analysis = {**analysis, "lyrics": words}
     elif wants_vocals:
         vocals_note = (
-            "Face mouths stay still: pass a vocals-only file with --vocals, or install "
-            "the vocals add-on (uv sync --extra vocals) to split vocals out of the song."
+            "Face mouths stay still: pass word timings (.vocals.json) or a vocals-only "
+            "recording with --vocals, or install the vocals add-on (uv sync --extra vocals) "
+            "to split vocals out of the song."
         )
     report_step("Planning the show", 0.8 if vocals_audio is not None else 0.3)
     plan = plan_show(analysis, display, rule_set, vocals, chosen_style)

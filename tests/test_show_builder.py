@@ -828,6 +828,25 @@ def test_new_show_makes_all_three_styles_scores_them_and_remembers_the_display(
             assert page.locator('input[name="showStyle"]:checked').get_attribute("value") \
                 == "classic"
             assert not page.locator("#showSongFile").is_disabled()
+
+            # A display picked while last time's is still being restored wins.
+            other = tmp_path / "other"
+            other.mkdir()
+            other_preview = _preview(other, line_drawn_yard())
+            held: list[Any] = []
+            page.route("**/api/show/last-start", lambda route: held.append(route))
+            page.goto(server + "/", wait_until="networkidle")
+            page.locator("#welcomeNewShow").click()
+            page.locator("#displayStatus").filter(has_text="Reading").wait_for(timeout=20000)
+            assert page.locator(".test-actions").is_visible()
+            page.locator("#showDisplayFile").set_input_files(str(other_preview))
+            page.locator("#displayStatus.good").filter(has_text="Line-Drawn Yard").wait_for(
+                timeout=20000)
+            assert held
+            held[0].continue_()
+            page.wait_for_timeout(1500)
+            status = page.locator("#displayStatus").inner_text()
+            assert "Line-Drawn Yard" in status and "from last time" not in status
         finally:
             browser.close()
 
