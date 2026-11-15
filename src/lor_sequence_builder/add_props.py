@@ -52,6 +52,7 @@ from lor_sequence_builder.planner import Plan, plan_show
 from lor_sequence_builder.pulse import preview_element
 from lor_sequence_builder.quality import QualityReport
 from lor_sequence_builder.quality import check as check_quality
+from lor_sequence_builder.rgb import is_rgb
 from lor_sequence_builder.rules import RuleReport, RuleSet, check_choreography
 from lor_sequence_builder.rules.engine import Display, display_from_preview
 from lor_sequence_builder.sequence_writer import _effect_attributes as _s6_attributes
@@ -391,10 +392,12 @@ def _add_s6(sequence_path: Path, output: Path, rule_set: RuleSet, preview_path: 
         sequence_props.append(copy.deepcopy(fresh_props[pid]))
     channels = {p.get("id", ""): p.findall("channel")
                 for p in sequence_props.findall("SeqProp")}
+    rgb_props = {prop.get("id", "") for prop in fresh_preview.findall("PropClass")
+                 if is_rgb(dict(prop.attrib))}
     for effect in sorted(plan.choreography.effects,
                          key=lambda e: (e.prop_id, e.channel_index, e.start_centisecond)):
         target = channels[effect.prop_id][effect.channel_index]
-        ET.SubElement(target, "effect", _s6_attributes(effect))
+        ET.SubElement(target, "effect", _s6_attributes(effect, effect.prop_id in rgb_props))
     try:
         written = write_loredit(LoreditDocument(root, sequence_path), output)
     except LoreditError as exc:

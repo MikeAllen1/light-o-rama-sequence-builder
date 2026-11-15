@@ -178,6 +178,8 @@ class Style:
     # A beat of darkness just before the song's biggest part, so it lands (styles
     # whose every louder part opens on a dark beat need no extra one).
     peak_breath: bool = False
+    # The colors RGB props cycle through, one per part of the song (see rgb.COLORS).
+    palette: tuple[str, ...] = ("red", "green", "white", "gold")
 
     def part(self, kind: str) -> Part:
         return self.parts[kind]
@@ -227,6 +229,7 @@ STYLES: dict[str, Style] = {
         glow_every=2, glow_trade=True, glow_gate=1.0, bed_twinkle=False, bed_bars=1, chop=True,
         tree_base=25,
         mirror=True, twinkle_finish=4, peak_breath=True,
+        palette=("red", "green", "white", "gold"),
         # Traditional and festive: balanced fades and cuts, moderate speed, clear
         # difference between verse and chorus, a flash to open the big parts.
         profile=Profile(hold_beats=(0.25, 2.5), fade_share=(0.15, 0.85), calm_lit=0.45,
@@ -261,6 +264,7 @@ STYLES: dict[str, Style] = {
         spin_width=1, fall=(7, 10, 14),
         glow=(None, (60, 10), (100, 55)), glow_half_beats=True,
         stabs=(0.5, 0.45, 25), stab_fade=False, beds_from=2, snow_every=0.5,
+        palette=("red", "blue", "green", "magenta", "white", "cyan"),
         # Dynamic and aggressive: quick hits, strong contrast between quiet and loud,
         # frequent accents, but never so much light that the contrast is lost.
         profile=Profile(hold_beats=(0.2, 0.9), fade_share=(0.0, 0.5), calm_lit=0.5,
@@ -292,6 +296,7 @@ STYLES: dict[str, Style] = {
         phrase_bars=8, entry="swell", arc=1, vary_repeats=False,
         spin_width=3, fall=(22, 60, 80),
         glow=(None, (0, 20), (0, 35)), sparkle_every=4, snow_every=2, twinkle_finish=3,
+        palette=("ice blue", "white", "purple", "warm white"),
         # Cinematic and refined: long lights and fades, few props at once, the whole
         # yard saved for the peaks, and almost no flashing.
         profile=Profile(hold_beats=(1.2, 8.0), fade_share=(0.35, 1.0), calm_lit=0.45,

@@ -113,6 +113,8 @@ Structural observations from native S6 6.6.0.12 musical sequences examined local
 - **Sequence props:** exactly one `SeqProp` per preview prop whose `MasterPropId` is empty, in preview order. Props linked to a master prop have no `SeqProp`; the master drives them. Older sequences can also hold a stub `SeqProp` with no channels for a prop no longer in the preview; a new sequence has none.
 - **SeqProp attributes:** `id` (the preview prop id), `name` (the preview prop name), `EnablePixelChannels="0"`, `OverlayMotionRows="0"` (an editor display toggle; occasionally set to 1 by the user).
 - **Channels:** one per `ChannelGrid` entry. `Single Color` and `Multicolor_string_1_ch` use row 0 with sequential columns; `Channel_per_color` uses row 0, column 0, with sequential colors. Verified on every prop examined.
+- **RGB props (non-pixel, `StringType="DumbRGB"`):** seen in an owner's S6 sequence with seven RGB floods (kept under `ArchivedProps` there). The preview prop has `TraditionalType="Channel_per_color"`, `DeviceType="LOR"` and three `ChannelGrid` entries (red, green, blue), but the sequence holds **one** `channel` (`row="0" col="0" color="0"`); the editor view lists it as `<id>/0-0-0-R`, `-G` and `-B`. Each effect stores its color as a signed 32-bit opaque ARGB number in the intensity fields: `intensity` for one color, `startIntensity`/`endIntensity` for a fade between colors (color to black, and color to color such as white to blue). Black is `-16777216` (`FF000000`), white `-1`, blue `-16776961`, green `-16711936`, the purple S6 mixes `-5242192` (`FFB002B0`). Settings seen: `INTENSITY` (both forms) and `SHIMMER` (start/end pair only). The writer uses exactly these forms; twinkles on an RGB prop are written as `SHIMMER`.
+- **Pixel props** (one channel per pixel, `EnablePixelChannels`) have no evidence yet and are not written.
 - **Timing grids:** a `TimingGridFixed name="Fixed Grid: 0.05" spacing="5"` is present unless a user removes it, followed by any user-made `TimingGridFree` grids.
 - **Root attributes:** `saveFileVersion="15"`, `AppVersion`, `id`, `totalCentiseconds`, and `musicFilename` are always present, plus editor settings with identical values in every sequence examined (`WaveHeight`, `TimingGridIdx`, `DragEventsWithTimings`, `ChaseClearFirst`, `ChaseSameRowType`, `ChaseType`, `AudioAnalysisLevel`, `GridView`, `GridViewSource`, `StartColor`, `EndColor`) and view settings that vary (`NameAreaWidth`, `ZoomWidth`, `ZoomHeight`). `author`, `musicArtist`, `musicTitle`, `musicAlbum`, and `createdAt` are optional.
 - **Audio:** S6 creates musical sequences only with an audio file chosen. `musicFilename` is stored as a path relative to the user's S6 audio folder (by default `Documents\Audio`), such as `Folder\song.mp3`. S6 reports a missing media file when it is not found there.
@@ -127,7 +129,7 @@ Still unconfirmed: the exact default `PropViews` content and view settings S6 wr
 One sequence is a useful starting point, not a complete schema. Additional S6-created fixtures are still required for:
 
 - Default view state and audio path base folder for a brand-new sequence (see above)
-- RGB props, pixel channels, and RGB effect encoding
+- Pixel props and pixel channels (non-pixel RGB props and their color encoding are covered above)
 - Multi-channel and grouped props
 - Motion effects and MotionPak references
 - Effect settings and parameters beyond the observed intensity, twinkle, and shimmer examples

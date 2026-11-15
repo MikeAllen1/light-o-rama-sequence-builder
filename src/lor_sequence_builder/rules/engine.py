@@ -41,6 +41,7 @@ from lor_sequence_builder.classifier import (
     classify_preview,
     prop_center,
 )
+from lor_sequence_builder.rgb import color_name
 from lor_sequence_builder.rules.profile import (
     RULE_SPECS,
     Requirement,
@@ -872,7 +873,10 @@ def _single_color_only_where_possible(ctx: _Context) -> str | None:
     for e in colored:
         prop = ctx.display.props[e.prop_id]
         wanted = (e.color or "").strip().lower()
-        if prop.color_kind == "combined_colors":
+        if prop.color_kind == "rgb":
+            if color_name(e.color) is None:
+                ctx.add(f"Asks for {e.color}, which is not a color this program can mix", e)
+        elif prop.color_kind == "combined_colors":
             ctx.add(f"Asks for {e.color}, but all colors on this strand share one circuit, "
                     "so no single color can be shown alone", e)
         elif prop.color_kind in {"single_color", "color_per_channel"}:
@@ -1057,6 +1061,11 @@ def _colors_only(ctx: _Context, req: Requirement, props: list[str]) -> str | Non
     allowed = {c.strip().lower() for c in req.params["colors"]}
     for e in _effects_on(ctx, set(props)):
         prop = ctx.display.props[e.prop_id]
+        if prop.color_kind == "rgb":
+            mixed = color_name(e.color) or "white"
+            if mixed not in {color_name(c) for c in allowed}:
+                ctx.add(f"Shows {mixed}; allowed: " + ", ".join(req.params["colors"]), e)
+            continue
         if prop.color_kind == "combined_colors":
             ctx.add("All colors on this strand share one circuit, so it cannot be limited to "
                     + ", ".join(req.params["colors"]), e)
