@@ -29,8 +29,10 @@ These ship in `src/lor_sequence_builder/rules/default.yaml` and apply to every d
 | `chases_follow_layout` | Chases and fills across several props follow the preview: row order, or left/right/up/down by position. | error |
 | `falls_go_down` | Falls run top to bottom, by prop height or, within one prop, by the string start location. | error |
 | `face_outline_with_mouth` | Whenever a mouth is on, the face outline is on. Applies only to faces that have a separate outline prop and mouth prop. | error |
-| `mouths_only_during_vocals` | Mouths move only while someone is singing. Not applicable until vocal analysis exists (Phase 8). | error |
-| `single_color_only_where_possible` | A specific color is asked only of a prop that can show it alone (never of a combined-color strand). | error |
+| `face_parts_together` | A singing face shows one mouth position at a time and its outline whenever a mouth is on, resting on the closed mouth between words. | error |
+| `shared_outlets_match` | Two props wired to the same controller circuit (a roofline on a mega tree's last channel) are one light, so they must show the same light at every moment. | error |
+| `mouths_only_during_vocals` | Mouths move only while someone is singing. Not applicable when the song has no vocal analysis. | error |
+| `single_color_only_where_possible` | A specific color is asked only of a prop that can show it alone (never of a combined-color strand). An RGB prop can show any color the program knows (red, green, blue, white, warm white, gold, yellow, orange, purple, magenta, pink, cyan, teal, ice blue). | error |
 | `motion_stops_at_hard_stops` | No movement runs through a hard stop in the music. | error |
 | `not_everything_at_once` | Warns when at least `max_share` of all channels are on for longer than `max_seconds`, outside `allow_sections`. | warning |
 
@@ -83,10 +85,13 @@ Shared fields are `id`, `type`, `props`, `severity` (default `error`) and `note`
 | --- | --- | --- |
 | `keep_on` | `during` (section names, optional) | Every channel stays lit for the whole song or the listed sections. For a prop with a channel per color, any one color counts. |
 | `never_use` | | The props are never lit. |
-| `colors_only` | `colors` | The props show only these colors. A combined-color strand cannot be limited and is reported. |
+| `colors_only` | `colors` | The props show only these colors. On an RGB prop, the colors it mixes are limited to these (color names as above). A combined-color strand cannot be limited and is reported. |
 | `max_intensity` | `max` (0 to 100) | The props never go above this intensity. |
 | `quiet_during` | `sections` | The props are dark during these sections. |
 | `move_direction` | `direction`, `movement` (chase, fill or fall; default chase) | Movements across only these props run in this direction. |
+| `light_whole` | | Every channel of the prop shows the same light: it never lights one side alone. |
+| `anchor_channels` | `channels` (1-based channel numbers), `min` (0 to 100, default 30) | These channels light only with the rest of the prop (for example a star on the top channel of a mega tree), at least `min`% while the rest is lit. |
+| `light_on_words` | `words` | The props light when the song sings one of these words (needs timed lyrics or a word file). The planner follows it; the rules check cannot see the lyrics, so it always reports `N/A`. |
 
 A requirement that matches no sequenceable prop is reported as a warning, because it is usually a typo. Props linked to a master prop are driven through the master, so a requirement on them is reported rather than applied.
 

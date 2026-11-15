@@ -270,7 +270,8 @@ def _build_parser() -> argparse.ArgumentParser:
     demo.add_argument("folder", help="new or empty folder for the demo files")
     batch = commands.add_parser(
         "generate-batch", help="build a show for every song in a folder (a whole playlist)")
-    batch.add_argument("--preview", required=True, help="required standalone .lorprev file")
+    batch.add_argument("--preview", required=True,
+                       help="the display: an S5/S6 .lorprev, or one of your S4 sequences (.lms)")
     batch.add_argument("--songs", required=True, help="folder of songs (read only)")
     batch.add_argument("--output", required=True, help="new or empty folder for the shows")
     batch.add_argument("--style", choices=sorted(STYLES), default=DEFAULT_STYLE,
@@ -441,7 +442,10 @@ def _generate_batch(options: argparse.Namespace) -> int:
         print(f"  {show.sequence_path.name}: {len(show.plan.sections)} parts, "
               f"{len(show.plan.used_props)} props")
     print(f"{len(songs) - len(failed)} of {len(songs)} shows built in {target}.")
-    print("Copy each song into S6's audio folder with the same name, then open its .loredit.")
+    if str(options.preview).lower().endswith(".lms"):
+        print("Copy each song into your S4 audio folder with the same name, then open its .lms.")
+    else:
+        print("Copy each song into S6's audio folder with the same name, then open its .loredit.")
     return 1 if failed else 0
 
 

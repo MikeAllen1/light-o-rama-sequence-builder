@@ -7,7 +7,7 @@ window; on Linux it opens in the browser.
 | File | What it does |
 | --- | --- |
 | `launch.py` | The app's entry point; runs `lor_sequence_builder.desktop`. |
-| `lor_sequencer.spec` | PyInstaller recipe: the program, its workspace files and rules, librosa's data, and FFmpeg from `LOR_FFMPEG_DIR`. Makes `dist/LOR Sequencer/`. |
+| `lor_sequencer.spec` | PyInstaller recipe: the program, its workspace files and rules, librosa's data, FFmpeg from `LOR_FFMPEG_DIR`, the LICENSE, and `THIRD-PARTY-NOTICES.txt` (written by `scripts/third_party_notices.py`: the license of every bundled library). Makes `dist/LOR Sequencer/` (and on macOS `dist/LOR Sequencer.app`). |
 | `windows/installer.iss` | Inno Setup script: a per-user installer (no administrator prompt) with a Start menu entry, an optional desktop shortcut and a normal uninstaller. |
 | `windows/lor-sequencer.ico`, `macos/lor-sequencer.icns`, `linux/lor-sequencer.png` | The icon, drawn by `make_icon.py`. |
 | `linux/build_appimage.sh`, `linux/AppRun`, `linux/lor-sequencer.desktop` | Wrap the PyInstaller folder in an AppImage. |
@@ -22,7 +22,7 @@ the default browser if no window can be made (the Linux app always uses the
 browser). Closing the window stops the server and removes temporary show files.
 In the browser, the page checks in every minute and the app stops itself about
 15 minutes after the last check-in. A windowed app has no console, so its log goes to
-`%LOCALAPPDATA%\lor-sequence-builder\logs\desktop.log`.
+`%LOCALAPPDATA%\lor-sequence-builder\logs\desktop.log` (`~/.cache/lor-sequence-builder/logs/desktop.log` on macOS and Linux).
 
 `"LOR Sequencer.exe" --self-test result.json` checks an installed copy without a
 window: the workspace is served, every required `doctor` check passes, and a

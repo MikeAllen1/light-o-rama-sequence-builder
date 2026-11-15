@@ -1960,6 +1960,17 @@
     }
   }
 
+  // A subtitle cue's words without its styling tags (<i>, <c.red>, <00:01.000>). Any
+  // angle bracket left over is dropped too, so no markup can survive.
+  function plainCueText(line) {
+    let text = line;
+    for (let previous = null; previous !== text;) {
+      previous = text;
+      text = text.replace(/<[^<>]*>/g, "");
+    }
+    return text.replace(/[<>]/g, "").trim();
+  }
+
   function parseLyricsText(text, name, duration = currentMusicDuration()) {
     const lines = [];
     const lrc = /\[(\d{1,3}):(\d{1,2}(?:\.\d{1,3})?)\]/g;
@@ -1979,7 +1990,7 @@
         const match = block.match(cue);
         if (!match) continue;
         const after = block.slice(match.index + match[0].length).trim().split("\n");
-        const words = after.map((line) => line.replace(/<[^>]+>/g, "").trim()).join(" ").trim();
+        const words = after.map((line) => plainCueText(line)).join(" ").trim();
         if (words) lines.push({ start: toSeconds(match[1], match[2], match[3], match[4]),
           end: toSeconds(match[5], match[6], match[7], match[8]), text: words });
       }
@@ -4092,7 +4103,7 @@
     $("saveBatch").disabled = !show.batchReady || show.batchUncertain || show.requirementsUncertain ||
       show.batchRunning || show.batchZipPending || show.generationPending || show.displayPending ||
       show.audioPending || show.requirementsPending || show.testPending;
-    $("showDisplayFile").disabled = show.displayPending || show.batchRunning || show.batchZipPending ||
+    $("showDisplayFile").disabled = (show.displayPending && !show.restoringDisplay) || show.batchRunning || show.batchZipPending ||
       show.generationPending || show.testPending || show.audioPending || show.requirementsPending;
     $("closeNewShow").disabled = state.audioDecodePending || show.audioPending || show.requirementsPending ||
       show.displayPending || show.generationPending || show.batchRunning || show.batchZipPending || show.testPending;
@@ -4100,10 +4111,15 @@
   }
 
   async function chooseDisplay(file, remembered) {
+    // A display the user picks wins over last time's display still being restored
+    // (the file dialog may have been opened before the restore began).
+    const overridesRestore = !remembered && show.displayPending && show.restoringDisplay;
     if (!file || show.batchRunning || show.batchZipPending || show.generationPending ||
-        show.displayPending || show.testPending || show.requirementsPending) return;
+        (show.displayPending && !overridesRestore) || show.testPending ||
+        show.requirementsPending) return;
     const requestId = ++show.displayRequestId;
     show.displayPending = true;
+    show.restoringDisplay = Boolean(remembered);
     setShowConfigurationLocked(true);
     setStepEnabled();
     showMessage("displayStatus", "Reading " + file.name + "…");
@@ -4134,6 +4150,8 @@
       showMessage("batchStatus", "");
       $("watchTest").disabled = true;
       $("saveTest").disabled = true;
+      // The display test is an S5/S6 sequence; an S4 display has no use for it.
+      document.querySelector(".test-actions").classList.toggle("hidden", Boolean(summary.s4));
       showMessage("testStatus", "");
       show.analysis = null;
       show.analysisMeter = null;
@@ -4183,6 +4201,7 @@
     }
     if (requestId === show.displayRequestId) {
       show.displayPending = false;
+      show.restoringDisplay = false;
       setShowConfigurationLocked(false);
       setStepEnabled();
     }

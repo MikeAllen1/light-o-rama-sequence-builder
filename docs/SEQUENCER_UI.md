@@ -2,7 +2,7 @@
 
 ## Product boundary
 
-The sequencing workspace runs from a local Python loopback server. `lor-sequence-ui` opens it in a browser; the Windows desktop app opens the same workspace in its own window. Sequencing logic stays in the workspace and the Python engine, never in the desktop layer.
+The sequencing workspace runs from a local Python loopback server. `lor-sequence-ui` opens it in a browser; the Windows and Mac desktop apps open the same workspace in their own window, and the Linux app in the browser. Sequencing logic stays in the workspace and the Python engine, never in the desktop layer.
 
 ## First release
 
@@ -11,7 +11,7 @@ The workspace opens a native S5/S6 `.loredit` (or S4 `.lms`), whatever its save-
 - Native prop and channel tracks from `SequenceProps`.
 - Group hierarchy from embedded `PreviewClass/PropGroup/member` data.
 - Channel-less sequence entries whose IDs match a native `PropGroup` are treated as group placeholders, not duplicate empty prop tracks; sequenced member props remain nested under the group.
-- Native effect intervals and settings from channel `effect` elements.
+- Native effect intervals and settings from channel `effect` elements. On an RGB channel the effect's colors (stored as ARGB) color its block; those colors are kept as they are when the effect is edited.
 - Native free timing grids and fixed grid spacing.
 - A waveform decoded from the selected audio file.
 - Confidence-weighted beat/downbeat candidates, pixel-decimated transient candidates, RMS energy, four-bar phrase, section-change, and near-silence lanes from the existing audio analyzer.
@@ -34,6 +34,7 @@ The shared horizontal extent covers the longer of the sequence and selected audi
 - Shapes drawn in a box are simplified: arches as arcs, trees as fanned strands from the top, stars, snowflakes (center out), circles, and rectangles for anything else. Rotation is applied.
 - Each channel is one part of its prop, in channel order.
 - Colors come from the channel grid. Multicolor strings alternate their colors along the strand.
+- RGB props (S6 "DumbRGB") show the color each effect mixes; a prop with a single point (a flood) is drawn as a round spot.
 
 Brightness follows each channel's effects: steady and fading intensity exactly, twinkle and shimmer as a random flicker. Unlit strands stay faintly visible so the layout reads. During playback the view follows the song. Without audio, clicking a time on the tracks shows that moment. New show opens the yard view with every generated show.
 
@@ -43,11 +44,11 @@ It is an approximation for review: S6's own visualizer remains the reference for
 
 **New show** (or **Build a new show** on the start page) runs the whole generator from the browser, one step at a time:
 
-1. **Your display:** choose the S6 preview (.lorprev). The panel says what it found (for example "4 arches, 1 mega tree, 4 mini trees") and lists any prop it cannot sequence, with the reason.
-2. **The song:** choose the audio file; it is analyzed on this computer.
-3. **Requirements (optional):** keep props on, never use them, keep them dark during chosen parts of the song, or limit their brightness, chosen from the display's own kinds of props, groups and prop names. With a translator configured (`ANTHROPIC_API_KEY`), they can also be typed in plain English. Requirements are remembered per display in the user's data folder (`%LOCALAPPDATA%\lor-sequence-builder\requirements` on Windows), keyed by the preview's own id, so the next show for the same display starts with them.
-   **Make 10-second test** (once the display is chosen) builds a display test that lights each kind of prop in turn, sweeps left to right, then lights everything; **Watch test** plays it on the yard view and **Save test** downloads it with its sound and a list of what should light when.
-4. **Generate:** set the audio file name as S6 should find it, choose whether faces sing (needs the vocals add-on), and generate. Every rule is checked; the panel lists the song's parts, the props used and left out, and the planner's notes. **Save show** downloads the `.loredit` straight away; **Plan picture** opens the whole show at a glance; **Open in the workspace** (or **Yard view** in the top bar) loads the sequence with the song and its analysis so it can be reviewed against the music, and **Save sequence** downloads `<song> (generated).loredit`.
+1. **Your display:** choose the S5/S6 preview (.lorprev), or with S4 one of your sequences (.lms). The panel says what it found (for example "4 arches, 1 mega tree, 4 mini trees") and lists any prop it cannot sequence, with the reason.
+2. **The song:** choose the audio file; it is analyzed on this computer. Singing-face options are here too: whether faces sing, a word-timing file for lip-sync, and which singer.
+3. **Requirements (optional):** keep props on, never use them, keep them dark during chosen parts of the song, limit their brightness, keep channels lit with the rest, limit colors, or light props when words are sung, chosen from the display's own kinds of props, groups and prop names. With a translator configured (`ANTHROPIC_API_KEY`), they can also be typed in plain English. Requirements are remembered per display in the user's data folder (`%LOCALAPPDATA%\lor-sequence-builder\requirements` on Windows, `~/.cache/lor-sequence-builder/requirements` on macOS and Linux), keyed by the preview's own id, so the next show for the same display starts with them.
+   **10-second display test** (once the display is chosen) builds a display test that lights each kind of prop in turn, sweeps left to right, then lights everything; **Watch the test** plays it on the yard view and **Save test files** downloads it with its sound and a list of what should light when.
+4. **Generate:** choose a style (or **Make all three styles**), and generate; the audio file name S6 should find is under **Advanced**. A score card shows the quality score and the rule result. Every rule is checked; the panel lists the song's parts, the props used and left out, and the planner's notes. **Save show** downloads the `.loredit` straight away; **Plan picture** opens the whole show at a glance; **Open in the workspace** (or **Yard view** in the top bar) loads the sequence with the song and its analysis so it can be reviewed against the music, and **Save sequence** downloads `<song> (generated).loredit`.
 
 The files are kept in a private temporary folder for the session (at most four sessions, two hours each) and deleted when the session ends or the workspace stops. The endpoints accept only same-origin requests on the loopback address, with the same size limits as the command line.
 
@@ -74,7 +75,7 @@ Moves, trims and new effects snap within 8 pixels to the targets ticked in the e
 
 Every edit is checked before it is applied: effects may not overlap on a channel, have no length, start before the song or run past the end. A refused edit changes nothing and says why. Overlaps already in the source are left alone; S6 itself sometimes saves an exact duplicate of an effect.
 
-Export rebuilds only the channels that were edited (marked with an amber edge); every other byte of the file is kept as it was, including line endings and S6's ` />` spacing. The local server reads the result with the same safe reader used for every sequence (version, XML limits, prop references) and checks every effect's timing, then the browser downloads it as `<name> (edited).loredit`. The source file is never changed. Exporting without edits gives back a byte-identical file; this was confirmed on the owner's seven finished sequences, checked locally and not committed, along with deleting and duplicating effects in each.
+Export rebuilds only the channels that were edited (marked with an amber edge); every other byte of the file is kept as it was, including line endings and S6's ` />` spacing. The local server reads the result with the same safe reader used for every sequence (XML limits, prop references) and checks every effect's timing, then the browser downloads it as `<name> (edited).loredit`. The source file is never changed. Exporting without edits gives back a byte-identical file; this was confirmed on the owner's seven finished sequences, checked locally and not committed, along with deleting and duplicating effects in each.
 
 Effects of types other than Intensity, Twinkle and Shimmer keep their own settings; only their timing can be edited. Moving an effect to another channel is not supported yet.
 
@@ -135,5 +136,6 @@ The browser parser rejects DTD/entity declarations and enforces the 50 MiB, 100,
 ## Follow-on work
 
 1. Musical editing: vocal phrase markers, meter changes within a song, and word-level lyric retiming.
-2. Professional workflow: reusable layouts, track visibility/mute, keyboard shortcuts, event inspector, and performance work on larger displays.
+2. Professional workflow: reusable layouts, track visibility/mute, and performance work on larger displays.
+3. Moving effects between channels, and editing an RGB effect's colors.
 3. Code signing for the Windows installer.

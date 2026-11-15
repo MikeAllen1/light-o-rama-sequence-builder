@@ -1,12 +1,12 @@
 # Implementation Plan
 
-**Status (2026-11-13):** Every phase is built, merged and shipped in the Windows app (v0.1.10), and every phase issue is closed. Phases 0 through 6b, 10, 11A and 11B and the final desktop delivery are complete. Phases 7, 8 and 9 are in use on the owner's display; their formal owner sign-off is not yet recorded. See [ROADMAP.md](ROADMAP.md) for what is still open.
+**Status (2026-11-15):** Every phase is built, merged and shipped in the desktop apps for Windows, macOS and Linux (v0.1.12), and every phase issue is closed. Phases 0 through 6b, 10, 11A and 11B and the final desktop delivery are complete. Phases 7, 8 and 9 are in use on the owner's display; their formal owner sign-off is not yet recorded. See [ROADMAP.md](ROADMAP.md) for what is still open.
 **Current work:** tuning shows against the owner's own sequences and professional (WOW Lights) sequences, and published sequencing advice.
-**Delivery:** The Windows desktop app wraps the same browser workspace; the browser workspace (`lor-sequence-ui`) still runs on its own from the source folder.
+**Delivery:** The desktop apps (Windows, macOS, Linux) wrap the same browser workspace; the browser workspace (`lor-sequence-ui`) still runs on its own from the source folder.
 
 ## Product objective and fixed requirements
 
-Build a display-independent Python engine and CLI that accept audio plus a required Light-O-Rama .lorprev preview and produce a new native S6 .loredit sequence. Add a browser-based sequencing workspace that opens real S6 sequences and matching audio on a shared, musically aligned timeline. The Windows desktop app wraps the same workspace. Timeline JSON remains the single source of truth for generated choreography.
+Build a display-independent Python engine and CLI that accept audio plus a required Light-O-Rama .lorprev preview and produce a new native S6 .loredit sequence. Add a browser-based sequencing workspace that opens real S6 sequences and matching audio on a shared, musically aligned timeline. The desktop apps wrap the same workspace. Timeline JSON remains the single source of truth for generated choreography.
 
 - Preview is mandatory for analyze and generate. Missing, unreadable, malformed, unsupported-version, or zero-prop previews fail clearly.
 - Props, controllers, and channels must originate from the preview. Never invent or silently reassign them.

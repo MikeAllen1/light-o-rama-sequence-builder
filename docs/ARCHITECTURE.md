@@ -2,8 +2,8 @@
 
 **Status:** Architecture and confirmed design decisions only. Current implementation phase, review state, and next approved work are maintained in [PLAN.md](PLAN.md); do not infer project phase status from this document.  
 **Project:** Light-O-Rama Sequence Builder  
-**Current interfaces:** Python CLI and browser-based local sequencing workspace for sequence editing, music review, and show creation; a Windows desktop app (`desktop.py`, pywebview) that wraps the same workspace  
-**Target output:** Native Light-O-Rama S6 `.loredit` sequence  
+**Current interfaces:** Python CLI and browser-based local sequencing workspace for sequence editing, music review, and show creation; desktop apps for Windows, macOS and Linux (`desktop.py`, pywebview) that wrap the same workspace  
+**Target output:** Native Light-O-Rama `.loredit` sequence (S5/S6), or `.lms` (S4)  
 **Required display input:** Light-O-Rama `.lorprev` preview (S5/S6), or an S4 `.lms` sequence used as the display
 
 ## 1. Purpose and scope
@@ -24,7 +24,7 @@ The original audio, preview, and any reference sequence are read-only inputs. Ou
 - The current committed preview fixture is `tests/fixtures/synthetic_display.lorprev`, a small hand-authored fictional XML example. Larger sequence and preview test inputs are generated at test time with fictional identifiers, names, addresses, and geometry.
 - The repository's current fixture policy is synthetic-only. Historical owner-derived and sanitized show material was removed from the current tree in PR #15; do not restore it. Format claims must be supported by documented observations, synthetic regression coverage, and owner-run S6 verification without retaining private source files.
 - Non-pixel RGB props (S6 "DumbRGB") are supported from S6 file evidence (docs/S6_FORMAT.md): one channel whose effects carry ARGB colors; the planner colors them from the style's palette (`rgb.py`). Pixel support is a declared limitation, not something to fake or infer. If a preview contains a channel/prop type the current writer cannot safely represent, the tool must report it and must not silently drop it or claim full support.
-- The sequencing workspace runs through a loopback-only local server. The Windows desktop app opens the same workspace in a native window (pywebview, WebView2) and falls back to the default browser; no sequencing logic lives in the desktop layer. The workspace supports native effect editing, music review, checked export to a new file, and a guided new-show workflow. Controller upload and live hardware playback remain out of scope.
+- The sequencing workspace runs through a loopback-only local server. The desktop app opens the same workspace in a native window (pywebview: WebView2 on Windows, WebKit on macOS) and otherwise uses the default browser (always on Linux, where it stops itself once the page has been closed for a while); no sequencing logic lives in the desktop layer. The workspace supports native effect editing, music review, checked export to a new file, and a guided new-show workflow. Controller upload and live hardware playback remain out of scope.
 
 ## 3. Design principles
 
@@ -287,22 +287,7 @@ CLI selection:
 
 ## 8. CLI contract
 
-Proposed command shape:
-
-```text
-lor-sequence-builder analyze-preview display.lorprev --report display.analysis.json
-
-lor-auto-sequencer generate \
-  --audio song.mp3 \
-  --preview display.lorprev \
-  --output generated.loredit \
-  --timeline-output generated.timeline.json \
-  --report generated.report.json \
-  --lor-version 6.6.0.12 \
-  --rules my-display.yaml
-```
-
-Names and option defaults are proposals pending approval. Both commands require a preview, which is the only display input. The target LOR version is configurable; detection of preview revision and selection of target application version are separate concerns.
+The commands and their options are listed in the [README](../README.md#command-line) and `lor-sequence-builder <command> --help`. Every command that builds a show takes the display (`--preview`, an S5/S6 `.lorprev` or an S4 `.lms`), which is the only display input; outputs are new paths that are never overwritten.
 
 ## 9. Compatibility and fixture policy
 
@@ -318,16 +303,17 @@ S6-generated samples inspected locally and their documented structural observati
 
 The initial format investigation used local S6 exports that are not retained in the repository. Additional format claims require targeted S6-generated evidence reviewed locally; retain only synthetic regression cases and non-sensitive structural observations.
 
-## 10. V1 channel support and declared limitation
+## 10. Channel support and declared limitations
 
-V1 currently implements and tests the following non-pixel channel types. Synthetic fixtures exercise these behaviors but do not establish how common they are across LOR displays:
+Sequenced, from S6 file evidence (see [S6_FORMAT.md](S6_FORMAT.md)):
 
-- Single-color AC/DC channels.
-- Multi-color props whose colors share a single circuit, with correct handling so they are not treated as independent single-color channels.
+- `DeviceType=LOR` props with `TraditionalType` `Single Color`, `Multicolor_string_1_ch` (colors sharing one circuit are not treated as independent channels) or `Channel_per_color`, including multi-segment props.
+- Non-pixel RGB props (`StringType="DumbRGB"`): one channel whose effects carry ARGB colors.
+- S4 sequences used as the display: each channel is a prop.
 
-**RGB/pixel props are outside the initial V1 implementation target.** The architecture should leave a typed extension point for them, but V1 must not emit pixel choreography or pretend to support pixel data. If a preview includes RGB/pixel props, they must be explicitly listed as unsupported in analysis and the generation report. Generation must fail if the requested sequence would require unsupported pixel channels or if excluding them would violate the no-silent-drop requirement. Adding pixel support later requires dedicated preview/sequence fixtures and target-LOR verification.
+**Pixel props and DMX props are not sequenced.** They are listed as unsupported, with the reason, in the display panel, `analyze-preview` and the show report; no pixel choreography is emitted or faked. Adding pixel support needs an S6 sequence with pixel props as format evidence, synthetic fixtures, and owner verification in S6.
 
-Any other unsupported channel or effect type follows the same explicit-report-and-fail policy where safe output cannot be guaranteed.
+Any other unsupported channel or effect type follows the same explicit-report policy: the prop is reported and left out, never silently dropped or guessed.
 
 ## 11. Security and reliability
 
@@ -359,13 +345,12 @@ Errors should identify the stage, input, and corrective action without dumping s
 - Output exists or aliases an input: refuse to overwrite.
 - Audio feature unavailable: report degraded analysis; never fabricate vocal syllables or section certainty.
 
-## 13. Explicitly out of scope for V1
+## 13. Explicitly out of scope
 
 - Uploading sequences to controllers.
 - Live playback/control.
-- Editing existing sequence files in the initial read-only browser workspace; browser-based editing is a later phase.
-- RGB/pixel choreography implementation (declared limitation; unsupported inputs are reported).
-- Cloud processing or account integration.
+- Pixel and DMX choreography (declared limitation; unsupported inputs are reported).
+- Cloud processing or account integration. The one optional exception is translating typed requirements with the user's own Anthropic API key; sequence building itself never calls out to a cloud service.
 
 ## 14. Open technical questions to resolve during fixture-led phases
 
@@ -396,7 +381,7 @@ The delivery order is:
 9. Planner v2 (motifs, call-and-response, signature moments, dynamics).
 10. Polish, reporting, documentation, and Python package distribution.
 11A. Browser-first sequencing workspace, followed by browser editing and musical-alignment phases.
-Final. Desktop wrapper and packaging (delivered: Windows installer and portable zip).
+Final. Desktop wrapper and packaging (delivered: Windows installer and portable zip, macOS app, Linux AppImage).
 
 Every phase is one GitHub Issue, one branch, and one PR. The issue is the acceptance contract. The PR must contain only work for that phase. A phase is complete only after its tests and CI pass, required human verification is recorded, the PR is merged, and the owner approves the next phase. Keep the progress log in `docs/PLAN.md` current so a fresh session can resume without relying on chat history.
 

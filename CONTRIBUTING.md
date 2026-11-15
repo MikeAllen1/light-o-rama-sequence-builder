@@ -1,6 +1,6 @@
 # Contributing
 
-This repository is built in gated phases. Every contributor and every working session reads these before doing anything:
+This repository was built in gated phases (all now shipped; see `docs/ROADMAP.md`). Every contributor and every working session reads these before doing anything:
 
 1. `docs/PLAN.md` — authoritative phase status, acceptance criteria, open decisions, and handoff log.
 2. The GitHub Issue for the active phase — the contract for scope and acceptance.
@@ -14,7 +14,7 @@ If these documents disagree, `docs/PLAN.md` wins. If PLAN.md is ambiguous or sta
 - Work only on the active phase. Do not start the next phase until the owner explicitly approves it in writing.
 - If you find a problem in an earlier phase, stop and report it. Do not fix it as a side effect.
 - Before coding, list the files you plan to create or change and wait for approval.
-- One phase = one issue = one branch (`phase-N/short-description`) = one PR to `master`. Never push to `master`.
+- One change = one branch (`phase-N/short-description` for a phase, a descriptive topic name otherwise) = one PR to `master`. Never push to `master`.
 - Test fixtures in `tests/fixtures/` must be synthetic, hand-authored or generated from fictional data. They exercise parser and writer behavior; they are not proof of compatibility with every real S6 construct. Never guess LOR file schemas from memory. When new format evidence is needed, request the minimum owner-run S6 export, inspect it locally, document only non-sensitive structural observations, and do not commit owner/customer files or sanitized derivatives.
 - Never invent, assume, or reassign props, channels, or controller identities. They come from the preview only.
 - Nothing about any specific display may be hardcoded. This tool is for any Light-O-Rama display.
@@ -27,7 +27,7 @@ If these documents disagree, `docs/PLAN.md` wins. If PLAN.md is ambiguous or sta
 
 ```
 uv sync --locked
-uv run --no-sync --with pytest==9.2.0 python -m pytest
+uv run --no-sync --with pytest==9.2.0 --with playwright==1.56.0 --with axe-playwright-python==0.1.8 python -m pytest
 uv run --no-sync --with ruff==0.17.4 ruff check .
 uv run --no-sync --with mypy==1.18.2 --with types-defusedxml==0.7.0.20260504 --with types-PyYAML==6.0.12.20260906 --with pytest==9.2.0 mypy --strict src tests
 ```

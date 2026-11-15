@@ -51,7 +51,7 @@ In New show, after choosing your display (and any requirements and a style), **C
 
 ## Check your wiring first: the 10-second display test
 
-After step 3, **Make 10-second test** builds a short sequence that lights your display in a fixed order, so anything dark or out of place points at wiring, a controller address or the preview:
+After step 1, **10-second display test** builds a short sequence that lights your display in a fixed order, so anything dark or out of place points at wiring, a controller address or the preview:
 
 | Time | What lights |
 | --- | --- |
@@ -59,7 +59,7 @@ After step 3, **Make 10-second test** builds a short sequence that lights your d
 | 6.5 to 9.0 s | A sweep across the yard from left to right. |
 | 9.0 to 10.0 s | Everything on, then a fade. |
 
-**Watch test** plays it on the yard view. **Save test** downloads a zip with the sequence, its sound (`LOR Display Test.wav`, which goes in S6's audio folder) and a "what to watch" list of when each prop should light. On the command line: `lor-sequence-builder display-test --preview display.lorprev --output "Display Test"`.
+**Watch the test** plays it on the yard view. **Save test files** downloads a zip with the sequence, its sound (`LOR Display Test.wav`, which goes in S6's audio folder) and a "what to watch" list of when each prop should light. On the command line: `lor-sequence-builder display-test --preview display.lorprev --output "Display Test"`.
 
 To try everything without your own files, run `uv run lor-sequence-builder demo "Demo Show"` in the program folder: it writes an invented yard, an invented song and the finished show.
 
@@ -168,13 +168,18 @@ They are remembered for that display, so the next show starts with them. On the 
 
 ## Singing faces
 
-Faces built from separate props (mouth shapes, eyes, outline) sing when the program knows where the singing is. That needs the vocals add-on, which splits the voice out of the song on your computer:
+Faces built from separate props (mouth shapes, eyes, outline) sing when the program knows where the singing is. Two ways:
 
-```powershell
-uv sync --extra vocals
-```
+- **Word timings** (a WhisperX word file, `.json`, for the song): works in every version, including the downloaded apps.
+- **The vocals add-on**, which splits the voice out of the song on your computer. Only the version run from the source folder can install it (it is large: PyTorch and a 67 MB model, downloaded once):
 
-It takes a few minutes per song. Without it, the mouths stay still and the report says so.
+  ```powershell
+  uv sync --extra vocals
+  ```
+
+  It takes a few minutes per song.
+
+Without either, the mouths stay still and the report says so.
 
 In New show, step 2 has the face options: **Sing the faces** turns singing on, and **Word timings for lip-sync** takes a WhisperX word file (`.json`) for the song; when it has more than one singer, **Who the faces sing** picks the voice. With a word file, mouths follow the words, and props the singer names light on the word (see also the *Light when these words are sung* requirement). The vocals are split once per song, however many styles you make.
 
@@ -201,22 +206,22 @@ When a new version is out, the app says so in the bottom corner and links to the
 | A button does nothing, or something looks wrong | Click **Copy diagnostics** at the bottom of the start page and paste it into your message or GitHub issue. It has the version, the system checks, your last clicks and recent errors. Home folder paths are shortened, but error lines can name files you chose, so read it over first. The log itself is in `%LOCALAPPDATA%\lor-sequence-builder\logs` on Windows, `~/.cache/lor-sequence-builder/logs` on macOS and Linux. |
 | Something is not set up | Run `uv run lor-sequence-builder doctor` in the program folder. It checks Python, the libraries, FFmpeg, audio decoding, the workspace files and the data folders, and says how to fix each problem. |
 | "FFmpeg is required" | Install it: `winget install --id Gyan.FFmpeg -e` on Windows, `brew install ffmpeg` on macOS, `sudo apt install ffmpeg` on Debian or Ubuntu. Open a new window afterwards. |
-| "uv" is not recognized | Install uv (README quick start, step 1), then open a new window. |
+| "uv" is not recognized | Install uv (README, *Run it from the source folder*, step 1), then open a new window. |
 | The first start is slow | It is installing what it needs once; later starts take seconds. |
 | The browser does not open | Open `http://127.0.0.1:8765/` yourself. If that port is busy, run `uv run lor-sequence-ui --port 8780`. |
-| S6 plays no music | The sequence names the audio file; it must match the song's name in S6's audio folder exactly, ending included (`.mp3`, `.wav`). New show warns under the file name box when they differ. Set it in step 6 of New show (or `--music-filename`). |
+| S6 plays no music | The sequence names the audio file; it must match the song's name in S6's audio folder exactly, ending included (`.mp3`, `.wav`). New show warns when they differ. Change it under **Advanced** in step 4 of New show (or `--music-filename`). |
 | A prop stays dark | The show report's **Your props** table says why: not sequenceable (pixel, DMX, follows another prop), left out by a requirement, or not chosen by the plan. |
 | A prop does the wrong thing | It was probably identified as something else. Check it with `analyze-preview`, give it a specific shape in the S6 Preview Editor, and generate again. |
 | A chase runs backwards | Check the row's group order and the props' start locations in the preview. |
-| Faces do not sing | Install the vocals add-on (above); the report says when it is missing. |
+| Faces do not sing | Give the song word timings in step 2, or install the vocals add-on (see *Singing faces*); the report says when neither is there. |
 
 ## Recent shows
 
-Every show New show builds is also kept on this computer, and the start page lists the newest 30 under **Your recent shows**: **Open** shows it in the workspace with the yard view (choose **Open audio** to hear it), **Save** downloads the `.loredit` again, **Report** shows its report, and **Remove** deletes it. They live in `%LOCALAPPDATA%\lor-sequence-builder\shows`.
+Every show New show builds is also kept on this computer, and the start page lists the newest 30 under **Your recent shows**: **Open** shows it in the workspace with the yard view (choose **Open audio** to hear it), **Save** downloads the `.loredit` again, **Report** shows its report, and **Remove** deletes it. They live in `%LOCALAPPDATA%\lor-sequence-builder\shows` on Windows, `~/.cache/lor-sequence-builder/shows` on macOS and Linux.
 
 ## Privacy
 
-Your previews, songs and sequences stay on your computer. Requirements and recent shows are kept in your user data folder (`%LOCALAPPDATA%\lor-sequence-builder` on Windows, `~/.cache/lor-sequence-builder` on macOS and Linux). Two things ever reach the internet. When the program starts, it asks GitHub whether a newer version has been published; that request carries nothing about you or your files. If one is out, a note in the corner links to the installer: **Later** skips that version, and **Stop checking** turns the check off (or set `LOR_NO_UPDATE_CHECK=1`). **Check for updates** at the bottom of the start page asks on demand. The other is requirement text you type in your own words, and only when you have set up a translator key yourself.
+Your previews, songs and sequences stay on your computer. Requirements and recent shows are kept in your user data folder (`%LOCALAPPDATA%\lor-sequence-builder` on Windows, `~/.cache/lor-sequence-builder` on macOS and Linux). Nothing about your display or songs ever reaches the internet. What does go online: when the program starts, it asks GitHub whether a newer version has been published; that request carries nothing about you or your files. If one is out, a note in the corner links to the installer: **Later** skips that version, and **Stop checking** turns the check off (or set `LOR_NO_UPDATE_CHECK=1`). **Check for updates** at the bottom of the start page asks on demand. Requirement text you type in your own words goes to Anthropic's API, and only when you have set an `ANTHROPIC_API_KEY` yourself; without one, nothing is sent. The optional vocals and lyrics add-ons download their speech models once, the first time they run.
 
 ## The More menu
 
