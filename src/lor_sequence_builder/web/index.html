@@ -21,7 +21,7 @@
     </div>
     <div class="toolbar">
       <button id="newShowButton" class="tool-button primary" type="button">New show</button>
-      <button id="yardButton" class="tool-button" type="button" aria-pressed="false" title="Watch the show on a drawing of your yard">Yard view</button>
+      <button id="yardButton" class="tool-button needs-show" type="button" aria-pressed="false" title="Watch the show on a drawing of your yard">Yard view</button>
       <label class="tool-button">
         <span>Open sequence</span>
         <input id="sequenceFile" type="file" accept=".loredit,.lms,.xml,application/xml,text/xml">
@@ -30,7 +30,7 @@
         <span>Open audio</span>
         <input id="audioFile" type="file" accept="audio/*,.mp3,.mp4,.wav,.flac,.m4a,.ogg,.opus">
       </label>
-      <div class="tool-menu">
+      <div class="tool-menu needs-workspace">
         <button id="moreButton" class="tool-button subtle" type="button" aria-haspopup="true"
           aria-expanded="false" aria-controls="moreMenu"
           title="Optional files for a song you have worked on before">More ▾</button>
@@ -49,25 +49,25 @@
           </label>
         </div>
       </div>
-      <label class="tool-button subtle">
+      <label class="tool-button subtle needs-workspace">
         <span>Load lyrics</span>
         <input id="lyricsFile" type="file" accept=".json,.lrc,.srt,.vtt,application/json,text/plain">
       </label>
-      <span class="toolbar-divider"></span>
-      <button id="playButton" class="icon-button" type="button" disabled aria-label="Play audio (Space)" title="Play or pause (Space). Press ? for all shortcuts.">▶</button>
-      <button id="stopButton" class="icon-button" type="button" disabled aria-label="Stop audio (Home)" title="Stop and go back to the start (Home)">■</button>
-      <label class="meter-control" title="Meter used for downbeat analysis">
+      <span class="toolbar-divider needs-workspace"></span>
+      <button id="playButton" class="icon-button needs-workspace" type="button" disabled aria-label="Play audio (Space)" title="Play or pause (Space). Press ? for all shortcuts.">▶</button>
+      <button id="stopButton" class="icon-button needs-workspace" type="button" disabled aria-label="Stop audio (Home)" title="Stop and go back to the start (Home)">■</button>
+      <label class="meter-control needs-music" title="Meter used for downbeat analysis">
         <span>Meter</span>
         <select id="meterSelect">
           <option value="4" selected>4/4</option>
           <option value="3">3/4</option>
         </select>
       </label>
-      <label class="zoom-control">
+      <label class="zoom-control needs-workspace">
         <span>Zoom</span>
         <input id="zoomSlider" type="range" min="1" max="48" value="22" step="0.25">
       </label>
-      <button id="fitButton" class="tool-button subtle" type="button">Fit</button>
+      <button id="fitButton" class="tool-button subtle needs-workspace" type="button">Fit</button>
     </div>
     <div id="connectionStatus" class="connection-status">On this computer</div>
   </header>

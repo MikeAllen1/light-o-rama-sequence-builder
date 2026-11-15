@@ -401,3 +401,11 @@ canvas { display: block; }
   padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px;
 }
 .style-result.current { border-color: var(--accent); }
+
+/* Controls appear once they can do something: the workspace tools with an open
+   sequence, Yard view with a sequence or a freshly generated show. */
+body:not(.workspace-open) .needs-workspace,
+body:not(.workspace-open):not(.new-show-open) .needs-music,
+body:not(.show-ready) .needs-show {
+  display: none !important;
+}
