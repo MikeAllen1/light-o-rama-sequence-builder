@@ -30,6 +30,7 @@ from lor_sequence_builder.new_sequence import (
     build_new_sequence,
 )
 from lor_sequence_builder.pulse import preview_element
+from lor_sequence_builder.rgb import argb, is_rgb
 from lor_sequence_builder.rules import RuleReport, RuleSet, check_choreography
 from lor_sequence_builder.timeline import ExcludedProp
 
@@ -128,11 +129,26 @@ def _write_build_report(
     _write_new_text(path, content)
 
 
-def _effect_attributes(effect: Effect) -> dict[str, str]:
+def _effect_attributes(effect: Effect, rgb_prop: bool = False) -> dict[str, str]:
     attributes = {
         "startCentisecond": str(effect.start_centisecond),
         "endCentisecond": str(effect.end_centisecond),
     }
+    if rgb_prop:
+        # An RGB channel stores colors (ARGB), not percentages. Twinkle and shimmer go
+        # out as SHIMMER with a start/end pair: the form seen in S6's own files.
+        start = argb(effect.color, effect.start_intensity)
+        end = argb(effect.color, effect.end_intensity if effect.kind == "fade"
+                   else effect.start_intensity)
+        if effect.kind in {"twinkle", "shimmer"}:
+            attributes.update(startIntensity=str(start), endIntensity=str(end),
+                              settings="SHIMMER")
+        elif effect.kind == "fade":
+            attributes.update(startIntensity=str(start), endIntensity=str(end),
+                              settings="INTENSITY")
+        else:
+            attributes.update(intensity=str(start), settings="INTENSITY")
+        return attributes
     if effect.kind == "fade":
         attributes["startIntensity"] = str(effect.start_intensity)
         attributes["endIntensity"] = str(effect.end_intensity)
@@ -253,6 +269,8 @@ def build_from_timeline(
     channels: dict[str, list[ET.Element]] = {
         seq.attrib["id"]: seq.findall("channel") for seq in sequence_props.findall("SeqProp")
     }
+    rgb_props = {prop.get("id", "") for prop in preview.findall("PropClass")
+                 if is_rgb(dict(prop.attrib))}
     ordered = sorted(
         choreography.effects,
         key=lambda e: (e.prop_id, e.channel_index, e.start_centisecond),
@@ -271,7 +289,8 @@ def build_from_timeline(
                 excluded_props=built.excluded_props,
             )
             raise SequenceWriteError(message)
-        ET.SubElement(targets[effect.channel_index], "effect", _effect_attributes(effect))
+        ET.SubElement(targets[effect.channel_index], "effect",
+                      _effect_attributes(effect, effect.prop_id in rgb_props))
 
     try:
         write_loredit(built.document, output)

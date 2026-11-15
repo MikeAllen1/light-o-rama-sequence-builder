@@ -60,6 +60,10 @@ class DisplayTest:
     schedule: list[tuple[int, int, str]] = field(default_factory=list)
 
 
+# An RGB prop's test: each circuit alone, then all three together.
+RGB_TEST = ("red", "green", "blue", "white")
+
+
 def _time(cs: int) -> str:
     return f"{cs // 100}.{cs % 100:02d} s"
 
@@ -83,7 +87,15 @@ def _plan(display: Display) -> tuple[Choreography, list[tuple[int, int, str]], l
             effects.append(Effect(pid, channel, start, end, "on", level, level, None, None))
 
     def wipe(pid: str, start: int, end: int) -> None:
-        """Channels light one after another in order and stay on: shows wiring order."""
+        """Channels light one after another in order and stay on: shows wiring order.
+        An RGB prop shows red, green, blue and then white, one circuit at a time."""
+        if display.props[pid].color_kind == "rgb":
+            quarter = max(1, (end - start) // len(RGB_TEST))
+            for k, color in enumerate(RGB_TEST):
+                effects.append(Effect(pid, 0, start + k * quarter,
+                                      end if k == len(RGB_TEST) - 1 else start + (k + 1) * quarter,
+                                      "on", 100, 100, color, None))
+            return
         count = display.props[pid].channel_count
         step = min(15, max(1, (end - start) * 6 // 10 // max(1, count)))
         for channel in range(count):

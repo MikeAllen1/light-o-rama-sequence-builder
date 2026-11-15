@@ -48,6 +48,7 @@ from lor_sequence_builder.choreography import Choreography, Effect, Movement, Se
 from lor_sequence_builder.formation import Formation, formation
 from lor_sequence_builder.quality import DEAD_SHARE, DEAD_SPAN, QualityReport, lit_share
 from lor_sequence_builder.quality import check as check_quality
+from lor_sequence_builder.rgb import color_name
 from lor_sequence_builder.rules import RuleSet, select_props
 from lor_sequence_builder.rules.engine import ANCHOR_FLOOR, Display, DisplayProp
 from lor_sequence_builder.style import Style, get_style
@@ -554,6 +555,8 @@ class _Constraints:
     anchors: dict[str, tuple[list[int], int]] = field(default_factory=dict)
     # Words that light props when sung, from the owner's own cue list.
     word_cues: dict[str, set[str]] = field(default_factory=lambda: defaultdict(set))
+    # The only colors an RGB prop may show, when a requirement limits them.
+    rgb_colors: dict[str, list[str]] = field(default_factory=dict)
 
 
 def _words(name: str) -> set[str]:
@@ -602,6 +605,15 @@ def _constraints(display: Display, rule_set: RuleSet, vocals_known: bool) -> _Co
                 c.quiet[pid].update(s.lower() for s in req.params["sections"])
             elif req.type == "colors_only":
                 allowed = {color.lower() for color in req.params["colors"]}
+                if prop.color_kind == "rgb":
+                    mixable = [name for name in (color_name(c) for c in req.params["colors"])
+                               if name is not None]
+                    if not mixable:
+                        c.excluded[pid] = (f"requirement {req.requirement_id!r}: none of its "
+                                           "colors can be mixed")
+                    else:
+                        c.rgb_colors[pid] = list(dict.fromkeys(mixable))
+                    continue
                 if prop.color_kind == "combined_colors":
                     c.excluded[pid] = (f"requirement {req.requirement_id!r}: its colors share "
                                        "one circuit and cannot be limited")
@@ -2609,6 +2621,38 @@ def _on_one_grid(canvas: _Canvas, grid: list[int], skip: set[str]) -> None:
         for m in canvas.movements]
 
 
+# ---------------------------------------------------------------- RGB colors
+
+def _color_rgb(effects: tuple[Effect, ...], display: Display, sections: list[PlannedSection],
+               style: Style, constraints: _Constraints) -> tuple[Effect, ...]:
+    """Give every effect on an RGB prop its color. Each part of the song takes the
+    next color of the style's palette, and neighbouring RGB props (left to right)
+    alternate between it and the following one, so chases show two colors; twinkles
+    sparkle white. A requirement can limit the colors."""
+    rgb = [pid for pid, prop in display.props.items() if prop.color_kind == "rgb"]
+    if not rgb or not effects:
+        return effects
+    order = sorted(rgb, key=lambda p: (display.props[p].center or (0.0, 0.0))[0])
+    rank = {pid: i for i, pid in enumerate(order)}
+    starts = [s.start_centisecond for s in sections]
+
+    def part(at: int) -> int:
+        return max(0, bisect.bisect_right(starts, at) - 1)
+
+    colored = []
+    for e in effects:
+        if e.prop_id not in rank:
+            colored.append(e)
+            continue
+        palette = constraints.rgb_colors.get(e.prop_id) or list(style.palette)
+        index = part(e.start_centisecond)
+        color = palette[(index + rank[e.prop_id] % 2) % len(palette)]
+        if e.kind in {"twinkle", "shimmer"} and "white" in palette:
+            color = "white"
+        colored.append(dataclasses.replace(e, color=color))
+    return tuple(colored)
+
+
 def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
               vocals: dict[str, Any] | None = None, style: Style | None = None) -> Plan:
     """Plan a show. ``vocals`` is a vocal analysis (see vocals.py); without it faces
@@ -3055,6 +3099,7 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
         (e for items in canvas.effects.values() for e in _joined(items)),
         key=lambda e: (e.start_centisecond, e.prop_id, e.channel_index),
     ))
+    effects = _color_rgb(effects, display, sections, style, constraints)
     used = {e.prop_id for e in effects}
     notes.append(_effect_kinds(effects, canvas.movements))
     for pid in sorted(usable - used, key=lambda p: display.props[p].name):

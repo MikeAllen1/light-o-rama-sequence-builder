@@ -257,6 +257,16 @@
     }
     const propsRoot = root.querySelector(":scope > SequenceProps");
     if (!propsRoot) throw new Error("Sequence is missing its native SequenceProps section.");
+    // RGB props ("DumbRGB" in S6): one channel whose effects store colors (ARGB).
+    const rgbIds = new Set();
+    const previewNode = root.querySelector(":scope > PreviewClass");
+    if (previewNode) {
+      for (const node of previewNode.children) {
+        if (node.localName === "PropClass" && node.getAttribute("StringType") === "DumbRGB") {
+          rgbIds.add(node.getAttribute("id") || "");
+        }
+      }
+    }
     const props = [];
     let effectCount = 0;
     const effectTypes = {};
@@ -265,7 +275,8 @@
       const prop = {
         id: propNode.getAttribute("id") || "",
         name: propNode.getAttribute("name") || "(unnamed prop)",
-        channels: []
+        channels: [],
+        rgb: rgbIds.has(propNode.getAttribute("id") || "")
       };
       for (const channelNode of propNode.children) {
         if (channelNode.localName !== "channel") continue;
@@ -275,7 +286,8 @@
           color: channelNode.getAttribute("color") || "0",
           effects: [],
           node: channelNode,
-          edited: false
+          edited: false,
+          rgb: prop.rgb
         };
         for (const effectNode of channelNode.children) {
           if (effectNode.localName !== "effect") continue;
@@ -1159,6 +1171,23 @@
     ctx.restore();
   }
 
+  // RGB channels store an effect's color as a negative (opaque ARGB) number.
+  function isArgb(attrs) {
+    return ["intensity", "startIntensity", "endIntensity"].some((key) =>
+      attrs[key] != null && Number(attrs[key]) < 0);
+  }
+
+  function argbColor(value) {
+    const v = Number(value) >>> 0;
+    return [(v >>> 16) & 255, (v >>> 8) & 255, v & 255];
+  }
+
+  // The color at full brightness (brightness is drawn separately) as CSS.
+  function fullColor(rgb) {
+    const top = Math.max(1, ...rgb);
+    return "rgb(" + rgb.map((c) => Math.round(c * 255 / top)).join(",") + ")";
+  }
+
   function effectColor(effect) {
     if (effect.type === "TWINKLE") return "#a17ce0";
     if (effect.type === "SHIMMER") return "#d79a4e";
@@ -1267,6 +1296,21 @@
         const x2 = effect.end / 100 * pps;
         const blockWidth = Math.max(1.5, x2 - x1);
         const attrs = effect.attributes;
+        if (isArgb(attrs)) {
+          // A color effect: drawn in its own colors, fading from start to end.
+          const first = argbColor(attrs.startIntensity != null ? attrs.startIntensity
+            : attrs.intensity);
+          const last = argbColor(attrs.endIntensity != null ? attrs.endIntensity
+            : attrs.intensity != null ? attrs.intensity : attrs.startIntensity);
+          const bright = (Math.max(...first) + Math.max(...last)) / 510;
+          ctx.globalAlpha = .28 + .72 * bright;
+          const gradient = ctx.createLinearGradient(x1, 0, x2, 0);
+          gradient.addColorStop(0, Math.max(...first) ? fullColor(first) : "#222");
+          gradient.addColorStop(1, Math.max(...last) ? fullColor(last) : "#222");
+          ctx.fillStyle = gradient;
+          ctx.fillRect(x1, y + 4, blockWidth, ROW_HEIGHT - 8);
+          ctx.globalAlpha = 1;
+        } else {
         const startIntensity = Number(attrs.startIntensity != null ? attrs.startIntensity :
           attrs.intensity != null ? attrs.intensity : 100);
         const endIntensity = Number(attrs.endIntensity != null ? attrs.endIntensity :
@@ -1297,6 +1341,7 @@
           ctx.moveTo(x1, y + ROW_HEIGHT / 2);
           ctx.lineTo(x2, y + ROW_HEIGHT / 2);
           ctx.stroke();
+        }
         }
         if (isSelected(effect) || (preview && preview.selected.has(effect))) {
           ctx.strokeStyle = preview && preview.error ? "#ff6b6b" : "#f3f7fa";
@@ -2468,7 +2513,10 @@
   }
 
   function createChanges(channel, start, end) {
-    const created = newEffect(start, end);
+    // On an RGB channel a new effect is white (S6 stores colors there, not percents).
+    const created = channel.rgb
+      ? makeEffect(start, end, { intensity: "-1", settings: "INTENSITY" })
+      : newEffect(start, end);
     return { changes: new Map([[channel, channel.effects.concat([created])]]), selected: [created] };
   }
 
@@ -2869,7 +2917,9 @@
       const channels = new Set(items.map((item) => item.channel)).size;
       add(items.length + " effects selected on " + channels + " channel(s)", true);
     }
-    const editable = items.every((item) => EDITABLE_TYPES.includes(item.effect.type));
+    const colored = items.some((item) => isArgb(item.effect.attributes));
+    const editable = !colored &&
+      items.every((item) => EDITABLE_TYPES.includes(item.effect.type));
     const form = document.createElement("div");
     form.className = "edit-form";
     const current = intensityOf(first);
@@ -2906,7 +2956,10 @@
       inspector.appendChild(form);
       sync();
     } else {
-      add("This effect type's own settings are kept as they are; its timing can still change.");
+      add(colored
+        ? "A color effect on an RGB prop: its colors are kept as they are (change them in " +
+          "S6); its timing can still change."
+        : "This effect type's own settings are kept as they are; its timing can still change.");
       inspector.appendChild(form);
     }
     if (items.length === 1) {
@@ -3719,7 +3772,8 @@
     max_intensity: "Limit brightness to",
     light_whole: "Light whole (every channel together, never one side alone)",
     anchor_channels: "Keep channels lit with the rest (never alone)",
-    light_on_words: "Light when these words are sung"
+    light_on_words: "Light when these words are sung",
+    colors_only: "Only these colors"
   };
 
   const show = { token: null, summary: null, audioFile: null, analysis: null, raw: [],
@@ -4538,6 +4592,7 @@
     $("requirementChannels").closest("label").classList.toggle("hidden", kind !== "anchor_channels");
     $("requirementFloor").closest("label").classList.toggle("hidden", kind !== "anchor_channels");
     $("requirementWords").closest("label").classList.toggle("hidden", kind !== "light_on_words");
+    $("requirementColors").closest("label").classList.toggle("hidden", kind !== "colors_only");
   }
 
   function selectorFrom(value) {
@@ -4681,6 +4736,15 @@
           return null;
         }
         item.words = words;
+      }
+      if (kind === "colors_only") {
+        const colors = $("requirementColors").value.split(",").map((c) => c.trim())
+          .filter(Boolean);
+        if (!colors.length) {
+          showMessage("requirementStatus", "List the colors, for example blue, white.", "warn");
+          return null;
+        }
+        item.colors = colors;
       }
       return item;
     });
@@ -5440,7 +5504,9 @@
       if (!shape) continue;
       const grid = (node.getAttribute("ChannelGrid") || "").split(";").filter(Boolean)
         .map((entry) => entry.split(","));
-      const channels = Math.max(1, grid.length);
+      // An RGB prop's red, green and blue circuits are one channel showing any color.
+      const rgb = node.getAttribute("StringType") === "DumbRGB";
+      const channels = rgb ? 1 : Math.max(1, grid.length);
       const traditional = (node.getAttribute("TraditionalColors") || "").split(",")
         .map((item) => item.trim()).filter(Boolean);
       const colors = grid.map((entry, index) => {
@@ -5462,11 +5528,16 @@
           numberAttr(shape, "Radians") || 0, channels);
       } else if (points.length >= 2) {
         strands = pointStrands(shapeName, points, channels);
+      } else if (points.length === 1) {
+        // A single light (a flood): drawn as one round spot.
+        strands = [[points[0], points[0]]];
       }
       if (!strands.length) continue;
       yard.push({ id: node.getAttribute("id") || "", name: node.getAttribute("Name") || "",
-        strands, colors: colors.length ? colors : [traditional.length ? traditional : ["Warm White"]],
-        pixel: /dmx|rgb|pixel/i.test((node.getAttribute("DeviceType") || "") + " " +
+        strands, rgb, spot: points.length === 1 && strands.length === 1,
+        colors: rgb ? [["White"]]
+          : colors.length ? colors : [traditional.length ? traditional : ["Warm White"]],
+        pixel: !rgb && /dmx|rgb|pixel/i.test((node.getAttribute("DeviceType") || "") + " " +
           (node.getAttribute("StringType") || "")) });
     }
     if (!yard.length) return null;
@@ -5507,12 +5578,23 @@
       }
     }
     let level = 0;
+    channel.shownRgb = null;
     for (let i = found; i >= 0 && i > found - 4; i--) {
       const effect = list[i];
       if (effect.end <= cs) continue;
       const attrs = effect.attributes;
       let value;
-      if (attrs.startIntensity != null && attrs.endIntensity != null) {
+      let rgb = null;
+      if (isArgb(attrs)) {
+        // A color effect: blend its start and end colors; brightness is the strongest.
+        const share = (cs - effect.start) / Math.max(1, effect.end - effect.start);
+        const first = argbColor(attrs.startIntensity != null ? attrs.startIntensity
+          : attrs.intensity);
+        const last = argbColor(attrs.endIntensity != null ? attrs.endIntensity
+          : attrs.intensity != null ? attrs.intensity : attrs.startIntensity);
+        rgb = first.map((c, k) => c + (last[k] - c) * share);
+        value = Math.max(...rgb) * 100 / 255;
+      } else if (attrs.startIntensity != null && attrs.endIntensity != null) {
         const share = (cs - effect.start) / Math.max(1, effect.end - effect.start);
         value = Number(attrs.startIntensity) +
           (Number(attrs.endIntensity) - Number(attrs.startIntensity)) * share;
@@ -5524,7 +5606,9 @@
         const seed = Math.sin((Math.floor(cs / step) + 1) * 12.9898 + effect.start * 0.0781) * 43758.5;
         value *= 0.35 + 0.65 * (seed - Math.floor(seed));
       }
-      level = Math.max(level, (Number.isFinite(value) ? value : 0) / 100);
+      const shown = (Number.isFinite(value) ? value : 0) / 100;
+      if (rgb && shown >= level) channel.shownRgb = rgb;
+      level = Math.max(level, shown);
     }
     return Math.max(0, Math.min(1, level));
   }
@@ -5571,6 +5655,7 @@
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     let lit = 0;
+    const mixed = new Set();
     for (const prop of yard.props) {
       const sequenced = byId.get(prop.id);
       prop.strands.forEach((strand, index) => {
@@ -5584,7 +5669,7 @@
         });
         // Unlit strands stay faintly visible so the layout reads.
         ctx.globalAlpha = 0.14 + 0.86 * level;
-        ctx.lineWidth = line;
+        ctx.lineWidth = prop.spot ? line * 5 : line;
         ctx.shadowBlur = level > 0.05 ? 14 * ratio * level : 0;
         if (colors.length > 1) {
           // Multicolor strings: alternate the colors along the strand.
@@ -5597,9 +5682,13 @@
           });
           ctx.setLineDash([]);
         } else {
-          ctx.strokeStyle = level > 0 ? colorOf(colors[0]) : "#6a6157";
-          ctx.shadowColor = colorOf(colors[0]);
+          // An RGB prop shows the color its effect mixes right now.
+          const color = prop.rgb && channel && channel.shownRgb
+            ? fullColor(channel.shownRgb) : colorOf(colors[0]);
+          ctx.strokeStyle = level > 0 ? color : "#6a6157";
+          ctx.shadowColor = color;
           ctx.stroke();
+          if (prop.rgb && level > 0.05 && channel.shownRgb) mixed.add(color);
         }
         if (level > 0.05) lit += 1;
       });
@@ -5610,6 +5699,7 @@
     // For tests and support: what was drawn.
     canvas.dataset.props = String(yard.props.length);
     canvas.dataset.lit = String(lit);
+    canvas.dataset.rgbColors = Array.from(mixed).sort().join(" ");
     canvas.dataset.bounds = [minX, minY, maxX, maxY].map((v) => v.toFixed(3)).join(",");
   }
 

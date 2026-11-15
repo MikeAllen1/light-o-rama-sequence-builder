@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from lor_sequence_builder.lorprev import (
     MAX_CHANNEL_GRID_ENTRIES_PER_PROP,
 )
+from lor_sequence_builder.rgb import RGB_STRING_TYPE
 
 SUPPORTED_DEVICE_TYPES = frozenset({"LOR"})
 COLUMN_LAYOUT_TYPES = frozenset({"Single Color", "Multicolor_string_1_ch"})
@@ -58,6 +59,17 @@ def parse_channel_grid(value: str | None) -> tuple[ChannelAddress, ...]:
     return tuple(parsed)
 
 
+def native_channel_count(attributes: dict[str, str]) -> int:
+    """How many sequence channels a prop has: one per ChannelGrid entry, except an
+    RGB prop, whose three circuits are one channel."""
+    if attributes.get("StringType") == RGB_STRING_TYPE:
+        return 1
+    try:
+        return len(parse_channel_grid(attributes.get("ChannelGrid")))
+    except ValueError:
+        return 0
+
+
 def channel_layout_problem(prop: object) -> str | None:
     """Why a preview prop cannot be represented by the verified native layout."""
     attributes = getattr(prop, "attrib", None)
@@ -67,8 +79,20 @@ def channel_layout_problem(prop: object) -> str | None:
     if device_type not in SUPPORTED_DEVICE_TYPES:
         return f"DeviceType {device_type or '(missing)'} has no verified native channel layout"
     string_type = attributes.get("StringType", "Traditional")
+    if string_type == RGB_STRING_TYPE:
+        # A non-pixel RGB prop: red, green and blue circuits, one sequence channel.
+        if attributes.get("TraditionalType") not in COLOR_LAYOUT_TYPES:
+            return "An RGB prop without a channel per color has no verified native layout"
+        try:
+            rgb_addresses = parse_channel_grid(attributes.get("ChannelGrid"))
+        except ValueError as exc:
+            return str(exc)
+        if len(rgb_addresses) != 3:
+            return "An RGB prop needs exactly three circuits (red, green and blue)"
+        return None
     if string_type != "Traditional":
-        return f"StringType {string_type!r} has no verified native channel layout"
+        return (f"StringType {string_type!r} has no verified native channel layout "
+                "(pixel props cannot be sequenced yet)")
     traditional_type = attributes.get("TraditionalType", "")
     if traditional_type not in COLUMN_LAYOUT_TYPES | COLOR_LAYOUT_TYPES:
         return (

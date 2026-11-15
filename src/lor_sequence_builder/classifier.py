@@ -23,6 +23,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
 from lor_sequence_builder.channel_mapping import channel_layout_problem
+from lor_sequence_builder.rgb import RGB_STRING_TYPE
 
 ROLES = (
     "arch",
@@ -72,7 +73,8 @@ _NAME_HINTS: tuple[tuple[str, str], ...] = (
             r"\breindeer\b|\bdeer\b|\bsnow\s*m[ae]n\b|\bpresents?\b|\bgifts?\b|\bwreaths?\b|"
             r"\btrain\b|\bsleigh\b|\bcandy\s*canes?\b|\bpenguins?\b|\bbears?\b|\bsigns?\b|"
             r"\bnutcrackers?\b|\bangels?\b|\bnativity\b|\belf\b|\bsanta\b|\bdecor\b|"
-            r"\binflatable\b|\blanterns?\b|\bbows?\b"
+            r"\binflatable\b|\blanterns?\b|\bbows?\b|\bfloods?\b|\bflood\s*lights?\b|"
+            r"\bwash\b|\bspot\s*lights?\b|\bspots?\b"
         ),
         "decor",
     ),
@@ -242,6 +244,10 @@ def _color_capability(prop: ET.Element) -> ColorCapability:
     # later colors onto the wrong channel (for example, blank, Red, Green).
     entry_colors = tuple(entry[5].strip() if len(entry) > 5 else "" for entry in entries)
     has_entry_colors = any(entry_colors)
+    if device == "LOR" and prop.get("StringType") == RGB_STRING_TYPE:
+        return ColorCapability(
+            "rgb", (), True, "RGB: red, green and blue circuits mix into any color"
+        )
     if device not in {"LOR", "AC", "DC"} or prop.get("StringType", "Traditional") != "Traditional":
         return ColorCapability(
             "unsupported", listed, False,
@@ -493,7 +499,7 @@ def classify_preview(preview: ET.Element) -> tuple[PropClassification, ...]:
         name = prop.get("Name", "")
         shape_name = _shape_name(prop)
         specific = _is_specific_shape(shape_name)
-        channels = len(_channel_entries(prop))
+        channels = 1 if prop.get("StringType") == RGB_STRING_TYPE else len(_channel_entries(prop))
         parm1_value = _float(prop.get("Parm1"))
         parm1 = int(parm1_value) if parm1_value is not None else None
         traditional = prop.get("TraditionalType", "")
