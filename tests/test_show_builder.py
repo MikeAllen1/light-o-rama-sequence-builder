@@ -499,10 +499,13 @@ def test_the_workspace_builds_opens_and_saves_a_new_show(server: str, tmp_path: 
             assert page.locator('input[name="showStyle"]:checked').get_attribute("value") \
                 == "classic"
             page.locator('input[name="showStyle"][value="elegant"]').check()
-            page.locator("#yardButton").click()  # nothing to play yet: says what to do
-            assert "Generate a show first" in page.locator("#generateStatus").inner_text()
+            # Nothing to play yet: Yard view and the workspace tools stay out of the way.
+            assert not page.locator("#yardButton").is_visible()
+            assert not page.locator("#playButton").is_visible()
+            assert page.locator("#newShowButton").is_visible()
             page.locator("#generateShow").click()
             page.locator("#generateStatus.good").wait_for(timeout=60000)
+            page.locator("#yardButton").wait_for(state="visible")
             assert "Every rule passed" in page.locator("#generateStatus").inner_text()
             assert "A 0:20 show." in page.locator("#generateStatus").inner_text()
             with page.expect_download() as show_file:
