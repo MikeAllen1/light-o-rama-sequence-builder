@@ -175,3 +175,13 @@ def test_tempo_curve_follows_a_tempo_change(tmp_path: Path) -> None:
     late = [bpm for t, bpm in curve.items() if 26 <= t <= 34]
     ratio = float(np.median(late)) / float(np.median(early))
     assert abs(ratio - 1.3) < 0.08
+
+
+def test_subtitle_styling_tags_never_survive_in_lyrics() -> None:
+    from lor_sequence_builder.lyrics import parse_lyrics_text
+
+    text = ("1\n00:00:01,000 --> 00:00:02,500\n<i>Jingle</i> <<b>>bells<scr<b>ipt>\n\n"
+            "2\n00:00:03,000 --> 00:00:04,000\nall the <c.red>way</c>\n")
+    lines = [line["text"] for line in parse_lyrics_text(text, "song.srt")["lines"]]
+    assert lines == ["Jingle bells", "all the way"]
+    assert not any("<" in line or ">" in line for line in lines)

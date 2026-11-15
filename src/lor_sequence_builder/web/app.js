@@ -1960,6 +1960,17 @@
     }
   }
 
+  // A subtitle cue's words without its styling tags (<i>, <c.red>, <00:01.000>). Any
+  // angle bracket left over is dropped too, so no markup can survive.
+  function plainCueText(line) {
+    let text = line;
+    for (let previous = null; previous !== text;) {
+      previous = text;
+      text = text.replace(/<[^<>]*>/g, "");
+    }
+    return text.replace(/[<>]/g, "").trim();
+  }
+
   function parseLyricsText(text, name, duration = currentMusicDuration()) {
     const lines = [];
     const lrc = /\[(\d{1,3}):(\d{1,2}(?:\.\d{1,3})?)\]/g;
@@ -1979,7 +1990,7 @@
         const match = block.match(cue);
         if (!match) continue;
         const after = block.slice(match.index + match[0].length).trim().split("\n");
-        const words = after.map((line) => line.replace(/<[^>]+>/g, "").trim()).join(" ").trim();
+        const words = after.map((line) => plainCueText(line)).join(" ").trim();
         if (words) lines.push({ start: toSeconds(match[1], match[2], match[3], match[4]),
           end: toSeconds(match[5], match[6], match[7], match[8]), text: words });
       }

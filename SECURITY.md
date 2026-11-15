@@ -1,14 +1,14 @@
 # Security Policy
 
-## Project status and supported versions
+## Supported versions
 
-Light-O-Rama Sequence Builder is an early-stage project. There are no stable releases or production-supported versions yet. The default branch is the development version.
+Security fixes go into the latest release on the [releases page](https://github.com/MikeAllen1/light-o-rama-sequence-builder/releases/latest) and the `master` branch. Older releases are not patched: the app tells you when a newer version is out.
 
 ## Reporting a vulnerability
 
 Please do not report exploitable vulnerabilities, leaked credentials, or private data in a public issue.
 
-For a public repository, use GitHub's **Report a vulnerability** / private vulnerability reporting feature on the repository's Security tab when it is available. If private reporting is not enabled, contact the repository maintainer privately through GitHub before sharing technical details publicly. Include the affected commit or file, impact, and steps to reproduce where safe.
+Use **Report a vulnerability** on the repository's [Security tab](https://github.com/MikeAllen1/light-o-rama-sequence-builder/security) (GitHub private vulnerability reporting). Include the affected commit or file, impact, and steps to reproduce where safe.
 
 Do not include real credentials, copyrighted media, private display previews, or unredacted sequence files in a report.
 
@@ -39,7 +39,7 @@ The workspace and the desktop app run a small engine on this computer that the p
 
 ## Current data handling
 
-The current command-line tools read audio and sequence files from local paths and write analysis or display summaries to local output files. The project does not currently implement cloud upload, remote media processing, or a credential-based integration with Light-O-Rama. Reassess this section if those capabilities are introduced.
+The program reads audio, preview and sequence files from local paths and writes new files next to them or to the user data folder. It does not upload media, process anything remotely, or connect to Light-O-Rama controllers. The optional extras that go online are listed above (update check, typed-requirement translation with the user's own key) plus one-time downloads of speech models by the optional vocals and lyrics add-ons. Reassess this section if those capabilities change.
 
 ## Disclosure
 

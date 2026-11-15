@@ -5,27 +5,20 @@ This document distinguishes security controls committed to the repository from h
 ## Configured in the repository
 
 - **Dependabot version updates:** `.github/dependabot.yml` checks Python dependencies and GitHub Actions weekly and opens update pull requests.
-- **Automated tests and dependency audit:** `.github/workflows/tests.yml` runs tests, Ruff, and `pip-audit` for the default dependencies; a separate job audits the combined optional `vocals` and `lyrics` dependency graph. The workflow has read-only repository permissions and disables persisted checkout credentials.
+- **Automated tests and dependency audit:** `.github/workflows/tests.yml` runs tests, Ruff, strict mypy and `pip-audit` for the default dependencies; a separate job audits the combined optional `vocals`, `lyrics` and `desktop` dependency graph. The workflow has read-only repository permissions and disables persisted checkout credentials.
 - **CodeQL:** `.github/workflows/codeql.yml` runs Python and JavaScript code scanning on pushes and pull requests to `master`, plus a weekly scheduled scan. The analysis job receives only the permissions needed to publish code-scanning results.
+- **Desktop builds:** `.github/workflows/desktop.yml` downloads FFmpeg and appimagetool by pinned URL and checks their SHA-256 (the macOS FFmpeg is built from a pinned tag, checked by commit), self-tests every build, and only the release job has write access.
+- **Third-party notices:** every desktop build ships `THIRD-PARTY-NOTICES.txt` with the license of each bundled library, plus FFmpeg's license.
 - **Security policy:** `SECURITY.md` explains responsible vulnerability reporting and safe handling of user files.
 - **Local-file exclusions:** `.gitignore` excludes local secrets, private keys, audio, and Light-O-Rama sequence files. Only the explicitly named fictional preview fixture is allowlisted.
 
-## Hosted GitHub settings — owner-reported status
+## Hosted GitHub settings (checked 2026-11-15)
 
-The repository owner reported on 2026-11-11 that the requested GitHub security-settings work had been completed. The connected GitHub integration cannot independently inspect all repository security feature toggles, so this is recorded as owner-reported rather than independently verified.
+On: Dependabot alerts, malware alerts, security updates (grouped) and version updates; secret scanning with push protection; private vulnerability reporting; CodeQL (advanced setup) with Copilot Autofix suggestions; read-only default workflow token; Actions may not create or approve pull requests; actions must be pinned to a full commit SHA; approval required for first-time contributors' workflow runs.
 
-**Branch protection is a separate verification item.** The connected integration verified that `master` reports `protected: false` and that the `Protect` ruleset exists with enforcement disabled. Enable it in GitHub Settings → Rules → Rulesets and verify that it targets `master`. Recommended protections:
+**Not yet on: branch protection for `master`.** See [GITHUB_WORKFLOW.md](GITHUB_WORKFLOW.md#current-repository-settings-2026-11-15) for the exact ruleset settings. For a solo-maintained repository, do not require an approval count: GitHub does not let authors approve their own pull requests. Status checks and blocking force-pushes and deletion still provide value.
 
-- Require a pull request before changes merge to `master`.
-- Require the **Tests / test** status check.
-- Require the **CodeQL / Analyze Python and JavaScript** status check after it has appeared successfully.
-- Block force pushes.
-- Block branch deletion.
-- Require conversation resolution if review comments are used.
-
-For a solo-maintained repository, one approval is not useful unless another trusted reviewer is available. Do not require an approval count that would prevent you from merging your own work. Status checks and blocking force-pushes/deletion still provide value.
-
-CodeQL is configured as a workflow in this repository. Confirm that results appear under the repository's **Security → Code scanning** area. Do not also enable a second CodeQL workflow unless you intentionally replace this configuration.
+CodeQL is configured as a workflow in this repository; results appear under **Security → Code scanning**. Do not also enable CodeQL default setup unless you intentionally replace this workflow.
 
 ## Safe handling rules
 

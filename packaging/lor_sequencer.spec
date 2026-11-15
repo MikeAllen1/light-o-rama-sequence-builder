@@ -12,6 +12,7 @@
 # also makes dist/LOR Sequencer.app.
 
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -21,6 +22,13 @@ root = Path(SPECPATH).parent
 datas = collect_data_files("lor_sequence_builder", includes=["web/*", "rules/*.yaml"])
 datas += collect_data_files("librosa")
 hidden = collect_submodules("lor_sequence_builder") + collect_submodules("librosa")
+
+# The program's own license and the notices of every library bundled with it.
+notices = Path(workpath) / "THIRD-PARTY-NOTICES.txt"
+notices.parent.mkdir(parents=True, exist_ok=True)
+subprocess.run([sys.executable, str(root / "scripts" / "third_party_notices.py"), str(notices)],
+               check=True)
+datas += [(str(notices), "."), (str(root / "LICENSE"), ".")]
 
 ffmpeg_dir = os.environ.get("LOR_FFMPEG_DIR")
 if ffmpeg_dir:

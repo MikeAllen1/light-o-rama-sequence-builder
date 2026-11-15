@@ -23,7 +23,7 @@ Before merge, verify all of the following:
 5. All review conversations are resolved or explicitly dispositioned.
 6. Documentation and `docs/PLAN.md` reflect the actual result.
 7. The project owner explicitly approves the phase gate. CI passing or automated review does not count as owner approval.
-8. The PR is merged with **Squash and merge**. Use a descriptive commit subject. Delete the topic branch after merge.
+8. The PR is merged with a merge commit (the repository's history keeps each PR's own commits). Use a descriptive commit subject. The topic branch is deleted automatically after merge.
 
 Never merge with failing/pending checks, never use admin bypass to work around a failed gate, and never merge automatically just because checks pass. Do not force-push shared branches.
 
@@ -33,11 +33,9 @@ Configure these in GitHub Settings → Rules → Rulesets (or Branches → Branc
 
 - Target branch: `master`.
 - Require a pull request before merging.
-- Require the Tests workflow check (the job name is currently `Tests, lint, types, and dependency audit`).
-- Require CodeQL analysis to complete successfully.
-- Require branches to be up to date before merging.
+- Require the status checks `Tests, lint, types, and dependency audit` and `Windows compatibility tests`.
+- Require `Analyze Python and JavaScript` (CodeQL) to complete successfully.
 - Require all review conversations to be resolved.
-- Require linear history.
 - Block force pushes and branch deletion.
 - Do not allow bypassing the rules for routine work.
 
@@ -49,14 +47,13 @@ A merge queue is unnecessary for this low-volume, single-contributor project. Si
 
 Dependabot PRs are not exempt from review. Check the upstream release notes, exact version/SHA, compatibility, and CI. Keep the existing weekly update cadence and small PR limit.
 
-## Current repository audit (2026-11-11)
+## Current repository settings (2026-11-15)
 
-- Tests workflow runs on pushes and pull requests; it executes pytest, Ruff, strict mypy, and pip-audit.
-- CodeQL runs on pushes/PRs to `master` and weekly.
-- Third-party GitHub Actions are pinned to full commit SHAs; checkout credentials are not persisted.
-- Dependabot is enabled for Python dependencies and GitHub Actions.
-- GitHub branch metadata reports `master` as `protected: false`. The repository has a `Protect` ruleset, but its enforcement is `disabled`; its pull-request, deletion, and force-push requirements are therefore not active. `master` is currently **not protected**. Enable the ruleset in GitHub Settings → Rules → Rulesets and verify that its target is `master`.
-- An unrelated Dependabot PR (#3, setup-python update) is currently open and should be reviewed separately; it is not part of Phase 1.
+- Tests (pytest, Ruff, strict mypy, pip-audit, Windows tests) and CodeQL run on every pull request and push to `master`; CodeQL also runs weekly. The desktop builds (Windows, macOS, Linux) run on every pull request and attach to releases.
+- Every third-party GitHub Action is pinned to a full commit SHA, and the repository requires it. The default workflow token is read-only; jobs that need more ask for it, and Actions may not create or approve pull requests. Checkout credentials are not persisted.
+- Dependabot alerts, security updates and weekly version updates are on; secret scanning with push protection and private vulnerability reporting are on.
+- Pull requests offer "Update branch", and head branches are deleted after merge.
+- **`master` is not protected yet.** The `Protect` ruleset exists but is disabled, targets no branch, and requires one approving review, which a solo owner cannot give their own pull request. To turn it on: Settings → Rules → Rulesets → Protect → Target branches: *Include default branch*; Require a pull request: required approvals **0**; Require status checks: the three checks above; keep *Block force pushes* and *Restrict deletions*; Enforcement: **Active**.
 
 ## Phase gate rule
 

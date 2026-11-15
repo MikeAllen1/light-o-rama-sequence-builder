@@ -41,6 +41,14 @@ class LyricsError(ValueError):
     """Raised when lyrics cannot be read, transcribed or written."""
 
 
+
+def _plain(line: str) -> str:
+    """A cue's words without styling tags; leftover angle brackets are dropped too."""
+    previous = None
+    while previous != line:
+        previous, line = line, re.sub(r"<[^<>]*>", "", line)
+    return line.replace("<", "").replace(">", "").strip()
+
 def transcription_available() -> bool:
     return importlib.util.find_spec("faster_whisper") is not None
 
@@ -87,7 +95,7 @@ def parse_lyrics_text(text: str, name: str) -> dict[str, Any]:
                 continue
             g = match.groups()
             after = block[match.end():].strip().splitlines()
-            words = " ".join(re.sub(r"<[^>]+>", "", line).strip() for line in after).strip()
+            words = " ".join(_plain(line) for line in after).strip()
             if words:
                 lines.append({"start": _seconds(g[0], g[1], g[2], g[3]),
                               "end": _seconds(g[4], g[5], g[6], g[7]), "text": words})
