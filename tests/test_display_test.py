@@ -16,7 +16,12 @@ import pytest
 from lor_sequence_builder.cli import main
 from lor_sequence_builder.display_test import SOUND_NAME, build_display_test
 from lor_sequence_builder.loredit import effect_timing_problems, read_loredit
-from tests.display_builders import ALL_DISPLAYS, classic_yard, unsupported_hardware
+from tests.display_builders import (
+    ALL_DISPLAYS,
+    classic_yard,
+    roofline_house,
+    unsupported_hardware,
+)
 from tests.test_planner import _preview
 from tests.test_show_builder import _json, _post, server  # noqa: F401 - fixture
 
@@ -103,3 +108,20 @@ def test_new_show_makes_a_test_to_save_and_watch(server: str, tmp_path: Path) ->
         ".loredit", " - what to watch.txt")}
     assert test["schedule"][0]["what"].startswith("arches")
     assert json.dumps(test)  # all plain JSON
+
+
+def test_a_circuit_shared_by_two_props_shows_one_light(tmp_path: Path) -> None:
+    # A roofline wired to the last channel of a tree is one light: the test must not
+    # light the two separately (the rules would refuse the test).
+    display = roofline_house()
+    tree = display.add("Shared Tree", "mega_tree", shape="Mega Tree", channels=4,
+                       colors=("Green",), unit="40", box=(0.6, -0.2, 0.2, 0.4))
+    roof = display.add("Shared Roof", "outline", shape="Lines-Connected", channels=1,
+                       colors=("White",), unit="41", points=[(-0.8, -0.5), (0.8, -0.5)])
+    element = display.element()
+    for prop in element.findall("PropClass"):
+        if prop.get("id") == roof:
+            prop.set("ChannelGrid", "Regular,40,4,4,0,White")
+    test = build_display_test(_preview(tmp_path, display), tmp_path / "test")
+    assert test.report.ok
+    assert tree and roof
