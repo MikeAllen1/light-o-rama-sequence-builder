@@ -1,0 +1,1 @@
+[Download](https://github.com/MikeAllen1/light-o-rama-sequence-builder/releases/latest) · [User guide](https://github.com/MikeAllen1/light-o-rama-sequence-builder/blob/master/docs/USER_GUIDE.md) · [Report a problem](https://github.com/MikeAllen1/light-o-rama-sequence-builder/issues/new/choose) · Not affiliated with Light-O-Rama, Inc.
