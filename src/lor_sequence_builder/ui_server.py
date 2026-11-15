@@ -7,6 +7,7 @@ import json
 import os
 import tempfile
 import threading
+import time
 import webbrowser
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
@@ -235,6 +236,15 @@ _PLAIN_ERRORS = {
 }
 
 
+_last_request = [time.monotonic()]
+
+
+def seconds_since_last_request() -> float:
+    """How long since the workspace page last asked for anything. An open page checks
+    in every minute, so a long silence means every tab showing it was closed."""
+    return time.monotonic() - _last_request[0]
+
+
 class SequencerRequestHandler(SimpleHTTPRequestHandler):
     """Serve only packaged UI assets and accept bounded audio uploads for local analysis."""
 
@@ -270,6 +280,7 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
     def do_POST(self) -> None:
         """Analyze audio, check an edited sequence, or build a new show; never drop the
         connection on a bug, so the page can say what happened."""
+        _last_request[0] = time.monotonic()
         self._body_read = False
         try:
             self._post()
@@ -634,12 +645,14 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
         if self.headers.get("Host") not in self._hosts():
             self.send_error(403, "This workspace only answers its own window")
             return
+        _last_request[0] = time.monotonic()
         super().do_GET()
 
     def do_HEAD(self) -> None:
         if self.headers.get("Host") not in self._hosts():
             self.send_error(403, "This workspace only answers its own window")
             return
+        _last_request[0] = time.monotonic()
         super().do_HEAD()
 
     def list_directory(self, path: str | os.PathLike[str]) -> Any:

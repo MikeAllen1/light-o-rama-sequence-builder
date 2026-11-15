@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -60,11 +61,26 @@ def _fetch_latest() -> dict[str, Any] | None:
     return data
 
 
-def _installer_url(release: dict[str, Any]) -> str | None:
+# The kind of computer this copy runs on (tests set another).
+PLATFORM = sys.platform
+
+
+def _is_download_for(url: str, platform: str) -> bool:
+    """The release file for this kind of computer: the Windows installer, the macOS zip
+    or the Linux AppImage."""
+    name = url.lower().rsplit("/", 1)[-1]
+    if platform.startswith("win"):
+        return name.endswith(".exe")
+    if platform == "darwin":
+        return "macos" in name and name.endswith(".zip")
+    return name.endswith(".appimage")
+
+
+def _installer_url(release: dict[str, Any], platform: str | None = None) -> str | None:
     for asset in release.get("assets") or []:
         url = asset.get("browser_download_url") if isinstance(asset, dict) else None
         if (isinstance(url, str) and url.startswith(_DOWNLOAD_PREFIX)
-                and url.lower().endswith(".exe") and "/../" not in url):
+                and _is_download_for(url, platform or PLATFORM) and "/../" not in url):
             return url
     return None
 
