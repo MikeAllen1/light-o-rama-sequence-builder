@@ -295,6 +295,7 @@ class ShowSessions:
                       for role, count in sorted(kinds.items())],
             "groups": sorted(display.groups),
             "faces": display_has_mouths(display, rules),
+            "s4": session.preview_path.suffix.lower() == ".lms",
             "can_separate_vocals": separation_available(),
             "can_translate": translator_from_environment() is not None,
             "styles": all_styles(),
