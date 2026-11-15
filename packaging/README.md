@@ -1,22 +1,27 @@
 # Desktop app packaging
 
-The Windows app is the browser workspace in its own window, with Python, the audio
-libraries and FFmpeg inside, so nothing else needs to be installed.
+The desktop app is the browser workspace with Python, the audio libraries and FFmpeg
+inside, so nothing else needs to be installed. On Windows and macOS it opens in its own
+window; on Linux it opens in the browser.
 
 | File | What it does |
 | --- | --- |
 | `launch.py` | The app's entry point; runs `lor_sequence_builder.desktop`. |
 | `lor_sequencer.spec` | PyInstaller recipe: the program, its workspace files and rules, librosa's data, and FFmpeg from `LOR_FFMPEG_DIR`. Makes `dist/LOR Sequencer/`. |
 | `windows/installer.iss` | Inno Setup script: a per-user installer (no administrator prompt) with a Start menu entry, an optional desktop shortcut and a normal uninstaller. |
-| `windows/lor-sequencer.ico` | The icon, drawn by `make_icon.py`. |
+| `windows/lor-sequencer.ico`, `macos/lor-sequencer.icns`, `linux/lor-sequencer.png` | The icon, drawn by `make_icon.py`. |
+| `linux/build_appimage.sh`, `linux/AppRun`, `linux/lor-sequencer.desktop` | Wrap the PyInstaller folder in an AppImage. |
+| `macos/build_ffmpeg.sh` | Build the small LGPL FFmpeg the macOS app carries (song formats in, WAV out, nothing else). |
 
 ## How it runs
 
 `desktop.py` puts the bundled FFmpeg first on the search path and starts the
 workspace server on a free loopback port. It then opens the workspace in a
-native window (WebView2, through pywebview), or in the default browser if no
-window can be made. Closing the window stops the server and removes temporary
-show files. A windowed app has no console, so its log goes to
+native window (WebView2 on Windows, WebKit on macOS, through pywebview), or in
+the default browser if no window can be made (the Linux app always uses the
+browser). Closing the window stops the server and removes temporary show files.
+In the browser, the page checks in every minute and the app stops itself about
+15 minutes after the last check-in. A windowed app has no console, so its log goes to
 `%LOCALAPPDATA%\lor-sequence-builder\logs\desktop.log`.
 
 `"LOR Sequencer.exe" --self-test result.json` checks an installed copy without a
@@ -26,7 +31,7 @@ demo show is generated. The result is written as JSON.
 ## Builds
 
 `.github/workflows/desktop.yml` runs on every pull request and every push to
-master:
+master. The Windows job:
 
 1. Sync the locked environment with the `desktop` extra (pywebview, PyInstaller,
    pinned in `pyproject.toml` and `uv.lock`).
@@ -38,8 +43,18 @@ master:
    portable version, for PCs that block installers.
 7. Keep both as artifacts for 30 days.
 
-Publishing a release (or pushing a tag such as `v0.1.0`) attaches the installer and
-the portable zip to it.
+The Linux job (on Ubuntu 22.04, so the AppImage runs on older distributions)
+downloads the pinned Linux FFmpeg and appimagetool and checks their SHA-256,
+builds with PyInstaller, wraps the result with `linux/build_appimage.sh`, and runs
+the AppImage's self-test.
+
+The macOS job (Apple silicon) clones FFmpeg at a pinned release tag, checks the
+commit, builds it with `macos/build_ffmpeg.sh`, builds `LOR Sequencer.app` with
+PyInstaller (ad-hoc signed, not notarized), runs its self-test, and zips it.
+
+Publishing a release (or pushing a tag such as `v0.1.0`) attaches all of them: the
+installer, the portable zip, the AppImage and the macOS zip, each also under a name
+without the version for the README's download links.
 
 To build on a Windows PC:
 

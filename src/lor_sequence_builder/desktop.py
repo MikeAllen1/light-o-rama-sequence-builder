@@ -5,9 +5,10 @@ The installed app (built with PyInstaller, see ``packaging/``) starts here. It:
 1. puts the FFmpeg bundled with the app on the search path, so songs can be read
    without installing anything else;
 2. starts the local workspace server on a free loopback port in the background;
-3. opens the workspace in a native window (WebView2 on Windows, through
-   pywebview). If no native window can be made, it opens the default browser
-   instead and keeps running until closed;
+3. opens the workspace in a native window (WebView2 on Windows, WebKit on
+   macOS, through pywebview). If no native window can be made (Linux), it opens
+   the default browser instead and stops on its own a while after the last tab
+   showing it is closed;
 4. stops the server and removes temporary show files when the window closes.
 
 ``--self-test RESULT.json`` checks an installed copy without opening a window:
@@ -34,6 +35,9 @@ from typing import Any
 from urllib.request import urlopen
 
 APP_NAME = "LOR Sequencer"
+# In the browser, the app stops this long after the page last checked in (an open page
+# checks in every minute; browsers may slow that down in background tabs).
+IDLE_STOP_SECONDS = 15 * 60
 
 
 def _bundle_root() -> Path | None:
@@ -134,6 +138,9 @@ def self_test(result_path: Path) -> int:
 
 def _open_window(url: str) -> bool:
     """Show the workspace in a native window; False when that is not possible here."""
+    if sys.platform.startswith("linux") and _bundle_root() is not None:
+        # pywebview needs GTK or Qt bindings the Linux app does not carry: use the browser.
+        return False
     try:
         import webview
     except ImportError:
@@ -148,6 +155,18 @@ def _open_window(url: str) -> bool:
     except Exception:  # noqa: BLE001 - fall back to the browser on any window failure
         return False
     return True
+
+
+def wait_until_idle(limit: float = IDLE_STOP_SECONDS, poll: float = 30.0) -> None:
+    """Keep running while the workspace page is open; return once it has been quiet
+    for ``limit`` seconds (every tab closed) or on Ctrl+C."""
+    from lor_sequence_builder.ui_server import seconds_since_last_request
+
+    try:
+        while seconds_since_last_request() < limit:
+            time.sleep(poll)
+    except KeyboardInterrupt:
+        pass
 
 
 def _tell(message: str) -> None:
@@ -208,12 +227,10 @@ def _main(argv: Sequence[str] | None = None) -> int:
     try:
         if options.browser or not _open_window(url):
             webbrowser.open(url)
-            print(f"{APP_NAME} is running at {url}. Close this window to stop it.")
-            try:
-                while True:
-                    time.sleep(3600)
-            except KeyboardInterrupt:
-                pass
+            print(f"{APP_NAME} is running at {url}. It stops by itself about "
+                  f"{IDLE_STOP_SECONDS // 60} minutes after you close the page, or press "
+                  "Ctrl+C here.", flush=True)
+            wait_until_idle()
     finally:
         stop_server(server)
     return 0
