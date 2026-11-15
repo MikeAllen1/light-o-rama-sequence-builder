@@ -20,6 +20,7 @@ when each prop should light. The test passes the same rules as every show.
 
 from __future__ import annotations
 
+import dataclasses
 import math
 import wave
 from dataclasses import dataclass, field
@@ -153,6 +154,15 @@ def _plan(display: Display) -> tuple[Choreography, list[tuple[int, int, str]], l
                     effects.append(Effect(pid, channel, _ALL[1], TEST_CENTISECONDS - 5,
                                           "fade", 100, 0, None, None))
         schedule.append((_ALL[0], TEST_CENTISECONDS, "everything on, then fade out"))
+    # A circuit wired to two props (a roofline that is also a mega tree's last channel)
+    # is one light: it shows what the prop with more channels shows.
+    for outlet in display.shared_outlets():
+        leader = max(outlet, key=lambda item: (display.props[item[0]].channel_count, item))
+        led = [e for e in effects if (e.prop_id, e.channel_index) == leader]
+        others = set(outlet) - {leader}
+        effects = [e for e in effects if (e.prop_id, e.channel_index) not in others]
+        effects.extend(dataclasses.replace(e, prop_id=pid, channel_index=channel)
+                       for pid, channel in sorted(others) for e in led)
     sections = (Section("test", 0, TEST_CENTISECONDS),)
     return (Choreography(TEST_CENTISECONDS, tuple(effects), (), sections, (),
                          tuple(vocal_regions)), schedule, ticks)
