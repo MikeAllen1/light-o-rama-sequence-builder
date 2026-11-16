@@ -1,0 +1,19 @@
+name: Idea or request
+description: Suggest something LOR Sequencer should do, or a prop it should handle.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: Please don't attach your own show files, previews or songs; describe them instead.
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+      description: What you want to happen, and why it matters for your display.
+    validations:
+      required: true
+  - type: textarea
+    id: display
+    attributes:
+      label: Your display (optional)
+      description: The props or controllers involved (for example "two singing faces on one controller", "pixel mega tree").
