@@ -230,6 +230,9 @@ def _build_parser() -> argparse.ArgumentParser:
     generate.add_argument("--rules", action="append", default=[], help=_RULES_HELP)
     generate.add_argument("--ignore-saved-requirements", action="store_true",
                           help=_IGNORE_HELP)
+    generate.add_argument("--pixels", action="store_true",
+                          help="also light the display's pixel props with pixel effects (new; S5/S6 "
+                               "displays; check them in S6's preview)")
     generate.add_argument("--style", choices=sorted(STYLES), default=DEFAULT_STYLE,
                           help="character of the show: classic (default), energetic, elegant")
     generate.add_argument("--style-file",
@@ -274,6 +277,9 @@ def _build_parser() -> argparse.ArgumentParser:
                        help="the display: an S5/S6 .lorprev, or one of your S4 sequences (.lms)")
     batch.add_argument("--songs", required=True, help="folder of songs (read only)")
     batch.add_argument("--output", required=True, help="new or empty folder for the shows")
+    batch.add_argument("--pixels", action="store_true",
+                       help="also light the display's pixel props with pixel effects (new; S5/S6 "
+                            "displays; check them in S6's preview)")
     batch.add_argument("--style", choices=sorted(STYLES), default=DEFAULT_STYLE,
                        help="character of every show: classic (default), energetic, elegant")
     batch.add_argument("--style-file",
@@ -430,7 +436,7 @@ def _generate_batch(options: argparse.Namespace) -> int:
             show = generate_show(options.preview, target / f"{song.stem}{suffix}", rule_set,
                                  audio_path=song, music_filename=song.name,
                                  beats_per_bar=options.beats_per_bar, separate=False,
-                                 style=style)
+                                 style=style, pixels=options.pixels)
         except RulesFailedError as error:
             failed.append(song.name)
             print(f"  not built: {error}")
@@ -467,7 +473,7 @@ def _generate(options: argparse.Namespace) -> int:
             music_filename=options.music_filename, beats_per_bar=options.beats_per_bar,
             vocals_path=options.vocals, separate=False if options.no_vocals else None,
             progress=print, vocal_beats=options.vocal_beats, style=_chosen_style(options),
-            lyrics_path=options.lyrics, singer=options.singer,
+            lyrics_path=options.lyrics, singer=options.singer, pixels=options.pixels,
         )
     except RulesFailedError as failed:
         print(failed.report.format_text())
@@ -485,6 +491,13 @@ def _generate(options: argparse.Namespace) -> int:
             print(f"  {skipped.name}: {skipped.reason}")
     for note in plan.notes:
         print(f"Note: {note}")
+    if show.pixels is not None:
+        for name, reason in show.pixels.skipped:
+            print(f"  {name}: {reason}")
+        for note in show.pixels.notes:
+            print(f"Note: {note}")
+    elif options.pixels:
+        print("Note: pixel effects are for S5/S6 displays; this display has none to light.")
     print(show.report.format_text())
     print(f"Sequence: {show.sequence_path}")
     print(f"Timeline: {show.timeline_path}")

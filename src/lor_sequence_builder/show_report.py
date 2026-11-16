@@ -72,6 +72,9 @@ class ReportInputs:
     report: RuleReport
     duration_centiseconds: int
     files: dict[str, str]
+    # Pixel props that got pixel effects, and pixel props a requirement kept dark.
+    pixel_props: tuple[str, ...] = ()
+    pixel_skipped: tuple[tuple[str, str], ...] = ()
 
 
 def _time(centiseconds: int) -> str:
@@ -81,7 +84,8 @@ def _time(centiseconds: int) -> str:
 
 def _used_ids(inputs: ReportInputs) -> set[str]:
     names = set(inputs.plan.used_props)
-    return {p.prop_id for p in inputs.display.props.values() if p.name in names}
+    return {p.prop_id for p in inputs.display.props.values()
+            if p.name in names} | set(inputs.pixel_props)
 
 
 def yard_checks(inputs: ReportInputs) -> list[str]:
@@ -92,6 +96,10 @@ def yard_checks(inputs: ReportInputs) -> list[str]:
         (f"In the Sequencer, confirm the sequence plays {escape(inputs.music_filename)}: the "
          "audio file name must match one in its audio folder."),
     ]
+    if inputs.pixel_props:
+        checks.append(f"Pixel effects are new: play the show in S6's preview and watch the "
+                      f"{len(inputs.pixel_props)} pixel prop(s) before show night. They "
+                      "follow the music's parts and the show's colors and go dark with it.")
     unknown = sorted(c.name for c in inputs.classifications if c.status == "unknown")
     review = sorted(c.name for c in inputs.classifications if c.status == "needs_review")
     if unknown:
@@ -184,10 +192,12 @@ def render_report(inputs: ReportInputs) -> str:
 
     parts.append("<h2>Your props</h2>")
     rows = []
-    skipped = {s.name: s.reason for s in plan.skipped_props}
+    skipped = {s.name: s.reason for s in plan.skipped_props} | dict(inputs.pixel_skipped)
     for prop in sorted(display.props.values(), key=lambda p: (p.role, p.name)):
         if prop.prop_id in used:
-            state, why = "Used", ""
+            state, why = "Used", "pixel effects" if prop.color_kind == "pixel" else ""
+        elif prop.color_kind == "pixel" and prop.name in skipped:
+            state, why = "Left dark", skipped[prop.name]
         elif not prop.sequenceable:
             state = "Not sequenced"
             why = (prop.layout_problem or

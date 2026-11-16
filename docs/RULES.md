@@ -81,6 +81,8 @@ Each requirement picks props in exactly one way:
 
 Shared fields are `id`, `type`, `props`, `severity` (default `error`) and `note`.
 
+Pixel props, when the show lights them, follow `never_use`, `max_intensity`, `colors_only` and `quiet_during`; the other types do not apply to them. Pixel effects are planned after the rules check of the main show and are not part of the Timeline the rules check.
+
 | Type | Extra fields | Meaning |
 | --- | --- | --- |
 | `keep_on` | `during` (section names, optional) | Every channel stays lit for the whole song or the listed sections. For a prop with a channel per color, any one color counts. |

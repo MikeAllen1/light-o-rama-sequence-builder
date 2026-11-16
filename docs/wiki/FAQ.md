@@ -10,7 +10,7 @@ No. Shows are built by the program's own rules from the music analysis and your 
 S4, S5 and S6, whatever version saved the file. You need Light-O-Rama to play the shows.
 
 **Which props?**
-Standard LOR props (single color, multicolor, channel per color, multi-segment) and non-pixel RGB props. Pixel and DMX props are listed but not sequenced yet.
+Standard LOR props (single color, multicolor, channel per color, multi-segment) and non-pixel RGB props. Pixel props too, if you choose (see [Pixel props](Pixel-Props)). Other DMX props are listed but not sequenced.
 
 **Will it change my files?**
 Never. Your preview, songs and sequences are only read; every show is a new file.

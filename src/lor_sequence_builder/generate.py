@@ -13,6 +13,7 @@ can be reviewed. Inputs are never modified and no output is overwritten.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import tempfile
 from collections.abc import Callable
@@ -29,6 +30,7 @@ from lor_sequence_builder.evaluation import load_analysis
 from lor_sequence_builder.lms import LmsError, display_from_lms, preview_bytes, read_lms
 from lor_sequence_builder.lorprev import read_lorprev
 from lor_sequence_builder.lyrics import read_lyrics
+from lor_sequence_builder.pixels import PixelPlan, plan_pixels
 from lor_sequence_builder.plan_preview import plan_svg
 from lor_sequence_builder.planner import Plan, display_has_mouths, plan_show
 from lor_sequence_builder.progress import step as report_step
@@ -60,6 +62,7 @@ class GeneratedShow:
     vocals_note: str | None
     plan: Plan
     report: RuleReport
+    pixels: PixelPlan | None = None
 
 
 def output_paths(output_path: str | Path) -> dict[str, Path]:
@@ -111,12 +114,14 @@ def generate_show(
     style: str | Style | None = None,
     lyrics_path: str | Path | None = None,
     singer: str | None = None,
+    pixels: bool = False,
 ) -> GeneratedShow:
     """Build a show. ``preview_path`` is a ``.lorprev`` (S5/S6 output, ``.loredit``)
     or the user's own S4 sequence (``.lms`` output with the same channels). Vocals for singing faces come from ``vocals_path`` (a vocals-only
     audio file, or a vocals JSON from an earlier run); otherwise, when the display
     has face mouths, they are split out of the song if the add-on is installed.
-    ``separate`` forces separation on (True) or off (False)."""
+    ``separate`` forces separation on (True) or off (False). ``pixels`` also lights
+    the display's pixel props with pixel effects (S5/S6 only)."""
     if (audio_path is None) == (analysis_path is None):
         raise SequenceWriteError("Give either the audio file or an existing analysis, not both")
     try:
@@ -127,7 +132,7 @@ def generate_show(
     with ExitStack() as stack:
         return _generate(stack, preview_path, output_path, rule_set, audio_path, analysis_path,
                          music_filename, beats_per_bar, vocals_path, separate, progress,
-                         vocal_beats, chosen_style, lyrics, singer)
+                         vocal_beats, chosen_style, lyrics, singer, pixels)
 
 
 def _generate(
@@ -146,6 +151,7 @@ def _generate(
     chosen_style: Style,
     lyrics: dict[str, Any] | None,
     singer: str | None = None,
+    pixels: bool = False,
 ) -> GeneratedShow:
     paths = output_paths(output_path)
     s4 = Path(preview_path).suffix.lower() == ".lms"
@@ -240,6 +246,18 @@ def _generate(
         )
     report_step("Planning the show", 0.8 if vocals_audio is not None else 0.3)
     plan = plan_show(analysis, display, rule_set, vocals, chosen_style)
+    pixel_plan: PixelPlan | None = None
+    if pixels and not s4:
+        downbeats = sorted({round(float(b["time"]) * 100)
+                            for b in analysis.get("analysis", {}).get("downbeats", [])
+                            if isinstance(b, dict) and isinstance(b.get("time"), int | float)})
+        pixel_plan = plan_pixels(preview, display, rule_set, plan.choreography, plan.sections,
+                                 downbeats, chosen_style.palette, chosen_style.phrase_bars)
+        # Pixel props are accounted for by the pixel plan, lit or kept dark by a requirement.
+        pixel_names = {display.props[pid].name for pid in display.props
+                       if display.props[pid].color_kind == "pixel"}
+        plan = dataclasses.replace(plan, skipped_props=tuple(
+            s for s in plan.skipped_props if s.name not in pixel_names))
     paths["sequence"].parent.mkdir(parents=True, exist_ok=True)
     _write_new(paths["timeline"], choreography_json(plan.choreography))
     _write_new(paths["picture"], plan_svg(plan, display, f"{paths['sequence'].stem}: planned show"))
@@ -259,6 +277,7 @@ def _generate(
             written = build_from_timeline(
                 preview_path, plan.choreography, rule_set, music_filename or default_music,
                 paths["sequence"], paths["report"], beats=beats,
+                pixel_effects=() if pixel_plan is None else pixel_plan.effects,
             )
     except RulesFailedError as failed:
         _write_new(paths["plan"], _plan_document(plan, failed.report, analysis))
@@ -270,9 +289,11 @@ def _generate(
         title=paths["sequence"].stem, music_filename=music, display=display,
         classifications=classify_preview(preview), plan=plan, report=written.report,
         duration_centiseconds=plan.choreography.duration_centiseconds,
+        pixel_props=() if pixel_plan is None else pixel_plan.prop_ids,
+        pixel_skipped=() if pixel_plan is None else pixel_plan.skipped,
         files={"Sequence": paths["sequence"].name, "Plan picture": paths["picture"].name,
                "Rule details": paths["report"].name, "Timeline": paths["timeline"].name},
     )))
     return GeneratedShow(paths["sequence"], paths["timeline"], paths["plan"], paths["picture"],
                          paths["report"], paths["summary"], written_analysis, written_vocals,
-                         vocals_note, plan, written.report)
+                         vocals_note, plan, written.report, pixel_plan)

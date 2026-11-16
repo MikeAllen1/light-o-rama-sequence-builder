@@ -580,6 +580,9 @@ def _constraints(display: Display, rule_set: RuleSet, vocals_known: bool) -> _Co
             master = display.props.get(prop.linked_to)
             c.excluded[prop.prop_id] = (
                 f"driven by its master prop {master.name if master else '(missing)'}")
+        elif prop.color_kind == "pixel":
+            c.excluded[prop.prop_id] = ("pixel prop: lit only when you choose pixel effects "
+                                        "(Light the pixel props, or --pixels)")
         elif prop.layout_problem is not None:
             c.excluded[prop.prop_id] = f"cannot be sequenced yet: {prop.layout_problem}"
         elif (prop.role == "singing_face" and _named(prop.name, mouth_words)

@@ -9,6 +9,7 @@
 - [Styles](Styles)
 - [Requirements](Requirements)
 - [RGB props](RGB-Props)
+- [Pixel props](Pixel-Props)
 - [Singing faces](Singing-Faces)
 - [A new prop this year](Adding-New-Props)
 - [S4 users](S4-Users)

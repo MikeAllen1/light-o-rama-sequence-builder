@@ -13,8 +13,12 @@ established by comparing native sequences (see docs/S6_FORMAT.md):
   channel (row 0, column 0, color 0) whose effects carry ARGB colors (see rgb.py).
 - A fixed set of top-level sections in a fixed order, and a 0.05 s fixed grid.
 
-Props whose channel layout has not been verified (pixel RGB, DMX, legacy AC/DC,
-unassigned) are excluded and reported, never silently dropped.
+- A pixel prop (``StringType="RGB"``), when pixel effects are on, has no channel
+  but two motion-effect rows (``track``; see pixels.py).
+
+Props whose channel layout has not been verified (other DMX, legacy AC/DC,
+unassigned, and pixel props when pixel effects are off) are excluded and reported,
+never silently dropped.
 """
 
 from __future__ import annotations
@@ -37,6 +41,8 @@ from lor_sequence_builder.lorprev import (
     MAX_CHANNEL_GRID_ENTRIES_PER_PROP,
     MAX_CHANNEL_GRID_ENTRIES_TOTAL,
 )
+from lor_sequence_builder.pixel_rows import add_pixel_rows
+from lor_sequence_builder.rgb import is_pixel
 from lor_sequence_builder.timeline import ExcludedProp
 
 SAVE_FILE_VERSION = "15"
@@ -109,8 +115,11 @@ def build_new_sequence(
     music_filename: str,
     timing_grids: tuple[FreeTimingGrid, ...] = (),
     app_version: str = DEFAULT_APP_VERSION,
+    pixel_prop_ids: frozenset[str] = frozenset(),
 ) -> NewSequence:
-    """Return a new native sequence document for ``preview`` with no effects."""
+    """Return a new native sequence document for ``preview`` with no effects.
+    Pixel props named in ``pixel_prop_ids`` get motion-effect rows (see pixels.py);
+    other pixel props are reported as excluded."""
     if preview.tag != "PreviewClass":
         raise NewSequenceError("Preview root element must be <PreviewClass>")
     if (
@@ -215,6 +224,13 @@ def build_new_sequence(
             continue
         prop_id = prop.attrib["id"]
         name = prop.attrib.get("Name", "")
+        if prop_id in pixel_prop_ids and is_pixel(dict(prop.attrib)):
+            add_pixel_rows(ET.SubElement(
+                sequence_props, "SeqProp",
+                {"id": prop_id, "name": name, "EnablePixelChannels": "0",
+                 "OverlayMotionRows": "1"},
+            ))
+            continue
         reason = channel_layout_problem(prop)
         if reason is not None:
             excluded.append(ExcludedProp(prop_id=prop_id, name=name, reason=reason))

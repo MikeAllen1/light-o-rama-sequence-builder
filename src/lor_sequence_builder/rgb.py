@@ -9,8 +9,8 @@ and three ``ChannelGrid`` entries (red, green, blue), but the sequence holds ONE
 ``-16777216``, white ``-1``). ``INTENSITY`` and ``SHIMMER`` effects were seen, both
 with start/end pairs; a single ``intensity`` was seen on ``INTENSITY``.
 
-Pixel ("smart") RGB props, with one channel per pixel, have no evidence yet and stay
-unsupported.
+Pixel props (``StringType="RGB"``: three channels per pixel) are sequenced with
+motion effects instead of channels; see pixels.py.
 """
 
 from __future__ import annotations
@@ -38,6 +38,16 @@ ALIASES = {"aqua": "cyan", "violet": "purple", "amber": "gold", "warmwhite": "wa
            "cool white": "white", "pure white": "white"}
 
 BLACK = -16777216
+
+PIXEL_STRING_TYPE = "RGB"
+PIXEL_DEVICES = frozenset({"DMX", "LOR"})
+PIXEL_PROBLEM = "a pixel prop: it gets pixel effects when you turn them on"
+
+
+def is_pixel(attributes: dict[str, str]) -> bool:
+    """A pixel prop on a controller: S6 "RGB" strings (three channels per pixel)."""
+    return (attributes.get("StringType") == PIXEL_STRING_TYPE
+            and attributes.get("DeviceType") in PIXEL_DEVICES)
 
 
 def color_name(name: str | None) -> str | None:
