@@ -298,6 +298,8 @@ canvas { display: block; }
 .link-button { background: none; border: 0; color: var(--accent); cursor: pointer; font-size: 11px; margin-left: 8px; }
 .edit-field.wide input[type="text"] { width: 420px; max-width: 100%; }
 .sing-option { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; margin-top: 8px; }
+.pixel-option { display: flex; gap: 6px; align-items: center; font-size: 13px; margin: 10px 0 2px; }
+.pixel-option .badge { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; padding: 1px 6px; border-radius: 8px; background: rgba(242, 180, 65, .18); color: #f2b441; }
 .generate-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .show-notes { margin: 8px 0 0; padding-left: 18px; font-size: 11px; color: var(--muted); }
 @media (max-width: 760px) { .new-show { padding: 16px; } .section-picks { grid-template-columns: repeat(2, auto); } }

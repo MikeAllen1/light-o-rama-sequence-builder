@@ -18,6 +18,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from lor_sequence_builder.artifacts import write_new_text_atomically
 from lor_sequence_builder.choreography import Choreography, ChoreographyError, Effect
@@ -29,10 +30,14 @@ from lor_sequence_builder.new_sequence import (
     NewSequenceError,
     build_new_sequence,
 )
+from lor_sequence_builder.pixel_rows import write_pixel_effects
 from lor_sequence_builder.pulse import preview_element
 from lor_sequence_builder.rgb import argb, is_rgb
 from lor_sequence_builder.rules import RuleReport, RuleSet, check_choreography
 from lor_sequence_builder.timeline import ExcludedProp
+
+if TYPE_CHECKING:
+    from lor_sequence_builder.pixels import PixelEffect
 
 __all__ = ["NewSequenceError", "build_from_timeline", "build_lms_from_timeline",
            "build_new_sequence"]
@@ -174,9 +179,11 @@ def build_from_timeline(
     output_path: str | Path,
     report_path: str | Path,
     beats: tuple[int, ...] = (),
+    pixel_effects: tuple[PixelEffect, ...] = (),
 ) -> WriteResult:
     """``beats`` (centiseconds), when given, are written as a "Beats" timing grid, so
-    the Sequencer snaps hand edits to the song's beat."""
+    the Sequencer snaps hand edits to the song's beat. ``pixel_effects`` go on their
+    pixel props' motion-effect rows (pixel props without any stay excluded)."""
     preview_source = Path(preview_path)
     output = Path(output_path)
     report_output = Path(report_path)
@@ -256,6 +263,7 @@ def build_from_timeline(
                   if beats else ()),
                 *((FreeTimingGrid("Sections", sections),) if sections else ()),
             ),
+            pixel_prop_ids=frozenset(e.prop_id for e in pixel_effects),
         )
     except NewSequenceError as exc:
         _write_build_report(
@@ -291,6 +299,8 @@ def build_from_timeline(
             raise SequenceWriteError(message)
         ET.SubElement(targets[effect.channel_index], "effect",
                       _effect_attributes(effect, effect.prop_id in rgb_props))
+
+    write_pixel_effects(built.document.root, pixel_effects)
 
     try:
         write_loredit(built.document, output)

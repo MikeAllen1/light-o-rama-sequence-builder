@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from lor_sequence_builder.lorprev import (
     MAX_CHANNEL_GRID_ENTRIES_PER_PROP,
 )
-from lor_sequence_builder.rgb import RGB_STRING_TYPE
+from lor_sequence_builder.rgb import PIXEL_PROBLEM, RGB_STRING_TYPE, is_pixel
 
 SUPPORTED_DEVICE_TYPES = frozenset({"LOR"})
 COLUMN_LAYOUT_TYPES = frozenset({"Single Color", "Multicolor_string_1_ch"})
@@ -76,6 +76,8 @@ def channel_layout_problem(prop: object) -> str | None:
     if not isinstance(attributes, dict):
         return "Prop does not expose XML attributes"
     device_type = attributes.get("DeviceType", "")
+    if is_pixel(attributes):
+        return PIXEL_PROBLEM
     if device_type not in SUPPORTED_DEVICE_TYPES:
         return f"DeviceType {device_type or '(missing)'} has no verified native channel layout"
     string_type = attributes.get("StringType", "Traditional")

@@ -276,8 +276,26 @@
         id: propNode.getAttribute("id") || "",
         name: propNode.getAttribute("name") || "(unnamed prop)",
         channels: [],
+        // Pixel effects (S6 motion-effect rows): shown and played, kept as they are.
+        tracks: [],
         rgb: rgbIds.has(propNode.getAttribute("id") || "")
       };
+      for (const trackNode of propNode.children) {
+        if (trackNode.localName !== "track") continue;
+        const track = { name: trackNode.getAttribute("name") || "Effects", effects: [] };
+        for (const effectNode of trackNode.children) {
+          if (effectNode.localName !== "effect") continue;
+          const start = Number(effectNode.getAttribute("startCentisecond"));
+          const end = Number(effectNode.getAttribute("endCentisecond"));
+          if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || end <= start) continue;
+          const attributes = {};
+          for (const attr of effectNode.attributes) attributes[attr.name] = attr.value;
+          track.effects.push({ start, end, attributes, motion: parseMotion(attributes.settings) });
+        }
+        track.effects.sort((a, b) => a.start - b.start);
+        prop.tracks.push(track);
+        effectCount += track.effects.length;
+      }
       for (const channelNode of propNode.children) {
         if (channelNode.localName !== "channel") continue;
         const channel = {
@@ -393,7 +411,9 @@
         // S6 can include a channel-less SeqProp whose ID is the PropGroup ID.
         // The group header already represents that placeholder; don't create a
         // duplicate empty prop row under "Ungrouped props".
-        if (prop.channels.length) propsByGroup.get(prop.id).push(prop);
+        if (prop.channels.length || (prop.tracks || []).some((t) => t.effects.length)) {
+          propsByGroup.get(prop.id).push(prop);
+        }
       } else {
         ungrouped.push(prop);
       }
@@ -405,6 +425,7 @@
         prop.channels.forEach((channel, index) => rows.push({
           kind: "channel", prop, channel, channelIndex: index
         }));
+        (prop.tracks || []).forEach((track) => rows.push({ kind: "motion", prop, track }));
       }
     }
     for (const group of sequence.groups) {
@@ -745,7 +766,17 @@
         label.appendChild(name);
         const meta = document.createElement("span");
         meta.className = "track-meta";
-        meta.textContent = String(row.prop.channels.length) + " ch";
+        meta.textContent = row.prop.channels.length ? String(row.prop.channels.length) + " ch"
+          : "pixels";
+        label.appendChild(meta);
+      } else if (row.kind === "motion") {
+        const name = document.createElement("span");
+        name.textContent = row.track.name + " · pixel effects";
+        label.title = "Pixel effects play here and in Yard view; change them in the S6 Sequencer.";
+        label.appendChild(name);
+        const meta = document.createElement("span");
+        meta.className = "track-meta";
+        meta.textContent = String(row.track.effects.length);
         label.appendChild(meta);
       } else {
         const name = document.createElement("span");
@@ -1283,6 +1314,28 @@
 
     const preview = state.drag && state.drag.preview;
     state.rows.forEach((row, index) => {
+      if (row.kind === "motion") {
+        const y = index * ROW_HEIGHT;
+        for (const effect of row.track.effects) {
+          const x1 = effect.start / 100 * pps;
+          const blockWidth = Math.max(1.5, effect.end / 100 * pps - x1);
+          const colors = (effect.motion && effect.motion.colors.length
+            ? effect.motion.colors : [[200, 200, 200]]).map(fullColor);
+          const gradient = ctx.createLinearGradient(x1, 0, x1 + blockWidth, 0);
+          colors.forEach((color, k) => gradient.addColorStop(
+            colors.length > 1 ? k / (colors.length - 1) : 0, color));
+          ctx.globalAlpha = .35 + .5 * motionBrightness(effect, (effect.start + effect.end) / 2);
+          ctx.fillStyle = gradient;
+          ctx.fillRect(x1, y + 4, blockWidth, ROW_HEIGHT - 8);
+          ctx.globalAlpha = 1;
+          if (blockWidth > 40 && effect.motion) {
+            ctx.fillStyle = "rgba(10, 10, 10, .8)";
+            ctx.font = "10px Segoe UI, sans-serif";
+            ctx.fillText(effect.motion.label, x1 + 3, y + ROW_HEIGHT / 2 + 3, blockWidth - 6);
+          }
+        }
+        return;
+      }
       if (row.kind !== "channel") return;
       const y = index * ROW_HEIGHT;
       const effects = preview && preview.changes.has(row.channel)
@@ -3990,9 +4043,14 @@
       requirements: show.raw || [],
       musicFilename: $("musicFilename").value,
       singing: $("singFaces").checked && !$("singFaces").closest("label").classList.contains("hidden"),
+      pixels: usePixels(),
       words: show.words || "",
       singer: $("singerSelect").value
     });
+  }
+
+  function usePixels() {
+    return $("usePixels").checked && !$("usePixels").closest("label").classList.contains("hidden");
   }
 
   function generatedActionsBlocked() {
@@ -4035,7 +4093,7 @@
     for (const id of ["showDisplayFile", "showSongFile", "requirementKind", "requirementProps",
       "requirementSearch", "requirementPicker", "generateAll",
       "requirementSections", "requirementMax", "addRequirement", "translateRequirements",
-      "plainRequirements", "musicFilename", "singFaces", "meterSelect", "styleChoices",
+      "plainRequirements", "musicFilename", "singFaces", "usePixels", "meterSelect", "styleChoices",
       "learnStyleFiles", "learnStyleName", "closeNewShow"]) {
       const element = $(id);
       if (!element) continue;
@@ -4171,16 +4229,24 @@
       $("musicNote").textContent = "";
       checkMusicName();
       const kinds = summary.kinds.map((kind) => kind.count + " " + kind.label).join(", ");
-      const skipped = summary.props.filter((prop) => !prop.sequenceable);
+      const skipped = summary.props.filter((prop) => !prop.sequenceable && !prop.pixel);
+      const pixelCount = summary.props.filter((prop) => prop.pixel).length;
       showMessage("displayStatus", (remembered ? "Your display from last time. " : "") +
         summary.display + ": " + (kinds || "nothing it can sequence") +
-        "." + (skipped.length ? " Not sequenced: " + skipped.map((prop) => prop.name +
+        "." + (pixelCount ? " " + pixelCount + " pixel prop" + (pixelCount === 1 ? "" : "s") +
+          ": you can light " + (pixelCount === 1 ? "it" : "them") + " in step 4." : "") +
+        (skipped.length ? " Not sequenced: " + skipped.map((prop) => prop.name +
           (prop.reason ? " (" + prop.reason + ")" : "")).join("; ") + "." : ""), "good");
       fillRequirementForm();
       const styles = summary.styles || [];
       fillStyles(styles, styles.some((item) => item.key === show.lastStyle)
         ? show.lastStyle : summary.default_style);
       renderRequirements(summary.requirements, []);
+      // Pixel effects are a choice, offered only when the display has pixel props.
+      $("usePixels").checked = false;
+      $("usePixels").closest("label").classList.toggle("hidden", !summary.pixels);
+      $("pixelLabel").textContent = "Light the " + (summary.pixels || 0) + " pixel prop" +
+        (summary.pixels === 1 ? "" : "s");
       $("singFaces").checked = Boolean(summary.faces && summary.can_separate_vocals);
       $("singFaces").closest("label").classList.toggle("hidden", !summary.faces);
       $("wordsRow").classList.toggle("hidden", !summary.faces);
@@ -4797,7 +4863,7 @@
       const result = await withProgress("generateStatus", "Starting", (key) =>
         postShow("/api/show/generate?token=" + encodeURIComponent(show.token) + "&progress=" +
           key, JSON.stringify({ music_filename: $("musicFilename").value, sing: singing,
-          style: chosenStyle(), singer: show.words ? $("singerSelect").value || null : null }),
+          style: chosenStyle(), pixels: usePixels(), singer: show.words ? $("singerSelect").value || null : null }),
           "application/json"));
       if (!result.rules_ok) {
         if (!previousResultIsCurrent) invalidateGeneratedResult();
@@ -4812,7 +4878,8 @@
         const parts = result.sections.map((section) => section.label + " (" + section.level + ")");
         showMessage("generateStatus", "Every rule passed. " + (show.songSeconds
           ? "A " + formatTime(show.songSeconds) + " show. " : "") + result.used.length +
-          " props used. Click Save show for the .loredit file. Parts: " + parts.join(", ") + "." + (result.skipped.length
+          " props used" + (result.pixel_props ? " plus " + result.pixel_props + " pixel prop" +
+          (result.pixel_props === 1 ? "" : "s") : "") + ". Click Save show for the .loredit file. Parts: " + parts.join(", ") + "." + (result.skipped.length
           ? " Left out: " + result.skipped.map((item) => item.name + " (" + item.reason + ")")
             .join("; ") + "." : ""), "good");
         $("showNotes").replaceChildren(...result.notes.map((note) => {
@@ -5121,6 +5188,7 @@
     const batchToken = show.token;
     const batchMeter = $("meterSelect").value;
     const batchStyle = chosenStyle() || "";
+    const batchPixels = usePixels();
     const batchConfig = currentBatchConfig();
     const previousBatchIsUsable = show.batchReady && !show.batchUncertain &&
       show.batchToken === batchToken && show.batchConfig === currentBatchConfig();
@@ -5176,6 +5244,7 @@
           postShow("/api/show/batch?token=" + encodeURIComponent(batchToken) +
             "&name=" + encodeURIComponent(file.name) + "&beats_per_bar=" +
             batchMeter + "&style=" + encodeURIComponent(batchStyle) +
+            (batchPixels ? "&pixels=1" : "") +
             "&progress=" + key, file, "application/octet-stream"),
           { from: i / files.length, to: (i + 1) / files.length, last: i === files.length - 1,
             prefix: "Song " + (i + 1) + " of " + files.length + ": " });
@@ -5356,6 +5425,9 @@
       showMessage("generateStatus", "Show style changed. Generate again to apply it.", "warn");
     });
     $("singFaces").addEventListener("change", () => {
+      invalidateGeneratedResult();
+    });
+    $("usePixels").addEventListener("change", () => {
       invalidateGeneratedResult();
     });
     $("wordsFile").addEventListener("change", (event) => {
@@ -5577,6 +5649,104 @@
     return { props: yard, bounds: { minX, minY, maxX, maxY } };
   }
 
+  // Pixel effects: "Mix|a|b|full|20|name:slots:options|name:slots:options". Each slot is
+  // "AARRGGBB,1" when that color is used.
+  const MOTION_LABELS = { colorwash: "Color wash", twinkle: "Twinkle", bars: "Bars",
+    blendedbars: "Blended bars", meteors: "Meteors", spirals: "Spirals", straightlines: "Lines",
+    ripple: "Ripple", garland: "Garland", butterfly: "Butterfly", fireworks: "Fireworks",
+    pinwheel: "Pinwheel", snowflakes: "Snowflakes", curtain: "Curtain", scanner: "Scanner",
+    text: "Text", picture: "Picture", simpleshape: "Shape", archimedesspiral: "Spiral" };
+
+  function parseMotion(settings) {
+    if (typeof settings !== "string" || !settings.startsWith("Mix_")) return null;
+    const layers = [];
+    for (const part of settings.split("|").slice(5)) {
+      const pieces = part.split(":");
+      const kind = (pieces[0] || "").replace(/^lightorama_/, "");
+      if (!kind || kind === "none") continue;
+      const colors = (pieces[1] || "").split(";").map((slot) => slot.split(","))
+        .filter((slot) => slot[slot.length - 1] === "1" && /^[0-9A-F]{8}$/i.test(slot[0]))
+        .map((slot) => [1, 2, 3].map((k) => parseInt(slot[0].slice(k * 2, k * 2 + 2), 16)))
+        .filter((rgb) => Math.max(...rgb) > 0);
+      layers.push({ kind, colors, options: (pieces.slice(2).join(":") || "").split(",") });
+    }
+    if (!layers.length) return null;
+    const main = layers[0];
+    const colors = layers.flatMap((layer) => layer.colors);
+    return { layers, kind: main.kind, colors: colors.length ? colors : [[255, 255, 255]],
+      label: MOTION_LABELS[main.kind] || main.kind };
+  }
+
+  function motionBrightness(effect, cs) {
+    const a = effect.attributes;
+    if (a.startIntensity != null && a.endIntensity != null) {
+      const share = (cs - effect.start) / Math.max(1, effect.end - effect.start);
+      return (Number(a.startIntensity) + (Number(a.endIntensity) - Number(a.startIntensity)) *
+        share) / 100;
+    }
+    return Number(a.intensity != null ? a.intensity : 100) / 100;
+  }
+
+  // The pixel effect showing on a prop at a time (the top row wins), or null.
+  function motionAt(prop, cs) {
+    for (const track of prop.tracks || []) {
+      for (const effect of track.effects) {
+        if (effect.start <= cs && cs < effect.end && effect.motion) return effect;
+        if (effect.start > cs) break;
+      }
+    }
+    return null;
+  }
+
+  function noise(a, b) {
+    const value = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453;
+    return value - Math.floor(value);
+  }
+
+  // An approximation of what a pixel effect shows at one pixel: u runs along the
+  // prop (0..1), v across its strings (0..1). Returns [r, g, b] (0..255) or null (dark).
+  function motionPixel(effect, u, v, cs) {
+    const motion = effect.motion;
+    const colors = motion.colors;
+    const t = (cs - effect.start) / 100;
+    const span = Math.max(0.01, (effect.end - effect.start) / 100);
+    const pick = (x) => colors[Math.floor(((x % 1) + 1) % 1 * colors.length) % colors.length];
+    const options = motion.layers[0].options;
+    const down = options.includes("down") || options.includes("top_to_bottom");
+    switch (motion.kind) {
+      case "colorwash":
+        if (options.includes("horizontal_gradient") && colors.length > 1) {
+          const k = u * (colors.length - 1);
+          const i = Math.min(colors.length - 2, Math.floor(k));
+          return colors[i].map((c, n) => c + (colors[i + 1][n] - c) * (k - i));
+        }
+        return colors[0];
+      case "twinkle":
+        return noise(Math.floor(u * 400 + v * 31), Math.floor(cs / 18)) > 0.55 ? pick(noise(u, v)) : null;
+      case "bars":
+      case "blendedbars":
+        return pick((down ? -1 : 1) * (v + u) * 1.5 - t * 0.8);
+      case "straightlines":
+        return pick(u * 3 - t * 1.2);
+      case "meteors": {
+        const head = ((t * 0.9 + noise(Math.floor(v * 8), 3) * 0.7) % 1);
+        const along = down ? 1 - u : u;
+        const tail = head - along;
+        return tail >= 0 && tail < 0.18 ? pick(v).map((c) => c * (1 - tail / 0.18)) : null;
+      }
+      case "spirals":
+        return pick(v * 2 + u * 2 + (options[2] && options[2].startsWith("-") ? 1 : -1) * t * 0.7);
+      case "ripple": {
+        const r = Math.hypot(u - 0.5, v - 0.5);
+        return (r * 4 - t * 1.4) % 1 < 0.35 ? pick(r) : null;
+      }
+      case "garland":
+        return u <= Math.min(1, t / span) * 1.05 ? pick(Math.floor(u * 6) / 6) : null;
+      default:
+        return pick(u + t * 0.3);
+    }
+  }
+
   // A channel's brightness (0..1) at a time, from its effects.
   function channelLevel(channel, cs) {
     if (!channel.sortedFor || channel.sortedFor !== channel.effects) {
@@ -5636,6 +5806,30 @@
     return Boolean(state.sequence && state.yardOpen && !$("yardPanel").classList.contains("hidden"));
   }
 
+  // Evenly spaced points along a polyline (for drawing pixels as dots).
+  function samplePolyline(points, count) {
+    if (points.length < 2) return points.slice();
+    const lengths = [0];
+    for (let k = 1; k < points.length; k++) {
+      lengths.push(lengths[k - 1] + Math.hypot(points[k][0] - points[k - 1][0],
+        points[k][1] - points[k - 1][1]));
+    }
+    const total = lengths[lengths.length - 1];
+    if (total <= 0) return [points[0]];
+    const out = [];
+    let segment = 1;
+    for (let n = 0; n < count; n++) {
+      const at = total * n / Math.max(1, count - 1);
+      while (segment < points.length - 1 && lengths[segment] < at) segment += 1;
+      const span = Math.max(1e-9, lengths[segment] - lengths[segment - 1]);
+      const share = (at - lengths[segment - 1]) / span;
+      const [x1, y1] = points[segment - 1];
+      const [x2, y2] = points[segment];
+      out.push([x1 + (x2 - x1) * share, y1 + (y2 - y1) * share]);
+    }
+    return out;
+  }
+
   function drawYard(seconds) {
     if (!yardVisible()) return;
     const canvas = $("yardCanvas");
@@ -5674,9 +5868,45 @@
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     let lit = 0;
+    let pixelsLit = 0;
     const mixed = new Set();
     for (const prop of yard.props) {
       const sequenced = byId.get(prop.id);
+      const motion = prop.pixel && sequenced ? motionAt(sequenced, cs) : null;
+      if (motion) {
+        // Pixels: dots along each string, colored by the pixel effect playing now.
+        const brightness = Math.max(0, Math.min(1, motionBrightness(motion, cs)));
+        const strings = prop.strands.length;
+        let shown = 0;
+        prop.strands.forEach((strand, index) => {
+          let length = 0;
+          for (let k = 1; k < strand.length; k++) {
+            length += Math.hypot(strand[k][0] - strand[k - 1][0], strand[k][1] - strand[k - 1][1]);
+          }
+          // About one dot every few screen pixels, so small props stay readable.
+          const points = samplePolyline(strand,
+            Math.max(3, Math.min(150, Math.round(length * scale / (4.5 * ratio)))));
+          points.forEach(([x, y], k) => {
+            const rgb = motionPixel(motion, k / Math.max(1, points.length - 1),
+              strings > 1 ? index / (strings - 1) : 0.5, cs);
+            if (!rgb || brightness <= 0.02) return;
+            const color = "rgb(" + rgb.map((c) => Math.round(c * brightness)).join(",") + ")";
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = color;
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 3 * ratio * brightness;
+            ctx.beginPath();
+            ctx.arc(toX(x), toY(y), line * 0.6, 0, Math.PI * 2);
+            ctx.fill();
+            shown += 1;
+          });
+        });
+        if (shown) {
+          lit += 1;
+          pixelsLit += 1;
+        }
+        continue;
+      }
       prop.strands.forEach((strand, index) => {
         const channel = sequenced && sequenced.channels[index];
         const level = channel ? channelLevel(channel, cs) : 0;
@@ -5719,6 +5949,7 @@
     canvas.dataset.props = String(yard.props.length);
     canvas.dataset.lit = String(lit);
     canvas.dataset.rgbColors = Array.from(mixed).sort().join(" ");
+    canvas.dataset.pixelsLit = String(pixelsLit);
     canvas.dataset.bounds = [minX, minY, maxX, maxY].map((v) => v.toFixed(3)).join(",");
   }
 

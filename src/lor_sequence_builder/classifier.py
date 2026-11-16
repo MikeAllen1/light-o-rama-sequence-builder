@@ -23,7 +23,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
 from lor_sequence_builder.channel_mapping import channel_layout_problem
-from lor_sequence_builder.rgb import RGB_STRING_TYPE
+from lor_sequence_builder.rgb import RGB_STRING_TYPE, is_pixel
 
 ROLES = (
     "arch",
@@ -244,6 +244,10 @@ def _color_capability(prop: ET.Element) -> ColorCapability:
     # later colors onto the wrong channel (for example, blank, Red, Green).
     entry_colors = tuple(entry[5].strip() if len(entry) > 5 else "" for entry in entries)
     has_entry_colors = any(entry_colors)
+    if is_pixel(dict(prop.attrib)):
+        return ColorCapability(
+            "pixel", (), True, "Pixels: lit with pixel effects when you turn them on"
+        )
     if device == "LOR" and prop.get("StringType") == RGB_STRING_TYPE:
         return ColorCapability(
             "rgb", (), True, "RGB: red, green and blue circuits mix into any color"
@@ -589,7 +593,7 @@ def classify_preview(preview: ET.Element) -> tuple[PropClassification, ...]:
             support = "supported"
         else:
             support = support_problem
-            if capability.kind not in {"unsupported", "unknown"}:
+            if capability.kind not in {"unsupported", "unknown", "pixel"}:
                 notes.append(f"Cannot be sequenced yet: {support_problem}")
 
         start = prop.get("StartLocation", "")

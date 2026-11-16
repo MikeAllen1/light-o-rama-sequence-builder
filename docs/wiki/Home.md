@@ -17,6 +17,7 @@
 | [Styles](Styles) | Classic, High energy, Elegant, and learning your own style |
 | [Requirements](Requirements) | Telling the show what it must do on your display |
 | [RGB Props](RGB-Props) | RGB floods and other color props |
+| [Pixel Props](Pixel-Props) | Pixel mega trees, matrices and lines, if you choose |
 | [Singing Faces](Singing-Faces) | Making faces sing along |
 | [A New Prop This Year](Adding-New-Props) | Adding props to shows you already have |
 | [S4 Users](S4-Users) | Using it with S4 (no previews) |

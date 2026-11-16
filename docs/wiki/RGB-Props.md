@@ -12,4 +12,4 @@ Color names you can use: red, green, blue, white, warm white, gold, yellow, oran
 
 ## Not supported yet
 
-**Pixel props** (one channel per bulb) are listed in the display panel and the report with the reason, but not sequenced. Adding them needs an example S6 sequence with pixel props to learn the exact format from; if you have one, please open an issue.
+**Pixel props** (one channel per bulb) are different: see [Pixel props](Pixel-Props).

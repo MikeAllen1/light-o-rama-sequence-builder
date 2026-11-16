@@ -44,7 +44,7 @@ from lor_sequence_builder.audio_analysis import analyze_audio
 from lor_sequence_builder.generate import generate_show
 from lor_sequence_builder.lms import LmsError, display_from_lms, parse_lms, preview_bytes
 from lor_sequence_builder.lorprev import read_lorprev
-from lor_sequence_builder.planner import LEVEL_NAMES, display_has_mouths
+from lor_sequence_builder.planner import LEVEL_NAMES, SkippedProp, display_has_mouths
 from lor_sequence_builder.pulse import preview_element
 from lor_sequence_builder.requirements_intake import (
     translator_from_environment,
@@ -286,6 +286,7 @@ class ShowSessions:
         return {
             "display": session.display_name,
             "props": [{"name": p.name, "role": p.role, "sequenceable": p.sequenceable,
+                       "pixel": p.color_kind == "pixel",
                        "reason": p.layout_problem or (
                            f"driven by {display.props[p.linked_to].name}"
                            if p.linked_to in display.props else None)}
@@ -295,6 +296,7 @@ class ShowSessions:
                       for role, count in sorted(kinds.items())],
             "groups": sorted(display.groups),
             "faces": display_has_mouths(display, rules),
+            "pixels": sum(1 for p in props if p.color_kind == "pixel" and p.linked_to is None),
             "s4": session.preview_path.suffix.lower() == ".lms",
             "can_separate_vocals": separation_available(),
             "can_translate": translator_from_environment() is not None,
@@ -474,6 +476,9 @@ class ShowSessions:
         if style is not None and not isinstance(style, str):
             raise ShowBuildError("Unknown style; choose one of: " + ", ".join(STYLES))
         _check_style(style)
+        pixels = body.get("pixels", False)
+        if not isinstance(pixels, bool):
+            raise ShowBuildError("'pixels' must be a JSON boolean")
         with self.locked(token) as session:
             if session.analysis_path is None or session.audio_path is None:
                 raise ShowBuildError("Add the song before generating")
@@ -520,7 +525,7 @@ class ShowSessions:
                                          music_filename=music.strip(), vocals_path=vocals,
                                          separate=False, style=style,
                                          singer=singer if vocals == session.words_path
-                                         else None)
+                                         else None, pixels=pixels)
                 except RulesFailedError as failed:
                     if session.generated_dir is not None:
                         shutil.rmtree(session.generated_dir, ignore_errors=True)
@@ -552,9 +557,14 @@ class ShowSessions:
                                   "start": s.start_centisecond, "end": s.end_centisecond}
                                  for s in plan.sections],
                     "used": list(plan.used_props),
+                    "pixel_props": 0 if show.pixels is None else len(show.pixels.prop_ids),
                     "skipped": [{"name": s.name, "reason": s.reason}
-                                for s in plan.skipped_props],
-                    "notes": [*plan.notes, *([note] if note else []),
+                                for s in [*plan.skipped_props,
+                                          *(SkippedProp(n, r) for n, r in
+                                            (() if show.pixels is None
+                                             else show.pixels.skipped))]],
+                    "notes": [*plan.notes,
+                              *(() if show.pixels is None else show.pixels.notes), *([note] if note else []),
                               *([show.vocals_note] if show.vocals_note and not note else [])],
                     "moments": [{"kind": k, "centisecond": t} for k, t in plan.moments],
                     "requirements": [describe_requirement(r) for r in session.requirements],
@@ -569,7 +579,8 @@ class ShowSessions:
     # -- several songs at once
 
     def batch_song(self, token: str, payload: bytes, suffix: str, demuxer: str,
-                   file_name: str, beats_per_bar: int, style: str | None) -> dict[str, Any]:
+                   file_name: str, beats_per_bar: int, style: str | None,
+                   pixels: bool = False) -> dict[str, Any]:
         """Analyze one song and build its show with the session's display, requirements
         and the chosen style. The show is kept for :meth:`batch_zip`; the session's own
         song is untouched. Faces do not sing in batch shows (no vocal splitting)."""
@@ -618,7 +629,8 @@ class ShowSessions:
                 try:
                     show = generate_show(session.preview_path, output, load_rule_set(profiles),
                                          analysis_path=analysis, music_filename=name,
-                                         vocals_path=None, separate=False, style=style)
+                                         vocals_path=None, separate=False, style=style,
+                                         pixels=pixels)
                 except RulesFailedError as failed:
                     entry.update(ok=False, problem=failed.report.format_text()[:2000])
                 else:

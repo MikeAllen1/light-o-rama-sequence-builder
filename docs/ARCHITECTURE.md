@@ -23,7 +23,7 @@ The original audio, preview, and any reference sequence are read-only inputs. Ou
 - The generated sequence output is **`.loredit`**, intended to open in the configured target LOR S6 version.
 - The current committed preview fixture is `tests/fixtures/synthetic_display.lorprev`, a small hand-authored fictional XML example. Larger sequence and preview test inputs are generated at test time with fictional identifiers, names, addresses, and geometry.
 - The repository's current fixture policy is synthetic-only. Historical owner-derived and sanitized show material was removed from the current tree in PR #15; do not restore it. Format claims must be supported by documented observations, synthetic regression coverage, and owner-run S6 verification without retaining private source files.
-- Non-pixel RGB props (S6 "DumbRGB") are supported from S6 file evidence (docs/S6_FORMAT.md): one channel whose effects carry ARGB colors; the planner colors them from the style's palette (`rgb.py`). Pixel support is a declared limitation, not something to fake or infer. If a preview contains a channel/prop type the current writer cannot safely represent, the tool must report it and must not silently drop it or claim full support.
+- Non-pixel RGB props (S6 "DumbRGB") are supported from S6 file evidence (docs/S6_FORMAT.md): one channel whose effects carry ARGB colors; the planner colors them from the style's palette (`rgb.py`). Pixel props are lit only when the user chooses, with motion effects in forms copied from a real S6 sequence (`pixels.py`); other DMX props are a declared limitation, not something to fake or infer. If a preview contains a channel/prop type the current writer cannot safely represent, the tool must report it and must not silently drop it or claim full support.
 - The sequencing workspace runs through a loopback-only local server. The desktop app opens the same workspace in a native window (pywebview: WebView2 on Windows, WebKit on macOS) and otherwise uses the default browser (always on Linux, where it stops itself once the page has been closed for a while); no sequencing logic lives in the desktop layer. The workspace supports native effect editing, music review, checked export to a new file, and a guided new-show workflow. Controller upload and live hardware playback remain out of scope.
 
 ## 3. Design principles
@@ -311,7 +311,9 @@ Sequenced, from S6 file evidence (see [S6_FORMAT.md](S6_FORMAT.md)):
 - Non-pixel RGB props (`StringType="DumbRGB"`): one channel whose effects carry ARGB colors.
 - S4 sequences used as the display: each channel is a prop.
 
-**Pixel props and DMX props are not sequenced.** They are listed as unsupported, with the reason, in the display panel, `analyze-preview` and the show report; no pixel choreography is emitted or faked. Adding pixel support needs an S6 sequence with pixel props as format evidence, synthetic fixtures, and owner verification in S6.
+**Pixel props** (`StringType="RGB"`) are sequenced only when the user chooses (`--pixels`, or the New show option): `pixels.py` plans a motion effect per phrase from the planned sections, the show's colors and when the rest of the show is lit, after the main plan, and the writer puts them on the props' motion-effect rows. Requirements apply to them. The format comes from one S6 5.6 sequence and still needs owner verification in S6 6.x.
+
+**Other DMX props are not sequenced.** They are listed as unsupported, with the reason, in the display panel, `analyze-preview` and the show report.
 
 Any other unsupported channel or effect type follows the same explicit-report policy: the prop is reported and left out, never silently dropped or guessed.
 
@@ -349,7 +351,7 @@ Errors should identify the stage, input, and corrective action without dumping s
 
 - Uploading sequences to controllers.
 - Live playback/control.
-- Pixel and DMX choreography (declared limitation; unsupported inputs are reported).
+- DMX choreography other than pixel props, and per-pixel channel effects (declared limitation; unsupported inputs are reported).
 - Cloud processing or account integration. The one optional exception is translating typed requirements with the user's own Anthropic API key; sequence building itself never calls out to a cloud service.
 
 ## 14. Open technical questions to resolve during fixture-led phases

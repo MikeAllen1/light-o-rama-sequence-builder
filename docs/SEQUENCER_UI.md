@@ -38,7 +38,7 @@ The shared horizontal extent covers the longer of the sequence and selected audi
 
 Brightness follows each channel's effects: steady and fading intensity exactly, twinkle and shimmer as a random flicker. Unlit strands stay faintly visible so the layout reads. During playback the view follows the song. Without audio, clicking a time on the tracks shows that moment. New show opens the yard view with every generated show.
 
-It is an approximation for review: S6's own visualizer remains the reference for exact shapes and pixel effects. A sequence without an embedded preview shows a message instead.
+Pixel props play their pixel effects as dots, roughly (a color wash, moving bars, meteors, spirals, twinkles). It is an approximation for review: S6's own visualizer remains the reference for exact shapes and pixel effects. In the timeline, a pixel prop shows its effect rows with each effect's name and colors; they cannot be edited here (change them in the S6 Sequencer) and are kept as they are when you export. A sequence without an embedded preview shows a message instead.
 
 ## Building a new show
 

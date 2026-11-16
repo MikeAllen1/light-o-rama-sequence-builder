@@ -59,7 +59,7 @@ You can also:
 - **It runs on your computer.** Your preview and your music never leave it. It only goes online to ask whether a newer version is out (you can turn that off) and, if you install the optional vocals or lyrics add-ons, to download their speech models once.
 - **Windows, macOS and Linux.** Each has its own download above. The right-click "Build a show" entry on a preview is Windows only. Light-O-Rama itself runs on Windows, so make shows anywhere and copy them to your show computer.
 - **S4, S5 and S6 all work, whatever version saved the file.** With S5 or S6, choose your `.lorprev`; you get a `.loredit`. With S4 (no previews), choose one of your own S4 sequences (`.lms`) as the display: each channel becomes a prop, and you get a new `.lms` with the same channels. See [docs/S4_FORMAT.md](docs/S4_FORMAT.md).
-- **You need Light-O-Rama S4, S5 or S6** to play the shows. Standard LOR props (channel per color, multi-segment) are sequenced, and so are RGB floods and other non-pixel RGB props, in color. Pixel and DMX props are listed in the report but not sequenced yet.
+- **You need Light-O-Rama S4, S5 or S6** to play the shows. Standard LOR props (channel per color, multi-segment) are sequenced, and so are RGB floods and other non-pixel RGB props, in color. **Pixel props** (mega trees, matrices, roof lines on E1.31 or LOR pixel controllers) can be lit too, if you choose to: they get pixel effects (color washes, bars, meteors, spirals, twinkles) that follow the music and the rest of the show. That is new, so watch it in S6's preview first. Other DMX props are listed in the report but not sequenced.
 - **Better previews make better shows.** Giving props a real S6 shape (Arch, Tree, Snowflake) and grouping rows helps. The [user guide](docs/USER_GUIDE.md) has tips and fixes for common problems.
 - **Free to use, not to sell.** See [License](#license).
 - Not affiliated with or endorsed by Light-O-Rama, Inc. "Light-O-Rama" and "S6" are theirs.
@@ -99,7 +99,7 @@ The [user guide](docs/USER_GUIDE.md) walks through a first show, requirements, s
 ## What you get for each show
 
 - `<song> (generated).loredit` (S5/S6) or `.lms` (S4): the native sequence. Open it in the Sequencer to play it or fine-tune it.
-- **Show report** (`.report.html`): what was used and left dark and why, props it cannot sequence (pixel, DMX), your requirements, every rule, the song's parts and big moments, and a checklist for the yard.
+- **Show report** (`.report.html`): what was used and left dark and why, props it cannot sequence (DMX, or pixels when you did not choose them), your requirements, every rule, the song's parts and big moments, and a checklist for the yard.
 - **Plan picture** (`.plan.svg`): the whole show at a glance.
 - **10-second display test**: before a full show, light every prop in a fixed order to check the wiring (`display-test`, or **10-second display test** in New show).
 - Details for the curious: the plan, the timeline and the rule results as JSON.
@@ -269,7 +269,7 @@ The `pulse` command proves the preview → Timeline → native S6 writer path us
 uv run lor-sequence-builder pulse --preview .\display.lorprev --bpm 120 --duration-seconds 180 --music-filename "Show\song.mp3" --output .\pulse-test.loredit --timeline-output .\pulse-test.timeline.json
 ```
 
-`--music-filename` is stored in the sequence the way S6 records it (S6 always attaches an audio file to a musical sequence). Props linked to a master prop are driven by their master and get no sequence prop of their own; props without a verified channel layout (pixel props, DMX, legacy AC/DC, unassigned) are excluded and listed in the output. See the new-sequence structure in [docs/S6_FORMAT.md](docs/S6_FORMAT.md).
+`--music-filename` is stored in the sequence the way S6 records it (S6 always attaches an audio file to a musical sequence). Props linked to a master prop are driven by their master and get no sequence prop of their own; props without a verified channel layout (DMX, legacy AC/DC, unassigned, and pixel props unless `--pixels`) are excluded and listed in the output. See the new-sequence structure in [docs/S6_FORMAT.md](docs/S6_FORMAT.md).
 
 The older template mode (`--template`, a native S6 sequence whose embedded preview matches the standalone preview exactly) still works but is deprecated. The rules below apply to it.
 
@@ -311,7 +311,7 @@ LICENSE                    MIT with the Commons Clause (free to use, not to sell
 
 - A display is required for every show: an S5/S6 `.lorprev` preview, or an S4 `.lms` sequence.
 - Props, channels, and controller identities must come from the preview; never invent or silently reassign them.
-- Non-pixel RGB props (S6 "DumbRGB", such as RGB floods) are sequenced in color; pixel and DMX props are not yet. Unsupported props must be reported, not faked or silently omitted.
+- Non-pixel RGB props (S6 "DumbRGB", such as RGB floods) are sequenced in color. Pixel props get pixel effects when chosen (`--pixels`, or the option in New show), written only in forms copied from a real S6 sequence; other DMX props are not sequenced. Unsupported props must be reported, not faked or silently omitted.
 - Source audio, previews, and sequence files are read-only. Generated output must be a new file.
 - Never commit original or sanitized show files, private previews, copyrighted audio, local machine paths, or secrets. Tests use fictional, hand-authored or runtime-generated synthetic fixtures only.
 - The workspace (in the browser or the desktop app) is local-only. Controller upload and live hardware playback remain out of scope. The browser workspace edits a copy in memory and exports a new file; it never changes the source sequence.

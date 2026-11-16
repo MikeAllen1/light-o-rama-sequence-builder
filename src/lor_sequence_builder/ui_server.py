@@ -535,9 +535,10 @@ class SequencerRequestHandler(SimpleHTTPRequestHandler):
                     self.send_error(400, "beats_per_bar must be 3 or 4")
                     return
                 style = query.get("style", [""])[0] or None
+                pixels = query.get("pixels", ["0"])[0] == "1"
                 self._send_json(200, SHOWS.batch_song(
                     token, payload, suffix, INPUT_DEMUXERS[suffix],
-                    query.get("name", ["song"])[0], int(meter), style))
+                    query.get("name", ["song"])[0], int(meter), style, pixels))
             elif path == "/api/show/audio":
                 payload = self._read_body("application/octet-stream", _MAX_UPLOAD_BYTES,
                                           "Audio")
