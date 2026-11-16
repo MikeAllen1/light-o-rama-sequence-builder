@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem privately
+    url: https://github.com/MikeAllen1/light-o-rama-sequence-builder/security/advisories/new
+    about: Please don't report security problems in a public issue.
+  - name: User guide and troubleshooting
+    url: https://github.com/MikeAllen1/light-o-rama-sequence-builder/wiki/Troubleshooting
+    about: Common problems and fixes.

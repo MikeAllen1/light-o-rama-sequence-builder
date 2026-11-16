@@ -1,0 +1,61 @@
+name: Bug report
+description: Something went wrong or looks wrong in LOR Sequencer.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Please don't attach your own show files, previews (.lorprev), sequences or songs** — this page is public. Describe them instead (Light-O-Rama version, how many props, which kinds).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. New show, chose my preview
+        2. Chose the song, style "Energetic"
+        3. Made the show; the arches never light
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options:
+        - New show (making a show)
+        - Display test
+        - The workspace (editing a sequence)
+        - A new prop this year (add props)
+        - Command line
+        - Installing or starting the app
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: lor
+    attributes:
+      label: Light-O-Rama version
+      options:
+        - S6
+        - S5
+        - S4
+        - Not sure
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: |
+        On the start page, click **Copy diagnostics** and paste it here (on the command line: `lor-sequence-builder diagnostics`).
+        Read it over first: error lines can name files you chose. Remove anything you don't want public.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots (optional)
+      description: A screenshot of the app or the show report often helps. Crop out anything private.
