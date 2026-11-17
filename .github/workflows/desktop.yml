@@ -120,7 +120,7 @@ jobs:
           Get-ChildItem dist\*.zip | Format-Table Name, Length
 
       - name: Keep the installer
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: LOR-Sequencer-Windows-installer
           path: dist/LOR-Sequencer-Setup-*.exe
@@ -128,7 +128,7 @@ jobs:
           retention-days: 30
 
       - name: Keep the portable zip
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: LOR-Sequencer-Windows-portable
           path: dist/LOR-Sequencer-Portable-*.zip
@@ -196,7 +196,7 @@ jobs:
           python -c "import json,sys; sys.exit(0 if json.load(open(sys.argv[1]))['ok'] else 1)" "$result"
 
       - name: Keep the AppImage
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: LOR-Sequencer-Linux-AppImage
           path: dist/LOR-Sequencer-*-x86_64.AppImage
@@ -256,7 +256,7 @@ jobs:
           ls -l dist/*.zip
 
       - name: Keep the macOS app
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: LOR-Sequencer-macOS
           path: dist/LOR-Sequencer-macOS-*.zip
