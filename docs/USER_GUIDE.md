@@ -165,6 +165,8 @@ Requirements are things the show must do on your display. In **New show**, choos
 - **Only these colors:** for example blue and white on the RGB floods, or only the red channels of a red-and-green prop.
 - **Light when these words are sung:** for example "fire" lights the homemade trees. Needs timed words (a word file or lyrics).
 
+A requirement that could never be met is refused when you add it, with the reason: one that contradicts another (stay on and never use the same prop; stay on and only colors the prop cannot show), "stay on" for a singing face's mouths (a face shows one mouth at a time), or falls running upward. The same requirement added twice is kept once. If a show still breaks a rule, the message lists only what went wrong.
+
 They are remembered for that display, so the next show starts with them. On the command line, `lor-sequence-builder requirements display.lorprev` asks the same questions, and [examples/requirements](../examples/requirements/README.md) has ready-made profiles to use with `--rules`. With an Anthropic API key set (`ANTHROPIC_API_KEY`), requirements can also be typed in your own words.
 
 ## Singing faces

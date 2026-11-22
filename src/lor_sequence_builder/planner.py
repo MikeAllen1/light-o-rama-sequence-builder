@@ -162,8 +162,9 @@ def _music(analysis: dict[str, Any]) -> _Music:
     beats = [b for b in _times(analysis, "beats") if 0 <= b < duration]
     if len(beats) < 2:
         raise PlanningError(
-            "Audio analysis did not find a usable beat grid. Re-analyze the song; "
-            "the planner will not invent a tempo and generate choreography against it."
+            "No beat was found in this song (it may be silent, or have no steady rhythm), "
+            "so there is nothing to time the lights to. Choose another song, or another "
+            "copy of it; a show is never built against a guessed tempo."
         )
     beat_set = set(beats)
     downbeats = [d for d in _times(analysis, "downbeats") if d in beat_set]
@@ -591,6 +592,7 @@ def _constraints(display: Display, rule_set: RuleSet, vocals_known: bool) -> _Co
                 "no vocals for this song: pass --vocals, or install the vocals add-on")
         else:
             c.channels[prop.prop_id] = list(range(prop.channel_count))
+    color_limits: dict[str, set[str]] = {}
     for req in rule_set.requirements:
         if req.severity == "off":
             continue
@@ -608,6 +610,7 @@ def _constraints(display: Display, rule_set: RuleSet, vocals_known: bool) -> _Co
                 c.quiet[pid].update(s.lower() for s in req.params["sections"])
             elif req.type == "colors_only":
                 allowed = {color.lower() for color in req.params["colors"]}
+                color_limits[pid] = color_limits.get(pid, allowed) & allowed
                 if prop.color_kind == "rgb":
                     mixable = [name for name in (color_name(c) for c in req.params["colors"])
                                if name is not None]
@@ -645,22 +648,73 @@ def _constraints(display: Display, rule_set: RuleSet, vocals_known: bool) -> _Co
         if req.type == "move_direction":
             c.directions.append((set(chosen), req.params.get("movement", "chase"),
                                  req.params["direction"]))
+    # "Only these colors" holds for channels that copy another (a prop lit whole):
+    # whichever order the requirements came in, a copy never shows a color that is
+    # not allowed, and a lead channel of a color that is not allowed hands over.
+    for pid, allowed in color_limits.items():
+        prop = display.props[pid]
+        for leader in [key for key in list(c.copies) if key[0] == pid]:
+            targets = [t for t in c.copies[leader]
+                       if t[0] != pid or prop.channel_colors[t[1]].strip().lower() in allowed]
+            if prop.channel_colors[leader[1]].strip().lower() not in allowed:
+                own = [t for t in targets if t[0] == pid]
+                del c.copies[leader]
+                if own:
+                    head, rest = own[0], [t for t in targets if t != own[0]]
+                    c.channels.setdefault(pid, [])
+                    if head[1] not in c.channels[pid]:
+                        c.channels[pid].append(head[1])
+                    if rest:
+                        c.copies[head].extend(rest)
+                continue
+            c.copies[leader] = targets
     for pid in c.excluded:
         c.channels.pop(pid, None)
         c.keep_on.pop(pid, None)
     # One circuit drawn as two props: the prop with more channels (the mega tree whose
     # last channel is also the roofline) leads, and the other shows the same light.
+    # A prop with requirements of its own leads instead, so they hold for the shared
+    # light; one that is never used keeps the shared circuit dark.
+    def own_requirements(pid: str) -> bool:
+        return bool(c.caps.get(pid) is not None or c.quiet.get(pid) or pid in c.keep_on
+                    or pid in c.rgb_colors or pid in c.anchors)
+
     for outlet in display.shared_outlets():
-        owner = max(outlet, key=lambda pc: (display.props[pc[0]].channel_count,
-                                            display.props[pc[0]].name, -pc[1]))
-        for pid, channel in outlet:
-            if (pid, channel) == owner or pid in c.excluded:
+        dark = [pc for pc in outlet if pc[0] in c.excluded
+                and c.excluded[pc[0]].startswith("requirement")]
+        if dark:
+            for pid, channel in outlet:
+                if pid in c.excluded:
+                    continue
+                if channel in c.channels.get(pid, []):
+                    c.channels[pid].remove(channel)
+                if not c.channels.get(pid):
+                    c.channels.pop(pid, None)
+                    c.keep_on.pop(pid, None)
+                    c.excluded[pid] = (f"wired to the same circuit as "
+                                       f"{display.props[dark[0][0]].name}, which is never used")
+            continue
+        live = [pc for pc in outlet if pc[0] not in c.excluded]
+        if not live:
+            continue
+        constrained = [pc for pc in live if own_requirements(pc[0])]
+        owner = max(constrained or live,
+                    key=lambda pc: (display.props[pc[0]].channel_count,
+                                    display.props[pc[0]].name, -pc[1]))
+        for pid, channel in live:
+            if (pid, channel) == owner:
                 continue
+            if constrained:
+                # The leader also keeps the others' limits, so nothing is broken.
+                if pid in c.caps:
+                    c.caps[owner[0]] = min(c.caps.get(owner[0], 100), c.caps[pid])
+                c.quiet[owner[0]].update(c.quiet.get(pid, set()))
             if channel in c.channels.get(pid, []):
                 c.channels[pid].remove(channel)
             c.copies[owner].append((pid, channel))
             if not c.channels.get(pid):
                 c.channels.pop(pid, None)
+                c.keep_on.pop(pid, None)
                 c.followers[pid] = display.props[owner[0]].name
     return c
 
@@ -820,8 +874,10 @@ def _anchor(canvas: _Canvas, pid: str, count: int, anchors: list[int], floor: in
                              and y <= e.end_centisecond), None)
                 first = max(_at(mine, x) if mine else 0, floor)
                 last = max(_at(mine, y) if mine else 0, floor)
+                # A piece of an effect that belonged to a chase stays part of it.
                 kept.append(Effect(pid, channel, x, y, "on" if first == last else "fade",
-                                   first, last, mine.color if mine else None, None))
+                                   first, last, mine.color if mine else None,
+                                   mine.movement_id if mine else None))
         canvas.effects[key] = sorted(kept, key=lambda e: e.start_centisecond)
 
 
@@ -1176,6 +1232,14 @@ class _Planner:
 
         The whole line is placed or none of it, so the movement always finishes.
         """
+        if motion[0] == "chase" and len(members) > 1:
+            # A ripple across is a chase: it keeps a required direction too.
+            for chosen, kind, required in self.constraints.directions:
+                if kind == "chase" and set(members) <= chosen and required != motion[1]:
+                    if required != _OPPOSITE.get(motion[1]):
+                        return False
+                    members, motion = list(reversed(members)), ("chase", required)
+                    break
         step, hold, decay = self.style.fall
         spans = []
         for i, pid in enumerate(members):
@@ -2689,9 +2753,16 @@ def plan_show(analysis: dict[str, Any], display: Display, rule_set: RuleSet,
             wanted = {d.lower() for d in during}
             keep_spans[pid] = [(s.start_centisecond, s.end_centisecond) for s in sections
                                if s.label.lower() in wanted]
+        # "Stay on" means the whole prop: every channel, except that a prop with one
+        # channel per color shows one of its colors.
+        if pid not in constraints.channels:
+            continue  # shown through another prop wired to the same circuit
+        kept = planner.channels(pid, 0)
+        if display.props[pid].color_kind == "color_per_channel":
+            kept = kept[:1]
         for start, end in keep_spans[pid]:
-            channel = planner.channels(pid, 0)[0]
-            canvas.put(pid, channel, start, end, color=planner.color(pid, channel))
+            for channel in kept:
+                canvas.put(pid, channel, start, end, color=planner.color(pid, channel))
 
     usable = set(constraints.channels)
     if vocals is None:

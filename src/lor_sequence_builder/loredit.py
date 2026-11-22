@@ -93,7 +93,10 @@ def read_loredit(path: str | Path) -> LoreditDocument:
     except LoreditError:
         raise
     except (OSError, ET.ParseError, DefusedXmlException) as exc:
-        raise LoreditError(f"Invalid or unsafe LOREDIT XML: {source}") from exc
+        raise LoreditError(
+            f"Invalid or unsafe LOREDIT XML: {source} (the file is damaged or is not a "
+            "Light-O-Rama S5/S6 sequence)"
+        ) from exc
 
     if root is None:
         raise LoreditError("LOREDIT XML has no document element")

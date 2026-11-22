@@ -350,9 +350,125 @@ def validate_draft(
             reason = "; ".join(notes) or "no prop in this display matches"
             problems.append(f"{describe_requirement(requirement)}: skipped, {reason}")
             continue
+        described = describe_requirement(requirement)
+        if any(describe_requirement(other) == described for other in kept):
+            problems.append(f"{described}: already there")
+            continue
+        impossible = _impossible(requirement, set(props), display)
+        if impossible is not None:
+            problems.append(f"{described}: not added, {impossible}")
+            continue
+        clash = _contradiction(requirement, set(props), kept, display)
+        if clash is not None:
+            problems.append(f"{described}: not added, it contradicts {clash}")
+            continue
+        if requirement.type == "colors_only":
+            shared = sorted(display.props[pid].name for pid in
+                            _darkened(requirement, set(props), display))
+            if shared:
+                problems.append(f"{described}: {_listed(shared)} cannot show only these "
+                                "colors (none of its colors, or colors sharing one circuit), "
+                                "so it will stay dark")
         taken.add(unique)
         kept.append(requirement)
     return Draft(tuple(kept), tuple(problems))
+
+
+_MOUTH_WORDS = ("mouth", "lips", "mustache", "moustache")
+
+
+def _listed(names: list[str]) -> str:
+    names = sorted(names)
+    return ", ".join(names[:3]) + (f" and {len(names) - 3} more" if len(names) > 3 else "")
+
+
+def _impossible(requirement: Requirement, props: set[str], display: Display) -> str | None:
+    """Why no show could meet this requirement on these props, or None."""
+    if requirement.type == "keep_on":
+        mouths = [display.props[pid].name for pid in props
+                  if any(w in display.props[pid].name.lower() for w in _MOUTH_WORDS)]
+        if mouths:
+            return (f"a singing face shows one mouth at a time, so {_listed(mouths)} cannot "
+                    "stay on; choose the face outlines instead")
+    if (requirement.type == "move_direction" and requirement.params.get("movement") == "fall"
+            and requirement.params.get("direction") != "top_to_bottom"):
+        return ("falling effects always run top to bottom (a built-in rule); for another "
+                "direction, choose a chase or a fill")
+    if requirement.type == "anchor_channels":
+        per_color = [display.props[pid].name for pid in props
+                     if display.props[pid].color_kind == "color_per_channel"]
+        if per_color:
+            return (f"{_listed(per_color)} light one color at a time, so one channel cannot "
+                    "follow the others; choose props whose channels are parts (a mega tree "
+                    "and its star)")
+        wanted = [c - 1 for c in requirement.params.get("channels", [])]
+        whole = [display.props[pid].name for pid in props
+                 if not [c for c in range(display.props[pid].channel_count) if c not in wanted]]
+        if whole:
+            return (f"those channels are all of {_listed(whole)}, so there is no rest to "
+                    "follow")
+    return None
+
+
+# Requirements that need a prop lit, and the ones that keep a prop dark.
+_NEEDS_LIGHT = {"keep_on", "anchor_channels", "light_on_words"}
+
+
+def _darkened(requirement: Requirement, props: set[str], display: Display) -> set[str]:
+    """The props a requirement keeps dark (all song, or for "keep on" some of it)."""
+    if requirement.type in {"never_use", "quiet_during"}:
+        return props
+    if requirement.type == "colors_only":
+        # Colors sharing one circuit cannot be limited, and a prop with none of the
+        # colors has nothing to show: either stays dark.
+        allowed = {str(c).strip().lower() for c in requirement.params.get("colors", [])}
+        dark = set()
+        for pid in props:
+            prop = display.props[pid]
+            if prop.color_kind == "combined_colors" or prop.color_kind in {"single_color", "color_per_channel"} and not any(
+                    color.strip().lower() in allowed for color in prop.channel_colors):
+                dark.add(pid)
+        return dark
+    return set()
+
+
+def _contradiction(requirement: Requirement, props: set[str], kept: list[Requirement],
+                   display: Display) -> str | None:
+    """The earlier requirement this one cannot be met together with, described with
+    the props they share, or None."""
+    for other in kept:
+        other_props = set(select_props(display, other)[0])
+        if {requirement.type, other.type} == {"light_whole", "colors_only"}:
+            limit = requirement if requirement.type == "colors_only" else other
+            allowed = {str(c).strip().lower() for c in limit.params.get("colors", [])}
+            mixed = [display.props[pid].name for pid in props & other_props
+                     if display.props[pid].color_kind == "color_per_channel"
+                     and not all(col.strip().lower() in allowed
+                                 for col in display.props[pid].channel_colors)]
+            if mixed:
+                return f"'{describe_requirement(other)}' ({_listed(mixed)})"
+            continue
+        if requirement.type in _NEEDS_LIGHT:
+            shared = props & _darkened(other, other_props, display)
+        elif other.type in _NEEDS_LIGHT:
+            shared = other_props & _darkened(requirement, props, display)
+        else:
+            continue
+        # Dark during some parts only clashes with "stay on" in those parts.
+        if "quiet_during" in {requirement.type, other.type}:
+            if "keep_on" not in {requirement.type, other.type}:
+                continue
+            on, dark = ((requirement, other) if requirement.type == "keep_on"
+                        else (other, requirement))
+            during = {str(x).lower() for x in on.params.get("during") or []}
+            if during and not during & {str(x).lower() for x in dark.params["sections"]}:
+                continue
+        if shared:
+            names = sorted(display.props[pid].name for pid in shared)
+            listed = ", ".join(names[:3]) + (f" and {len(names) - 3} more" if len(names) > 3
+                                             else "")
+            return f"'{describe_requirement(other)}' ({listed})"
+    return None
 
 
 # ---------------------------------------------------------------- guided questions

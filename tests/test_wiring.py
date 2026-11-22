@@ -161,3 +161,52 @@ def test_anchor_channels_need_channel_numbers(tmp_path: Path) -> None:
                     encoding="utf-8")
     with pytest.raises(RuleProfileError, match="channel numbers"):
         load_rule_set((path,))
+
+
+def test_every_requirement_is_met_or_refused_with_a_reason() -> None:
+    """Each requirement type on each kind of prop, alone and with "stay on" or "never
+    use": the show meets it, or it is refused when added and says why. Nothing is
+    accepted and then broken."""
+    from lor_sequence_builder.requirements_intake import validate_draft
+
+    display = wired_yard()
+    element = display.element()
+    parsed = display_from_preview(element)
+    analysis = synthetic_analysis()
+    base = load_rule_set()
+    roles = sorted({p.role for p in parsed.props.values() if p.sequenceable})
+    names = ["Roof Line", "Mini Arch 1", "Mega Tree"]
+
+    def kinds(sel: dict[str, object]) -> dict[str, dict[str, object]]:
+        return {
+            "keep_on": {"type": "keep_on", "props": sel},
+            "never": {"type": "never_use", "props": sel},
+            "quiet": {"type": "quiet_during", "props": sel, "sections": ["chorus"]},
+            "max": {"type": "max_intensity", "props": sel, "max": 40},
+            "whole": {"type": "light_whole", "props": sel},
+            "anchor": {"type": "anchor_channels", "props": sel, "channels": [1], "min": 30},
+            "colors": {"type": "colors_only", "props": sel, "colors": ["red"]},
+            "chase": {"type": "move_direction", "props": sel, "direction": "right_to_left"},
+            "fall": {"type": "move_direction", "props": sel, "direction": "bottom_to_top",
+                     "movement": "fall"},
+        }
+
+    selectors: list[dict[str, object]] = [{"role": r} for r in roles]
+    selectors += [{"names": [n]} for n in names]
+    broken = []
+    for sel in selectors:
+        options = kinds(sel)
+        combos = [(k,) for k in options] + [("keep_on", k) for k in options if k != "keep_on"]
+        combos += [(k, "never") for k in ("whole", "colors", "max")]
+        for combo in combos:
+            draft = validate_draft([options[k] for k in combo], parsed)
+            if not draft.requirements:
+                assert draft.problems  # refused, with a reason
+                continue
+            rules = dataclasses.replace(base, requirements=(*base.requirements,
+                                                            *draft.requirements))
+            plan = plan_show(analysis, parsed, rules)
+            report = check_choreography(element, plan.choreography, rules)
+            if not report.ok:
+                broken.append((sel, combo, report.format_failures()[:200]))
+    assert not broken, broken

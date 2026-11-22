@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
@@ -440,3 +441,35 @@ def test_api_transport_refuses_redirects() -> None:
         request, None, 302, "Found", {}, "https://attacker.example/collect"
     )
     assert result is None
+
+
+def test_duplicates_and_contradictions_are_refused_with_a_reason() -> None:
+    from lor_sequence_builder.requirements_intake import validate_draft
+
+    display = _display(classic_yard())
+    tree = {"role": "mega_tree"}
+    draft = validate_draft([
+        {"type": "keep_on", "props": tree},
+        {"type": "keep_on", "props": tree},
+        {"type": "never_use", "props": tree},
+        {"type": "quiet_during", "props": tree, "sections": ["intro"]},
+        {"type": "max_intensity", "props": tree, "max": 60},
+    ], display)
+    assert [r.type for r in draft.requirements] == ["keep_on", "max_intensity"]
+    assert any("already there" in p for p in draft.problems)
+    assert sum("contradicts" in p for p in draft.problems) == 2
+
+
+def test_a_failed_show_explains_only_what_went_wrong(tmp_path: Path) -> None:
+    from lor_sequence_builder.rules import check_choreography
+    from lor_sequence_builder.rules.profile import parse_requirements
+
+    rules = load_rule_set()
+    keep = parse_requirements([{"id": "tree-on", "type": "keep_on",
+                                "props": {"role": "mega_tree"}}], "test")
+    rules = dataclasses.replace(rules, requirements=(*rules.requirements, *keep))
+    report = check_choreography(classic_yard().element(), Choreography(1000, ()), rules)
+    text = report.format_failures()
+    assert not report.ok and "PASS" not in text
+    assert text.startswith("The show broke 1 rule(s)") and "and " in text
+    assert "A requirement you added" in text

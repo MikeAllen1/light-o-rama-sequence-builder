@@ -177,6 +177,14 @@ def test_effects_can_be_edited_and_exported(workspace: str, tmp_path: Path) -> N
             page.keyboard.press("Control+z")
             assert page.locator("#effectStat").inner_text() == "11"
 
+            # Edit keys keep working right after a toolbar button is clicked.
+            page.mouse.click(*at(1.5, BUSH_ROW))
+            page.locator("#undoButton").click()
+            assert page.evaluate("document.activeElement.id") == "undoButton"
+            page.keyboard.press("Control+y")
+            assert "Redid:" in banner()
+            assert page.locator("#effectStat").inner_text() == "11"
+
             # Edit the restored effect into a 0-100 fade.
             page.mouse.click(*at(1.5, BUSH_ROW))
             assert "Bush channel 1 · INTENSITY" in page.locator("#inspectorContent").inner_text()

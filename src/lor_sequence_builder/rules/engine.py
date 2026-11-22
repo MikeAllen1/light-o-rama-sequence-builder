@@ -140,6 +140,22 @@ class RuleReport:
             "effective_profile": self.rule_set.to_dict(),
         }
 
+    def format_failures(self, max_findings_per_rule: int = 3) -> str:
+        """Only what went wrong, short enough to read on screen."""
+        failed = [r for r in self.results if r.status == "failed" and r.severity == "error"]
+        lines = [f"The show broke {len(failed)} rule(s), so it was not saved:"]
+        for result in failed:
+            lines.append(f"- {result.title}:")
+            for finding in result.findings[:max_findings_per_rule]:
+                lines.append(f"    {finding.describe()}")
+            hidden = len(result.findings) - max_findings_per_rule
+            if hidden > 0:
+                lines.append(f"    and {hidden} more")
+        if any(r.source != "default.yaml" for r in failed):
+            lines.append("A requirement you added may be impossible to meet with the others; "
+                         "remove or change it and try again.")
+        return "\n".join(lines)
+
     def format_text(self, max_findings_per_rule: int = 10) -> str:
         lines: list[str] = []
         for result in self.results:

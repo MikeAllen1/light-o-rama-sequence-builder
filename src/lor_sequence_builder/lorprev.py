@@ -213,7 +213,10 @@ def read_lorprev(path: str | Path) -> PropModel:
     except LorprevError:
         raise
     except (ET.ParseError, DefusedXmlException) as exc:
-        raise LorprevError(f"Invalid or unsafe LORPREV XML: {source}") from exc
+        raise LorprevError(
+            f"Invalid or unsafe LORPREV XML: {source} (the file is damaged or is not a "
+            "Light-O-Rama preview; export the preview again from S6)"
+        ) from exc
 
     if root is None or root.tag != "PreviewClass":
         raise LorprevError("LORPREV root element must be <PreviewClass>")

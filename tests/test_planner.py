@@ -256,7 +256,7 @@ def test_integral_float_meter_from_external_analysis_is_normalized() -> None:
 
 
 def test_a_song_without_a_detected_beat_grid_is_rejected() -> None:
-    with pytest.raises(PlanningError, match="will not invent a tempo"):
+    with pytest.raises(PlanningError, match="No beat was found"):
         _plan(classic_yard(), synthetic_analysis(beats=False, sections=((0, 0.5),)))
 
 
@@ -492,7 +492,7 @@ def test_any_song_shape_plans_without_breaking_a_rule(seed: int) -> None:
         analysis["configuration"]["beats_per_bar"] = 3
         analysis["analysis"]["downbeats"] = analysis["analysis"]["beats"][::3]
     if not analysis["analysis"]["beats"]:
-        with pytest.raises(PlanningError, match="will not invent a tempo"):
+        with pytest.raises(PlanningError, match="No beat was found"):
             _plan(ALL_DISPLAYS[0](), analysis)
         return
     for make in ALL_DISPLAYS:
