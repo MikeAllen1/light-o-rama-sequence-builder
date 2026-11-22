@@ -1,6 +1,6 @@
 # Requirements
 
-Requirements are things the show must do on your display. In New show, step 3, choose a requirement, the props it is about (a kind of prop, an S6 group, or individual props) and any details, then **Add**. They are remembered for that display.
+Requirements are things the show must do on your display. In New show, step 3, choose a requirement, the props it is about (a kind of prop, an S6 group, or individual props) and any details, then **Add**. They are remembered for that display. A requirement that could never be met is refused when you add it, with the reason: one that contradicts another (stay on and never use the same prop; stay on and only colors the prop cannot show), "stay on" for a singing face's mouths (a face shows one mouth at a time), or falls running upward. The same requirement added twice is kept once. If a show still breaks a rule, the message lists only what went wrong.
 
 | Requirement | Example |
 | --- | --- |

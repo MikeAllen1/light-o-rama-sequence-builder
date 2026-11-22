@@ -249,7 +249,11 @@ class ShowSessions:
                 preview = preview_element(read_lorprev(preview_path))
                 display = display_from_preview(preview)
             except (ValueError, OSError) as exc:
-                raise ShowBuildError(f"This preview could not be read ({exc}). Choose the "
+                # The reason, without the name of the app's own temporary copy.
+                reason = str(exc).replace(str(preview_path), file_name or "the file")
+                if "Invalid or unsafe" in reason:
+                    reason = "the file is damaged or is not a Light-O-Rama preview"
+                raise ShowBuildError(f"This preview could not be read ({reason}). Choose the "
                                      ".lorprev file exported from S6's Preview Editor.") from exc
             if s4:
                 preview_path = Path(folder.name) / "display.lms"
@@ -534,7 +538,7 @@ class ShowSessions:
                     return {
                         "rules_ok": False, "file_name": output.name, "sequence": None,
                         "picture": picture.read_text(encoding="utf-8") if picture.is_file() else "",
-                        "report": failed.report.format_text(), "sections": [], "used": [],
+                        "report": failed.report.format_failures(), "sections": [], "used": [],
                         "skipped": [], "notes": [], "moments": [],
                         "requirements": [describe_requirement(r) for r in session.requirements],
                     }
@@ -632,7 +636,7 @@ class ShowSessions:
                                          vocals_path=None, separate=False, style=style,
                                          pixels=pixels)
                 except RulesFailedError as failed:
-                    entry.update(ok=False, problem=failed.report.format_text()[:2000])
+                    entry.update(ok=False, problem=failed.report.format_failures()[:2000])
                 else:
                     existing_artifacts = [
                         path

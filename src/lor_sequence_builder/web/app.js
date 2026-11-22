@@ -2411,6 +2411,8 @@
     let edited = 0;
     const types = {};
     for (const prop of sequence.props) {
+      // Pixel effects are counted too (they are kept as they are).
+      for (const track of prop.tracks || []) count += track.effects.length;
       for (const channel of prop.channels) {
         count += channel.effects.length;
         if (channel.edited) edited += 1;
@@ -2892,8 +2894,13 @@
     if (target && (["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName) ||
         target.isContentEditable)) return;
     const mod = event.ctrlKey || event.metaKey;
-    if (target && ["BUTTON", "A", "AUDIO", "VIDEO"].includes(target.tagName)) return;
     const key = event.key.toLowerCase();
+    // Media controls use their own keys. A focused button or link only uses Enter and
+    // Space, so the edit keys keep working right after clicking Duplicate or Undo.
+    if (target && ["AUDIO", "VIDEO"].includes(target.tagName)) return;
+    if (target && ["BUTTON", "A"].includes(target.tagName) && (key === "enter" || key === " ")) {
+      return;
+    }
     let handled = true;
     if (mod && key === "z" && !event.shiftKey) undoEdit();
     else if (mod && (key === "y" || (key === "z" && event.shiftKey))) redoEdit();
