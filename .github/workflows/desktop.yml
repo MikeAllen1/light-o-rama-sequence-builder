@@ -4,13 +4,13 @@ name: Desktop app
 # macOS (Apple silicon .app in a zip), each with FFmpeg inside, checks every build with
 # the app's own self-test, and keeps them as downloadable artifacts. A tag like v0.2.0
 # also puts them on its GitHub release (made here when the tag has none yet).
+# Publishing a release in the GitHub page pushes its tag, which starts one build here
+# (a separate "release" trigger would start a second that cancels the first).
 
 on:
   push:
     branches: ["master"]
     tags: ["v*"]
-  release:
-    types: [published]
   pull_request:
     branches: ["master"]
   workflow_dispatch:
