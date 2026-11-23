@@ -82,17 +82,19 @@ def test_the_packaging_files_fit_together() -> None:
     reserved, kind, count = struct.unpack("<HHH", icon[:6])
     assert (reserved, kind) == (0, 1) and count == 4
     workflow = (ROOT / ".github" / "workflows" / "desktop.yml").read_text(encoding="utf-8")
-    assert "--self-test" in workflow and "FFMPEG_SHA256" in workflow
+    assert "--self-test" in workflow and "FFMPEG_COMMIT" in workflow
     # Linux (AppImage) and macOS (.app) builds are self-tested and published too.
     for job in ("linux-app:", "macos-app:", "needs: [windows-app, linux-app, macos-app]"):
         assert job in workflow
-    assert "FFMPEG_LINUX_SHA256" in workflow and "FFMPEG_MAC_COMMIT" in workflow
+    # Every FFmpeg is built from one pinned tag: prebuilt downloads disappear.
+    assert "packaging/build_ffmpeg.sh" in workflow and "BtbN" not in workflow
+    assert "needs: ffmpeg" in workflow and "x86_64-w64-mingw32-" in workflow
     assert "BUNDLE(" in spec and "lor-sequencer.icns" in spec
     icns = (ROOT / "packaging" / "macos" / "lor-sequencer.icns").read_bytes()
     assert icns[:4] == b"icns" and struct.unpack(">I", icns[4:8])[0] == len(icns)
     png = (ROOT / "packaging" / "linux" / "lor-sequencer.png").read_bytes()
     assert png[:8] == b"\x89PNG\r\n\x1a\n"
-    for script in ("linux/AppRun", "linux/build_appimage.sh", "macos/build_ffmpeg.sh"):
+    for script in ("linux/AppRun", "linux/build_appimage.sh", "build_ffmpeg.sh"):
         assert os.access(ROOT / "packaging" / script, os.X_OK) or os.name == "nt"
     desktop_entry = (ROOT / "packaging" / "linux" / "lor-sequencer.desktop").read_text()
     assert "Icon=lor-sequencer" in desktop_entry and "Exec=" in desktop_entry

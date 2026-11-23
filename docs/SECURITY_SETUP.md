@@ -7,7 +7,7 @@ This document distinguishes security controls committed to the repository from h
 - **Dependabot version updates:** `.github/dependabot.yml` checks Python dependencies and GitHub Actions weekly and opens update pull requests.
 - **Automated tests and dependency audit:** `.github/workflows/tests.yml` runs tests, Ruff, strict mypy and `pip-audit` for the default dependencies; a separate job audits the combined optional `vocals`, `lyrics` and `desktop` dependency graph. The workflow has read-only repository permissions and disables persisted checkout credentials.
 - **CodeQL:** `.github/workflows/codeql.yml` runs Python and JavaScript code scanning on pushes and pull requests to `master`, plus a weekly scheduled scan. The analysis job receives only the permissions needed to publish code-scanning results.
-- **Desktop builds:** `.github/workflows/desktop.yml` downloads FFmpeg and appimagetool by pinned URL and checks their SHA-256 (the macOS FFmpeg is built from a pinned tag, checked by commit), self-tests every build, and only the release job has write access.
+- **Desktop builds:** `.github/workflows/desktop.yml` builds FFmpeg for every app from a pinned release tag, checked by commit, downloads appimagetool by pinned URL and checks its SHA-256, self-tests every build, and only the release job has write access.
 - **Third-party notices:** every desktop build ships `THIRD-PARTY-NOTICES.txt` with the license of each bundled library, plus FFmpeg's license.
 - **Security policy:** `SECURITY.md` explains responsible vulnerability reporting and safe handling of user files.
 - **Local-file exclusions:** `.gitignore` excludes local secrets, private keys, audio, and Light-O-Rama sequence files. Only the explicitly named fictional preview fixture is allowlisted.
