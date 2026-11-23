@@ -1,6 +1,6 @@
 # Implementation Plan
 
-**Status (2026-11-15):** Every phase is built, merged and shipped in the desktop apps for Windows, macOS and Linux (v0.1.12), and every phase issue is closed. Phases 0 through 6b, 10, 11A and 11B and the final desktop delivery are complete. Phases 7, 8 and 9 are in use on the owner's display; their formal owner sign-off is not yet recorded. See [ROADMAP.md](ROADMAP.md) for what is still open.
+**Status (2026-11-23):** Every phase is built, merged and shipped in the desktop apps for Windows, macOS and Linux (v0.1.13), and every phase issue is closed. Phases 0 through 6b, 10, 11A and 11B and the final desktop delivery are complete. Phases 7, 8 and 9 are in use on the owner's display; their formal owner sign-off is not yet recorded. See [ROADMAP.md](ROADMAP.md) for what is still open.
 **Current work:** tuning shows against the owner's own sequences and professional (WOW Lights) sequences, and published sequencing advice.
 **Delivery:** The desktop apps (Windows, macOS, Linux) wrap the same browser workspace; the browser workspace (`lor-sequence-ui`) still runs on its own from the source folder.
 
