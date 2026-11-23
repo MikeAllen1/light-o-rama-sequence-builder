@@ -115,8 +115,9 @@ jobs:
       - name: Use it in the build
         shell: pwsh
         run: |
-          & ffmpeg-bundle\ffmpeg.exe -version | Select-Object -First 1
+          $version = & ffmpeg-bundle\ffmpeg.exe -version
           if ($LASTEXITCODE -ne 0) { throw "The FFmpeg build does not run" }
+          $version[0]
           "LOR_FFMPEG_DIR=$((Resolve-Path ffmpeg-bundle).Path)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Build the app with PyInstaller
@@ -219,7 +220,8 @@ jobs:
       - name: Use it in the build, and fetch the pinned appimagetool
         run: |
           chmod +x ffmpeg-bundle/ffmpeg
-          ffmpeg-bundle/ffmpeg -version | head -1
+          ffmpeg-bundle/ffmpeg -version > "$RUNNER_TEMP/ffmpeg-version.txt"
+          head -1 "$RUNNER_TEMP/ffmpeg-version.txt"
           echo "LOR_FFMPEG_DIR=$PWD/ffmpeg-bundle" >> "$GITHUB_ENV"
           tool="$RUNNER_TEMP/appimagetool"
           curl --fail --location --silent --show-error -o "$tool" "$APPIMAGETOOL_URL"
