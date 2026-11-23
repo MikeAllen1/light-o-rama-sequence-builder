@@ -1,13 +1,15 @@
 #!/bin/sh
-# Build a small LGPL FFmpeg for the macOS app: it reads every song format the program
-# accepts (MP3, M4A/AAC/ALAC, WAV, FLAC, OGG/Opus, WMA, AIFF, MKA) and writes WAV, and
-# nothing else (no network, no video, no GPL parts). No FFmpeg build for macOS is
-# published under the LGPL with a fixed checksum, so it is built from the release tag.
-#   packaging/macos/build_ffmpeg.sh <FFmpeg source folder> <install folder>
+# Build a small LGPL FFmpeg for the desktop apps: it reads every song format the
+# program accepts (MP3, M4A/AAC/ALAC, WAV, FLAC, OGG/Opus, WMA, AIFF, MKA) and writes
+# WAV, and nothing else (no network, no video, no GPL parts). Prebuilt LGPL downloads
+# either have no fixed checksum or disappear after a few weeks, so every app's FFmpeg is
+# built from one pinned release tag. Extra arguments go to configure (to cross-build
+# the Windows one).
+#   packaging/build_ffmpeg.sh <FFmpeg source folder> <install folder> [configure args]
 set -eu
-src="$1"; prefix="$2"
+src="$1"; prefix="$2"; shift 2
 cd "$src"
-./configure --prefix="$prefix" \
+./configure --prefix="$prefix" "$@" \
   --disable-everything --disable-autodetect --disable-network --disable-doc \
   --disable-ffplay --disable-ffprobe --disable-avdevice --disable-swscale --disable-postproc \
   --disable-debug --enable-small \

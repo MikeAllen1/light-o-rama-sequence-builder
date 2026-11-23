@@ -23,19 +23,68 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-09-12-42/ffmpeg-n9.0.2-48-gd4070a14ce-win64-lgpl-9.0.zip
-  FFMPEG_SHA256: fc9fbc4615986fdfea41904396074fe8fc0ba061cd974f63bd301cc5e1949a35
-  FFMPEG_LINUX_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-09-12-42/ffmpeg-n9.0.2-48-gd4070a14ce-linux64-lgpl-9.0.tar.xz
-  FFMPEG_LINUX_SHA256: f95f189668268b8ec2c8acce6ea034cf36f93ba99a09f2654d0cfbd89c5c0ebd
-  # macOS: FFmpeg is built from this release tag, checked against its commit.
-  FFMPEG_MAC_TAG: n7.1.2
-  FFMPEG_MAC_COMMIT: f893221c8d89cb798b829bebe71d55e1a3f242fd
+  # Every app's FFmpeg is built from this release tag, checked against its commit.
+  FFMPEG_TAG: n7.1.2
+  FFMPEG_COMMIT: f893221c8d89cb798b829bebe71d55e1a3f242fd
   APPIMAGETOOL_URL: https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-x86_64.AppImage
   APPIMAGETOOL_SHA256: 46fdd785094c7f6e545b61afcfb0f3d98d8eab243f644b4b17698c01d06083d1
 
 jobs:
+  ffmpeg:
+    name: Build FFmpeg for Windows and Linux
+    # The Linux app's oldest system: FFmpeg built here runs everywhere the app does.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Install the Windows cross-compiler
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q gcc-mingw-w64-x86-64
+
+      - name: Build FFmpeg from its pinned release
+        run: |
+          src="$RUNNER_TEMP/ffmpeg-src"
+          git clone --quiet --depth 1 --branch "$FFMPEG_TAG" https://github.com/FFmpeg/FFmpeg "$src"
+          test "$(git -C "$src" rev-parse HEAD)" = "$FFMPEG_COMMIT"
+          cp -r "$src" "$src-win"
+          packaging/build_ffmpeg.sh "$src" "$RUNNER_TEMP/linux" --disable-x86asm
+          packaging/build_ffmpeg.sh "$src-win" "$RUNNER_TEMP/windows" --disable-x86asm \
+            --enable-cross-compile --target-os=mingw32 --arch=x86_64 \
+            --cross-prefix=x86_64-w64-mingw32- --extra-ldflags=-static
+          mkdir -p ffmpeg-linux ffmpeg-windows
+          cp "$RUNNER_TEMP/linux/bin/ffmpeg" ffmpeg-linux/
+          cp "$RUNNER_TEMP/windows/bin/ffmpeg.exe" ffmpeg-windows/
+          cp "$src/COPYING.LGPLv2.1" ffmpeg-linux/FFmpeg-LICENSE.txt
+          cp "$src/COPYING.LGPLv2.1" ffmpeg-windows/FFmpeg-LICENSE.txt
+          ffmpeg-linux/ffmpeg -version | head -1
+          file ffmpeg-windows/ffmpeg.exe
+
+      - name: Keep the Linux FFmpeg
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ffmpeg-linux
+          path: ffmpeg-linux
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Keep the Windows FFmpeg
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ffmpeg-windows
+          path: ffmpeg-windows
+          if-no-files-found: error
+          retention-days: 7
+
   windows-app:
     name: Build and self-test the Windows app
+    needs: ffmpeg
     runs-on: windows-latest
     timeout-minutes: 45
     permissions:
@@ -57,21 +106,18 @@ jobs:
       - name: Sync locked environment with the desktop build tools
         run: uv sync --locked --extra desktop
 
-      - name: Fetch the pinned FFmpeg build
+      - name: Get the FFmpeg built for Windows
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: ffmpeg-windows
+          path: ffmpeg-bundle
+
+      - name: Use it in the build
         shell: pwsh
         run: |
-          $zip = Join-Path $env:RUNNER_TEMP "ffmpeg.zip"
-          Invoke-WebRequest -Uri $env:FFMPEG_URL -OutFile $zip
-          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-          if ($hash -ne $env:FFMPEG_SHA256) { throw "FFmpeg checksum mismatch: $hash" }
-          $unpacked = Join-Path $env:RUNNER_TEMP "ffmpeg-unpacked"
-          Expand-Archive $zip -DestinationPath $unpacked
-          $bundle = Join-Path $env:RUNNER_TEMP "ffmpeg-bundle"
-          New-Item -ItemType Directory $bundle | Out-Null
-          $root = Get-ChildItem $unpacked -Directory | Select-Object -First 1
-          Copy-Item (Join-Path $root.FullName "bin\ffmpeg.exe") $bundle
-          Copy-Item (Join-Path $root.FullName "LICENSE.txt") (Join-Path $bundle "FFmpeg-LICENSE.txt")
-          "LOR_FFMPEG_DIR=$bundle" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          & ffmpeg-bundle\ffmpeg.exe -version | Select-Object -First 1
+          if ($LASTEXITCODE -ne 0) { throw "The FFmpeg build does not run" }
+          "LOR_FFMPEG_DIR=$((Resolve-Path ffmpeg-bundle).Path)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Build the app with PyInstaller
         run: uv run --no-sync pyinstaller packaging/lor_sequencer.spec --noconfirm
@@ -139,6 +185,7 @@ jobs:
   linux-app:
     name: Build and self-test the Linux app
     # The oldest supported runner, so the AppImage runs on older distributions too.
+    needs: ffmpeg
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     permissions:
@@ -163,17 +210,17 @@ jobs:
       - name: Sync locked environment with the desktop build tools
         run: uv sync --locked --extra desktop
 
-      - name: Fetch the pinned FFmpeg build and appimagetool
+      - name: Get the FFmpeg built for Linux
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: ffmpeg-linux
+          path: ffmpeg-bundle
+
+      - name: Use it in the build, and fetch the pinned appimagetool
         run: |
-          archive="$RUNNER_TEMP/ffmpeg.tar.xz"
-          curl --fail --location --silent --show-error -o "$archive" "$FFMPEG_LINUX_URL"
-          echo "$FFMPEG_LINUX_SHA256  $archive" | sha256sum --check -
-          mkdir "$RUNNER_TEMP/ffmpeg-unpacked" "$RUNNER_TEMP/ffmpeg-bundle"
-          tar -xf "$archive" -C "$RUNNER_TEMP/ffmpeg-unpacked"
-          root="$(find "$RUNNER_TEMP/ffmpeg-unpacked" -mindepth 1 -maxdepth 1 -type d | head -1)"
-          cp "$root/bin/ffmpeg" "$RUNNER_TEMP/ffmpeg-bundle/"
-          cp "$root/LICENSE.txt" "$RUNNER_TEMP/ffmpeg-bundle/FFmpeg-LICENSE.txt"
-          echo "LOR_FFMPEG_DIR=$RUNNER_TEMP/ffmpeg-bundle" >> "$GITHUB_ENV"
+          chmod +x ffmpeg-bundle/ffmpeg
+          ffmpeg-bundle/ffmpeg -version | head -1
+          echo "LOR_FFMPEG_DIR=$PWD/ffmpeg-bundle" >> "$GITHUB_ENV"
           tool="$RUNNER_TEMP/appimagetool"
           curl --fail --location --silent --show-error -o "$tool" "$APPIMAGETOOL_URL"
           echo "$APPIMAGETOOL_SHA256  $tool" | sha256sum --check -
@@ -230,9 +277,9 @@ jobs:
       - name: Build FFmpeg from its pinned release
         run: |
           src="$RUNNER_TEMP/ffmpeg-src"
-          git clone --quiet --depth 1 --branch "$FFMPEG_MAC_TAG" https://github.com/FFmpeg/FFmpeg "$src"
-          test "$(git -C "$src" rev-parse HEAD)" = "$FFMPEG_MAC_COMMIT"
-          packaging/macos/build_ffmpeg.sh "$src" "$RUNNER_TEMP/ffmpeg-built"
+          git clone --quiet --depth 1 --branch "$FFMPEG_TAG" https://github.com/FFmpeg/FFmpeg "$src"
+          test "$(git -C "$src" rev-parse HEAD)" = "$FFMPEG_COMMIT"
+          packaging/build_ffmpeg.sh "$src" "$RUNNER_TEMP/ffmpeg-built"
           mkdir "$RUNNER_TEMP/ffmpeg-bundle"
           cp "$RUNNER_TEMP/ffmpeg-built/bin/ffmpeg" "$RUNNER_TEMP/ffmpeg-bundle/"
           cp "$src/COPYING.LGPLv2.1" "$RUNNER_TEMP/ffmpeg-bundle/FFmpeg-LICENSE.txt"

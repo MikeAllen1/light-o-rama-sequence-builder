@@ -11,7 +11,7 @@ window; on Linux it opens in the browser.
 | `windows/installer.iss` | Inno Setup script: a per-user installer (no administrator prompt) with a Start menu entry, an optional desktop shortcut and a normal uninstaller. |
 | `windows/lor-sequencer.ico`, `macos/lor-sequencer.icns`, `linux/lor-sequencer.png` | The icon, drawn by `make_icon.py`. |
 | `linux/build_appimage.sh`, `linux/AppRun`, `linux/lor-sequencer.desktop` | Wrap the PyInstaller folder in an AppImage. |
-| `macos/build_ffmpeg.sh` | Build the small LGPL FFmpeg the macOS app carries (song formats in, WAV out, nothing else). |
+| `build_ffmpeg.sh` | Build the small LGPL FFmpeg every app carries (song formats in, WAV out, nothing else), from one pinned FFmpeg release tag; extra arguments cross-build the Windows one. |
 
 ## How it runs
 
@@ -31,11 +31,15 @@ demo show is generated. The result is written as JSON.
 ## Builds
 
 `.github/workflows/desktop.yml` runs on every pull request and every push to
-master. The Windows job:
+master. First, one job clones FFmpeg at a pinned release tag, checks the commit,
+and builds it with `build_ffmpeg.sh` for Linux (on Ubuntu 22.04) and, with the
+MinGW cross-compiler, for Windows. Prebuilt LGPL downloads are not used: they have
+no lasting address (one pinned download disappeared and broke a release build).
+The Windows job:
 
 1. Sync the locked environment with the `desktop` extra (pywebview, PyInstaller,
    pinned in `pyproject.toml` and `uv.lock`).
-2. Download the pinned FFmpeg build and check its SHA-256.
+2. Take the FFmpeg built for Windows.
 3. Build with PyInstaller.
 4. Run the app's self-test.
 5. Build the installer with Inno Setup.
@@ -44,12 +48,12 @@ master. The Windows job:
 7. Keep both as artifacts for 30 days.
 
 The Linux job (on Ubuntu 22.04, so the AppImage runs on older distributions)
-downloads the pinned Linux FFmpeg and appimagetool and checks their SHA-256,
+takes the FFmpeg built for Linux, downloads the pinned appimagetool and checks its SHA-256,
 builds with PyInstaller, wraps the result with `linux/build_appimage.sh`, and runs
 the AppImage's self-test.
 
 The macOS job (Apple silicon) clones FFmpeg at a pinned release tag, checks the
-commit, builds it with `macos/build_ffmpeg.sh`, builds `LOR Sequencer.app` with
+commit, builds it with `build_ffmpeg.sh`, builds `LOR Sequencer.app` with
 PyInstaller (ad-hoc signed, not notarized), runs its self-test, and zips it.
 
 Publishing a release (or pushing a tag such as `v0.1.0`) attaches all of them: the
